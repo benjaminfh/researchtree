@@ -28,7 +28,7 @@ A common workflow pattern looks like this and is typically **iterative and recur
    iii. Allow deeper or alternative lines of enquiry that would be disruptive if pursued inline
    Conceptually, this is a fork with selective context inheritance.
 
-3. **Re-integration**: if a fork proves fruitful, its outputs must be distilled and merged back into the main trunk of work. This reintegration step is inherently lossy and requires judgment about what conclusions, assumptions, or artefacts should persist.
+3. **Structural reintegration (system-assisted, user-authorised):** when a tangential exploration proves fruitful, the user explicitly anchors the resulting artefact state back onto the main trunk. The system assists by collapsing the tangential reasoning into a single provenance-preserving reintegration event (a merge node), applying the artefact changes to the trunk and creating a clean point for forward progress without losing historical context.
 
 4. **Critical review and challenge**: a fresh or lightly contextualised thread is often used to critically review the main artefact or reasoning. This is effectively a specialised fork with adversarial or evaluative intent. As with (2) and (3), the output is a distilled set of critiques or actions that must be reintegrated into the trunk.
 
@@ -69,9 +69,9 @@ When users open fresh threads to explore tangential questions, those threads oft
 
 Across multiple chats and forks, there is no durable representation of why particular decisions were made, which assumptions were in scope, or which alternatives were considered and rejected. This makes later review, auditing, or handover difficult.
 
-## 3.4 Manual and lossy reintegration
+## 3.4 Lack of provenance-aware merge
 
-Reintegration of fork outputs into the main thread is entirely manual. Users must summarise, filter, and translate conclusions across contexts, a process that is inherently lossy and error-prone.
+Current tools force users to choose between a clean current artefact (which loses the reasoning and decisions that produced it) and a messy conversational history (which preserves the "why" but obscures the present state). The failure is not merely that reintegration is manual, but that it severs provenance: there is no way to retain a clean artefact state while maintaining a traceable, inspectable history of how that state was reached.
 
 ## 3.5 Breakdown of critical review
 
@@ -159,44 +159,59 @@ Effective critical review depends on intentional separation from the original re
 
 The system must not reduce to a single linear conversation abstraction. If reasoning, forks, and decisions are forced back into an undifferentiated chat stream, the system has failed regardless of underlying model capability.
 
-# 6 Non-goals and Explicit Exclusions
+---
 
-This product is designed to support deep, multi-stage, human-led reasoning and research over time. It is intentionally constrained: the exclusions below clarify that depth is achieved through structured intent, controlled exploration, and critical review — not through fully autonomous or opaque automation.
+### **Principle 9 — Immutable reasoning graph (append-only history)**
 
-## 6.1 Not a better chat interface
+The system maintains an immutable, append-only record of reasoning and decisions. Actions such as editing, undoing, or restructuring never delete prior states; instead, they create new states with explicit relationships. This enables fearless exploration while preserving a complete and auditable history of intent.
 
-The product does not aim to improve conversational UX, prompt ergonomics, or turn-by-turn dialogue quality. Chat is treated as a means of interaction, not the organising abstraction of the system.
+---
 
-## 6.2 Not a document editor or word processor
+### **Principle 10 — Strict temporal consistency (user-authorised rewind)**
 
-The product is not a replacement for Word, Google Docs, or collaborative document editors. While documents and artefacts may be central objects within workflows, the system does not aim to replicate full-featured editing, formatting, or collaboration primitives.
+When a user rewinds a line of reasoning to an earlier point in time, the system preserves temporal consistency by treating subsequent work as an alternative branch rather than erasing it. Rewinds are explicit, user-authorised acts that restore a prior state as the basis for continued reasoning, without destroying future context.
 
-## 6.3 Not a general-purpose knowledge management system
+---
 
-The product is not designed to be a personal wiki, note-taking system, or long-term knowledge repository. It does not attempt to optimise for passive storage, search, or recall of information independent of an active reasoning workflow.
+### **Principle 11 — Artefact mobility across reasoning time**
 
-## 6.4 Not primarily an agent framework
+Artefacts are not bound to a single point in the reasoning timeline. A user may deliberately apply a later artefact state to an earlier reasoning context, with the system recording this as an explicit transformation that preserves provenance while allowing forward progress from a clean conceptual state.
 
-While agents or automated processes may be used internally or optionally by advanced users, the product is not centred on autonomous task execution, multi-agent planning, or delegation-based workflows. User intent remains the primary organising force.
+Appendix A — Technical Requirements & Data Architecture (Informative)
 
-## 6.5 Not a foundation model or model-training platform
+This appendix translates the product principles into indicative engineering constraints. It is provided to demonstrate feasibility and to bound the solution space, not to prescribe a final implementation.
 
-The product does not train, fine-tune, or expose foundation models. It treats models as interchangeable reasoning engines and focuses instead on interaction structure, context management, and intent preservation.
+## A.1 Core data structure: the reasoning DAG
 
-## 6.6 Not a deep-research or fully automated reasoning system
+The system is a graph of nodes connected by edges.
 
-The product does not aim to replace expert judgment, conduct end-to-end research autonomously, or produce authoritative outputs without human steering. It is designed to augment and structure human-led reasoning, not supplant it.
+### A.1.1 Node types
 
-## 6.7 Not optimised for casual or low-stakes usage
+Every interaction creates a generic node, distinguishable by type:
 
-The product is not designed primarily for lightweight, conversational, or entertainment-oriented use cases. It intentionally prioritises workflows involving complexity, iteration, and high stakes over ease of entry or immediacy.
+* **Message node:** standard user prompt or model completion.
+* **State node:** a silent checkpoint representing a change in the artefact (e.g. user edit or model edit).
+* **Merge node:** a system-generated node representing the reintegration of a fork, containing summary metadata and diffs but no conversational text.
+* **Prune node:** a tombstone marker for data that has been strictly deleted for security or compliance reasons.
 
-## 6.8 Not a collaboration-first platform (initially)
+### A.1.2 Append-only constraint
 
-The initial focus is on single-user reasoning over time. Real-time multi-user collaboration, shared workspaces, and social features are out of scope unless they can be introduced without compromising intent clarity and provenance.
+Database operations are strictly insert-only. Editing or undoing creates new sibling nodes and updates the active head pointer; prior nodes are never destroyed except via explicit pruning.
 
-## 6.9 Not an invisible or fully automatic system
+## A.2 State layer (artefact versioning)
 
-The product does not aim to fully hide context management, compression, or structural decisions behind automation. While assistance and suggestions are acceptable, explicit user intent must remain legible and actionable.
+The artefact is versioned independently of, but linked to, the reasoning graph. Each node is associated with an artefact snapshot or diff, enabling rebase operations without duplicating full artefact blobs.
 
-These exclusions are deliberate. Any future expansion of scope must be evaluated against the core principles of intent preservation, reasoning purity, and explicit structural control defined in §5.
+## A.3 Translation matrix (system vs user view)
+
+The backend must support a projection layer that renders the graph into a linear user experience while preserving structural truth. Divergence points, merges, and hidden branches are represented explicitly in the UI.
+
+## A.4 Context window management
+
+The prompt sent to the model is assembled via controlled traversal of the graph from root to current head. Sibling branches are excluded to prevent reasoning bleed. When a merge node is encountered, only its summary is injected unless the user explicitly expands it.
+
+## A.5 High-level API sketch
+
+* `POST /fork` — create a named branch from a specific node.
+* `POST /rebase` — apply a future artefact state onto an earlier reasoning point as a squash operation.
+* `POST /prune` — perform irreversible deletion with tombstoning to maintain graph integrity.
