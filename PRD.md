@@ -8,6 +8,8 @@ This product is a **human-centred deep research chain**.
 
 It is designed to support complex, multi-stage reasoning workflows in which a human expert remains in control of intent, judgment, and commitment over time. Rather than optimising for full automation or conversational fluency, the system focuses on preserving epistemic structure: why lines of inquiry were pursued, how alternatives were explored, and how conclusions were reached.
 
+The system borrows proven immutability and branching concepts from version control, but extends them with intent-aware views, controlled context assembly, and provenance-preserving reintegration for reasoning workflows.
+
 Agents and automated helpers may be used to accelerate or assist individual steps, but they do not replace human decision-making. The system’s primary role is to provide durable structure for deep work — enabling controlled exploration, principled reintegration, and rigorous review — without collapsing reasoning back into a linear chat or opaque automation.
 
 # 2 Emergent User Pattern
@@ -33,6 +35,8 @@ A common workflow pattern looks like this and is typically **iterative and recur
 4. **Critical review and challenge**: a fresh or lightly contextualised thread is often used to critically review the main artefact or reasoning. This is effectively a specialised fork with adversarial or evaluative intent. As with (2) and (3), the output is a distilled set of critiques or actions that must be reintegrated into the trunk.
 
 This pattern commonly repeats multiple times, with forks spawning sub-forks and reviews occurring at several stages of maturity.
+
+Forking, merging, rebasing, and rewinding are semantic operations implemented via reference movement and new nodes, not by rewriting prior events. Rewinds restore earlier states as the basis for continued reasoning while preserving all subsequent work as alternative branches.
 
 Across all stages, the core underlying tension is **context management**. Carrying too much context forward leads to polluted reasoning, confused outputs, and degraded model performance; carrying too little context leads to shallow analysis, repeated work, or incorrect conclusions. Effective workflows therefore require deliberate control over what context is inherited, what is isolated, and what is explicitly reintegrated.
 
@@ -125,9 +129,9 @@ Forks may be created prospectively or retrospectively.
 
 ---
 
-### **Principle 3 — History is reclassifiable**
+### **Principle 3 — Views are reclassifiable; history is immutable**
 
-Users must be able to retrospectively identify divergence points in an existing line of reasoning and reclassify subsequent work as belonging to a fork. The system must support reinterpretation of past interaction structure in service of preserving intent and reasoning purity.
+The system maintains an immutable record of reasoning events. Users may retrospectively redefine forks, trunks, and divergence points by updating view definitions, references, and annotations. Reclassification affects how history is interpreted and projected, not the underlying event record.
 
 ---
 
@@ -177,41 +181,8 @@ When a user rewinds a line of reasoning to an earlier point in time, the system 
 
 Artefacts are not bound to a single point in the reasoning timeline. A user may deliberately apply a later artefact state to an earlier reasoning context, with the system recording this as an explicit transformation that preserves provenance while allowing forward progress from a clean conceptual state.
 
-Appendix A — Technical Requirements & Data Architecture (Informative)
+---
 
-This appendix translates the product principles into indicative engineering constraints. It is provided to demonstrate feasibility and to bound the solution space, not to prescribe a final implementation.
+### **Principle 12 **Parallel visibility without duplication**
 
-## A.1 Core data structure: the reasoning DAG
-
-The system is a graph of nodes connected by edges.
-
-### A.1.1 Node types
-
-Every interaction creates a generic node, distinguishable by type:
-
-* **Message node:** standard user prompt or model completion.
-* **State node:** a silent checkpoint representing a change in the artefact (e.g. user edit or model edit).
-* **Merge node:** a system-generated node representing the reintegration of a fork, containing summary metadata and diffs but no conversational text.
-* **Prune node:** a tombstone marker for data that has been strictly deleted for security or compliance reasons.
-
-### A.1.2 Append-only constraint
-
-Database operations are strictly insert-only. Editing or undoing creates new sibling nodes and updates the active head pointer; prior nodes are never destroyed except via explicit pruning.
-
-## A.2 State layer (artefact versioning)
-
-The artefact is versioned independently of, but linked to, the reasoning graph. Each node is associated with an artefact snapshot or diff, enabling rebase operations without duplicating full artefact blobs.
-
-## A.3 Translation matrix (system vs user view)
-
-The backend must support a projection layer that renders the graph into a linear user experience while preserving structural truth. Divergence points, merges, and hidden branches are represented explicitly in the UI.
-
-## A.4 Context window management
-
-The prompt sent to the model is assembled via controlled traversal of the graph from root to current head. Sibling branches are excluded to prevent reasoning bleed. When a merge node is encountered, only its summary is injected unless the user explicitly expands it.
-
-## A.5 High-level API sketch
-
-* `POST /fork` — create a named branch from a specific node.
-* `POST /rebase` — apply a future artefact state onto an earlier reasoning point as a squash operation.
-* `POST /prune` — perform irreversible deletion with tombstoning to maintain graph integrity.
+Expert workflows require simultaneous awareness of multiple lines of reasoning. The system must allow users to see forks, reviews, and reintegrations side-by-side as a structured graph, without forcing them to juggle multiple chat transcripts or linear threads.
