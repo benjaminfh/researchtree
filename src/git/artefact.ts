@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs';
 import { simpleGit } from 'simple-git';
-import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
-import { appendNode } from './nodes';
-import { assertProjectExists, getCurrentBranchName, getProjectFilePath, getProjectPath } from './utils';
+import { INITIAL_BRANCH, PROJECT_FILES } from './constants.js';
+import { appendNode } from './nodes.js';
+import { assertProjectExists, getCurrentBranchName, getProjectFilePath, getProjectPath } from './utils.js';
 
 export async function getArtefact(projectId: string): Promise<string> {
   await assertProjectExists(projectId);
