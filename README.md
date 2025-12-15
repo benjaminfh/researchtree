@@ -32,6 +32,17 @@ npm test
 
 If you only want a subset of suites, use `npm test -- tests/git/branches.test.ts`.
 
+To clean local branches that no longer exist on the remote (for example, `git branch -vv` shows `[origin/...: gone]`), run:
+
+```bash
+git fetch --prune
+git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads \
+  | awk '$2 == "" { print $1 }' \
+  | xargs -r git branch -D
+```
+
+A branch will be deleted only if it lacks an upstream entry; tracked branches are left untouched. Replace `-D` with `-d` if you prefer Git’s “safely delete only if merged” behavior.
+
 ## Playing with the Git Helpers
 
 Set a workspace root (defaults to `<repo>/projects`) with `RESEARCHTREE_PROJECTS_ROOT` and drive the helpers through `ts-node`:
