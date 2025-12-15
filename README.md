@@ -1,1 +1,97 @@
-# graphtree
+# ResearchTree Developer Guide
+
+ResearchTree is a git-backed reasoning workspace. Each project is its own git repository containing:
+
+- `nodes.jsonl` — append-only reasoning history (messages, state checkpoints, merge events)
+- `artefact.md` — the current trunk artefact, only editable from `main`
+- `project.json` and `README.md` — metadata seeded at project creation
+
+The TypeScript helpers under `src/git` provide all project, node, branch, and artefact operations with git as the single source of truth.
+
+## Prerequisites
+
+- Node.js 20+
+- npm 10+
+- git available on your PATH
+
+## Installation
+
+```bash
+npm install
+```
+
+This pulls in `simple-git`, `uuid`, and the development toolchain (TypeScript + Vitest).
+
+## Running the Test Suite
+
+Vitest writes throwaway repositories under `.test-projects/<suite-name>`. To run everything:
+
+```bash
+npm test
+```
+
+If you only want a subset of suites, use `npm test -- tests/git/branches.test.ts`.
+
+## Playing with the Git Helpers
+
+Set a workspace root (defaults to `<repo>/projects`) with `RESEARCHTREE_PROJECTS_ROOT` and drive the helpers through `ts-node`:
+
+```bash
+RESEARCHTREE_PROJECTS_ROOT=~/tmp/researchtree-playground \
+npx ts-node --esm ./scripts/playground.ts
+```
+
+Example `scripts/playground.ts`:
+
+```ts
+import { initProject, appendNode, updateArtefact, createBranch, listBranches } from '../src/git/index.js';
+
+const run = async () => {
+  const project = await initProject('Demo Project', 'CLI walkthrough');
+  await appendNode(project.id, { type: 'message', role: 'system', content: 'Kickoff' });
+  await appendNode(project.id, { type: 'message', role: 'user', content: 'What should we build?' });
+  await updateArtefact(project.id, '# Demo Artefact\n\nInitial trunk draft.');
+
+  await createBranch(project.id, 'research');
+  console.log(await listBranches(project.id));
+};
+
+run().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+```
+
+This script shows how to initialize a project, append reasoning nodes, update the artefact on trunk, and branch for exploratory work. Clean up with `rm -rf ~/tmp/researchtree-playground`.
+
+## ASCII AST: `src/git` Interactions
+
+```
+src/git/index.ts ──┬─> projects.ts ──┬─> utils.ts ──┬─> constants.ts
+                   │                 │              └─> types.ts
+                   │                 └─> types.ts
+                   │
+                   ├─> nodes.ts ─────┬─> utils.ts ──┬─> constants.ts
+                   │                 │              └─> types.ts
+                   │                 └─> types.ts
+                   │
+                   ├─> branches.ts ──┬─> nodes.ts
+                   │                 └─> utils.ts ──> constants.ts/types.ts
+                   │
+                   └─> artefact.ts ──┬─> nodes.ts
+                                     └─> utils.ts ──> constants.ts/types.ts
+```
+
+- `constants.ts` centralizes project locations, filenames, and default git config.
+- `types.ts` defines all shared TypeScript types.
+- `utils.ts` provides reusable helpers (project paths, git config enforcement, node parsing).
+- Feature modules (`projects`, `nodes`, `branches`, `artefact`) compose those helpers to implement domain logic.
+- `index.ts` re-exports everything so callers can simply `import { initProject } from './src/git/index.js';`.
+
+## Common Scripts
+
+- `npm run build` — compile TypeScript to `dist/`
+- `npm run lint` — type-check the code with `tsc --noEmit`
+- `npm test` — run Vitest across `tests/git/*.test.ts`
+
+You now have everything needed to extend ResearchTree or embed the git helpers into another application. Happy hacking! 
