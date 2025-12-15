@@ -1,6 +1,14 @@
 import path from 'path';
 
-export const PROJECTS_ROOT = path.join(process.cwd(), 'projects');
+export let PROJECTS_ROOT = process.env.RESEARCHTREE_PROJECTS_ROOT
+  ? path.resolve(process.env.RESEARCHTREE_PROJECTS_ROOT)
+  : path.join(process.cwd(), 'projects');
+export function setProjectsRoot(rootPath: string): void {
+  if (!rootPath) {
+    throw new Error('projectsRoot must be a non-empty path');
+  }
+  PROJECTS_ROOT = path.resolve(rootPath);
+}
 export const INITIAL_BRANCH = 'main';
 
 export const PROJECT_FILES = {

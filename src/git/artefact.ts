@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs';
 import { simpleGit } from 'simple-git';
-import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
-import { appendNode } from './nodes';
-import { assertProjectExists, getCurrentBranchName, getProjectFilePath, getProjectPath } from './utils';
+import { INITIAL_BRANCH, PROJECT_FILES } from './constants.js';
+import { appendNode } from './nodes.js';
+import { assertProjectExists, getCurrentBranchName, getProjectFilePath, getProjectPath } from './utils.js';
 
 export async function getArtefact(projectId: string): Promise<string> {
   await assertProjectExists(projectId);
@@ -25,7 +25,7 @@ export async function updateArtefact(projectId: string, content: string): Promis
   await fs.writeFile(artefactPath, content ?? '');
 
   const git = simpleGit(getProjectPath(projectId));
-  const snapshot = (await git.raw(['hash-object', '-w', PROJECT_FILES.artefact])).trim();
+  const snapshot = (await git.hashObject(artefactPath, true)).trim();
 
   await appendNode(
     projectId,

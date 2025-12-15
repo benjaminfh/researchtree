@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import {
   appendNode,
   createBranch,
@@ -10,11 +10,27 @@ import {
   mergeBranch,
   switchBranch
 } from '../../src/git';
-import { assertValidCommitHash, generateTestProjectName, getGitLog, readProjectFile } from './test-utils';
+import { setProjectsRoot } from '../../src/git/constants';
+import {
+  assertValidCommitHash,
+  ensureTestProjectsRoot,
+  generateTestProjectName,
+  getGitLog,
+  readProjectFile,
+  clearAllTestProjects,
+  getTestProjectsRoot
+} from './test-utils';
 
 let projectId: string;
+const TEST_ROOT = getTestProjectsRoot('branches');
+
+beforeAll(async () => {
+  await clearAllTestProjects(TEST_ROOT);
+  await ensureTestProjectsRoot(TEST_ROOT);
+});
 
 beforeEach(async () => {
+  setProjectsRoot(TEST_ROOT);
   const project = await initProject(generateTestProjectName());
   projectId = project.id;
   await appendNode(projectId, { type: 'message', role: 'system', content: 'Initial' });
@@ -24,6 +40,10 @@ afterEach(async () => {
   if (projectId) {
     await deleteProject(projectId).catch(() => undefined);
   }
+});
+
+afterAll(async () => {
+  // keep projects root intact
 });
 
 describe('Branch operations', () => {

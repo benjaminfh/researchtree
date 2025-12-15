@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 projects/
+.test-projects/
 .DS_Store
 
 # Byte-compiled / optimized / DLL files

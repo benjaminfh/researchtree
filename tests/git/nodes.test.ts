@@ -1,11 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { appendNode, deleteProject, getNode, getNodes, initProject } from '../../src/git';
+import { setProjectsRoot } from '../../src/git/constants';
 import type { NodeRecord } from '../../src/git/types';
-import { assertValidUUID, generateTestProjectName, getCommitCount, readProjectFile } from './test-utils';
+import {
+  assertValidUUID,
+  ensureTestProjectsRoot,
+  generateTestProjectName,
+  getCommitCount,
+  readProjectFile,
+  clearAllTestProjects,
+  getTestProjectsRoot
+} from './test-utils';
 
 let projectId: string;
+const TEST_ROOT = getTestProjectsRoot('nodes');
+
+beforeAll(async () => {
+  await clearAllTestProjects(TEST_ROOT);
+  await ensureTestProjectsRoot(TEST_ROOT);
+});
 
 beforeEach(async () => {
+  setProjectsRoot(TEST_ROOT);
   const project = await initProject(generateTestProjectName());
   projectId = project.id;
 });
@@ -14,6 +30,10 @@ afterEach(async () => {
   if (projectId) {
     await deleteProject(projectId).catch(() => undefined);
   }
+});
+
+afterAll(async () => {
+  // keep projects root intact
 });
 
 describe('Node operations', () => {

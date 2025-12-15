@@ -1,7 +1,7 @@
 import { simpleGit } from 'simple-git';
-import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
-import { createNodeRecord, writeNodeRecord } from './nodes';
-import type { BranchSummary, NodeRecord } from './types';
+import { INITIAL_BRANCH, PROJECT_FILES } from './constants.js';
+import { createNodeRecord, writeNodeRecord } from './nodes.js';
+import type { BranchSummary, NodeRecord } from './types.js';
 import {
   assertProjectExists,
   buildCommitMessage,
@@ -10,7 +10,7 @@ import {
   getCurrentBranchName,
   getProjectPath,
   readNodesFromRef
-} from './utils';
+} from './utils.js';
 
 export async function getCurrentBranch(projectId: string): Promise<string> {
   return getCurrentBranchName(projectId);
@@ -24,8 +24,10 @@ export async function createBranch(projectId: string, branchName: string, fromRe
     throw new Error(`Branch ${branchName} already exists`);
   }
 
-  if (fromRef) {
-    await git.checkout(fromRef);
+  const currentBranch = await getCurrentBranchName(projectId);
+  const sourceRef = fromRef ?? currentBranch;
+  if (sourceRef !== currentBranch) {
+    await git.checkout(sourceRef);
   }
   await git.checkoutLocalBranch(branchName);
 }

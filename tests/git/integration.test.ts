@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   appendNode,
   createBranch,
@@ -11,10 +11,23 @@ import {
   switchBranch,
   updateArtefact
 } from '../../src/git';
-import { generateTestProjectName, getGitLog } from './test-utils';
+import { setProjectsRoot } from '../../src/git/constants';
+import { ensureTestProjectsRoot, generateTestProjectName, getGitLog, clearAllTestProjects, getTestProjectsRoot } from './test-utils';
+
+const TEST_ROOT = getTestProjectsRoot('integration');
 
 describe('Integration workflow', () => {
+  beforeAll(async () => {
+    await clearAllTestProjects(TEST_ROOT);
+    await ensureTestProjectsRoot(TEST_ROOT);
+  });
+
+  afterAll(async () => {
+    // keep projects root intact
+  });
+
   it('complete branching and merging workflow', async () => {
+    setProjectsRoot(TEST_ROOT);
     const project = await initProject(generateTestProjectName());
     const projectId = project.id;
 

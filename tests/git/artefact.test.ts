@@ -1,13 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { createBranch, deleteProject, getArtefact, initProject, switchBranch, updateArtefact } from '../../src/git';
-import { PROJECTS_ROOT, PROJECT_FILES } from '../../src/git/constants';
-import { generateTestProjectName, readProjectFile } from './test-utils';
-import path from 'path';
+import { setProjectsRoot } from '../../src/git/constants';
+import { getProjectFilePath } from '../../src/git/utils';
+import {
+  ensureTestProjectsRoot,
+  generateTestProjectName,
+  readProjectFile,
+  clearAllTestProjects,
+  getTestProjectsRoot
+} from './test-utils';
 import { promises as fs } from 'fs';
 
 let projectId: string;
+const TEST_ROOT = getTestProjectsRoot('artefact');
+
+beforeAll(async () => {
+  await clearAllTestProjects(TEST_ROOT);
+  await ensureTestProjectsRoot(TEST_ROOT);
+});
 
 beforeEach(async () => {
+  setProjectsRoot(TEST_ROOT);
   const project = await initProject(generateTestProjectName());
   projectId = project.id;
 });
@@ -16,6 +29,10 @@ afterEach(async () => {
   if (projectId) {
     await deleteProject(projectId).catch(() => undefined);
   }
+});
+
+afterAll(async () => {
+  // keep projects root intact
 });
 
 describe('Artefact operations', () => {
@@ -33,7 +50,7 @@ describe('Artefact operations', () => {
 
   it('updateArtefact updates file and creates state node on trunk', async () => {
     await updateArtefact(projectId, 'Artefact content');
-    const filePath = path.join(PROJECTS_ROOT, projectId, PROJECT_FILES.artefact);
+    const filePath = getProjectFilePath(projectId, 'artefact');
     const artefactContent = await fs.readFile(filePath, 'utf-8');
     expect(artefactContent).toBe('Artefact content');
 

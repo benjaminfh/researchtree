@@ -1,21 +1,32 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { deleteProject, getProject, initProject, listProjects } from '../../src/git';
-import { PROJECTS_ROOT, PROJECT_FILES } from '../../src/git/constants';
-import { assertValidUUID, cleanupTestProjects, generateTestProjectName, getCommitCount } from './test-utils';
+import { setProjectsRoot } from '../../src/git/constants';
+import { getProjectFilePath, getProjectPath } from '../../src/git/utils';
+import {
+  assertValidUUID,
+  ensureTestProjectsRoot,
+  generateTestProjectName,
+  getCommitCount,
+  clearAllTestProjects,
+  getTestProjectsRoot
+} from './test-utils';
 
 const createdProjects: string[] = [];
+const TEST_ROOT = getTestProjectsRoot('projects');
 
 async function createProject(description?: string) {
+  setProjectsRoot(TEST_ROOT);
   const name = generateTestProjectName();
   const project = await initProject(name, description);
   createdProjects.push(project.id);
   return project;
 }
 
-beforeEach(async () => {
-  await cleanupTestProjects();
+beforeAll(async () => {
+  await clearAllTestProjects(TEST_ROOT);
+  await ensureTestProjectsRoot(TEST_ROOT);
 });
 
 afterEach(async () => {
@@ -24,27 +35,29 @@ afterEach(async () => {
     if (!id) continue;
     await deleteProject(id).catch(() => undefined);
   }
-  await cleanupTestProjects();
+});
+
+afterAll(async () => {
+  // keep projects root intact across runs
 });
 
 describe('Project operations', () => {
   it('initProject creates complete valid structure', async () => {
-    const project = await initProject(generateTestProjectName(), 'Description');
-    createdProjects.push(project.id);
+    const project = await createProject('Description');
     assertValidUUID(project.id);
 
-    const projectPath = path.join(PROJECTS_ROOT, project.id);
+    const projectPath = getProjectPath(project.id);
     expect(await fs.stat(projectPath)).toBeTruthy();
     expect(await fs.stat(path.join(projectPath, '.git'))).toBeTruthy();
 
-    const nodes = await fs.readFile(path.join(projectPath, PROJECT_FILES.nodes), 'utf-8');
+    const nodes = await fs.readFile(getProjectFilePath(project.id, 'nodes'), 'utf-8');
     expect(nodes).toBe('');
 
-    const artefact = await fs.readFile(path.join(projectPath, PROJECT_FILES.artefact), 'utf-8');
+    const artefact = await fs.readFile(getProjectFilePath(project.id, 'artefact'), 'utf-8');
     expect(artefact).toBe('');
 
-    expect(await fs.stat(path.join(projectPath, PROJECT_FILES.metadata))).toBeTruthy();
-    expect(await fs.stat(path.join(projectPath, PROJECT_FILES.readme))).toBeTruthy();
+    expect(await fs.stat(getProjectFilePath(project.id, 'metadata'))).toBeTruthy();
+    expect(await fs.stat(getProjectFilePath(project.id, 'readme'))).toBeTruthy();
 
     const commitCount = await getCommitCount(project.id);
     expect(commitCount).toBe(1);
@@ -54,8 +67,8 @@ describe('Project operations', () => {
     const projectA = await createProject('Has description');
     const projectB = await createProject();
 
-    const metadataAPath = path.join(PROJECTS_ROOT, projectA.id, PROJECT_FILES.metadata);
-    const metadataBPath = path.join(PROJECTS_ROOT, projectB.id, PROJECT_FILES.metadata);
+    const metadataAPath = getProjectFilePath(projectA.id, 'metadata');
+    const metadataBPath = getProjectFilePath(projectB.id, 'metadata');
 
     const metaA = JSON.parse(await fs.readFile(metadataAPath, 'utf-8'));
     const metaB = JSON.parse(await fs.readFile(metadataBPath, 'utf-8'));
@@ -71,7 +84,9 @@ describe('Project operations', () => {
   });
 
   it('listProjects returns empty array when no projects exist', async () => {
-    await cleanupTestProjects();
+    await clearAllTestProjects(TEST_ROOT);
+    await ensureTestProjectsRoot(TEST_ROOT);
+    setProjectsRoot(TEST_ROOT);
     const projects = await listProjects();
     expect(projects).toEqual([]);
   });
@@ -81,6 +96,7 @@ describe('Project operations', () => {
     const projectB = await createProject('two');
     const projectC = await createProject('three');
 
+    setProjectsRoot(TEST_ROOT);
     const projects = await listProjects();
     const ids = projects.map((p) => p.id);
     expect(ids).toEqual(expect.arrayContaining([projectA.id, projectB.id, projectC.id]));
@@ -101,6 +117,7 @@ describe('Project operations', () => {
   });
 
   it('getProject returns null for non-existent project', async () => {
+    setProjectsRoot(TEST_ROOT);
     const metadata = await getProject('non-existent-id');
     expect(metadata).toBeNull();
   });
@@ -110,7 +127,7 @@ describe('Project operations', () => {
     const second = await createProject('two');
 
     await deleteProject(first.id);
-    const firstPath = path.join(PROJECTS_ROOT, first.id);
+    const firstPath = getProjectPath(first.id);
     await expect(fs.access(firstPath)).rejects.toBeDefined();
 
     const projects = await listProjects();

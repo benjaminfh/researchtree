@@ -1,19 +1,33 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { simpleGit } from 'simple-git';
-import { COMMIT_SUMMARY_LIMIT, DEFAULT_USER, PROJECTS_ROOT, PROJECT_FILES, INITIAL_BRANCH } from './constants';
-import type { NodeInput, NodeRecord, ProjectMetadata } from './types';
+import { COMMIT_SUMMARY_LIMIT, DEFAULT_USER, PROJECTS_ROOT, PROJECT_FILES, INITIAL_BRANCH } from './constants.js';
+import type { NodeInput, NodeRecord, ProjectMetadata } from './types.js';
 
-export async function ensureProjectsRoot(): Promise<void> {
-  await fs.mkdir(PROJECTS_ROOT, { recursive: true });
+const projectRootOverrides = new Map<string, string>();
+
+export function registerProjectRoot(projectId: string, rootPath: string): void {
+  projectRootOverrides.set(projectId, path.resolve(rootPath));
+}
+
+export function unregisterProjectRoot(projectId: string): void {
+  projectRootOverrides.delete(projectId);
+}
+
+function resolveProjectRoot(projectId: string): string {
+  return projectRootOverrides.get(projectId) ?? PROJECTS_ROOT;
+}
+
+export async function ensureProjectsRoot(root: string = PROJECTS_ROOT): Promise<void> {
+  await fs.mkdir(root, { recursive: true });
 }
 
 export function getProjectPath(projectId: string): string {
-  return path.join(PROJECTS_ROOT, projectId);
+  return path.resolve(resolveProjectRoot(projectId), projectId);
 }
 
 export function getProjectFilePath(projectId: string, fileKey: keyof typeof PROJECT_FILES): string {
-  return path.join(getProjectPath(projectId), PROJECT_FILES[fileKey]);
+  return path.resolve(getProjectPath(projectId), PROJECT_FILES[fileKey]);
 }
 
 export async function pathExists(targetPath: string): Promise<boolean> {
@@ -105,8 +119,12 @@ export async function ensureCleanWorkingTree(projectId: string): Promise<void> {
 
 export async function getCurrentBranchName(projectId: string): Promise<string> {
   const git = simpleGit(getProjectPath(projectId));
-  const name = await git.revparse(['--abbrev-ref', 'HEAD']);
-  return name.trim();
+  const name = await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => INITIAL_BRANCH);
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === 'HEAD') {
+    return INITIAL_BRANCH;
+  }
+  return trimmed;
 }
 
 export function isTrunk(branch: string): boolean {

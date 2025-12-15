@@ -2,8 +2,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { simpleGit } from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
-import { INITIAL_BRANCH, PROJECT_FILES, PROJECTS_ROOT } from './constants';
-import type { ProjectMetadata } from './types';
+import { INITIAL_BRANCH, PROJECT_FILES, PROJECTS_ROOT } from './constants.js';
+import type { ProjectMetadata } from './types.js';
 import {
   assertProjectExists,
   ensureProjectsRoot,
@@ -12,16 +12,20 @@ import {
   pathExists,
   readJsonFile,
   writeJsonFile,
-  ensureGitUserConfig
-} from './utils';
+  ensureGitUserConfig,
+  registerProjectRoot,
+  unregisterProjectRoot
+} from './utils.js';
 
 export async function initProject(name: string, description?: string): Promise<ProjectMetadata> {
   if (!name) {
     throw new Error('Project name is required');
   }
 
-  await ensureProjectsRoot();
+  const projectsRoot = PROJECTS_ROOT;
+  await ensureProjectsRoot(projectsRoot);
   const id = uuidv4();
+  registerProjectRoot(id, projectsRoot);
   const projectPath = getProjectPath(id);
   await fs.mkdir(projectPath, { recursive: true });
 
@@ -91,6 +95,7 @@ export async function getProject(projectId: string): Promise<ProjectMetadata | n
 export async function deleteProject(projectId: string): Promise<void> {
   await assertProjectExists(projectId);
   await fs.rm(getProjectPath(projectId), { recursive: true, force: true });
+  unregisterProjectRoot(projectId);
 }
 
 async function readFileIfExists<T>(filePath: string): Promise<T | null> {
