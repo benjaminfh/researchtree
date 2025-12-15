@@ -24,19 +24,19 @@ A common workflow pattern looks like this and is typically **iterative and recur
    iii. Create a starting artefact (e.g. first-draft document or research brief)
    iv. Iterate on this artefact until the session becomes unwieldy or side-tasks emerge
 
-2. **Tangential exploration (forking)**: at some point, a tangential or orthogonal question must be answered. Ideally, this exploration should:
+2. **Tangential exploration (branching)**: at some point, a tangential or orthogonal question must be answered. Ideally, this exploration should:
    i. Inherit relevant context accumulated in (1)
    ii. Remain isolated enough to avoid contaminating or confusing the main reasoning thread
    iii. Allow deeper or alternative lines of enquiry that would be disruptive if pursued inline
-   Conceptually, this is a fork with selective context inheritance.
+   Conceptually, this is a branch with selective context inheritance.
 
 3. **Structural reintegration (system-assisted, user-authorised):** when a tangential exploration proves fruitful, the user explicitly anchors the resulting artefact state back onto the main trunk. The system assists by collapsing the tangential reasoning into a single provenance-preserving reintegration event (a merge node), applying the artefact changes to the trunk and creating a clean point for forward progress without losing historical context.
 
-4. **Critical review and challenge**: a fresh or lightly contextualised thread is often used to critically review the main artefact or reasoning. This is effectively a specialised fork with adversarial or evaluative intent. As with (2) and (3), the output is a distilled set of critiques or actions that must be reintegrated into the trunk.
+4. **Critical review and challenge**: a fresh or lightly contextualised thread is often used to critically review the main artefact or reasoning. This is effectively a specialised branch with adversarial or evaluative intent. As with (2) and (3), the output is a distilled set of critiques or actions that must be reintegrated into the trunk.
 
-This pattern commonly repeats multiple times, with forks spawning sub-forks and reviews occurring at several stages of maturity.
+This pattern commonly repeats multiple times, with branches spawning sub-branches and reviews occurring at several stages of maturity.
 
-Forking, merging, rebasing, and rewinding are semantic operations implemented via reference movement and new nodes, not by rewriting prior events. Rewinds restore earlier states as the basis for continued reasoning while preserving all subsequent work as alternative branches.
+Branching, merging, rebasing, and rewinding are semantic operations implemented via reference movement and new nodes, not by rewriting prior events. Rewinds restore earlier states as the basis for continued reasoning while preserving all subsequent work as alternative branches.
 
 Across all stages, the core underlying tension is **context management**. Carrying too much context forward leads to polluted reasoning, confused outputs, and degraded model performance; carrying too little context leads to shallow analysis, repeated work, or incorrect conclusions. Effective workflows therefore require deliberate control over what context is inherited, what is isolated, and what is explicitly reintegrated.
 
@@ -48,14 +48,14 @@ ChatGPT and Gemini chat UIs are fundamentally built around linear, single‑thre
 **Opaque context sharing**
 ChatGPT projects group chats and files, but context sharing is opaque, typically via background retrieval (RAG), leaving users unsure what context is actually in scope.
 
-**Forking threads**
-Branching chats exist but quickly become hard to track and reason about from the user’s perspective.
+**Branching threads**
+Branching chats exist but quickly become hard to track and reason about from the user's perspective.
 
 **Tracking related sessions**
 The sidebar UI makes it difficult to understand lineage or relationships between chats. Titles are weak, ordering is dynamic, and there is no explicit graph of related work.
 
 **Artefact‑centric workflows**
-Canvas modes in ChatGPT and Gemini support working on a central artefact alongside chat, similar to code‑assistant tools (e.g. Cursor, Claude Code). However, these canvases do not solve multi‑thread lineage, context control, or re‑integration across forks.
+Canvas modes in ChatGPT and Gemini support working on a central artefact alongside chat, similar to code‑assistant tools (e.g. Cursor, Claude Code). However, these canvases do not solve multi‑thread lineage, context control, or re‑integration across branches.
 
 # 3 Pain Points and Failure Modes
 
@@ -71,7 +71,7 @@ When users open fresh threads to explore tangential questions, those threads oft
 
 ## 3.3 Loss of provenance and decision rationale
 
-Across multiple chats and forks, there is no durable representation of why particular decisions were made, which assumptions were in scope, or which alternatives were considered and rejected. This makes later review, auditing, or handover difficult.
+Across multiple chats and branches, there is no durable representation of why particular decisions were made, which assumptions were in scope, or which alternatives were considered and rejected. This makes later review, auditing, or handover difficult.
 
 ## 3.4 Lack of provenance-aware merge
 
@@ -91,7 +91,7 @@ Although modern LLM products expose features such as projects, branching chats, 
 
 ## 4.1 Linear conversation as the primary abstraction
 
-Existing interfaces treat the conversation thread as the fundamental unit of work. This abstraction optimises for continuity and turn-by-turn dialogue, but provides no native representation of forks, merges, or lineage. As a result, users must choose between maintaining continuity and preserving clarity.
+Existing interfaces treat the conversation thread as the fundamental unit of work. This abstraction optimises for continuity and turn-by-turn dialogue, but provides no native representation of branches, merges, or lineage. As a result, users must choose between maintaining continuity and preserving clarity.
 
 ## 4.2 Implicit and opaque context management
 
@@ -117,21 +117,21 @@ Because navigation and organisation are primarily temporal and list-based, exist
 
 ### **Principle 1 — Preserve user intent over time**
 
-The primary value of the system is preserving the user’s intent as it evolves over time, as expressed through decisions to diverge (fork), converge (merge), and revise reasoning. Conversations, artefacts, and outputs are secondary to this temporal intent structure.
+The primary value of the system is preserving the user's intent as it evolves over time, as expressed through decisions to diverge (branch), converge (merge), and revise reasoning. Conversations, artefacts, and outputs are secondary to this temporal intent structure.
 
 ---
 
-### **Principle 2 — Forking is a first-class expression of intent**
+### **Principle 2 — Branching is a first-class expression of intent**
 
-A fork represents an explicit decision to explore without commitment and without contaminating the main line of reasoning. Forks are not secondary chats; they are first-class representations of exploratory intent that may differ in assumptions, stance, or evaluative posture.
+A branch represents an explicit decision to explore without commitment and without contaminating the main line of reasoning. Branches are not secondary chats; they are first-class representations of exploratory intent that may differ in assumptions, stance, or evaluative posture.
 
-Forks may be created prospectively or retrospectively.
+Branches may be created prospectively or retrospectively.
 
 ---
 
 ### **Principle 3 — Views are reclassifiable; history is immutable**
 
-The system maintains an immutable record of reasoning events. Users may retrospectively redefine forks, trunks, and divergence points by updating view definitions, references, and annotations. Reclassification affects how history is interpreted and projected, not the underlying event record.
+The system maintains an immutable record of reasoning events. Users may retrospectively redefine branches, trunks, and divergence points by updating view definitions, references, and annotations. Reclassification affects how history is interpreted and projected, not the underlying event record.
 
 ---
 
@@ -149,7 +149,7 @@ Because long-running workflows inevitably exceed context limits, compression is 
 
 ### **Principle 6 — Reintegration is an explicit commitment step**
 
-Merging outputs from a fork into the trunk is a deliberate act of commitment. The system must support explicit choices about what is reintegrated and at what level of fidelity, recognising that reintegration is inherently selective and lossy.
+Merging outputs from a branch into the trunk is a deliberate act of commitment. The system must support explicit choices about what is reintegrated and at what level of fidelity, recognising that reintegration is inherently selective and lossy.
 
 ---
 
@@ -161,7 +161,7 @@ Effective critical review depends on intentional separation from the original re
 
 ### **Principle 8 — The system must not collapse into linear chat**
 
-The system must not reduce to a single linear conversation abstraction. If reasoning, forks, and decisions are forced back into an undifferentiated chat stream, the system has failed regardless of underlying model capability.
+The system must not reduce to a single linear conversation abstraction. If reasoning, branches, and decisions are forced back into an undifferentiated chat stream, the system has failed regardless of underlying model capability.
 
 ---
 
@@ -185,4 +185,4 @@ Artefacts are not bound to a single point in the reasoning timeline. A user may 
 
 ### **Principle 12 **Parallel visibility without duplication**
 
-Expert workflows require simultaneous awareness of multiple lines of reasoning. The system must allow users to see forks, reviews, and reintegrations side-by-side as a structured graph, without forcing them to juggle multiple chat transcripts or linear threads.
+Expert workflows require simultaneous awareness of multiple lines of reasoning. The system must allow users to see branches, reviews, and reintegrations side-by-side as a structured graph, without forcing them to juggle multiple chat transcripts or linear threads.

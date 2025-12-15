@@ -13,7 +13,7 @@ Every interaction creates a generic node, distinguishable by type:
 
 * **Message node:** standard user prompt or model completion.
 * **State node:** a silent checkpoint representing a change in the artefact (e.g. user edit or model edit).
-* **Merge node:** a system-generated node representing the reintegration of a fork, containing summary metadata and diffs but no conversational text.
+* **Merge node:** a system-generated node representing the reintegration of a branch, containing summary metadata and diffs but no conversational text.
 * **Prune node:** a marker indicating that a compliance-driven history rewrite has occurred. The prune node records scope, reason, and timestamp, but does not itself perform deletion. Underlying deletion is executed via repository-level history rewriting.
 
 ## 1.2 Append-only constraint
@@ -36,7 +36,7 @@ The prompt sent to the model is assembled via controlled traversal of the graph 
 
 # 5 High-level API sketch
 
-* `POST /fork` — create a named branch from a specific node.
+* `POST /branch` — create a named branch from a specific node.
 * `POST /rebase` — apply a future artefact state onto an earlier reasoning point as a squash operation.
 * `POST /prune` — perform irreversible deletion with tombstoning to maintain graph integrity (may trigger repository-level history rewriting and require client resynchronisation).
 
@@ -64,7 +64,7 @@ This visualization is not a linear chat view, but a **graph projection** over th
 The system distinguishes between:
 
 * **Physical topology**: the immutable commit / node DAG (parent–child relationships).
-* **Logical views**: user-defined interpretations of that DAG (trunk, forks, review branches), represented via references and annotations.
+* **Logical views**: user-defined interpretations of that DAG (trunk, branches, review branches), represented via references and annotations.
 
 The UI must render **both**:
 
@@ -123,7 +123,7 @@ At no point should the system render multiple full chat transcripts side-by-side
 
 Graph rendering must be **view-aware**:
 
-* Branch colouring, badges, or lanes may reflect view membership (e.g. trunk vs exploratory fork vs review fork).
+* Branch colouring, badges, or lanes may reflect view membership (e.g. trunk vs exploratory branch vs review branch).
 * Filtering by view must be possible without altering graph topology.
 * Reclassification of views must update styling and grouping without rewriting history.
 
