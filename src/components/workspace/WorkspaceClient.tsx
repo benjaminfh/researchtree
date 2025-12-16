@@ -77,6 +77,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [editDraft, setEditDraft] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [artefactDraft, setArtefactDraft] = useState('');
+  const [isSavingArtefact, setIsSavingArtefact] = useState(false);
+  const [artefactError, setArtefactError] = useState<string | null>(null);
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
     ref: branchName
   });
@@ -162,6 +165,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setProvider(event.target.value as LLMProvider);
   };
+
+  useEffect(() => {
+    setArtefactDraft(artefact);
+  }, [artefact]);
 
   const combinedNodes = useMemo(() => (streamingNode ? [...nodes, streamingNode] : nodes), [nodes, streamingNode]);
   const lastUpdatedTimestamp = useMemo(() => {
@@ -515,18 +522,79 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
         <section style={{ border: '1px solid #e1e7ef', borderRadius: '0.75rem', padding: '1rem', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <h2 style={{ marginTop: 0 }}>Artefact</h2>
-          <p style={{ color: '#5f6b7c', fontSize: '0.9rem' }}>Trunk-only, read-only for Phase 2.</p>
+          <p style={{ color: '#5f6b7c', fontSize: '0.9rem' }}>
+            Trunk-only. {branchName !== trunkName ? 'Switch to trunk to edit.' : 'Edits create a state node on trunk.'}
+          </p>
           <div
             style={{
               flex: 1,
               background: '#f9fafc',
               borderRadius: '0.5rem',
               padding: '1rem',
-              overflowY: 'auto'
+              overflowY: 'auto',
+              marginBottom: '0.75rem'
             }}
           >
-            {artefact ? <ReactMarkdown>{artefact}</ReactMarkdown> : 'No artefact content yet.'}
+            {branchName !== trunkName ? (
+              artefact ? (
+                <ReactMarkdown>{artefact}</ReactMarkdown>
+              ) : (
+                'No artefact content yet.'
+              )
+            ) : (
+              <textarea
+                value={artefactDraft}
+                onChange={(event) => setArtefactDraft(event.target.value)}
+                rows={12}
+                style={{ width: '100%', minHeight: '100%', border: '1px solid #d5dce8', borderRadius: '0.5rem', padding: '0.75rem', fontFamily: 'inherit' }}
+                disabled={isSavingArtefact}
+              />
+            )}
           </div>
+          {branchName === trunkName ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (isSavingArtefact) return;
+                  setIsSavingArtefact(true);
+                  setArtefactError(null);
+                  try {
+                    const res = await fetch(`/api/projects/${project.id}/artefact`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ content: artefactDraft })
+                    });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => null);
+                      throw new Error(data?.error?.message ?? 'Failed to save artefact');
+                    }
+                    await mutateArtefact();
+                    await mutateHistory();
+                  } catch (err) {
+                    setArtefactError((err as Error).message);
+                  } finally {
+                    setIsSavingArtefact(false);
+                  }
+                }}
+                style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid #d5dce8', background: '#0f62fe', color: '#fff' }}
+              >
+                {isSavingArtefact ? 'Saving…' : 'Save artefact'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setArtefactDraft(artefact);
+                  setArtefactError(null);
+                }}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #d5dce8', background: '#fff' }}
+                disabled={isSavingArtefact}
+              >
+                Reset
+              </button>
+              {artefactError ? <span style={{ color: '#bd2d2d' }}>{artefactError}</span> : null}
+            </div>
+          ) : null}
         </section>
       </div>
 
