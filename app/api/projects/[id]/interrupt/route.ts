@@ -4,7 +4,9 @@ interface RouteContext {
   params: { id: string };
 }
 
-export async function POST(_request: Request, { params }: RouteContext) {
-  const aborted = abortStream(params.id);
+export async function POST(request: Request, { params }: RouteContext) {
+  const { searchParams } = new URL(request.url);
+  const ref = searchParams.get('ref') ?? undefined;
+  const aborted = abortStream(params.id, ref);
   return Response.json({ aborted });
 }

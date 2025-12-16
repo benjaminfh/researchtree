@@ -152,3 +152,26 @@ export function assertNodeInput(input: NodeInput): void {
     }
   }
 }
+
+export async function getCommitHashForNode(projectId: string, ref: string, nodeId: string): Promise<string> {
+  await assertProjectExists(projectId);
+  const nodes = await readNodesFromRef(projectId, ref);
+  const idx = nodes.findIndex((n) => n.id === nodeId);
+  if (idx === -1) {
+    throw new Error(`Node ${nodeId} not found on ref ${ref}`);
+  }
+
+  const git = simpleGit(getProjectPath(projectId));
+  const revListRaw = await git.raw(['rev-list', '--reverse', ref]);
+  const revs = revListRaw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  // Account for the initial repo commit with no nodes.
+  const commitIndex = idx + 1;
+  if (commitIndex >= revs.length) {
+    throw new Error(`Unable to locate commit for node ${nodeId} on ref ${ref}`);
+  }
+  return revs[commitIndex];
+}

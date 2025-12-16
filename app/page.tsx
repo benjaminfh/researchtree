@@ -8,9 +8,12 @@ export default async function HomePage() {
   const projectsWithCounts = await Promise.all(
     projects.map(async (project) => {
       const nodes = await getNodes(project.id);
-      return { ...project, nodeCount: nodes.length };
+      const latestNodeTimestamp = nodes.reduce((latest, node) => Math.max(latest, node.timestamp ?? 0), 0);
+      const lastModified = nodes.length > 0 ? latestNodeTimestamp : new Date(project.createdAt).getTime();
+      return { ...project, nodeCount: nodes.length, lastModified };
     })
   );
+  projectsWithCounts.sort((a, b) => b.lastModified - a.lastModified);
 
   return (
     <main style={{ padding: '2rem', maxWidth: 960, margin: '0 auto' }}>

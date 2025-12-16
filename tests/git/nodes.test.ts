@@ -11,6 +11,8 @@ import {
   clearAllTestProjects,
   getTestProjectsRoot
 } from './test-utils';
+import { simpleGit } from 'simple-git';
+import { getProjectPath } from '../../src/git/utils';
 
 let projectId: string;
 const TEST_ROOT = getTestProjectsRoot('nodes');
@@ -82,6 +84,20 @@ describe('Node operations', () => {
     expect(node1.parent).toBeNull();
     expect(node2.parent).toBe(node1.id);
     expect(node3.parent).toBe(node2.id);
+  });
+
+  it('appendNode writes to the specified ref', async () => {
+    await appendNode(projectId, { type: 'message', role: 'user', content: 'main-1' });
+    const git = simpleGit(getProjectPath(projectId));
+    await git.checkoutLocalBranch('feature');
+
+    await appendNode(projectId, { type: 'message', role: 'user', content: 'feature-1' }, { ref: 'feature' });
+    const featureNodes = await getNodes(projectId);
+    expect(featureNodes[featureNodes.length - 1].content).toBe('feature-1');
+
+    await git.checkout('main');
+    const mainNodes = await getNodes(projectId);
+    expect(mainNodes[mainNodes.length - 1].content).toBe('main-1');
   });
 
   it('appendNode persists to JSONL and creates git commit', async () => {

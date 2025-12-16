@@ -23,7 +23,11 @@ interface ProviderOption {
   defaultModel: string;
 }
 
-const NodeBubble: FC<{ node: NodeRecord; muted?: boolean }> = ({ node, muted = false }) => {
+const NodeBubble: FC<{ node: NodeRecord; muted?: boolean; onEdit?: (node: NodeRecord) => void }> = ({
+  node,
+  muted = false,
+  onEdit
+}) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const bubbleStyle = {
     alignSelf: isUser ? 'flex-end' : 'flex-start',
@@ -42,6 +46,17 @@ const NodeBubble: FC<{ node: NodeRecord; muted?: boolean }> = ({ node, muted = f
       {'content' in node && node.content ? <p style={{ margin: 0 }}>{node.content}</p> : null}
       {node.type === 'state' ? <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem' }}>Artefact updated</p> : null}
       {node.type === 'merge' ? <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem' }}>Merge: {node.mergeSummary}</p> : null}
+      {node.type === 'message' && onEdit ? (
+        <div style={{ marginTop: '0.4rem', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type='button'
+            onClick={() => onEdit(node)}
+            style={{ border: 'none', background: 'transparent', color: '#4b5565', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}
+          >
+            Edit
+          </button>
+        </div>
+      ) : null}
     </article>
   );
 };
@@ -53,7 +68,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [newBranchName, setNewBranchName] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id);
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergeSummary, setMergeSummary] = useState('');
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingNode, setEditingNode] = useState<NodeRecord | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
+    ref: branchName
+  });
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [draft, setDraft] = useState('');
   const [streamPreview, setStreamPreview] = useState('');
@@ -65,6 +91,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   const { sendMessage, interrupt, state } = useChatStream({
     projectId: project.id,
+    ref: branchName,
     provider,
     onChunk: (chunk) => setStreamPreview((prev) => prev + chunk),
     onComplete: async () => {
@@ -321,6 +348,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               </button>
             </div>
           </label>
+          {branchName !== trunkName ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMergeError(null);
+                setMergeSummary('');
+                setShowMergeModal(true);
+              }}
+              style={{ padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: '1px solid #d5dce8', background: '#fff' }}
+              disabled={isMerging}
+            >
+              Merge into {trunkName}
+            </button>
+          ) : null}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <span style={{ fontSize: '0.8rem', color: '#5f6b7c' }}>LLM Provider</span>
             <select
@@ -402,7 +443,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 ) : null}
 
                 {branchNodes.map((node) => (
-                  <NodeBubble key={node.id} node={node} />
+                  <NodeBubble
+                    key={node.id}
+                    node={node}
+                    onEdit={
+                      node.type === 'message'
+                        ? (n) => {
+                            setEditingNode(n);
+                            setEditDraft(n.content ?? '');
+                            setEditError(null);
+                            setShowEditModal(true);
+                          }
+                        : undefined
+                    }
+                  />
                 ))}
               </>
             )}
@@ -475,6 +529,189 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           </div>
         </section>
       </div>
+
+      {showMergeModal ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 20
+          }}
+        >
+          <div style={{ background: '#fff', borderRadius: '0.75rem', padding: '1.25rem', width: 'min(520px, 90vw)', boxShadow: '0 10px 40px rgba(15,23,42,0.1)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Merge {branchName} into {trunkName}</h3>
+            <p style={{ marginTop: 0, color: '#5f6b7c', fontSize: '0.95rem' }}>
+              Provide a concise summary of what to bring back. Artefact changes stay on trunk (apply-artefact is disabled for now).
+            </p>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.9rem', color: '#4b5565' }}>Merge summary</span>
+              <textarea
+                value={mergeSummary}
+                onChange={(event) => setMergeSummary(event.target.value)}
+                rows={4}
+                placeholder="What should come back to trunk?"
+                style={{ width: '100%', borderRadius: '0.5rem', border: '1px solid #d5dce8', padding: '0.75rem' }}
+                disabled={isMerging}
+              />
+            </label>
+            {mergeError ? <p style={{ color: '#bd2d2d', marginTop: '0.5rem' }}>{mergeError}</p> : null}
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isMerging) return;
+                  setShowMergeModal(false);
+                  setMergeSummary('');
+                  setMergeError(null);
+                }}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #d5dce8', background: '#fff' }}
+                disabled={isMerging}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!mergeSummary.trim()) {
+                    setMergeError('Merge summary is required.');
+                    return;
+                  }
+                  setIsMerging(true);
+                  setMergeError(null);
+                  try {
+                    const res = await fetch(`/api/projects/${project.id}/merge`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        sourceBranch: branchName,
+                        targetBranch: trunkName,
+                        mergeSummary: mergeSummary.trim(),
+                        applyArtefact: false
+                      })
+                    });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => null);
+                      throw new Error(data?.error?.message ?? 'Merge failed');
+                    }
+                    await Promise.all([mutateHistory(), mutateArtefact()]);
+                    setShowMergeModal(false);
+                    setMergeSummary('');
+                  } catch (err) {
+                    setMergeError((err as Error).message);
+                  } finally {
+                    setIsMerging(false);
+                  }
+                }}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #d5dce8', background: '#0f62fe', color: '#fff' }}
+                disabled={isMerging}
+              >
+                {isMerging ? 'Merging…' : `Merge into ${trunkName}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showEditModal && editingNode ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 20
+          }}
+        >
+          <div style={{ background: '#fff', borderRadius: '0.75rem', padding: '1.25rem', width: 'min(520px, 90vw)', boxShadow: '0 10px 40px rgba(15,23,42,0.1)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Edit message (new branch)</h3>
+            <p style={{ marginTop: 0, color: '#5f6b7c', fontSize: '0.95rem' }}>
+              Editing creates a new branch from this message and switches you there.
+            </p>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.9rem', color: '#4b5565' }}>Updated content</span>
+              <textarea
+                value={editDraft}
+                onChange={(event) => setEditDraft(event.target.value)}
+                rows={4}
+                style={{ width: '100%', borderRadius: '0.5rem', border: '1px solid #d5dce8', padding: '0.75rem' }}
+                disabled={isEditing}
+              />
+            </label>
+            {editError ? <p style={{ color: '#bd2d2d', marginTop: '0.5rem' }}>{editError}</p> : null}
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isEditing) return;
+                  setShowEditModal(false);
+                  setEditDraft('');
+                  setEditingNode(null);
+                  setEditError(null);
+                }}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #d5dce8', background: '#fff' }}
+                disabled={isEditing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+            onClick={async () => {
+              if (!editDraft.trim()) {
+                setEditError('Content is required.');
+                return;
+              }
+              setIsEditing(true);
+              setEditError(null);
+              try {
+                const res = await fetch(`/api/projects/${project.id}/edit`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    content: editDraft.trim(),
+                    fromRef: branchName,
+                    nodeId: editingNode?.id
+                  })
+                });
+                if (!res.ok) {
+                  const data = await res.json().catch(() => null);
+                  throw new Error(data?.error?.message ?? 'Edit failed');
+                    }
+                    const data = (await res.json()) as { branchName: string };
+                    setBranchName(data.branchName);
+                    // refresh branches list to include the new branch
+                    const branchesRes = await fetch(`/api/projects/${project.id}/branches`);
+                    if (branchesRes.ok) {
+                      const branchesData = (await branchesRes.json()) as { branches: BranchSummary[]; currentBranch: string };
+                      setBranches(branchesData.branches);
+                    }
+                    if (typeof window !== 'undefined') {
+                      window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
+                    }
+                    await Promise.all([mutateHistory(), mutateArtefact()]);
+                    setShowEditModal(false);
+                    setEditDraft('');
+                    setEditingNode(null);
+                  } catch (err) {
+                    setEditError((err as Error).message);
+                  } finally {
+                    setIsEditing(false);
+                  }
+                }}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #d5dce8', background: '#0f62fe', color: '#fff' }}
+                disabled={isEditing}
+              >
+                {isEditing ? 'Creating branch…' : 'Save & switch'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

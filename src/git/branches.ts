@@ -61,7 +61,17 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   return summaries;
 }
 
-export async function mergeBranch(projectId: string, sourceBranch: string, mergeSummary: string): Promise<NodeRecord> {
+interface MergeOptions {
+  targetBranch?: string;
+  applyArtefact?: boolean;
+}
+
+export async function mergeBranch(
+  projectId: string,
+  sourceBranch: string,
+  mergeSummary: string,
+  targetBranchOrOptions?: string | MergeOptions
+): Promise<NodeRecord> {
   if (!mergeSummary) {
     throw new Error('mergeSummary is required');
   }
@@ -72,16 +82,27 @@ export async function mergeBranch(projectId: string, sourceBranch: string, merge
   await ensureGitUserConfig(projectId);
 
   const branches = await git.branchLocal();
+  const targetBranch = typeof targetBranchOrOptions === 'string' ? targetBranchOrOptions : targetBranchOrOptions?.targetBranch;
+  const applyArtefact =
+    typeof targetBranchOrOptions === 'object' && targetBranchOrOptions !== null ? targetBranchOrOptions.applyArtefact ?? false : false;
+
   if (!branches.all.includes(sourceBranch)) {
     throw new Error(`Branch ${sourceBranch} does not exist`);
   }
 
-  const targetBranch = await getCurrentBranchName(projectId);
-  if (targetBranch === sourceBranch) {
+  const target = targetBranch ?? (await getCurrentBranchName(projectId));
+  if (target === sourceBranch) {
     throw new Error('Cannot merge a branch into itself');
   }
+  if (targetBranch && !branches.all.includes(targetBranch)) {
+    throw new Error(`Target branch ${targetBranch} does not exist`);
+  }
 
-  const targetNodes = await readNodesFromRef(projectId, targetBranch);
+  if ((await getCurrentBranchName(projectId)) !== target) {
+    await git.checkout(target);
+  }
+
+  const targetNodes = await readNodesFromRef(projectId, target);
   const sourceNodes = await readNodesFromRef(projectId, sourceBranch);
   const parentId = targetNodes[targetNodes.length - 1]?.id ?? null;
   const targetIds = new Set(targetNodes.map((node) => node.id));
@@ -96,7 +117,8 @@ export async function mergeBranch(projectId: string, sourceBranch: string, merge
         mergeFrom: sourceBranch,
         mergeSummary,
         sourceCommit,
-        sourceNodeIds: sourceSpecific.map((node) => node.id)
+        sourceNodeIds: sourceSpecific.map((node) => node.id),
+        applyArtefact
       },
       parentId
     );

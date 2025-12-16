@@ -84,6 +84,42 @@ describe('/api/projects/[id]/chat', () => {
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foobar', interrupted: false });
   });
 
+  it('accepts ref and passes it through to context builder and stream registry', async () => {
+    const appended: any[] = [];
+    mocks.appendNode.mockImplementation(async (_projectId: string, node: any) => {
+      appended.push(node);
+      return node;
+    });
+
+    const response = await POST(createRequest({ message: 'Hi there', ref: 'feature/test' }), {
+      params: { id: 'project-1' }
+    });
+    expect(response.status).toBe(200);
+
+    expect(mocks.buildChatContext).toHaveBeenCalledWith('project-1', expect.objectContaining({ ref: 'feature/test' }));
+    expect(mocks.registerStream).toHaveBeenCalledWith('project-1', expect.any(AbortController), 'feature/test');
+    expect(mocks.releaseStream).toHaveBeenCalledWith('project-1', 'feature/test');
+    expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
+  });
+
+  it('accepts ref and passes it through to context builder and stream registry', async () => {
+    const appended: any[] = [];
+    mocks.appendNode.mockImplementation(async (_projectId: string, node: any) => {
+      appended.push(node);
+      return node;
+    });
+
+    const response = await POST(createRequest({ message: 'Hi there', ref: 'feature/test' }), {
+      params: { id: 'project-1' }
+    });
+    expect(response.status).toBe(200);
+
+    expect(mocks.buildChatContext).toHaveBeenCalledWith('project-1', expect.objectContaining({ ref: 'feature/test' }));
+    expect(mocks.registerStream).toHaveBeenCalledWith('project-1', expect.any(AbortController), 'feature/test');
+    expect(mocks.releaseStream).toHaveBeenCalledWith('project-1', 'feature/test');
+    expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
+  });
+
   it('returns 400 for invalid body', async () => {
     const res = await POST(createRequest({ message: '' }), { params: { id: 'project-1' } });
     expect(res.status).toBe(400);

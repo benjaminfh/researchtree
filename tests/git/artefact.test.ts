@@ -65,18 +65,17 @@ describe('Artefact operations', () => {
     expect(lastNode.artefactSnapshot).toMatch(/^[0-9a-f]{40}$/i);
   });
 
-  it('updateArtefact throws error if not on trunk', async () => {
+  it('updateArtefact writes to trunk even if current branch was switched', async () => {
     await createBranch(projectId, 'feature');
     await switchBranch(projectId, 'feature');
-    await expect(updateArtefact(projectId, 'Should fail')).rejects.toThrow(/trunk/i);
+    await expect(updateArtefact(projectId, 'Content')).resolves.not.toThrow();
+    await switchBranch(projectId, 'main');
+    expect(await getArtefact(projectId)).toBe('Content');
   });
 
-  it('updateArtefact works after switching back to trunk', async () => {
+  it('updateArtefact rejects non-trunk target ref', async () => {
     await createBranch(projectId, 'feature');
-    await switchBranch(projectId, 'feature');
-    await expect(updateArtefact(projectId, 'Should fail')).rejects.toThrow();
-    await switchBranch(projectId, 'main');
-    await expect(updateArtefact(projectId, 'Content')).resolves.not.toThrow();
+    await expect(updateArtefact(projectId, 'Should fail', 'feature')).rejects.toThrow(/trunk/i);
   });
 
   it('getArtefact on branch shows trunk content read-only', async () => {

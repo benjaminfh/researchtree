@@ -45,15 +45,23 @@ export async function writeNodeRecord(projectId: string, node: NodeRecord): Prom
   await fs.appendFile(filePath, `${line}\n`);
 }
 
-export async function appendNode(projectId: string, input: NodeInput, options?: { extraFiles?: string[] }): Promise<NodeRecord> {
+export async function appendNode(
+  projectId: string,
+  input: NodeInput,
+  options?: { extraFiles?: string[]; ref?: string }
+): Promise<NodeRecord> {
   await assertProjectExists(projectId);
+  const git = simpleGit(getProjectPath(projectId));
+  if (options?.ref) {
+    await git.checkout(options.ref);
+  }
+
   const nodes = await getNodes(projectId);
   const parentId = nodes.length > 0 ? nodes[nodes.length - 1].id : null;
   const node = createNodeRecord(input, parentId);
 
   await writeNodeRecord(projectId, node);
   await ensureGitUserConfig(projectId);
-  const git = simpleGit(getProjectPath(projectId));
   const files = [PROJECT_FILES.nodes, ...(options?.extraFiles ?? [])];
   await git.add(files);
   await git.commit(buildCommitMessage(node));
