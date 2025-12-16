@@ -2,8 +2,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { simpleGit } from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
-import { INITIAL_BRANCH, PROJECT_FILES, PROJECTS_ROOT } from './constants.js';
-import type { ProjectMetadata } from './types.js';
+import { INITIAL_BRANCH, PROJECT_FILES, PROJECTS_ROOT } from './constants';
+import type { ProjectMetadata } from './types';
 import {
   assertProjectExists,
   ensureProjectsRoot,
@@ -14,8 +14,9 @@ import {
   writeJsonFile,
   ensureGitUserConfig,
   registerProjectRoot,
-  unregisterProjectRoot
-} from './utils.js';
+  unregisterProjectRoot,
+  getCurrentBranchName
+} from './utils';
 
 export async function initProject(name: string, description?: string): Promise<ProjectMetadata> {
   if (!name) {
@@ -71,9 +72,11 @@ export async function listProjects(): Promise<ProjectMetadata[]> {
     if (!entry.isDirectory()) continue;
     const metaPath = path.join(PROJECTS_ROOT, entry.name, PROJECT_FILES.metadata);
     const metadata = await readFileIfExists<ProjectMetadata>(metaPath);
-    if (metadata) {
-      projects.push(metadata);
+    if (!metadata) {
+      continue;
     }
+    const branchName = await getCurrentBranchName(metadata.id).catch(() => undefined);
+    projects.push({ ...metadata, branchName });
   }
   return projects;
 }
@@ -89,7 +92,9 @@ export async function getProject(projectId: string): Promise<ProjectMetadata | n
   if (!(await pathExists(metadataPath))) {
     return null;
   }
-  return readJsonFile<ProjectMetadata>(metadataPath);
+  const metadata = await readJsonFile<ProjectMetadata>(metadataPath);
+  const branchName = await getCurrentBranchName(projectId).catch(() => undefined);
+  return { ...metadata, branchName };
 }
 
 export async function deleteProject(projectId: string): Promise<void> {

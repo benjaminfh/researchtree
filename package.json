@@ -4,19 +4,40 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.11.1",
+    "next": "^14.2.15",
+    "openai": "^4.75.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark": "^15.0.1",
+    "remark-gfm": "^4.0.0",
     "simple-git": "^3.24.0",
-    "uuid": "^9.0.1"
+    "swr": "^2.2.5",
+    "uuid": "^9.0.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.5.2",
     "@types/node": "^20.16.10",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.2",
     "@types/uuid": "^9.0.7",
+    "jsdom": "^27.3.0",
+    "next-test-api-route-handler": "^5.0.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3",
     "vitest": "^4.0.15"

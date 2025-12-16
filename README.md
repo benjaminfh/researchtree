@@ -105,4 +105,40 @@ src/git/index.ts ──┬─> projects.ts ──┬─> utils.ts ──┬─> 
 - `npm run lint` — type-check the code with `tsc --noEmit`
 - `npm test` — run Vitest across `tests/git/*.test.ts`
 
+## Running the Dev Environment
+
+The Next.js workspace lets you try the git-backed chat UI locally.
+
+1. **Set environment variables** (create `.env.local`):
+   ```
+   LLM_PROVIDER=openai        # or gemini / mock
+   OPENAI_API_KEY=sk-...      # required if using OpenAI
+   GEMINI_API_KEY=xxx...      # required if using Gemini (Generative Language API)
+   RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/projects
+   ```
+   Optional overrides:
+   - `OPENAI_MODEL` (default `gpt-5.2`)
+   - `GEMINI_MODEL` (default `gemini-3-pro-preview`; pick a model available to your API key)
+
+   If you don't have API keys handy, set `LLM_PROVIDER=mock` to use the built-in echo responder.
+
+2. **Install dependencies** (once):
+   ```bash
+   npm install
+   ```
+
+3. **Launch the dev server**:
+   ```bash
+   npm run dev
+   ```
+   Next.js serves at http://localhost:3000 by default. The dashboard lists projects backed by git repos under `RESEARCHTREE_PROJECTS_ROOT`.
+
+4. **Create or open a project**:
+   - Visit `http://localhost:3000/` and use the **Create Project** form to spin up a git-backed workspace instantly. Projects appear in the list as soon as they’re created.
+   - Prefer the CLI? `scripts/playground.ts` still works for scripted demos.
+   - Open `/projects/<id>` to chat, stream responses, and view the artefact pane. The composer supports `⌘+Enter` to send plus `Shift+Enter` or `Option+Enter` for multi-line drafts, and the Stop button aborts long generations.
+   - Use the provider selector in the workspace header to switch between OpenAI, Gemini, or the mock provider per project. The `LLM_PROVIDER` env var sets the default.
+
+Hot reload is enabled; API changes and UI tweaks are reflected immediately. Stop the server with `Ctrl+C`.
+
 You now have everything needed to extend ResearchTree or embed the git helpers into another application. Happy hacking! 

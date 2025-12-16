@@ -1,7 +1,7 @@
 import { simpleGit } from 'simple-git';
-import { INITIAL_BRANCH, PROJECT_FILES } from './constants.js';
-import { createNodeRecord, writeNodeRecord } from './nodes.js';
-import type { BranchSummary, NodeRecord } from './types.js';
+import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
+import { createNodeRecord, writeNodeRecord } from './nodes';
+import type { BranchSummary, NodeRecord } from './types';
 import {
   assertProjectExists,
   buildCommitMessage,
@@ -10,7 +10,7 @@ import {
   getCurrentBranchName,
   getProjectPath,
   readNodesFromRef
-} from './utils.js';
+} from './utils';
 
 export async function getCurrentBranch(projectId: string): Promise<string> {
   return getCurrentBranchName(projectId);

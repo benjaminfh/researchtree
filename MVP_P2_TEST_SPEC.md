@@ -9,7 +9,7 @@ Test-driven roadmap for the Next.js application layer that wraps the git core. M
 | Layer | Tooling | Notes |
 | --- | --- | --- |
 | Route handlers / server modules | **Vitest** + `next-test-api-route-handler` (or custom request mocks) | Run in Node, mock LLM + git helpers |
-| Hooks & client utilities | **Vitest** + `@testing-library/react-hooks` / RTL | Tests live under `tests/client/` |
+| Hooks & client utilities | **Vitest** + React Testing Library `renderHook` | Tests live under `tests/client/` |
 | React components | **React Testing Library (RTL)** | DOM assertions, event simulation |
 | Streaming flows | Vitest w/ fake `ReadableStream` + AbortController | Ensure partial chunks + interrupts behave |
 | End-to-end sanity | **Playwright** (headless) | Boot Next dev server, drive real UI |
@@ -95,6 +95,8 @@ Mock `appendNode`, context builder, and LLM stream.
    - Provide merge node; ensure not expanded.
 4. **Handles empty history gracefully**
    - Returns base system prompt + artefact.
+5. **Respects provider token limits**
+   - Pass tokenLimit override and ensure budget calculation uses that limit (simulating per-model capability data).
 
 ---
 

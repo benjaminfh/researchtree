@@ -51,6 +51,7 @@ export interface ProjectMetadata {
   name: string;
   description?: string;
   createdAt: string;
+  branchName?: string;
 }
 
 export interface BranchSummary {

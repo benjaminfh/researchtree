@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { describe, it, expect, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
 import { deleteProject, getProject, initProject, listProjects } from '../../src/git';
 import { setProjectsRoot } from '../../src/git/constants';
 import { getProjectFilePath, getProjectPath } from '../../src/git/utils';

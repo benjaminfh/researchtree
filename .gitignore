@@ -2,6 +2,7 @@
 node_modules/
 dist/
 coverage/
+.next/
 projects/
 .test-projects/
 .DS_Store
@@ -143,6 +144,8 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+env
+.env*
 .env
 .envrc
 .venv

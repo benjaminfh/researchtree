@@ -1,22 +1,20 @@
 import path from 'path';
-import { mkdirSync } from 'fs';
 import { defineConfig } from 'vitest/config';
-
-const testProjectsRoot = path.join(process.cwd(), '.test-projects');
-mkdirSync(testProjectsRoot, { recursive: true });
 
 export default defineConfig({
   test: {
-    globals: true,
-    environment: 'node',
-    include: ['tests/**/*.test.ts'],
-    watch: false,
-    threads: false,
-    sequence: {
-      concurrent: false
-    },
-    env: {
-      RESEARCHTREE_PROJECTS_ROOT: testProjectsRoot
+    include: ['tests/**/*.test.{ts,tsx}'],
+    environment: 'jsdom',
+    environmentMatchGlobs: [
+      ['tests/server/**/*.test.{ts,tsx}', 'node'],
+      ['tests/git/**/*.test.{ts,tsx}', 'node']
+    ],
+    setupFiles: ['tests/setup.ts']
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, '.'),
+      '@git': path.resolve(__dirname, 'src/git')
     }
   }
 });

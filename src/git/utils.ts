@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { simpleGit } from 'simple-git';
-import { COMMIT_SUMMARY_LIMIT, DEFAULT_USER, PROJECTS_ROOT, PROJECT_FILES, INITIAL_BRANCH } from './constants.js';
-import type { NodeInput, NodeRecord, ProjectMetadata } from './types.js';
+import { COMMIT_SUMMARY_LIMIT, DEFAULT_USER, PROJECTS_ROOT, PROJECT_FILES, INITIAL_BRANCH } from './constants';
+import type { NodeInput, NodeRecord, ProjectMetadata } from './types';
 
 const projectRootOverrides = new Map<string, string>();
 

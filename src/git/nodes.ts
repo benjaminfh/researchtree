@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { simpleGit } from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
-import { PROJECT_FILES } from './constants.js';
+import { PROJECT_FILES } from './constants';
 import {
   assertProjectExists,
   assertNodeInput,
@@ -10,8 +10,8 @@ import {
   getProjectFilePath,
   getProjectPath,
   readNodesFromRef
-} from './utils.js';
-import type { NodeInput, NodeRecord } from './types.js';
+} from './utils';
+import type { NodeInput, NodeRecord } from './types';
 
 export async function getNodes(projectId: string): Promise<NodeRecord[]> {
   await assertProjectExists(projectId);
