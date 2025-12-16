@@ -215,28 +215,26 @@ UX must reinforce PRD principles: emphasise trunk context, show provenance (time
 
 ## Current Status (Jan 2025)
 
-- ✅ **Backend**: Git helpers stable; Next.js API routes for projects list/create, history, artefact, chat, interrupt. Providers (OpenAI/Gemini/mock) selectable via env or per-request, Gemini default `gemini-3-pro-preview`.
-- ✅ **Frontend**: App Router with project list (branch + node counts), creation form, workspace showing chat + artefact. Header shows branch, provider/model, last update time. Chat composer supports streaming, CMD+Enter send, draft persistence, Stop, and retry on error. Artefact pane renders markdown.
+- ✅ **Backend**: Git helpers stable; Next.js API routes for projects list/create, history (supports `?ref`), branches (create/switch/list), artefact, chat, interrupt. Providers (OpenAI/Gemini/mock) selectable via env or per-request, Gemini default `gemini-3-pro-preview`.
+- ✅ **Frontend**: App Router with project list (branch + node counts), creation form, workspace showing chat + artefact. Header shows branch selector/creator, provider/model, last update time. Chat composer supports streaming, CMD+Enter send, draft persistence, Stop, retry on error. Artefact pane renders markdown. Shared-history divider/toggle for branches; branch-specific provider persistence; soft hide/unhide projects on home.
 - ✅ **Testing**: Vitest coverage for server routes, context builder, provider capabilities; client hook/component tests for useProjectData/useChatStream/CreateProjectForm/WorkspaceClient; git tests green. RTL cleanup + jest-dom setup.
-- ⚠️ **Outstanding polish**:
-  - Branch switching/creation UI not implemented (badge only).
-  - No token/commit strip or timeline commit summaries; chat bubbles are minimal.
-  - No user setting for keyboard shortcut toggle.
-  - Artefact auto-refresh on state node arrival not wired (manual refresh via mutate).
-  - Streaming still uses OpenAI Chat Completions; no tool/function calling yet.
+- ⚠️ **Outstanding polish (pushed to Phase 3 unless critical)**:
+  - Timeline metadata: commit summaries, model/provider per node, merge/state badges beyond basic labels.
+  - User setting to toggle keyboard shortcut behavior (CMD+Enter).
+  - Artefact auto-refresh on state-node arrival outside chat completion path (currently refreshes on stream complete).
+  - Tool/function calling & web search not implemented; OpenAI Chat Completions + Gemini only.
 - ⚠️ **Known issues**:
   - Gemini errors (quota/model) surface to client; ensure `GEMINI_MODEL` matches available quota or switch providers.
   - Artefact pane is read-only until Phase 3 editing scope.
 
-## Next Steps After Phase 2
-1. Add branch-aware navigation/selector (Phase 3 scope).
-2. Introduce merge UI + artefact editing workflows.
-3. Consider token/commit metadata in header and timeline commit summaries.
-4. Optional: Playwright smoke tests and artefact auto-refresh on state node.
-
-5. **Docs**:
-   - Update README getting-started to highlight `npm run dev`, `.env.local`, and new creation form.
-   - Document keyboard shortcuts (CMD+Enter, Shift/Option+Enter) and draft persistence.
+## Next Steps After Phase 2 / Handoff to Phase 3
+1. **Branch UX & merge flows**: Implement merge UI, show branch chips, and consider summarizing shared history at split. Keep shared-history divider aligned at split; expand can remain all-upstream for now.
+2. **Timeline metadata**: Add commit summaries, model/provider badges per node, and optional token/commit strip.
+3. **Settings**: Shortcut toggle (CMD+Enter) and any provider/model preferences beyond per-branch storage.
+4. **Artefact editing & auto-refresh**: Bring trunk editing with safeguards; auto-refresh artefact when state nodes land from other sources.
+5. **Provider/tooling**: If needed, add tool/function calling, web search, or richer Gemini/OpenAI capabilities.
+6. **Tests & DX**: Consider Playwright smoke for branch/create/switch/stream; keep Vitest fast.
+7. **Docs**: README now mentions branch UI, per-branch provider persistence, shared-history toggle, hide/unhide. Revisit if new features land.
 
 6. **Ops**:
    - Ensure `.env.local` kept out of git. Provide sample values in `env.example`.
