@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { simpleGit } from 'simple-git';
 import { validate as uuidValidate } from 'uuid';
+import { expect } from 'vitest';
 import { PROJECT_FILES } from '../../src/git/constants';
 import { getProjectFilePath, getProjectPath } from '../../src/git/utils';
 
