@@ -1,4 +1,5 @@
 # Node/TypeScript artifacts
+projects/
 node_modules/
 dist/
 coverage/

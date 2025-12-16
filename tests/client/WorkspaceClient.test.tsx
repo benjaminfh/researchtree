@@ -27,6 +27,11 @@ const baseProject: ProjectMetadata = {
   branchName: 'feature/phase-2'
 };
 
+const baseBranches = [
+  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true },
+  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false }
+] as const;
+
 const providerOptions = [
   { id: 'openai', label: 'OpenAI', defaultModel: 'gpt-5.2' },
   { id: 'gemini', label: 'Gemini', defaultModel: 'gemini-3.0-pro' },
@@ -95,10 +100,10 @@ describe('WorkspaceClient', () => {
   });
 
   it('renders metadata, nodes, and artefact content', () => {
-    render(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
-    expect(screen.getByText('Branch · feature/phase-2')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('feature/phase-2')).toBeInTheDocument();
     expect(screen.getByText('Test project description')).toBeInTheDocument();
     expect(screen.getByText('How is progress going?')).toBeInTheDocument();
     expect(screen.getByText('All tasks queued.')).toBeInTheDocument();
@@ -107,7 +112,7 @@ describe('WorkspaceClient', () => {
 
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     const composer = screen.getAllByPlaceholderText('Send a message to the LLM')[0];
     await user.type(composer, 'New investigation');
@@ -129,7 +134,7 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>);
 
-    render(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(capturedChatOptions).not.toBeNull();
 
@@ -141,7 +146,7 @@ describe('WorkspaceClient', () => {
   });
 
   it('refreshes history and artefact when the stream completes', async () => {
-    render(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(capturedChatOptions).not.toBeNull();
 
     await act(async () => {
@@ -155,7 +160,7 @@ describe('WorkspaceClient', () => {
   it('shows stop controls and error text while streaming', async () => {
     chatState.isStreaming = true;
     chatState.error = 'Network issue';
-    render(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
     expect(screen.getByText('Network issue')).toBeInTheDocument();
@@ -177,7 +182,7 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>);
 
-    const { rerender } = render(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    const { rerender } = render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(screen.getByText('Loading history…')).toBeInTheDocument();
 
     mockUseProjectData.mockReturnValueOnce({
@@ -190,18 +195,18 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>);
 
-    rerender(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(screen.getByText('Failed to load history.')).toBeInTheDocument();
   });
 
   it('updates the chat stream provider when the selector changes', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(capturedChatOptions?.provider).toBe('openai');
 
     await user.selectOptions(screen.getAllByText('LLM Provider')[0].parentElement!.querySelector('select')!, 'gemini');
 
     expect(capturedChatOptions?.provider).toBe('gemini');
-    expect(window.localStorage.getItem('researchtree:provider:proj-1')).toBe('gemini');
+    expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
   });
 });

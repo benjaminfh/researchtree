@@ -13,3 +13,15 @@ export const chatRequestSchema = z.object({
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
+
+export const createBranchSchema = z.object({
+  name: z.string().min(1).max(120),
+  fromRef: z.string().max(120).optional()
+});
+
+export const switchBranchSchema = z.object({
+  name: z.string().min(1).max(120)
+});
+
+export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+export type SwitchBranchInput = z.infer<typeof switchBranchSchema>;

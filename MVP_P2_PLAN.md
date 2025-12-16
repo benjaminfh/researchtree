@@ -213,50 +213,26 @@ UX must reinforce PRD principles: emphasise trunk context, show provenance (time
 
 ---
 
-## Next Steps After Phase 2
-1. Extend workspace to branch-aware navigation (Phase 3 scope).
-2. Add merge UI + artefact editing capabilities.
-3. Instrument graph visualization using data from `/history` + future `/graph` endpoint.
+## Current Status (Jan 2025)
 
-Phase 2 completion should provide a reliable trunk-only research loop, making future branch/merge work a focused UI + workflow problem rather than establishing the fundamentals.
-
----
-
-## Current Status (Dec 16 Handoff)
-
-- ✅ **Backend**: Git helpers stable; Next.js API routes implemented for projects list/create, history, artefact, chat, and interrupt. Providers (OpenAI/Gemini/mock) selectable via env or per-request field with capability warmup.
-- ✅ **Frontend**: Next.js App Router in place with global layout, `/` listing + form to create projects, `/projects/[id]` workspace showing chat + artefact. Chat composer supports streaming, CMD+Enter send, draft persistence.
-- ✅ **Testing**: Expanded Vitest coverage for server routes, context builder, provider capabilities; existing git tests remain green.
+- ✅ **Backend**: Git helpers stable; Next.js API routes for projects list/create, history, artefact, chat, interrupt. Providers (OpenAI/Gemini/mock) selectable via env or per-request, Gemini default `gemini-3-pro-preview`.
+- ✅ **Frontend**: App Router with project list (branch + node counts), creation form, workspace showing chat + artefact. Header shows branch, provider/model, last update time. Chat composer supports streaming, CMD+Enter send, draft persistence, Stop, and retry on error. Artefact pane renders markdown.
+- ✅ **Testing**: Vitest coverage for server routes, context builder, provider capabilities; client hook/component tests for useProjectData/useChatStream/CreateProjectForm/WorkspaceClient; git tests green. RTL cleanup + jest-dom setup.
 - ⚠️ **Outstanding polish**:
-  - Client tests (hooks/components) still todo per spec.
-  - Branch metadata currently stubbed (`branchName ?? 'main'`); actual branch selection not implemented.
-  - UI shortcuts (e.g., enter-to-send toggle) not yet a user setting.
-  - README still references CLI creation flow in places; new UI form documented but can be expanded.
+  - Branch switching/creation UI not implemented (badge only).
+  - No token/commit strip or timeline commit summaries; chat bubbles are minimal.
+  - No user setting for keyboard shortcut toggle.
+  - Artefact auto-refresh on state node arrival not wired (manual refresh via mutate).
+  - Streaming still uses OpenAI Chat Completions; no tool/function calling yet.
 - ⚠️ **Known issues**:
-  - Gemini capability lookup logs warnings because the current SDK lacks `models.getModel`; we fall back to defaults, so impact is minimal.
-  - Streaming relies on OpenAI Chat Completions API with manual abort shim; consider migrating to Responses API for official abort support.
-  - Artefact pane is read-only; edits require CLI until Phase 3.
+  - Gemini errors (quota/model) surface to client; ensure `GEMINI_MODEL` matches available quota or switch providers.
+  - Artefact pane is read-only until Phase 3 editing scope.
 
----
-
-## Handoff Plan / Next Owner Checklist
-
-1. **Stabilize UI**:
-   - Run `npm run dev` and dogfood: create project, chat with real LLM (ensure `.env.local` configured), interrupt, verify nodes in git.
-   - Polish chat layout (avatars, timestamps, bubble colors) if desired.
-   - Add branch selector UI stub if Phase 3 depends on it.
-
-2. **Testing backlog**:
-   - Implement planned hook/component tests (see MVP_P2_TEST_SPEC).
-   - Add Playwright smoke (optional) once UI stabilizes.
-
-3. **Provider UX**:
-   - Surface current provider/model in the workspace header.
-   - Allow per-project or per-branch provider selection (plumb through `llmProvider` request field).
-   - Cache provider limits on startup via `warmProviderCapabilities`; consider storing results in .json for offline dev.
-
-4. **Artefact editing**:
-   - Scope Phase 3 requirements for trunk-only editing UI and merge flow; current pane is view-only.
+## Next Steps After Phase 2
+1. Add branch-aware navigation/selector (Phase 3 scope).
+2. Introduce merge UI + artefact editing workflows.
+3. Consider token/commit metadata in header and timeline commit summaries.
+4. Optional: Playwright smoke tests and artefact auto-refresh on state node.
 
 5. **Docs**:
    - Update README getting-started to highlight `npm run dev`, `.env.local`, and new creation form.
