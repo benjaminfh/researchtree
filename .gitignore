@@ -1,11 +1,11 @@
 # Node/TypeScript artifacts
-projects/
-node_modules/
-dist/
-coverage/
-.next/
-projects/
-.test-projects/
+/projects/
+/node_modules/
+/dist/
+/coverage/
+/data/
+/.next/
+/.test-projects/
 .DS_Store
 
 # Byte-compiled / optimized / DLL files
@@ -145,7 +145,6 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-env
 .env*
 .env
 .envrc

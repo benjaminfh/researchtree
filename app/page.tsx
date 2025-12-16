@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { listProjects } from '@git/projects';
 import { getNodes } from '@git/nodes';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';

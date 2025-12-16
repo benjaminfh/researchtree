@@ -99,12 +99,20 @@ describe('WorkspaceClient', () => {
     vi.clearAllMocks();
   });
 
-  it('renders metadata, nodes, and artefact content', () => {
+  it('renders metadata, nodes, and artefact content', async () => {
+    const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
     expect(screen.getByDisplayValue('feature/phase-2')).toBeInTheDocument();
     expect(screen.getByText('Test project description')).toBeInTheDocument();
+
+    // Reveal shared history on non-trunk branches before asserting messages.
+    const showShared = screen.queryByRole('button', { name: /show shared/i });
+    if (showShared) {
+      await user.click(showShared);
+    }
+
     expect(screen.getByText('How is progress going?')).toBeInTheDocument();
     expect(screen.getByText('All tasks queued.')).toBeInTheDocument();
     expect(screen.getByText('Artefact state')).toBeInTheDocument();
