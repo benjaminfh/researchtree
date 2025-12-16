@@ -2,7 +2,7 @@ import path from 'path';
 
 export let PROJECTS_ROOT = process.env.RESEARCHTREE_PROJECTS_ROOT
   ? path.resolve(process.env.RESEARCHTREE_PROJECTS_ROOT)
-  : path.join(process.cwd(), 'projects');
+  : path.join(process.cwd(), 'data', 'projects');
 export function setProjectsRoot(rootPath: string): void {
   if (!rootPath) {
     throw new Error('projectsRoot must be a non-empty path');

@@ -141,7 +141,7 @@ UX must reinforce PRD principles: emphasise trunk context, show provenance (time
 - [ ] Update `tsconfig.json` paths for shared modules; enable `jsx: react-jsx`.
 - [ ] Add `next.config.js` with experimental `serverActions` disabled (not needed yet).
 - [ ] Extend `package.json` scripts (`dev`, `next build`, `next start`, `lint` via `next lint` or `tsc`).
-- [ ] Commit `env.example` listing `OPENAI_API_KEY`, `RESEARCHTREE_PROJECTS_ROOT`.
+- [ ] Commit `env.example` listing `OPENAI_API_KEY`, `RESEARCHTREE_PROJECTS_ROOT` (default `./data/projects`).
 
 ### 2. Server Route Handlers
 - [ ] `/api/projects` GET/POST with validation + git helper calls.

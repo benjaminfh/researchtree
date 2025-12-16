@@ -45,7 +45,7 @@ A branch will be deleted only if it lacks an upstream entry; tracked branches ar
 
 ## Playing with the Git Helpers
 
-Set a workspace root (defaults to `<repo>/projects`) with `RESEARCHTREE_PROJECTS_ROOT` and drive the helpers through `ts-node`:
+Set a workspace root (defaults to `<repo>/data/projects`) with `RESEARCHTREE_PROJECTS_ROOT` and drive the helpers through `ts-node`:
 
 ```bash
 RESEARCHTREE_PROJECTS_ROOT=~/tmp/researchtree-playground \
@@ -114,7 +114,7 @@ The Next.js workspace lets you try the git-backed chat UI locally.
    LLM_PROVIDER=openai        # or gemini / mock
    OPENAI_API_KEY=sk-...      # required if using OpenAI
    GEMINI_API_KEY=xxx...      # required if using Gemini (Generative Language API)
-   RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/projects
+   RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/data/projects
    ```
    Optional overrides:
    - `OPENAI_MODEL` (default `gpt-5.2`)
