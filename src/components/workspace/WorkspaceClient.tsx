@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { ChangeEvent, FormEvent } from 'react';
-import type { ProjectMetadata, NodeRecord, BranchSummary } from '@git/types';
+import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@git/types';
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
@@ -24,7 +24,7 @@ interface ProviderOption {
   defaultModel: string;
 }
 
-const NodeBubble: FC<{ node: NodeRecord; muted?: boolean; onEdit?: (node: NodeRecord) => void }> = ({
+const NodeBubble: FC<{ node: NodeRecord; muted?: boolean; onEdit?: (node: MessageNode) => void }> = ({
   node,
   muted = false,
   onEdit
@@ -72,7 +72,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editingNode, setEditingNode] = useState<NodeRecord | null>(null);
+  const [editingNode, setEditingNode] = useState<MessageNode | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -561,16 +561,16 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         <NodeBubble
                           key={node.id}
                           node={node}
-                    onEdit={
-                      node.type === 'message' && node.role === 'user'
-                        ? (n) => {
-                            setEditingNode(n);
-                            setEditDraft(n.content ?? '');
-                            setEditError(null);
-                            setShowEditModal(true);
+                          onEdit={
+                            node.type === 'message' && node.role === 'user'
+                              ? (n) => {
+                                  setEditingNode(n);
+                                  setEditDraft(n.content);
+                                  setEditError(null);
+                                  setShowEditModal(true);
+                                }
+                              : undefined
                           }
-                        : undefined
-                    }
                         />
                       ))}
                     </>

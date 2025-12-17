@@ -116,12 +116,21 @@ Projects" and make that pill 2x bigger, on the project page, smaller pil top lef
     - we lack a way to navigate to home now - suggestions on where a button could go? very bottom of rail when collapsed + top right of rail when expanded?
     - conversation + artefact container doesn't fill VH properly again (too short)
 - home 
-    - remove node count from side bar project pills
-    - remove main frame project view completely
-    - Text:
-        - SideQuest Projects -> SideQuest
-        - Git-backed reasoning sessions -> Branchable Chat for Deep Research Sessions
-        - Spin up a workspace, branch thinking safely, and keep artefacts alongside the chat history. -> Spin up a workspace, branch your train of thought and context, and work on a canvas
-        - artefact -> canvas (in all user-facing contexts)
-        - project -> workspace (in all user-facing contexts)
+- remove node count from side bar project pills
+- remove main frame project view completely
+- Text:
+    - SideQuest Projects -> SideQuest
+    - Git-backed reasoning sessions -> Branchable Chat for Deep Research Sessions
+    - Spin up a workspace, branch thinking safely, and keep artefacts alongside the chat history. -> Spin up a workspace, branch your train of thought and context, and work on a canvas
+    - artefact -> canvas (in all user-facing contexts)
+    - project -> workspace (in all user-facing contexts)
         
+### Work completed in UI glowup sprint
+- **Global structure**: Added collapsible rail shared across home and workspace pages, sticky top bar, and floating composer with pill styling and safe-area padding so content never collides with the input.
+- **Workspace rail**: Active branch chip, branch list with trunk badge, create-branch form, collapsible Session Tips pill, and home shortcut anchored to the footer in both collapsed/expanded states.
+- **Home rail**: Replaced main grid with SideQuest-branded rail showing recent workspaces (grid cards), archive affordance, and consistent collapse behavior; copy now reflects “SideQuest” + “Branchable Chat for Deep Research Sessions”.
+- **Conversation canvas**: Fully responsive layout with two-column split (chat + canvas), sticky summary header, branch-specific merge button, shared-history divider, merge modal, edit modal, and artefact rename to “Canvas”.
+- **Composer & chat UX**: Floating composer with attachment button, branch indicator, thin gray textarea outline, thinking chip, stop control, and streaming indicator; message bubbles updated with edit affordance, reaction row, and merge/state badges.
+- **Canvas editor**: Trunk-only markdown editor (textarea) with Save/Reset actions, disabled view on branches, and UI copy explaining the constraint; artefact PUT route + trunk guard wired through.
+- **Branch/edit plumbing**: Edit flow now branches from the edited node’s parent commit, uses server-side lock, and keeps branch metadata/hooks aware of the active ref; merge route plumbed with `applyArtefact` flag for future UI surfacing.
+- **Testing alignment**: Client tests updated to new labels/placeholders (“Workspace”, “Ask anything”, collapse rail), branch-aware provider selector, stop control, and artefact editor states; server tests cover edit route changes.
