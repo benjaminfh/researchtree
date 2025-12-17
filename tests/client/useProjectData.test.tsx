@@ -70,6 +70,38 @@ describe('useProjectData', () => {
     expect(result.current.error).toBeUndefined();
   });
 
+  it('includes ref in the history key when provided', async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/history')) {
+        if (!urlStr.includes('ref=feature%2Fone')) {
+          throw new Error('Missing ref param');
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ nodes: [] })
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ artefact: '', lastUpdatedAt: null })
+      } as Response);
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useProjectData('project-ref', { ref: 'feature/one' }), {
+      wrapper: createWrapper()
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(result.current.nodes).toEqual([]);
+  });
+
   it('revalidates history when the window gains focus', async () => {
     const responses = [
       { nodes: [{ id: '1', type: 'message', role: 'assistant', content: 'First', timestamp: 1, parent: null }] },

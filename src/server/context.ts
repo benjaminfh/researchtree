@@ -1,6 +1,7 @@
 import { getNodes } from '@git/nodes';
 import { getArtefact } from '@git/artefact';
 import type { NodeRecord } from '@git/types';
+import { readNodesFromRef } from '@git/utils';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -18,11 +19,12 @@ const DEFAULT_TOKEN_LIMIT = 8000;
 interface ContextOptions {
   limit?: number;
   tokenLimit?: number;
+  ref?: string;
 }
 
 export async function buildChatContext(projectId: string, options?: ContextOptions): Promise<ChatContext> {
   const limit = options?.limit ?? DEFAULT_HISTORY_LIMIT;
-  const nodes = await getNodes(projectId);
+  const nodes = options?.ref ? await readNodesFromRef(projectId, options.ref) : await getNodes(projectId);
   const artefact = await getArtefact(projectId);
 
   const trimmed = nodes.slice(-limit);

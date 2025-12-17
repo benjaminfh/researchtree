@@ -22,6 +22,7 @@ describe('/api/projects/[id]/interrupt', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.aborted).toBe(true);
+    expect(mocks.abortStream).toHaveBeenCalledWith('project-1', undefined);
   });
 
   it('handles missing stream', async () => {
@@ -30,5 +31,13 @@ describe('/api/projects/[id]/interrupt', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.aborted).toBe(false);
+  });
+
+  it('passes ref when provided', async () => {
+    mocks.abortStream.mockReturnValue(true);
+    const req = new Request(`${baseUrl}?ref=feature%2Fone`, { method: 'POST' });
+    const res = await POST(req, { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    expect(mocks.abortStream).toHaveBeenCalledWith('project-1', 'feature/one');
   });
 });

@@ -84,8 +84,48 @@ describe('useChatStream', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/projects/p-provider/chat',
       expect.objectContaining({
-        body: JSON.stringify({ message: 'Provider test', llmProvider: 'gemini' })
+        body: JSON.stringify({ message: 'Provider test', llmProvider: 'gemini', ref: undefined })
       })
+    );
+  });
+
+  it('passes ref through to chat and interrupt endpoints when provided', async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/chat')) {
+        return Promise.resolve({
+          ok: true,
+          body: createTextStream(['chunk'])
+        } as Response);
+      }
+      if (urlStr.includes('/interrupt')) {
+        return Promise.resolve({ ok: true } as Response);
+      }
+      throw new Error('Unexpected fetch call');
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useChatStream({ projectId: 'p-ref', ref: 'feature/foo' }));
+
+    await act(async () => {
+      await result.current.sendMessage('Hello ref');
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/p-ref/chat',
+      expect.objectContaining({
+        body: JSON.stringify({ message: 'Hello ref', llmProvider: undefined, ref: 'feature/foo' })
+      })
+    );
+
+    await act(async () => {
+      await result.current.interrupt();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/p-ref/interrupt?ref=feature%2Ffoo',
+      expect.objectContaining({ method: 'POST' })
     );
   });
 

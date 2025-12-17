@@ -3,6 +3,7 @@ import { getProject } from '@git/projects';
 import { handleRouteError, notFound, badRequest } from '@/src/server/http';
 import { createBranchSchema, switchBranchSchema } from '@/src/server/schemas';
 import { getCurrentBranchName } from '@git/utils';
+import { withProjectLock } from '@/src/server/locks';
 
 interface RouteContext {
   params: { id: string };
@@ -33,10 +34,12 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (!parsed.success) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
-    await createBranch(project.id, parsed.data.name, parsed.data.fromRef);
-    const branches = await listBranches(project.id);
-    const branchName = await getCurrentBranchName(project.id);
-    return Response.json({ branchName, branches }, { status: 201 });
+    return await withProjectLock(project.id, async () => {
+      await createBranch(project.id, parsed.data.name, parsed.data.fromRef);
+      const branches = await listBranches(project.id);
+      const branchName = await getCurrentBranchName(project.id);
+      return Response.json({ branchName, branches }, { status: 201 });
+    });
   } catch (error) {
     return handleRouteError(error);
   }
@@ -53,10 +56,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (!parsed.success) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
-    await switchBranch(project.id, parsed.data.name);
-    const branches = await listBranches(project.id);
-    const branchName = await getCurrentBranchName(project.id);
-    return Response.json({ branchName, branches });
+    return await withProjectLock(project.id, async () => {
+      await switchBranch(project.id, parsed.data.name);
+      const branches = await listBranches(project.id);
+      const branchName = await getCurrentBranchName(project.id);
+      return Response.json({ branchName, branches });
+    });
   } catch (error) {
     return handleRouteError(error);
   }

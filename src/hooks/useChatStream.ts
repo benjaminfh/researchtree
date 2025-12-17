@@ -10,12 +10,13 @@ export interface ChatStreamState {
 
 interface UseChatStreamOptions {
   projectId: string;
+  ref?: string;
   provider?: LLMProvider;
   onChunk?: (chunk: string) => void;
   onComplete?: () => void;
 }
 
-export function useChatStream({ projectId, provider, onChunk, onComplete }: UseChatStreamOptions) {
+export function useChatStream({ projectId, ref, provider, onChunk, onComplete }: UseChatStreamOptions) {
   const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
   const activeRequest = useRef<AbortController | null>(null);
 
@@ -30,7 +31,7 @@ export function useChatStream({ projectId, provider, onChunk, onComplete }: UseC
         const response = await fetch(`/api/projects/${projectId}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, llmProvider: provider }),
+          body: JSON.stringify({ message, llmProvider: provider, ref }),
           signal: activeRequest.current.signal
         });
 
@@ -66,8 +67,11 @@ export function useChatStream({ projectId, provider, onChunk, onComplete }: UseC
     if (activeRequest.current) {
       activeRequest.current.abort();
     }
-    await fetch(`/api/projects/${projectId}/interrupt`, { method: 'POST' });
-  }, [projectId]);
+    const interruptUrl = ref
+      ? `/api/projects/${projectId}/interrupt?ref=${encodeURIComponent(ref)}`
+      : `/api/projects/${projectId}/interrupt`;
+    await fetch(interruptUrl, { method: 'POST' });
+  }, [projectId, ref]);
 
   return {
     sendMessage,

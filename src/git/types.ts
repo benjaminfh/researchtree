@@ -28,6 +28,7 @@ export interface MergeNode extends BaseNode {
   mergeSummary: string;
   sourceCommit: string;
   sourceNodeIds: string[];
+  applyArtefact?: boolean;
 }
 
 export type NodeRecord = MessageNode | StateNode | MergeNode;
@@ -41,7 +42,7 @@ export type StateNodeInput = Pick<StateNode, 'type' | 'artefactSnapshot' | 'cont
 
 export type MergeNodeInput = Pick<
   MergeNode,
-  'type' | 'mergeFrom' | 'mergeSummary' | 'sourceCommit' | 'sourceNodeIds' | 'contextWindow' | 'modelUsed' | 'tokensUsed'
+  'type' | 'mergeFrom' | 'mergeSummary' | 'sourceCommit' | 'sourceNodeIds' | 'contextWindow' | 'modelUsed' | 'tokensUsed' | 'applyArtefact'
 >;
 
 export type NodeInput = MessageNodeInput | StateNodeInput | MergeNodeInput;

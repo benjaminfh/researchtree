@@ -25,13 +25,13 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
   }));
 
   return (
-    <main style={{ padding: '2rem' }}>
-      <div style={{ marginBottom: '1rem' }}>
-        <Link href="/" style={{ textDecoration: 'none', color: '#111', fontWeight: 600 }}>
-          ← Home
-        </Link>
-      </div>
-      <WorkspaceClient project={project} initialBranches={branches} defaultProvider={resolveLLMProvider()} providerOptions={providerOptions} />
+    <main className="min-h-screen bg-white">
+      <WorkspaceClient
+        project={project}
+        initialBranches={branches}
+        defaultProvider={resolveLLMProvider()}
+        providerOptions={providerOptions}
+      />
     </main>
   );
 }

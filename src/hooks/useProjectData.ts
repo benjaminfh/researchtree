@@ -19,9 +19,18 @@ export interface ProjectData {
   mutateArtefact: () => Promise<void>;
 }
 
-export function useProjectData(projectId: string): ProjectData {
-  const historyKey = `/api/projects/${projectId}/history`;
-  const artefactKey = `/api/projects/${projectId}/artefact`;
+interface UseProjectDataOptions {
+  ref?: string;
+  artefactRef?: string;
+}
+
+export function useProjectData(projectId: string, options?: UseProjectDataOptions): ProjectData {
+  const ref = options?.ref?.trim();
+  const artefactRef = options?.artefactRef?.trim();
+  const historyKey = ref ? `/api/projects/${projectId}/history?ref=${encodeURIComponent(ref)}` : `/api/projects/${projectId}/history`;
+  const artefactKey = artefactRef
+    ? `/api/projects/${projectId}/artefact?ref=${encodeURIComponent(artefactRef)}`
+    : `/api/projects/${projectId}/artefact`;
 
   const {
     data: history,
