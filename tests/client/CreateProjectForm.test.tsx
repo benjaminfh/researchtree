@@ -28,8 +28,8 @@ describe('CreateProjectForm', () => {
 
     render(<CreateProjectForm />);
 
-    await user.type(screen.getByLabelText('Project Name', { selector: 'input' }), '   ');
-    await user.click(screen.getByRole('button', { name: 'Create Project' }));
+    await user.type(screen.getByLabelText('Workspace Name', { selector: 'input' }), '   ');
+    await user.click(screen.getByRole('button', { name: 'Create Workspace' }));
 
     expect(await screen.findByText('Project name is required.')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -47,11 +47,11 @@ describe('CreateProjectForm', () => {
 
     render(<CreateProjectForm />);
 
-    const nameInput = screen.getAllByLabelText('Project Name', { selector: 'input' })[0];
+    const nameInput = screen.getAllByLabelText('Workspace Name', { selector: 'input' })[0];
     const descriptionInput = screen.getAllByLabelText('Description (optional)')[0];
     await user.type(nameInput, 'New Project');
     await user.type(descriptionInput, 'Exploration work');
-    await user.click(screen.getByRole('button', { name: 'Create Project' }));
+    await user.click(screen.getByRole('button', { name: 'Create Workspace' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -68,7 +68,7 @@ describe('CreateProjectForm', () => {
       expect(refreshMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(screen.getAllByLabelText('Project Name', { selector: 'input' })[0]).toHaveValue('');
+    expect(screen.getAllByLabelText('Workspace Name', { selector: 'input' })[0]).toHaveValue('');
     expect(screen.getAllByLabelText('Description (optional)')[0]).toHaveValue('');
   });
 
@@ -84,9 +84,9 @@ describe('CreateProjectForm', () => {
 
     render(<CreateProjectForm />);
 
-    const nameInput = screen.getAllByLabelText('Project Name', { selector: 'input' })[0];
+    const nameInput = screen.getAllByLabelText('Workspace Name', { selector: 'input' })[0];
     await user.type(nameInput, 'Broken Project');
-    await user.click(screen.getByRole('button', { name: 'Create Project' }));
+    await user.click(screen.getByRole('button', { name: 'Create Workspace' }));
 
     expect(await screen.findByText('Validation failed')).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();

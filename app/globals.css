@@ -1,14 +1,40 @@
-:root {
-  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #0e1116;
-  background-color: #f5f7fb;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-body {
-  margin: 0;
-  min-height: 100vh;
+:root {
+  color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
+}
+
+@layer base {
+  body {
+    @apply bg-white text-text antialiased;
+    font-family: Inter, "Helvetica Neue", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  a {
+    @apply text-primary underline-offset-4;
+  }
+
+  ::selection {
+    background-color: rgba(26, 115, 232, 0.1);
+  }
+}
+
+@layer components {
+  .focus-ring {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60;
+  }
+}
+
+@layer utilities {
+  .card-surface {
+    @apply rounded-xl border border-divider/80 bg-white shadow-sm;
+  }
 }

@@ -39,7 +39,8 @@ export const editMessageSchema = z.object({
   branchName: z.string().min(1).max(120).optional(),
   fromRef: z.string().min(1).max(120).optional(),
   label: z.string().max(120).optional(),
-  nodeId: z.string().min(1) // node being edited; used to branch from its commit
+  nodeId: z.string().min(1),
+  replaceNode: z.boolean().optional()
 });
 
 export const updateArtefactSchema = z.object({

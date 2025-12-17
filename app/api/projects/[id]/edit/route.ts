@@ -30,7 +30,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     return await withProjectLock(project.id, async () => {
       try {
-        const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId);
+        const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
         await createBranch(project.id, targetBranch, commitHash);
       } catch (err) {
         const message = (err as Error)?.message ?? 'Failed to create edit branch';
