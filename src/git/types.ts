@@ -5,6 +5,7 @@ export interface BaseNode {
   type: NodeType;
   timestamp: number;
   parent: string | null;
+  createdOnBranch?: string;
   contextWindow?: string[];
   modelUsed?: string;
   tokensUsed?: number;

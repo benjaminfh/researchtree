@@ -47,18 +47,45 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   const git = simpleGit(getProjectPath(projectId));
   const branches = await git.branchLocal();
 
-  const summaries: BranchSummary[] = [];
+  const summaries: (BranchSummary & { _lastModifiedAt: number; _createdAt: number })[] = [];
   for (const name of branches.all) {
     const headCommit = (await git.revparse([name])).trim();
     const nodes = await readNodesFromRef(projectId, name);
+    const lastModifiedAt = await getRefCommitTimestamp(git, headCommit);
+    const createdAt = await getBranchCreatedTimestamp(git, name);
     summaries.push({
       name,
       headCommit,
       nodeCount: nodes.length,
-      isTrunk: name === INITIAL_BRANCH
+      isTrunk: name === INITIAL_BRANCH,
+      _lastModifiedAt: lastModifiedAt,
+      _createdAt: createdAt
     });
   }
-  return summaries;
+  return summaries
+    .sort((a, b) => {
+      if (a.isTrunk && !b.isTrunk) return -1;
+      if (!a.isTrunk && b.isTrunk) return 1;
+      if (a._lastModifiedAt !== b._lastModifiedAt) return b._lastModifiedAt - a._lastModifiedAt;
+      if (a._createdAt !== b._createdAt) return b._createdAt - a._createdAt;
+      return a.name.localeCompare(b.name);
+    })
+    .map(({ _lastModifiedAt: _lm, _createdAt: _c, ...rest }) => rest);
+}
+
+async function getRefCommitTimestamp(git: ReturnType<typeof simpleGit>, ref: string): Promise<number> {
+  const raw = await git.raw(['show', '-s', '--format=%ct', ref]).catch(() => '');
+  const parsed = Number.parseInt(raw.trim(), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function getBranchCreatedTimestamp(git: ReturnType<typeof simpleGit>, branch: string): Promise<number> {
+  const raw = await git.raw(['reflog', 'show', '--date=unix', '--format=%ct', '--reverse', branch]).catch(() => '');
+  const firstLine = raw.split('\n').find((line) => line.trim().length > 0) ?? '';
+  const parsed = Number.parseInt(firstLine.trim(), 10);
+  if (Number.isFinite(parsed)) return parsed;
+  // Fallback: if reflog isn't available, treat "created" as last modified.
+  return getRefCommitTimestamp(git, branch);
 }
 
 interface MergeOptions {
@@ -120,7 +147,8 @@ export async function mergeBranch(
         sourceNodeIds: sourceSpecific.map((node) => node.id),
         applyArtefact
       },
-      parentId
+      parentId,
+      target
     );
     await writeNodeRecord(projectId, mergeNode);
     await git.add([PROJECT_FILES.nodes]);

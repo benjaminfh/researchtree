@@ -86,18 +86,25 @@ export function HomePageContent({ projects }: HomePageContentProps) {
       className="grid min-h-screen bg-[rgba(238,243,255,0.4)]"
       style={{ gridTemplateColumns: railCollapsed ? '72px 1fr' : '270px 1fr' }}
     >
-      <aside className="relative flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4">
-        <button
-          type="button"
-          onClick={toggleRail}
-          className="focus-ring absolute left-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
-          aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-        >
-          {railCollapsed ? '›' : '‹'}
-        </button>
+      <aside className="flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleRail}
+            className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
+            aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          >
+            {railCollapsed ? '›' : '‹'}
+          </button>
+          {!railCollapsed ? (
+            <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
+              <span>SideQuest</span>
+            </div>
+          ) : null}
+        </div>
 
         {!railCollapsed ? (
-          <div className="mt-14 flex flex-col gap-3">
+          <div className="mt-6 flex flex-col gap-3">
             <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
               Workspaces
             </div>

@@ -29,12 +29,13 @@ export async function getNode(projectId: string, nodeId: string): Promise<NodeRe
   return nodes.find((node) => node.id === nodeId) ?? null;
 }
 
-export function createNodeRecord(input: NodeInput, parentId: string | null): NodeRecord {
+export function createNodeRecord(input: NodeInput, parentId: string | null, createdOnBranch?: string): NodeRecord {
   assertNodeInput(input);
   return {
     id: uuidv4(),
     timestamp: Date.now(),
     parent: parentId,
+    createdOnBranch,
     ...input
   } as NodeRecord;
 }
@@ -58,7 +59,8 @@ export async function appendNode(
 
   const nodes = await getNodes(projectId);
   const parentId = nodes.length > 0 ? nodes[nodes.length - 1].id : null;
-  const node = createNodeRecord(input, parentId);
+  const createdOnBranch = options?.ref ?? (await git.branchLocal()).current;
+  const node = createNodeRecord(input, parentId, createdOnBranch);
 
   await writeNodeRecord(projectId, node);
   await ensureGitUserConfig(projectId);

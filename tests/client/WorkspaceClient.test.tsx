@@ -8,6 +8,20 @@ import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 
+vi.mock('@/src/components/workspace/WorkspaceGraph', () => ({
+  WorkspaceGraph: () => <div data-testid="workspace-graph" />
+}));
+
+vi.mock('reactflow', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: ({ children }: { children?: React.ReactNode }) => <div data-testid="react-flow">{children}</div>,
+    Background: () => null,
+    Controls: () => null
+  };
+});
+
 vi.mock('@/src/hooks/useProjectData', () => ({
   useProjectData: vi.fn()
 }));
@@ -93,6 +107,14 @@ describe('WorkspaceClient', () => {
         state: chatState
       };
     });
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as any;
   });
 
   afterEach(() => {
@@ -175,7 +197,7 @@ describe('WorkspaceClient', () => {
     expect(screen.getByText('Network issue')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Stop' }));
+    await user.click(screen.getByRole('button', { name: 'Stop streaming' }));
 
     expect(interruptMock).toHaveBeenCalledTimes(1);
   });

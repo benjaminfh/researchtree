@@ -43,11 +43,13 @@ export async function initProject(name: string, description?: string): Promise<P
 
   const nodesPath = getProjectFilePath(id, 'nodes');
   const artefactPath = getProjectFilePath(id, 'artefact');
+  const starsPath = getProjectFilePath(id, 'stars');
   const readmePath = getProjectFilePath(id, 'readme');
   const metadataPath = getProjectFilePath(id, 'metadata');
 
   await fs.writeFile(nodesPath, '');
   await fs.writeFile(artefactPath, '');
+  await fs.writeFile(starsPath, JSON.stringify({ starredNodeIds: [] }, null, 2) + '\n');
   await writeJsonFile(metadataPath, metadata);
 
   const readme = [`# ${name}`, '', description ?? '', ''].join('\n');

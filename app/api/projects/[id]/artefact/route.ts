@@ -1,22 +1,27 @@
 import { getProject } from '@git/projects';
-import { getArtefact, updateArtefact } from '@git/artefact';
+import { getArtefact, getArtefactFromRef, updateArtefact } from '@git/artefact';
 import { getNodes } from '@git/nodes';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { updateArtefactSchema } from '@/src/server/schemas';
 import { withProjectLock } from '@/src/server/locks';
+import { readNodesFromRef } from '@git/utils';
 
 interface RouteContext {
   params: { id: string };
 }
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   try {
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
-
-    const [artefact, nodes] = await Promise.all([getArtefact(project.id), getNodes(project.id)]);
+    const { searchParams } = new URL(request.url);
+    const ref = searchParams.get('ref')?.trim() || null;
+    const [artefact, nodes] = await Promise.all([
+      ref ? getArtefactFromRef(project.id, ref) : getArtefact(project.id),
+      ref ? readNodesFromRef(project.id, ref) : getNodes(project.id)
+    ]);
     const lastState = [...nodes].reverse().find((node) => node.type === 'state');
 
     return Response.json({

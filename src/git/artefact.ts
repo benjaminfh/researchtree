@@ -14,6 +14,19 @@ export async function getArtefact(projectId: string): Promise<string> {
   }
 }
 
+export async function getArtefactFromRef(projectId: string, ref?: string): Promise<string> {
+  await assertProjectExists(projectId);
+  if (!ref || ref === 'WORKING_TREE') {
+    return getArtefact(projectId);
+  }
+  const git = simpleGit(getProjectPath(projectId));
+  try {
+    return await git.show([`${ref}:${PROJECT_FILES.artefact}`]);
+  } catch {
+    return '';
+  }
+}
+
 export async function updateArtefact(projectId: string, content: string, ref?: string): Promise<void> {
   await assertProjectExists(projectId);
   const targetBranch = ref ?? INITIAL_BRANCH;
