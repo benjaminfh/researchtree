@@ -8,8 +8,13 @@ import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 
+let capturedWorkspaceGraphProps: any = null;
+
 vi.mock('@/src/components/workspace/WorkspaceGraph', () => ({
-  WorkspaceGraph: () => <div data-testid="workspace-graph" />
+  WorkspaceGraph: (props: any) => {
+    capturedWorkspaceGraphProps = props;
+    return <div data-testid="workspace-graph" />;
+  }
 }));
 
 vi.mock('reactflow', () => {
@@ -86,6 +91,7 @@ describe('WorkspaceClient', () => {
     interruptMock = vi.fn().mockResolvedValue(undefined);
     chatState = { isStreaming: false, error: null };
     capturedChatOptions = null;
+    capturedWorkspaceGraphProps = null;
     window.sessionStorage.clear();
     window.localStorage.clear();
 
@@ -108,10 +114,19 @@ describe('WorkspaceClient', () => {
       };
     });
 
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if (url.includes('/stars')) {
         return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/branches') && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ branchName: 'main', branches: baseBranches }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as any;
@@ -126,15 +141,11 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
-    // Active branch chip shows branch name
-    expect(screen.getByText(/Active ·\s+feature\/phase-2/)).toBeInTheDocument();
+    expect(screen.getByText(/Branch\s+feature\/phase-2\s+·/)).toBeInTheDocument();
     expect(screen.getByText('Test project description')).toBeInTheDocument();
 
     // Reveal shared history on non-trunk branches before asserting messages.
-    const showShared = screen.queryByRole('button', { name: /show shared/i });
-    if (showShared) {
-      await user.click(showShared);
-    }
+    await user.click(await screen.findByRole('button', { name: /show shared/i }));
 
     expect(screen.getByText('How is progress going?')).toBeInTheDocument();
     expect(screen.getByText('All tasks queued.')).toBeInTheDocument();
@@ -239,5 +250,88 @@ describe('WorkspaceClient', () => {
 
     expect(capturedChatOptions?.provider).toBe('gemini');
     expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
+  });
+
+  it('patch-updates graph histories when the graph is visible and history changes', async () => {
+    const user = userEvent.setup();
+    let currentNodes = [...sampleNodes];
+
+    mockUseProjectData.mockImplementation(
+      () =>
+        ({
+          nodes: currentNodes,
+          artefact: '## Artefact state',
+          artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+          isLoading: false,
+          error: undefined,
+          mutateHistory: mutateHistoryMock,
+          mutateArtefact: mutateArtefactMock
+        }) as ReturnType<typeof useProjectData>
+    );
+
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
+    );
+
+    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps).not.toBeNull();
+      expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(2);
+    });
+
+    currentNodes = [
+      ...currentNodes,
+      { id: 'node-3', type: 'message', role: 'assistant', content: 'New node', timestamp: 1700000002000, parent: 'node-assistant' } as any
+    ];
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(3);
+    });
+  });
+
+  it('scrolls to the bottom when switching branches', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    const list = await screen.findByTestId('chat-message-list');
+    Object.defineProperty(list, 'scrollHeight', { value: 2000, configurable: true });
+    Object.defineProperty(list, 'scrollTop', { value: 0, writable: true, configurable: true });
+
+    // requestAnimationFrame is used for the scroll; make it immediate for the test.
+    const raf = globalThis.requestAnimationFrame;
+    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0 as any;
+    };
+
+    await user.click(screen.getByRole('button', { name: 'trunk' }));
+
+    await waitFor(() => {
+      expect((list as any).scrollTop).toBe(2000);
+    });
+
+    (globalThis as any).requestAnimationFrame = raf;
+  });
+
+  it('renders a stripe for every visible node row (including user and assistant)', async () => {
+    const user = userEvent.setup();
+    const branches = [
+      { name: 'main', headCommit: 'abc', nodeCount: 1, isTrunk: true },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false }
+    ] as const;
+
+    render(<WorkspaceClient project={baseProject} initialBranches={branches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    // Show shared so we deterministically render rows even when history is identical across refs.
+    await user.click(await screen.findByRole('button', { name: /show shared/i }));
+
+    const stripes = await screen.findAllByTestId('chat-row-stripe');
+    // We should have at least 2 stripes for the 2 sample nodes (user + assistant).
+    expect(stripes.length).toBeGreaterThanOrEqual(2);
+
+    const list = screen.getByTestId('chat-message-list');
+    expect(list.className).not.toMatch(/space-y-/);
   });
 });

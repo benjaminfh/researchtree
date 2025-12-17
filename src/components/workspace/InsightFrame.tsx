@@ -1,3 +1,4 @@
+import React from 'react';
 import type { ReactNode } from 'react';
 
 interface InsightFrameProps {
@@ -21,4 +22,3 @@ export function InsightFrame({ children, className, innerClassName }: InsightFra
     </div>
   );
 }
-

@@ -378,7 +378,7 @@ class GitGraphLayout {
   }
 }
 
-function buildGraphNodes(
+export function buildGraphNodes(
   branchHistories: Record<string, NodeRecord[]>,
   activeBranchName: string,
   trunkName: string
@@ -989,8 +989,6 @@ export function WorkspaceGraph({
       if (next.x > 0 && next.x < DEFAULT_VIEWPORT.x) next.x = DEFAULT_VIEWPORT.x;
       if (next.y > 0 && next.y < DEFAULT_VIEWPORT.y) next.y = DEFAULT_VIEWPORT.y;
       instance.setViewport(next, { duration: 0 });
-      const bottom = computeBottomViewport();
-      followBottomByModeRef.current[mode] = Math.abs(next.y - bottom.y) < 24;
     } else {
       const next = computeBottomViewport();
       instance.setViewport(next, { duration: 0 });

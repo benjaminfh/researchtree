@@ -132,7 +132,11 @@ const ChatNodeRow: FC<{
   return (
     <div className="grid grid-cols-[14px_1fr] items-stretch">
       <div className="flex justify-center">
-        <div className="h-full w-1" style={{ backgroundColor: stripeColor, opacity: 0.9 }} />
+        <div
+          data-testid="chat-row-stripe"
+          className="h-full w-1"
+          style={{ backgroundColor: stripeColor, opacity: 0.9 }}
+        />
       </div>
       <div className={`py-2 ${messageInsetClassName ?? ''} ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
         <NodeBubble
@@ -673,17 +677,17 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     shouldScrollToBottomRef.current = true;
   }, [branchName]);
 
-  useEffect(() => {
-    if (!shouldScrollToBottomRef.current) return;
-    if (isLoading) return;
-    const el = messageListRef.current;
-    if (!el) return;
-    // Ensure we scroll after the DOM has painted with the final node list.
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-      shouldScrollToBottomRef.current = false;
-    });
-  }, [isLoading, combinedNodes.length]);
+	  useEffect(() => {
+	    if (!shouldScrollToBottomRef.current) return;
+	    if (isLoading) return;
+	    const el = messageListRef.current;
+	    if (!el) return;
+	    // Ensure we scroll after the DOM has painted with the final node list.
+	    requestAnimationFrame(() => {
+	      el.scrollTop = el.scrollHeight;
+	      shouldScrollToBottomRef.current = false;
+	    });
+	  }, [branchName, isLoading, combinedNodes.length]);
 
   const switchBranch = async (name: string) => {
     if (name === branchName) return;
@@ -959,7 +963,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   </div>
                 ) : null}
 
-	                <div ref={messageListRef} className="flex-1 min-h-0 overflow-y-auto pr-1 pb-20">
+	                <div
+                    ref={messageListRef}
+                    data-testid="chat-message-list"
+                    className="flex-1 min-h-0 overflow-y-auto pr-1 pb-20"
+                  >
                   {isLoading ? (
                     <p className="text-sm text-muted">Loading history…</p>
                   ) : error ? (

@@ -242,3 +242,28 @@ If modifying the rail/composer layouts, watch for overlapping with the floating 
   - `src/components/workspace/HeroIcons.tsx`
   - `tests/client/WorkspaceGraph.layout.test.ts`
   - `tests/client/WorkspaceGraph.viewport.test.tsx`
+
+#### Session 2.1 - Testing
+- **Goal**: Lock down Session 2’s graph/layout + chat UI changes with regression tests (no hangs, no viewport surprises, no UI selector drift).
+- **1) Graph layout correctness + safety** (`tests/client/WorkspaceGraph.layout.test.ts`)
+  - Add fixtures for fork+merge and multiple branches/merges.
+  - Assert `layoutGraph(..., { maxIterations: low })` returns `usedFallback=true` (fails fast; never hangs).
+  - Assert normal budgets return `usedFallback=false`.
+  - Assert merge edge fan-out stays fixed (merge connects to one merge-parent, not every `sourceNodeId`).
+  - Assert per-row label logic: labels start after the right-most reserved edge for that row (no overlaps).
+- **2) Graph viewport behavior** (`tests/client/WorkspaceGraph.viewport.test.tsx`)
+  - Initial mount pins to bottom when overflowing (newest visible).
+  - Follow-bottom when already pinned and nodes are appended.
+  - Stop following when user scrolls up (simulate `onMoveEnd`; subsequent nodes should not re-pin).
+- **3) WorkspaceClient graph live-updates when visible** (`tests/client/WorkspaceClient.test.tsx`)
+  - When Graph is visible (tab=graph, not collapsed), new `useProjectData().nodes` should update `branchHistories[branchName]` passed to `WorkspaceGraph` without refetch.
+  - When Graph is not visible (tab=canvas or collapsed), ensure it does not perform graph-history patch updates.
+- **4) Chat scroll-to-bottom on branch load** (new client test file or extend `tests/client/WorkspaceClient.test.tsx`)
+  - On branch switch, message list should scroll to latest message after load completes.
+- **5) Chat stripe column + shared/current alignment** (new client test file)
+  - Stripe column rendered per row and continuous (no `space-y` gaps in the scroll list).
+  - Shared section background applies behind message column only and does not shift stripe column position.
+- **6) Icon/aria-label regression smoke** (fold into existing WorkspaceClient tests)
+  - Keep selectors stable via `aria-label`: `Send message`, `Stop streaming`, `Add attachment`, `Hide canvas / graph panel`.
+
+#### Session 2.1 - Testing

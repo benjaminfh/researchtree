@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { layoutGraph, type GraphNode } from '@/src/components/workspace/WorkspaceGraph';
+import { buildGraphNodes, layoutGraph, type GraphNode } from '@/src/components/workspace/WorkspaceGraph';
 
 // Silence CSS import from React Flow when running in Vitest.
 vi.mock('reactflow/dist/style.css', () => ({}));
+
+vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 const makeLinearNodes = (count: number, branchId = 'feature'): GraphNode[] =>
   Array.from({ length: count }, (_, i) => ({
@@ -13,6 +15,52 @@ const makeLinearNodes = (count: number, branchId = 'feature'): GraphNode[] =>
     isOnActiveBranch: true,
     label: `Node ${i}`
   }));
+
+const makeForkMergeNodes = (): GraphNode[] => [
+  {
+    id: 'a',
+    parents: [],
+    laneBranchId: 'main',
+    originBranchId: 'main',
+    isOnActiveBranch: true,
+    label: 'A'
+  },
+  {
+    id: 'b',
+    parents: ['a'],
+    laneBranchId: 'main',
+    originBranchId: 'main',
+    isOnActiveBranch: true,
+    label: 'B'
+  },
+  // branch off at b
+  {
+    id: 'c',
+    parents: ['b'],
+    laneBranchId: 'feature',
+    originBranchId: 'feature',
+    isOnActiveBranch: false,
+    label: 'C'
+  },
+  // trunk continues
+  {
+    id: 'd',
+    parents: ['b'],
+    laneBranchId: 'main',
+    originBranchId: 'main',
+    isOnActiveBranch: true,
+    label: 'D'
+  },
+  // merge feature into trunk at e
+  {
+    id: 'e',
+    parents: ['d', 'c'],
+    laneBranchId: 'main',
+    originBranchId: 'main',
+    isOnActiveBranch: true,
+    label: 'E'
+  }
+];
 
 describe('layoutGraph', () => {
   it('falls back to the simple layout when the iteration budget is exhausted', () => {
@@ -32,5 +80,51 @@ describe('layoutGraph', () => {
     expect(result.nodes).toHaveLength(nodes.length);
     expect(result.edges.length).toBe(nodes.length - 1);
     expect(result.nodes[0].position).toBeDefined();
+  });
+
+  it('computes per-row label shifts so trunk labels move when a branch occupies a right lane', () => {
+    const nodes = makeForkMergeNodes();
+    const result = layoutGraph(nodes, 'feature', 'main', { maxIterations: 500 });
+
+    expect(result.usedFallback).toBe(false);
+    const byId = new Map(result.nodes.map((n) => [n.id, n]));
+    // After the fork, at least one node in a multi-lane row should shift its label past the right-most reserved lane.
+    const shifts = ['c', 'd', 'e'].map((id) => byId.get(id)?.data?.labelTranslateX ?? 0);
+    expect(shifts.some((v) => v > 0)).toBe(true);
+  });
+});
+
+describe('buildGraphNodes', () => {
+  it('uses only the merge-parent head node (no sourceNodeIds fan-out)', () => {
+    const branchHistories = {
+      main: [
+        { id: 'a', type: 'message', role: 'user', content: 'a', timestamp: 1, parent: null },
+        { id: 'b', type: 'message', role: 'assistant', content: 'b', timestamp: 2, parent: 'a' },
+        { id: 'd', type: 'message', role: 'assistant', content: 'd', timestamp: 4, parent: 'b' },
+        {
+          id: 'm',
+          type: 'merge',
+          mergeFrom: 'feature',
+          mergeSummary: 'merge',
+          sourceCommit: 'c',
+          sourceNodeIds: ['c1', 'c2', 'c3'],
+          timestamp: 5,
+          parent: 'd'
+        }
+      ],
+      feature: [
+        { id: 'a', type: 'message', role: 'user', content: 'a', timestamp: 1, parent: null },
+        { id: 'b', type: 'message', role: 'assistant', content: 'b', timestamp: 2, parent: 'a' },
+        { id: 'c1', type: 'message', role: 'user', content: 'c1', timestamp: 3, parent: 'b' },
+        { id: 'c2', type: 'message', role: 'assistant', content: 'c2', timestamp: 3, parent: 'c1' },
+        { id: 'c3', type: 'message', role: 'assistant', content: 'c3', timestamp: 3, parent: 'c2' }
+      ]
+    } as any;
+
+    const graphNodes = buildGraphNodes(branchHistories, 'main', 'main');
+    const merge = graphNodes.find((n) => n.id === 'm')!;
+    expect(merge.parents).toEqual(['d', 'c3']);
+    expect(merge.parents).not.toContain('c1');
+    expect(merge.parents).not.toContain('c2');
   });
 });
