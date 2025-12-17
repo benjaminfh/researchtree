@@ -50,7 +50,7 @@ describe('/api/projects/[id]/edit', () => {
       params: { id: 'project-1' }
     });
     expect(res.status).toBe(201);
-    expect(mocks.getCommitHashForNode).toHaveBeenCalledWith('project-1', 'main', 'node-5');
+    expect(mocks.getCommitHashForNode).toHaveBeenCalledWith('project-1', 'main', 'node-5', { parent: true });
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash');
     expect(mocks.appendNode).toHaveBeenCalledWith(
       'project-1',

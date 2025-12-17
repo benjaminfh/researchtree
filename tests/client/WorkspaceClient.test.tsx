@@ -104,7 +104,8 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('feature/phase-2')).toBeInTheDocument();
+    // Active branch chip shows branch name
+    expect(screen.getByText(/Active ·\s+feature\/phase-2/)).toBeInTheDocument();
     expect(screen.getByText('Test project description')).toBeInTheDocument();
 
     // Reveal shared history on non-trunk branches before asserting messages.
@@ -122,7 +123,7 @@ describe('WorkspaceClient', () => {
     const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
-    const composer = screen.getAllByPlaceholderText('Send a message to the LLM')[0];
+    const composer = screen.getByPlaceholderText('Ask anything');
     await user.type(composer, 'New investigation');
     await user.keyboard('{Meta>}{Enter}{/Meta}');
 
@@ -170,7 +171,7 @@ describe('WorkspaceClient', () => {
     chatState.error = 'Network issue';
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Stop streaming')).toBeInTheDocument();
     expect(screen.getByText('Network issue')).toBeInTheDocument();
 
     const user = userEvent.setup();
@@ -212,7 +213,7 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(capturedChatOptions?.provider).toBe('openai');
 
-    await user.selectOptions(screen.getAllByText('LLM Provider')[0].parentElement!.querySelector('select')!, 'gemini');
+    await user.selectOptions(screen.getByLabelText(/Provider/i), 'gemini');
 
     expect(capturedChatOptions?.provider).toBe('gemini');
     expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');

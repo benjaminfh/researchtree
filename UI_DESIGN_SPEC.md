@@ -66,3 +66,62 @@ Observations distilled from the provided Gemini and ChatGPT screenshots. Use thi
 - Left rail that favors clarity over density; selected state as a soft pill.
 - Message actions that are always visible but visually quiet.
 - Typographic hierarchy doing most of the visual work instead of boxes or borders.
+
+## Implementation Plan
+- Theme setup: extend `tailwind.config.js` with `fontFamily.sans` (Inter, "Helvetica Neue", system), color tokens (`primary: #1a73e8`, `rail: #eef3ff`, `surface: #ffffff`, `text: #1f2937`, `muted: #6b7280`, `divider: #e5e7eb`), radii (`md: 12px`, `lg: 16px`, `xl: 18px`), shadows for cards/composer, and a focus ring (`focus-visible:outline-primary/60 outline-2 outline-offset-2`). Enable `@tailwindcss/typography` and tune `prose` to stay low-contrast.
+- Base layout shell: body `bg-white text-slate-800 antialiased`, container `min-h-screen grid md:grid-cols-[270px_1fr]` with `bg-rail/60` on the rail and `bg-white` canvas. Keep main column `max-w-4xl mx-auto px-6` with `pt-6 pb-28` to leave room for the floating composer.
+- Navigation rail: `w-[270px] border-r border-divider/60 bg-rail/80 backdrop-blur flex flex-col gap-3 p-4`. Top icon cluster `flex gap-2` with `rounded-full hover:bg-primary/10`. “New chat” row `flex items-center gap-2 px-3 py-2 rounded-full text-slate-700 hover:bg-primary/10`. “My stuff” uses `grid-flow-col auto-cols-[200px] overflow-x-auto gap-3 pb-2` and cards `rounded-xl shadow-sm bg-white/80 border border-divider/60 px-3 py-3`. Chat list `space-y-1` with active item `bg-primary/10 text-primary rounded-full`.
+- Top bar: `sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-divider/80 px-6 py-3 flex items-center justify-between gap-3`. Title uses `text-lg font-medium truncate` with a chevron icon. Action cluster uses ghost icon buttons `rounded-full hover:bg-primary/10 text-slate-600`.
+- Conversation canvas: intro stack `space-y-3` with `text-base leading-relaxed`. Identity chip `inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-sm px-3 py-1`. Messages live in `space-y-4` with ample white space; no boxed containers.
+- Message styling: user bubble `self-start inline-block max-w-[80%] bg-slate-50 text-slate-800 rounded-2xl px-4 py-3 shadow-sm`. Assistant content `prose prose-slate max-w-none leading-relaxed` with `prose-headings:font-semibold prose-hr:border-divider prose-table:border-divider`. Actions row `flex items-center gap-2 text-sm text-slate-500` with icon buttons `hover:bg-primary/10 rounded-full p-2`. Status chips (thinking/mode) `text-xs bg-slate-100 text-slate-600 rounded-full px-2.5 py-1`.
+- Composer: wrapper `fixed inset-x-0 bottom-0 pb-4 md:pb-6 bg-gradient-to-t from-white via-white/70 to-transparent pointer-events-none`. Inner `max-w-3xl mx-auto px-4 pointer-events-auto` holding a pill `flex items-center gap-3 rounded-full bg-white border border-divider shadow-lg px-4 py-3`. Left: `+` button `h-10 w-10 rounded-full hover:bg-primary/10`, tool chip `rounded-full bg-primary/10 text-primary text-sm px-3 py-2`. Center input `flex-1 bg-transparent text-base placeholder:text-slate-400 focus:outline-none`. Right: mode chip `rounded-full bg-slate-100 text-slate-700 text-sm px-3 py-2` and mic `h-10 w-10 rounded-full bg-primary/10 text-primary hover:bg-primary/15`.
+- Attachment menu and menus: position above composer `absolute bottom-16 left-0 w-64 rounded-xl border border-divider shadow-lg bg-white p-2 space-y-1`, items `flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-primary/10 text-slate-700`.
+- States: focus-visible ring on all interactive elements; hover uses `bg-primary/10`, active `bg-primary/15`, disabled `opacity-50 cursor-not-allowed`. Streaming indicator `flex items-center gap-2 text-primary text-sm animate-pulse`. Error/retry banners `rounded-xl bg-red-50 border border-red-200 text-red-800 px-3 py-2 flex items-center gap-2`. Skeletons `animate-pulse bg-slate-100 h-4 rounded` in message placeholder blocks.
+- Responsiveness: below `md`, collapse rail to icons-only `w-14` with tooltip labels; allow a hamburger to open full rail overlay. Top-bar actions reduce to icon buttons; chat title `truncate`. Composer keeps full width with side gutters and safe-area padding `pb-[calc(env(safe-area-inset-bottom)+1rem)]`. Reactions and toolbars `flex-wrap gap-y-1` to avoid overflow.
+- Implementation checklist: configure Tailwind theme and typography plugin; add global base styles (body, focus ring). Build shared components (Rail, TopBar, Message, Composer, AttachmentMenu) with classnames above. Add layout shell with sticky top bar and floating composer; wire message list with `prose` styling and action bars; verify mobile behavior and keyboard-safe spacing; add storybook or visual tests for rail states, composer focus, and message actions.
+
+
+### Refinements
+
+- Product name: SideQuest (show it on the home page where we currently have "ResearchTree
+Projects" and make that pill 2x bigger, on the project page, smaller pil top left within the main frame)
+- The left hand rail should be on every page:
+    - For the home page, it should contain the project history + a collapse button (very top - stable position regardless open/collapsed)
+    - For the project page:
+        - We can remove the white "home" button / div (it's duplicative with the projects button just below it): [<div class="px-4 py-4 md:px-8"><a class="inline-flex items-center gap-2 text-sm font-semibold text-slate-800 hover:text-primary" href="/"><span aria-hidden="true">←</span>Home</a></div>]
+        - The "new message" button doesn't do anything and should be removed (weird place for a new message button!)
+        - the left hand rail should be collapsible 
+        - the main frame should scroll independently from the rail (which ideally shouldn't scroll!)
+        - the hints section should be a collapsible pill (default collapsed)
+        - the floating message textarea and send button design is awesome!
+        - conversation and artefacts should fill the vertical height (ending just above the message text area)
+
+### Refinements 2
+- home page
+    - side rail
+        - contents should be hidden when collapsed (only toggle button stays in all views)
+        - project pills should have an archive button. on click, it goes red and requires a second confirmation click to archive
+        - clicking project pill navigates to that project page
+    - main projects view
+        - default hide this now, in favour or side bar view
+- project page
+    - top banner div is still there - should be removed altogether!!
+    - textarea in artefact should always fill parent height (with margin)
+    - sidebar
+        - hints section is now two divs - must be only one - toggles size/view on click
+    - conversation/artefact parent container - too big right now, causing it to scroll. should not scroll.
+
+### Refinements 3
+- project page
+    - we lack a way to navigate to home now - suggestions on where a button could go? very bottom of rail when collapsed + top right of rail when expanded?
+    - conversation + artefact container doesn't fill VH properly again (too short)
+- home 
+    - remove node count from side bar project pills
+    - remove main frame project view completely
+    - Text:
+        - SideQuest Projects -> SideQuest
+        - Git-backed reasoning sessions -> Branchable Chat for Deep Research Sessions
+        - Spin up a workspace, branch thinking safely, and keep artefacts alongside the chat history. -> Spin up a workspace, branch your train of thought and context, and work on a canvas
+        - artefact -> canvas (in all user-facing contexts)
+        - project -> workspace (in all user-facing contexts)
+        
