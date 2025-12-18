@@ -63,6 +63,7 @@ const NodeBubble: FC<{
   onEdit?: (node: MessageNode) => void;
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
+  highlighted?: boolean;
 }> = ({
   node,
   muted = false,
@@ -71,7 +72,8 @@ const NodeBubble: FC<{
   onToggleStar,
   onEdit,
   isCanvasDiffPinned = false,
-  onPinCanvasDiff
+  onPinCanvasDiff,
+  highlighted = false
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const canCopy = node.type === 'message' && node.content.length > 0;
@@ -81,6 +83,7 @@ const NodeBubble: FC<{
   const [confirmPinCanvasDiff, setConfirmPinCanvasDiff] = useState(false);
   const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
   const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
+  const [showMergePayload, setShowMergePayload] = useState(false);
   const base = `relative max-w-[82%] overflow-hidden rounded-2xl px-4 py-3 transition ${
     isUser ? 'min-w-[300px]' : ''
   }`;
@@ -127,16 +130,43 @@ const NodeBubble: FC<{
 
   return (
     <article className={`flex flex-col gap-1 ${align}`}>
-      <div className={`${base} ${palette}`}>
+      <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
         {'content' in node && node.content ? (
           <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">{node.content}</p>
         ) : null}
         {node.type === 'state' ? <p className="mt-2 text-sm font-medium text-slate-700">Canvas updated</p> : null}
-        {node.type === 'merge' ? <p className="mt-2 text-sm font-medium text-slate-700">Merge: {node.mergeSummary}</p> : null}
-        {node.type === 'merge' && node.mergedAssistantContent?.trim() ? (
-          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">{node.mergedAssistantContent}</p>
-        ) : node.type === 'merge' ? (
-          <p className="mt-2 text-sm italic text-slate-500">Merged payload unavailable (legacy merge)</p>
+        {node.type === 'merge' ? (
+          <div className="mt-2 space-y-1">
+            <p className="text-sm font-medium text-slate-700">
+              Merged from <span className="font-semibold">{node.mergeFrom}</span>
+            </p>
+            <p className="text-sm font-medium text-slate-700">{node.mergeSummary}</p>
+          </div>
+        ) : null}
+
+        {node.type === 'merge' ? (
+          node.mergedAssistantContent?.trim() ? (
+            <div className="mt-3 rounded-xl bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                <span className="font-semibold text-slate-700">Merged payload</span>
+                <button
+                  type="button"
+                  onClick={() => setShowMergePayload((prev) => !prev)}
+                  className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                  aria-label={showMergePayload ? 'Hide merged payload' : 'Show merged payload'}
+                >
+                  {showMergePayload ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">
+                {showMergePayload
+                  ? node.mergedAssistantContent
+                  : `${node.mergedAssistantContent.slice(0, 280)}${node.mergedAssistantContent.length > 280 ? '…' : ''}`}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm italic text-slate-500">Merged payload unavailable (legacy merge)</p>
+          )
         ) : null}
         {node.type === 'merge' && node.canvasDiff ? (
           <div className="mt-3 rounded-xl bg-slate-50 p-3">
@@ -283,12 +313,13 @@ const ChatNodeRow: FC<{
   onEdit?: (node: MessageNode) => void;
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
-}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff }) => {
+  highlighted?: boolean;
+}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff, highlighted }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName);
 
   return (
-    <div className="grid grid-cols-[14px_1fr] items-stretch">
+    <div className="grid grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
       <div className="flex justify-center">
         <div
           data-testid="chat-row-stripe"
@@ -306,6 +337,7 @@ const ChatNodeRow: FC<{
           onEdit={onEdit}
           isCanvasDiffPinned={isCanvasDiffPinned}
           onPinCanvasDiff={onPinCanvasDiff}
+          highlighted={!!highlighted}
         />
       </div>
     </div>
@@ -325,11 +357,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [mergeSummary, setMergeSummary] = useState('');
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [showMergeModal, setShowMergeModal] = useState(false);
-  const [mergePreview, setMergePreview] = useState<{ trunk: string; branch: string } | null>(null);
+  const [mergePreview, setMergePreview] = useState<{ target: string; source: string } | null>(null);
   const [isMergePreviewLoading, setIsMergePreviewLoading] = useState(false);
   const [mergePreviewError, setMergePreviewError] = useState<string | null>(null);
   const [mergePayloadNodeId, setMergePayloadNodeId] = useState<string | null>(null);
   const [showMergePayloadPicker, setShowMergePayloadPicker] = useState(false);
+  const [mergeTargetBranch, setMergeTargetBranch] = useState<string>('main');
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingNode, setEditingNode] = useState<MessageNode | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -345,6 +378,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const autosaveSpinnerUntilRef = useRef<number | null>(null);
   const autosaveSpinnerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insightTab, setInsightTab] = useState<'graph' | 'canvas'>('canvas');
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [graphDetailError, setGraphDetailError] = useState<string | null>(null);
+  const [isGraphDetailBusy, setIsGraphDetailBusy] = useState(false);
+  const [confirmGraphAddCanvas, setConfirmGraphAddCanvas] = useState(false);
+  const [graphCopyFeedback, setGraphCopyFeedback] = useState(false);
+  const graphCopyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insightCollapsed, setInsightCollapsed] = useState(false);
   const [chatPaneWidth, setChatPaneWidth] = useState<number | null>(null);
   const paneContainerRef = useRef<HTMLDivElement | null>(null);
@@ -381,6 +420,29 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       await mutateStars({ starredNodeIds: data.starredNodeIds }, false);
     } catch {
       await mutateStars({ starredNodeIds: prev }, false);
+    }
+  };
+
+  const copyTextToClipboard = async (text: string) => {
+    if (typeof navigator === 'undefined') return;
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // ignore and fall back
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch {
+      // ignore
     }
   };
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
@@ -587,26 +649,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setGraphHistoryLoading(true);
       setGraphHistoryError(null);
       try {
-        const MAX_PER_BRANCH = 500;
-        const entries = await Promise.all(
-          sortedBranches.map(async (branch) => {
-            const limit = Math.min(branch.nodeCount, MAX_PER_BRANCH);
-            const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(branch.name)}&limit=${limit}`,
-              { signal: controller.signal }
-            );
-            if (!res.ok) {
-              throw new Error(`Failed to load history for ${branch.name}`);
-            }
-            const data = (await res.json()) as { nodes: NodeRecord[] };
-            return [branch.name, data.nodes ?? []] as const;
-          })
-        );
-        const mapped: Record<string, NodeRecord[]> = {};
-        for (const [name, nodes] of entries) {
-          mapped[name] = nodes;
+        const res = await fetch(`/api/projects/${project.id}/graph`, { signal: controller.signal });
+        if (!res.ok) {
+          throw new Error('Failed to load graph');
         }
-        setGraphHistories(mapped);
+        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
+        setGraphHistories(data.branchHistories ?? {});
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         setGraphHistoryError((err as Error).message);
@@ -622,11 +670,56 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (!isGraphVisible) return;
     setGraphHistories((prev) => {
       if (!prev) return prev;
+      const MAX_PER_BRANCH = 500;
+      const nextNodes =
+        nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
       const current = prev[branchName];
-      if (current === nodes) return prev;
-      return { ...prev, [branchName]: nodes };
+      if (current === nextNodes) return prev;
+      // Avoid thrashing the graph when the active history hasn't changed meaningfully.
+      if (current && current.length === nextNodes.length && current[current.length - 1]?.id === nextNodes[nextNodes.length - 1]?.id) {
+        return prev;
+      }
+      return { ...prev, [branchName]: nextNodes };
     });
   }, [isGraphVisible, branchName, nodes]);
+
+  useEffect(() => {
+    if (insightTab !== 'graph') {
+      setSelectedGraphNodeId(null);
+    }
+  }, [insightTab]);
+
+  useEffect(() => {
+    setGraphDetailError(null);
+    setIsGraphDetailBusy(false);
+    setConfirmGraphAddCanvas(false);
+    setGraphCopyFeedback(false);
+    if (graphCopyFeedbackTimeoutRef.current) {
+      clearTimeout(graphCopyFeedbackTimeoutRef.current);
+      graphCopyFeedbackTimeoutRef.current = null;
+    }
+  }, [selectedGraphNodeId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (insightTab !== 'graph') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedGraphNodeId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [insightTab]);
+
+  useEffect(() => {
+    return () => {
+      if (graphCopyFeedbackTimeoutRef.current) {
+        clearTimeout(graphCopyFeedbackTimeoutRef.current);
+        graphCopyFeedbackTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -722,7 +815,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       try {
         const baseUrl = `/api/projects/${project.id}/artefact`;
         const [trunkRes, branchRes] = await Promise.all([
-          fetch(`${baseUrl}?ref=${encodeURIComponent(trunkName)}`, { signal: controller.signal }),
+          fetch(`${baseUrl}?ref=${encodeURIComponent(mergeTargetBranch)}`, { signal: controller.signal }),
           fetch(`${baseUrl}?ref=${encodeURIComponent(branchName)}`, { signal: controller.signal })
         ]);
         if (!trunkRes.ok || !branchRes.ok) {
@@ -733,8 +826,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           return;
         }
         setMergePreview({
-          trunk: trunkPayload?.artefact ?? '',
-          branch: branchPayload?.artefact ?? ''
+          target: trunkPayload?.artefact ?? '',
+          source: branchPayload?.artefact ?? ''
         });
       } catch (error) {
         if ((error as DOMException).name === 'AbortError') {
@@ -752,7 +845,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return () => {
       controller.abort();
     };
-  }, [showMergeModal, branchName, trunkName, project.id]);
+  }, [showMergeModal, branchName, mergeTargetBranch, project.id]);
 
   const [railCollapsed, setRailCollapsed] = useState(false);
   useEffect(() => {
@@ -778,6 +871,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
   const scrollFollowThreshold = 72;
+  const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const combinedNodes = useMemo(() => (streamingNode ? [...nodes, streamingNode] : nodes), [nodes, streamingNode]);
   const lastUpdatedTimestamp = useMemo(() => {
@@ -790,7 +886,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (!mergePreview) {
       return [];
     }
-    return buildLineDiff(mergePreview.trunk, mergePreview.branch);
+    return buildLineDiff(mergePreview.target, mergePreview.source);
   }, [mergePreview]);
   const hasCanvasChanges = mergeDiff.some((line) => line.type !== 'context');
   const shouldFetchTrunk = branchName !== trunkName;
@@ -883,9 +979,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         node.role === 'assistant' &&
         node.id !== 'streaming' &&
         node.content.trim().length > 0 &&
-        node.createdOnBranch !== trunkName
+        (node.createdOnBranch ? node.createdOnBranch === branchName : true)
     ) as MessageNode[];
-  }, [branchNodes, trunkName]);
+  }, [branchNodes, branchName]);
 
   const selectedMergePayload = useMemo(() => {
     if (mergePayloadCandidates.length === 0) return null;
@@ -900,8 +996,22 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (!showMergeModal) {
       setMergePayloadNodeId(null);
       setShowMergePayloadPicker(false);
+      setMergeTargetBranch(trunkName);
       return;
     }
+    const desiredDefault =
+      branchName === trunkName
+        ? branches.find((b) => b.name !== branchName)?.name ?? trunkName
+        : trunkName;
+    setMergeTargetBranch((prev) => {
+      if (prev && prev !== branchName && branches.some((b) => b.name === prev)) {
+        return prev;
+      }
+      if (desiredDefault !== branchName && branches.some((b) => b.name === desiredDefault)) {
+        return desiredDefault;
+      }
+      return branches.find((b) => b.name !== branchName)?.name ?? trunkName;
+    });
     if (mergePayloadCandidates.length === 0) {
       setMergePayloadNodeId(null);
       return;
@@ -910,7 +1020,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       return;
     }
     setMergePayloadNodeId(mergePayloadCandidates[mergePayloadCandidates.length - 1]?.id ?? null);
-  }, [showMergeModal, mergePayloadCandidates, mergePayloadNodeId]);
+  }, [showMergeModal, mergePayloadCandidates, mergePayloadNodeId, trunkName, branchName, branches]);
 
   const pinnedCanvasDiffMergeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -922,18 +1032,68 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return ids;
   }, [combinedNodes]);
 
-  const pinCanvasDiffToContext = async (mergeNodeId: string) => {
+  const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mergeNodeId, targetBranch: branchName })
+      body: JSON.stringify({ mergeNodeId, targetBranch })
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       throw new Error(data?.error?.message ?? 'Failed to add diff to context');
     }
+    return (await res.json().catch(() => null)) as { pinnedNode?: NodeRecord; alreadyPinned?: boolean } | null;
+  };
+
+  const pinCanvasDiffToCurrentBranch = async (mergeNodeId: string) => {
+    await pinCanvasDiffToContext(mergeNodeId, branchName);
     await mutateHistory();
   };
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingScrollTo) return;
+    if (branchName !== pendingScrollTo.targetBranch) return;
+    if (!nodes.some((node) => node.id === pendingScrollTo.nodeId)) return;
+    const container = messageListRef.current;
+    if (!container) return;
+
+    const escapeSelector = (value: string) => {
+      if (typeof (globalThis as any).CSS?.escape === 'function') {
+        return (globalThis as any).CSS.escape(value);
+      }
+      return value.replace(/["\\]/g, '\\$&');
+    };
+
+    if (hideShared && sharedNodes.some((node) => node.id === pendingScrollTo.nodeId)) {
+      // Ensure the target node is actually rendered before attempting to scroll.
+      setHideShared(false);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ block: 'center' });
+      }
+      setHighlightedNodeId(pendingScrollTo.nodeId);
+      setPendingScrollTo(null);
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedNodeId(null);
+      }, 2500);
+    });
+  }, [pendingScrollTo, branchName, nodes, hideShared, sharedNodes]);
 
   useEffect(() => {
     shouldScrollToBottomRef.current = true;
@@ -1264,6 +1424,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 onEdit={undefined}
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
+                                highlighted={highlightedNodeId === node.id}
                               />
                             ))}
                           </div>
@@ -1294,7 +1455,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                               : undefined
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
-                          onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToContext : undefined}
+                          onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToCurrentBranch : undefined}
+                          highlighted={highlightedNodeId === node.id}
                         />
                       ))}
                     </div>
@@ -1305,12 +1467,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   <p className="text-sm italic text-muted">No new messages on this branch yet.</p>
                 ) : null}
 
-                {branchName !== trunkName ? (
+                {sortedBranches.length > 1 ? (
                   <button
                     type="button"
                     onClick={() => {
                       setMergeError(null);
                       setMergeSummary('');
+                      setMergeTargetBranch(trunkName);
                       setShowMergeModal(true);
                     }}
                     disabled={isMerging}
@@ -1319,7 +1482,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <ArrowUpRightIcon className="h-4 w-4" />
                     </span>
-                    Merge into trunk
+                    Merge…
                   </button>
                 ) : null}
 
@@ -1435,7 +1598,249 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                               mode={graphMode}
                               onModeChange={setGraphMode}
                               starredNodeIds={starredNodeIds}
+                              selectedNodeId={selectedGraphNodeId}
+                              onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
                             />
+                            {selectedGraphNodeId ? (
+                              <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
+                                {(() => {
+                                  const activeMatch = combinedNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
+                                  let record: NodeRecord | null = activeMatch;
+                                  let targetBranch: string = branchName;
+
+                                  if (!record && graphHistories) {
+                                    for (const [b, hist] of Object.entries(graphHistories)) {
+                                      const found = hist.find((node) => node.id === selectedGraphNodeId);
+                                      if (found) {
+                                        record = found;
+                                        targetBranch = b;
+                                        break;
+                                      }
+                                    }
+                                  }
+
+                                  if (!record) {
+                                    return (
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-muted">Selected node not found in current histories.</div>
+                                        <button
+                                          type="button"
+                                          className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                                          aria-label="Clear graph selection"
+                                          onClick={() => setSelectedGraphNodeId(null)}
+                                        >
+                                          Clear
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  const title =
+                                    record.type === 'merge'
+                                      ? `Notes brought in from ${displayBranchName(record.mergeFrom)}`
+                                      : record.type === 'state'
+                                      ? 'Canvas saved'
+                                      : record.type === 'message' && record.role === 'assistant'
+                                      ? 'Assistant replied'
+                                      : record.type === 'message' && record.role === 'user'
+                                      ? 'You said'
+                                      : record.type === 'message' && record.role === 'system'
+                                      ? 'System note'
+                                      : 'Selected node';
+
+                                  const mergeRecord = record.type === 'merge' ? record : null;
+                                  const canvasDiff = mergeRecord?.canvasDiff?.trim() ?? '';
+                                  const hasCanvasDiff = !!mergeRecord && canvasDiff.length > 0;
+                                  const nodesOnTargetBranch =
+                                    targetBranch === branchName ? combinedNodes : graphHistories?.[targetBranch] ?? [];
+                                  const isCanvasDiffPinned =
+                                    !!mergeRecord &&
+                                    nodesOnTargetBranch.some(
+                                      (node) =>
+                                        node.type === 'message' && node.role === 'assistant' && node.pinnedFromMergeId === mergeRecord.id
+                                    );
+
+                                  const copyText =
+                                    record.type === 'message'
+                                      ? record.content
+                                      : mergeRecord
+                                      ? [
+                                          `Summary:\n${mergeRecord.mergeSummary ?? ''}`.trim(),
+                                          mergeRecord.mergedAssistantContent?.trim()
+                                            ? `Assistant notes:\n${mergeRecord.mergedAssistantContent}`.trim()
+                                            : '',
+                                          hasCanvasDiff ? `Canvas changes:\n${canvasDiff}`.trim() : ''
+                                        ]
+                                          .filter((part) => part.trim().length > 0)
+                                          .join('\n\n')
+                                      : record.type === 'state'
+                                      ? 'Canvas saved'
+                                      : '';
+
+                                  return (
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <div className="text-sm font-semibold text-slate-900">{title}</div>
+                                          <div className="text-xs text-muted">
+                                            {new Date(record.timestamp).toLocaleString()}
+                                            {targetBranch !== branchName ? ` · on ${displayBranchName(targetBranch)}` : ''}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={!copyText}
+                                            className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                                            aria-label="Copy selection"
+                                            onClick={() => {
+                                              void (async () => {
+                                                await copyTextToClipboard(copyText);
+                                                setGraphCopyFeedback(true);
+                                                if (graphCopyFeedbackTimeoutRef.current) {
+                                                  clearTimeout(graphCopyFeedbackTimeoutRef.current);
+                                                }
+                                                graphCopyFeedbackTimeoutRef.current = setTimeout(() => {
+                                                  setGraphCopyFeedback(false);
+                                                }, 1200);
+                                              })();
+                                            }}
+                                          >
+                                            {graphCopyFeedback ? 'Copied' : 'Copy'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                                            aria-label="Clear graph selection"
+                                            onClick={() => setSelectedGraphNodeId(null)}
+                                          >
+                                            Clear
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {record.type === 'message' ? (
+                                        <div className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                          {record.content}
+                                        </div>
+                                      ) : null}
+
+                                      {mergeRecord ? (
+                                        <div className="space-y-2">
+                                          <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                            <div className="font-semibold text-slate-800">Summary</div>
+                                            <div className="mt-1 whitespace-pre-wrap">{mergeRecord.mergeSummary}</div>
+                                          </div>
+                                          {mergeRecord.mergedAssistantContent?.trim() ? (
+                                            <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                              <div className="font-semibold text-slate-800">Assistant notes</div>
+                                              <div className="mt-1 whitespace-pre-wrap">{mergeRecord.mergedAssistantContent}</div>
+                                            </div>
+                                          ) : null}
+                                          {hasCanvasDiff ? (
+                                            <details className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                              <summary className="cursor-pointer select-none font-semibold text-slate-800">
+                                                Canvas changes
+                                              </summary>
+                                              <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-slate-700">
+                                                {canvasDiff}
+                                              </pre>
+                                            </details>
+                                          ) : (
+                                            <div className="text-xs text-muted">No canvas changes recorded on this node.</div>
+                                          )}
+                                        </div>
+                                      ) : null}
+
+                                      {graphDetailError ? <p className="text-xs text-red-600">{graphDetailError}</p> : null}
+
+                                      <div className="flex justify-end gap-2">
+                                        {mergeRecord && hasCanvasDiff ? (
+                                          isCanvasDiffPinned ? (
+                                            <span className="self-center text-xs font-semibold text-emerald-700" aria-label="Canvas changes already added">
+                                              Canvas changes added
+                                            </span>
+                                          ) : confirmGraphAddCanvas ? (
+                                            <>
+                                              <button
+                                                type="button"
+                                                disabled={isGraphDetailBusy}
+                                                className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
+                                                aria-label="Confirm add canvas changes to chat"
+                                                onClick={() => {
+                                                  void (async () => {
+                                                    setGraphDetailError(null);
+                                                    setIsGraphDetailBusy(true);
+                                                    try {
+                                                      if (targetBranch === branchName) {
+                                                        await pinCanvasDiffToCurrentBranch(mergeRecord.id);
+                                                      } else {
+                                                        const result = await pinCanvasDiffToContext(mergeRecord.id, targetBranch);
+                                                        const pinnedNode = result?.pinnedNode;
+                                                        if (pinnedNode && graphHistories?.[targetBranch]) {
+                                                          setGraphHistories((prev) => {
+                                                            if (!prev) return prev;
+                                                            const existing = prev[targetBranch] ?? [];
+                                                            if (existing.some((n) => n.id === pinnedNode.id)) return prev;
+                                                            return { ...prev, [targetBranch]: [...existing, pinnedNode] };
+                                                          });
+                                                        }
+                                                      }
+                                                      setConfirmGraphAddCanvas(false);
+                                                    } catch (err) {
+                                                      setGraphDetailError((err as Error)?.message ?? 'Failed to add canvas changes');
+                                                    } finally {
+                                                      setIsGraphDetailBusy(false);
+                                                    }
+                                                  })();
+                                                }}
+                                              >
+                                                {isGraphDetailBusy ? 'Adding…' : 'Confirm'}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={isGraphDetailBusy}
+                                                className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                                                aria-label="Cancel add canvas changes to chat"
+                                                onClick={() => {
+                                                  setConfirmGraphAddCanvas(false);
+                                                  setGraphDetailError(null);
+                                                }}
+                                              >
+                                                Cancel
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              disabled={isGraphDetailBusy}
+                                              className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                                              aria-label="Add canvas changes to chat"
+                                              onClick={() => setConfirmGraphAddCanvas(true)}
+                                            >
+                                              Add canvas changes
+                                            </button>
+                                          )
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90"
+                                          aria-label="Jump to message"
+                                          onClick={async () => {
+                                            setPendingScrollTo({ nodeId: selectedGraphNodeId, targetBranch });
+                                            if (targetBranch !== branchName) {
+                                              await switchBranch(targetBranch);
+                                            }
+                                          }}
+                                        >
+                                          Jump to message
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -1479,13 +1884,19 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               style={{ paddingLeft: railCollapsed ? '96px' : '320px' }}
             >
               <div className="flex items-center gap-3 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
-                <button
-                  type="button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                  aria-label="Add attachment"
-                >
-                  <PaperClipIcon className="h-5 w-5" />
-                </button>
+                <div className="flex h-10 w-10 items-center justify-center">
+                  {features.uiAttachments ? (
+                    <button
+                      type="button"
+                      className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
+                      aria-label="Add attachment"
+                    >
+                      <PaperClipIcon className="h-5 w-5" />
+                    </button>
+                  ) : (
+                    <span aria-hidden="true" />
+                  )}
+                </div>
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
@@ -1582,11 +1993,31 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-900">
-              Merge {displayBranchName(branchName)} into trunk
+              Merge {displayBranchName(branchName)} into {displayBranchName(mergeTargetBranch)}
             </h3>
             <p className="text-sm text-muted">
               Summarize what to bring back and preview the Canvas diff. Canvas changes are never auto-applied.
             </p>
+            <div className="mt-4 space-y-2">
+              <label className="text-sm font-medium text-slate-800" htmlFor="merge-target-branch">
+                Target branch
+              </label>
+              <select
+                id="merge-target-branch"
+                value={mergeTargetBranch}
+                onChange={(event) => setMergeTargetBranch(event.target.value)}
+                className="w-full rounded-lg border border-divider/80 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                disabled={isMerging}
+              >
+                {sortedBranches
+                  .filter((branch) => branch.name !== branchName)
+                  .map((branch) => (
+                    <option key={branch.name} value={branch.name}>
+                      {displayBranchName(branch.name)}
+                    </option>
+                  ))}
+              </select>
+            </div>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800" htmlFor="merge-summary">
                 Merge summary
@@ -1596,7 +2027,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 value={mergeSummary}
                 onChange={(event) => setMergeSummary(event.target.value)}
                 rows={4}
-                placeholder="What should come back to trunk?"
+                placeholder={`What should come back to ${displayBranchName(mergeTargetBranch)}?`}
                 className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isMerging}
               />
@@ -1686,7 +2117,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     </div>
                   ) : (
                     <p className="px-3 py-2 text-sm text-muted">
-                      No Canvas differences between {displayBranchName(branchName)} and trunk.
+                      No Canvas differences between {displayBranchName(branchName)} and {displayBranchName(mergeTargetBranch)}.
                     </p>
                   )
                 ) : (
@@ -1720,6 +2151,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     setMergeError('This branch has no assistant payload to merge yet.');
                     return;
                   }
+                  if (mergeTargetBranch === branchName) {
+                    setMergeError('Target branch must be different from the source branch.');
+                    return;
+                  }
                   setIsMerging(true);
                   setMergeError(null);
                   try {
@@ -1728,7 +2163,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         sourceBranch: branchName,
-                        targetBranch: trunkName,
+                        targetBranch: mergeTargetBranch,
                         mergeSummary: mergeSummary.trim(),
                         sourceAssistantNodeId: selectedMergePayload.id
                       })
@@ -1737,7 +2172,15 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       const data = await res.json().catch(() => null);
                       throw new Error(data?.error?.message ?? 'Merge failed');
                     }
-                    await Promise.all([mutateHistory(), mutateArtefact()]);
+                    const data = (await res.json().catch(() => null)) as { mergeNode?: { id: string } } | null;
+                    const mergeNodeId = data?.mergeNode?.id ?? null;
+                    if (mergeNodeId) {
+                      setPendingScrollTo({ nodeId: mergeNodeId, targetBranch: mergeTargetBranch });
+                    }
+
+                    // Switch to the target so the user immediately sees the merge node created there.
+                    await switchBranch(mergeTargetBranch);
+
                     setShowMergeModal(false);
                     setMergeSummary('');
                   } catch (err) {
@@ -1749,7 +2192,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={isMerging || isMergePreviewLoading || !selectedMergePayload}
               >
-                {isMerging ? 'Merging…' : 'Merge into trunk'}
+                {isMerging ? 'Merging…' : `Merge into ${displayBranchName(mergeTargetBranch)}`}
               </button>
             </div>
           </div>

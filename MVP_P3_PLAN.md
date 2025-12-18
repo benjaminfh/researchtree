@@ -1,20 +1,28 @@
 # Phase 3: Branching, Merge UI, and Canvas (Artefact) Editing — Implementation Plan
 
 ## Goal
-Ship the full reasoning loop with branch-aware UX: create/switch branches, edit messages (auto-branch), merge back with summaries and optional Canvas (artefact) adoption, edit the Canvas on trunk with safeguards, and visualize shared/branch history. Close the gap between git-layer support and the Next.js app by adding route handlers, context rules, and UI polish so branching is reliable, explainable, and testable.
+Ship the full reasoning loop with branch-aware UX: create/switch branches, edit messages (auto-branch), merge back with summaries + a single assistant “payload”, edit the Canvas (artefact) on any branch, and visualize shared/branch history. Close the gap between git-layer support and the Next.js app by adding route handlers, context rules, and UI polish so branching is reliable, explainable, and testable.
+
+## Status Update (Implementation Drift)
+Phase 3 originally assumed a “trunk-only Canvas” and an `applyArtefact` merge toggle. The shipped implementation moved to:
+- Canvas (`artefact.md`) is editable per ref (branch-local).
+- Merges never auto-apply `artefact.md`; they record a diff snapshot and route chat content through a single assistant merge payload.
+- “Add canvas diff to context” is persistent (it appends an assistant message node).
+
+`MVP_P4_PLAN.md` and `MVP_GIT_ARCH_README.md` are the authoritative references for the current behavior.
 
 ## Product Alignment
 1. **Provenance-first** — Every node is append-only, one commit per node, branches reflect reasoning forks, merges carry explicit summaries (PRD Principles 1, 8, 9).
-2. **Trunk authority** — Canvas (artefact) edits only on trunk; branch merges optionally adopt branch artefact snapshot when `applyArtefact` is enabled (TECH_REQUIREMENTS sections 2–3).
+2. **Branch-local Canvas** — Canvas edits are allowed on any branch; merges record diffs but do not auto-apply `artefact.md` (Phase 4 semantics).
 3. **Context discipline** — Shared history visible; merge summaries injected, branch-specific context constrained (TECH_REQUIREMENTS section 4).
 4. **Dogfoodable** — Branch, explore, merge, and edit the Canvas (artefact) inside the app without falling back to CLI.
 
 ## Scope (In/Out)
 **In**
 - Branch list/create/switch endpoints + UI wired to git.
-- Merge flow (diff preview, summary required, choose trunk vs branch Canvas/artefact snapshot).
+- Merge flow (diff preview, summary required, select merge payload, choose target branch).
 - Message editing UX that auto-creates branch from parent node.
-- Canvas (artefact) editing on trunk (markdown editor + guardrails).
+- Canvas (artefact) editing on any ref (branch-local autosave).
 - Context builder: branch-aware history retrieval, merge summary inclusion, trimming.
 - Graph/visual cues: shared-history divider, merge/state badges, minimal DAG view (React Flow or list-based fallback).
 - Provider/model persistence per branch; keyboard shortcut toggle.
@@ -29,9 +37,9 @@ Ship the full reasoning loop with branch-aware UX: create/switch branches, edit 
 ## Architecture / System Changes
 ### Server (Next.js Route Handlers)
 - Add `/app/api/projects/[id]/branches/route.ts` (GET list, POST create, PATCH switch).
-- Add `/app/api/projects/[id]/merge/route.ts` (POST merge summary + Canvas/artefact adoption choice).
+- Add `/app/api/projects/[id]/merge/route.ts` (POST merge summary + payload selection + diff snapshot).
 - Add `/app/api/projects/[id]/edit/route.ts` (POST edit node -> create branch + append edited message).
-- Extend `/app/api/projects/[id]/artefact/route.ts` to support PUT/PATCH for trunk-only edits (route still named `artefact` because the file on disk is `artefact.md`, but surfaced in UI as Canvas).
+- Extend `/app/api/projects/[id]/artefact/route.ts` to support PUT/PATCH on an explicit `ref` (branch-local Canvas).
 - Ensure all routes share validation via `src/server/schemas.ts` and use git helpers directly.
 
 ### Data/Context
@@ -41,8 +49,8 @@ Ship the full reasoning loop with branch-aware UX: create/switch branches, edit 
 
 ### Client
 - Workspace branch bar: list, create, switch; display provider per branch.
-- Merge modal: shows merge summary input (required), Canvas diff (trunk vs branch), toggle to adopt branch Canvas.
-- Canvas editor: enabled only on trunk; disabled on branches; optimistic save + rollback on failure.
+- Merge modal: shows merge summary input (required), Canvas diff (target vs source), and payload preview/picker.
+- Canvas editor: enabled on any branch; autosave to the active `ref`.
 - Message edit action: triggers `/edit` route, switches to new branch, seeds composer with edited text.
 - Shared-history divider improvements and badges for merge/state nodes; minimal graph pane if time.
 
@@ -52,45 +60,45 @@ Ship the full reasoning loop with branch-aware UX: create/switch branches, edit 
 | `/api/projects/:id/branches` | GET | List branches with metadata. |
 | `/api/projects/:id/branches` | POST | Create branch (`name`, `fromRef?`). |
 | `/api/projects/:id/branches` | PATCH | Switch active branch (`name`). |
-| `/api/projects/:id/merge` | POST | Merge branch into current ref with `mergeSummary`, `sourceBranch`, `applyArtefact`. |
+| `/api/projects/:id/merge` | POST | Merge `sourceBranch` into `targetBranch` with `mergeSummary` and optional `sourceAssistantNodeId`. |
 | `/api/projects/:id/edit` | POST | Edit a node: create branch from parent and append edited message. |
-| `/api/projects/:id/artefact` | PUT/PATCH | Update Canvas/artefact (trunk-only guard). |
+| `/api/projects/:id/artefact` | PUT/PATCH | Update Canvas/artefact for a ref (`?ref=<name>`). |
 
 > Branch-aware calls now require an explicit ref (landed in Session 1): `/api/projects/:id/history?ref=<name>` scopes history, `/api/projects/:id/chat` includes `ref` in the body, `/api/projects/:id/interrupt?ref=<name>` cancels branch streams, and the new edit/merge routes require `fromRef`/`sourceBranch` + optional `targetBranch`. Always pass the active branch when hitting git-backed APIs.
 
 ## UI/UX Scope
 1. **Branch bar** — Create/switch, show trunk badge, per-branch provider/model label, error states.
 2. **Shared history** — Divider + show/hide shared nodes; badges for merge/state.
-3. **Merge UI** — Diff of Canvas (trunk vs branch), required summary textarea, adopt-Canvas toggle (`applyArtefact`), success/failure toasts.
-4. **Canvas editor (trunk-only)** — Markdown editor with dirty state, save/disable on branches, last-updated metadata.
+3. **Merge UI** — Diff of Canvas (target vs source), required summary textarea, payload preview/picker, success/failure toasts.
+4. **Canvas editor** — Markdown editor with autosave; works on any branch/ref.
 5. **Message edit** — Inline “Edit” on any message; on submit, branch created and user switched there; composer seeded.
 6. **Graph/visibility** — At minimum, per-branch history counts and merge/state badges; stretch: mini DAG via React Flow.
 7. **Settings polish** — Shortcut toggle (⌘+Enter), provider persistence per branch.
 
 ## Implementation Checklist
 - [x] Add missing route handlers for branches, merge, edit, artefact/Canvas update with zod validation + git helper wiring. *(Shipped during P3 Session 1; see `app/api/projects/[id]/*` handlers with `withProjectLock`.)*
-- [x] Update `useProjectData` to accept `ref` and expose branch-aware artefact/history; add branch-aware SWR keys. *(Hook now takes `ref`/`artefactRef` and history route supports `?ref=`; Canvas GET still returns trunk, by design.)*
+- [x] Update `useProjectData` to accept `ref` and expose branch-aware artefact/history; add branch-aware SWR keys. *(Hook takes `ref` and both history + Canvas reads use `?ref=`.)*
 - [x] Extend `useChatStream` to carry `ref` and provider per branch; ensure interrupt works cross-branch. *(Chat + interrupt routes persist ref-aware streams.)*
-- [x] WorkspaceClient: wire branch bar to new routes; integrate merge modal; enable Canvas editor on trunk. *(UI shipping; merge modal shipped summary-first in Session 1 and Canvas autosave shipped in Session 2 — see remaining Merge UI work below.)*
+- [x] WorkspaceClient: wire branch bar to new routes; integrate merge modal; enable Canvas editor on any ref. *(UI shipped; merge modal/payload support was finalized in Phase 4.)*
 - [x] Add message edit UI + handler calling `/edit`. *(Edit modal creates branch from parent commit + switches ref.)*
-- [x] Context builder: support `ref`, merge summaries, token-budget trimming; serialize writes per project. *(Implemented + consumed by chat route; targeted tests for merge-summary inclusion/trim logic still TODO below.)*
+- [x] Context builder: support `ref`, merge summaries, token-budget trimming; serialize writes per project. *(Implemented + consumed by chat route; regression tests exist.)*
 - [x] Graph/metadata: render merge/state badges; optional React Flow DAG. *(Shipped in Session 2: React Flow global git-graph-style lanes + bounded layout + Collapsed/All/Starred modes; shared/inherited styling uses `createdOnBranch` + unified colors.)*
-- [ ] Merge UI completion: add Canvas diff preview + `applyArtefact` toggle (adopt branch Canvas on merge) and wire to `/api/projects/[id]/merge` with coverage. *(Routes + git plumbing exist; UI is still summary-first.)*
-- [ ] Context builder coverage: add targeted tests proving merge summaries are injected and merged histories aren’t expanded on trunk. *(Implementation exists; this is a regression safety net.)*
+- [x] Merge UI completion: add Canvas diff preview + payload preview/picker + arbitrary target branch selection, and wire it end-to-end to `/api/projects/[id]/merge` with coverage. *(Finalized in Phase 4.)*
+- [x] Context builder coverage: add targeted tests proving merge summaries/payload are injected and merged histories aren’t expanded. *(Covered in server context tests.)*
 - [ ] Composer attachments/modes: wire or hide the “Add attachment” affordance until functional. *(UI now uses Heroicons; still no functionality.)*
-- [ ] Docs: README updates for Phase 3 flows; env vars unchanged. *(README still references artefact-era flows.)*
-- [ ] Tests per spec (server, hooks, components, e2e). *(Unit/integration suites updated; still need e2e smoke for branch create/switch, edit→branch, merge (with/without applyArtefact), and trunk-only Canvas edits.)*
+- [x] Docs: README updates for Phase 3 flows; env vars unchanged. *(README reflects branch-local Canvas + merge diff semantics.)*
+- [ ] Tests per spec (server, hooks, components, e2e). *(Unit/integration suites updated; still need e2e smoke for branch create/switch, edit→branch, merge, and Canvas editing across refs.)*
 
 ## Risks & Mitigations
 - **Route drift** (routes missing vs tests): define and implement handlers before UI changes; align zod schemas with git functions.
-- **Canvas (artefact) overwrite**: enforce trunk-only edits and merge toggle; add tests for rejection on branches.
+- **Canvas divergence confusion**: make the active ref explicit in the UI and always read/write Canvas with `?ref=`; keep merge diffs out of context by default.
 - **Context pollution**: ensure merge summaries included, merged branch history not in context when on trunk; add builder tests.
 - **Concurrent writes**: mutex per project/ref around chat/merge/edit; test for race release on error.
 - **LLM/provider errors**: surface in UI with retry; don’t double-append nodes.
 
 ## Success Criteria
-1. Users can branch, chat, edit messages (auto-branch), and merge back with required summary and optional Canvas/artefact adoption.
-2. Canvas (artefact) edits work on trunk and are blocked on branches.
+1. Users can branch, chat, edit messages (auto-branch), and merge back with required summary + a single assistant payload.
+2. Canvas (artefact) edits work on any branch/ref and are persisted as state nodes.
 3. Context assembly respects branch ref and merge summaries without leaking merged histories.
 4. UI clearly shows shared vs branch-specific nodes and merge/state badges.
 5. Tests in MVP_P3_TEST_SPEC pass (unit, integration, e2e smoke for branch/merge/edit/Canvas-artefact flows).
@@ -98,8 +106,8 @@ Ship the full reasoning loop with branch-aware UX: create/switch branches, edit 
 ## Implementation Notes
 ### P3 Session 1 - Handover
 - **Editing flow**: `/api/projects/[id]/edit` now requires `nodeId`, branches from the edited node’s parent commit, and appends the edited message on the new branch. Client UI surfaces “Edit” on user messages and opens a modal to save/switch branches.
-- **Merge plumbing**: Added `/api/projects/[id]/merge` route with `applyArtefact` flag (not yet exposed in UI) and wrapped merges in the project mutex to keep git state serialised.
-- **Canvas/artefact editor**: Trunk-only markdown editor panel with Save/Reset actions; branches remain read-only and see guidance text. Server PUT/PATCH route enforces trunk-only writes.
+- **Merge plumbing**: `/api/projects/[id]/merge` snapshots a single assistant payload + a Canvas diff on a merge node; merges do not auto-apply `artefact.md`.
+- **Canvas/artefact editor**: Branch-local autosave markdown editor; server reads/writes use `?ref=` for correctness.
 - **Branch-aware hooks/routes**: `useProjectData` and `useChatStream` accept `ref`; chat/interrupt routes register streams per project+ref; stream registry, context builder, and git writes hit the correct branch.
 - **WorkspaceClient UX**: Added merge modal, edit modal, shared-history divider, branch rail improvements (collapsible tips, home shortcut), floating composer adjustments, and renamed artefact to Canvas across UI.
 - **Testing updates**: Updated client tests to new copy/labels (“Workspace”, “Ask anything”, stop button, provider selector), added server tests for edit/merge/artefact routes, and git test for ref-aware `appendNode`.
@@ -119,7 +127,7 @@ Copy updates: Home page/rail now use “SideQuest”, “workspace”, “canvas
 Testing: Client tests updated for new UI strings and selectors; server tests cover new routes; git tests verify ref-aware append and artefact behavior.
 Outstanding Work / Next Steps
 Context builder tests: Implementation already passes `ref` and injects merge summaries, but we still need coverage proving merged-branch history stays trimmed on trunk and that merge-summary system prompts appear. Consider tests for parent-branch trimming after edits.
-Merge flow: UI still summary-only; no Canvas diff or adopt toggle. Decide how to expose apply-artefact once branches can produce state snapshots (or hide flag until later).
+Merge flow: UI now includes Canvas diff preview, merge payload selection, and an explicit “Add diff to context” action; there is no `applyArtefact` toggle.
 Graph visualization: Not implemented; still need minimal DAG/branch view or planned React Flow integration.
 Home rail archive: Spec mentions archiving workspace cards; not yet built.
 Collapse rail state: Confirm home rail hides contents when collapsed (currently only workspace rail collapses). Need consistent behavior on both pages per spec.
@@ -133,7 +141,7 @@ Docs: README/plan mention tailwind/postcss config added; confirm instructions co
 Hand-off Tips
 Always call server routes with ref; the git checkout logic assumes requests specify branch.
 When editing messages, you must send nodeId and the server branches from the parent commit; the UI modal already does this.
-Canvas/artefact editing is trunk-only; do not enable branch edits without adjusting git/LLM context.
+Canvas/artefact editing is branch-local; always pass `ref` for Canvas reads/writes and make the active ref obvious in UI.
 Whenever testing branch flows, ensure npm test passes (act warnings acceptable) and consider running vitest --runInBand if sandbox kill signals appear.
 If modifying the rail/composer layouts, watch for overlapping with the floating composer (main container needs pb-* to avoid underlap).
 
@@ -146,7 +154,7 @@ If modifying the rail/composer layouts, watch for overlapping with the floating 
 - **Rails & workspace polish** — Implement Home-rail archiving, make collapse state consistent across pages, and keep branch chips fixed per spec (no scrolling rails).
 - **Composer attachments & act cleanup** — Either wire the attachment/mode buttons or hide them until functional, and address the Vitest act warnings by wrapping streaming mutations in `act()`.
 - **Layout/nav fixes** — Ensure the Canvas panel always fills the viewport above the floating composer, add the home nav affordance requested in the spec, and verify the rail doesn’t scroll on long branch lists across browsers.
-- **Docs + e2e coverage** — Update README/plan copy to describe branching + Canvas flows and add e2e smoke tests covering branch create/switch, edit, merge (with and without Canvas adoption), and trunk-only Canvas edits.
+- **Docs + e2e coverage** — Update README/plan copy to describe branching + Canvas flows and add e2e smoke tests covering branch create/switch, edit, merge, and Canvas edits across refs.
 
 #### Session 2 - Progress
 - **Stabilized WorkspaceClient test/runtime crashes**

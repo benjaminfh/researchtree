@@ -5,10 +5,7 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
-    environmentMatchGlobs: [
-      ['tests/server/**/*.test.{ts,tsx}', 'node'],
-      ['tests/git/**/*.test.{ts,tsx}', 'node']
-    ],
+    maxWorkers: 4,
     setupFiles: ['tests/setup.ts']
   },
   resolve: {

@@ -39,14 +39,14 @@ Build a minimal viable product that proves the core concept: git-backed reasonin
 project-repo/
 ├── .git/                          # Standard git metadata
 ├── nodes.jsonl                    # Reasoning nodes (one JSON object per line, append-only)
-├── artefact.md                    # Current artefact state
+├── artefact.md                    # Canvas state for this ref (branch-local)
 ├── project.json                   # Project metadata
 └── README.md                      # User-facing project description
 ```
 
 Git branches handle reasoning branches directly - no need for separate refs tracking.
 
-**Key constraint**: `artefact.md` is only editable on trunk. Branches have read-only access to the artefact - they produce insights/instructions that get merged back to trunk, where the user can then edit the artefact.
+**Key constraint**: `artefact.md` is edited per ref (branch-local). Merges do not auto-apply Canvas changes; they record a diff snapshot that can be explicitly brought into context as a persisted assistant message.
 
 ### Node Schema
 
@@ -68,6 +68,9 @@ interface Node {
   // Merge node fields
   mergeFrom?: string;              // Source branch ref
   mergeSummary?: string;           // User-provided summary of what to bring back
+  mergedAssistantNodeId?: string;  // Source assistant payload node ID
+  mergedAssistantContent?: string; // Snapshot of the assistant payload content
+  canvasDiff?: string;             // Snapshot of Canvas diff (not auto-applied)
 
   // Metadata
   contextWindow?: string[];        // Node IDs included in context
@@ -80,13 +83,13 @@ interface Node {
 
 - Each user message + assistant response = **1 git commit**
 - Commits append new lines to `nodes.jsonl` (never modify existing lines)
-- On trunk only: commits may also update `artefact.md`
+- Commits may also update `artefact.md` on the targeted ref when saving the Canvas
 - Branch names map to reasoning threads (trunk = main, other branches = feature branches)
 - Commit messages are structured: `[node-type] {summary}`
 
 **Merge behavior**: Unlike regular git, merging a branch just appends a merge node to trunk's `nodes.jsonl`. No line-by-line merge conflicts are possible because:
 - `nodes.jsonl` is append-only (each branch appends its own lines)
-- `artefact.md` is only modified on trunk (branches don't touch it)
+- merges do not auto-apply `artefact.md`; they snapshot a diff and route chat changes through a single “merge payload” assistant message
 
 ### Branch Management
 
@@ -181,8 +184,8 @@ Branch metadata (intent, creation time) stored in `project.json` or derived from
 - Implement merge UI:
   - Show artefact diff from branch
   - Text box for merge summary
-  - Toggle to apply/skip artefact changes
   - Create merge commit on trunk
+  - Provide an explicit “Add diff to context” action that appends a persisted assistant node (so later prompts reflect what was included)
 - Implement message editing:
   - Edit button on any message
   - If at head: create branch from parent, start new branch with edited message
@@ -363,33 +366,33 @@ GET    /api/projects/:id/graph    // Get full DAG for visualization
 
 ### Merge Data Model
 
-When merging branch → trunk:
+When merging source branch → target branch:
 
 ```typescript
 interface MergeRequest {
   projectId: string;
-  branchName: string;            // Source branch to merge
-  mergeSummary: string;          // Required: what insights/changes to bring back
-  applyArtefactChanges: boolean; // Apply branch's artefact state to trunk?
+  sourceBranch: string;
+  targetBranch: string;
+  mergeSummary: string;            // Required: what to bring back
+  sourceAssistantNodeId?: string;  // Optional override for merge payload selection
 }
 ```
 
 ### Merge Behavior
 
-1. **Compute artefact diff**: Compare trunk's current artefact vs branch's current artefact
+1. **Compute Canvas diff**: Compare `artefact.md` on `targetBranch` vs `sourceBranch`
 2. **User reviews**:
-   - See diff if artefact changed
+   - See diff if Canvas changed
    - Write merge summary (required)
-   - Choose whether to apply artefact changes (default: yes if diff exists)
-3. **Create merge commit on trunk**:
+3. **Create merge node on target**:
    - Type: `merge`
    - Contains: merge summary text
-   - Artefact state: trunk's artefact OR branch's artefact (depending on choice)
-   - Metadata: link to source branch, timestamp
+   - Canvas: diff is recorded on the merge node, but `artefact.md` is not auto-modified
+   - Metadata: link to source branch + chosen payload assistant content snapshot
 4. **Context impact**:
-   - Future trunk messages see merge summary in context
+   - Future target-branch messages see merge summary and merge payload in context
    - Do NOT traverse branch's full history (would pollute context)
-   - Merge summary acts as compressed representation of branch's insights
+   - Merge summary + payload acts as compressed representation of branch's insights
 
 ### Merge Use Cases
 
@@ -402,10 +405,9 @@ All these use the same merge flow, differ only in summary content and artefact c
 
 ### MVP Constraints
 
-- **No 3-way merge**: User chooses branch's artefact OR trunk's artefact (no line-by-line merging)
-- **No conflict resolution UI**: If user wants to cherry-pick changes, they manually edit artefact after merge
-- **No merge preview**: Just show diff and let user decide
-- **Manual process acceptable**: This is expert workflow, not consumer product
+- **No Canvas auto-merge**: Merges never auto-apply `artefact.md`; they only record a diff snapshot.
+- **No conflict resolution UI**: If user wants to bring changes onto the target Canvas, they do it by editing the Canvas on the target branch (optionally after pinning the diff into context).
+- **Manual process acceptable**: This is an expert workflow, not a consumer product.
 
 ---
 

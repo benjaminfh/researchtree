@@ -97,6 +97,7 @@ describe('/api/projects/[id]/chat', () => {
       params: { id: 'project-1' }
     });
     expect(response.status).toBe(200);
+    await response.text();
 
     expect(mocks.buildChatContext).toHaveBeenCalledWith('project-1', expect.objectContaining({ ref: 'feature/test' }));
     expect(mocks.registerStream).toHaveBeenCalledWith('project-1', expect.any(AbortController), 'feature/test');
