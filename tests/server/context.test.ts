@@ -4,7 +4,8 @@ import { buildChatContext } from '@/src/server/context';
 const mocks = vi.hoisted(() => {
   return {
     getNodes: vi.fn(),
-    getArtefact: vi.fn()
+    getArtefact: vi.fn(),
+    getArtefactFromRef: vi.fn()
   };
 });
 
@@ -13,13 +14,15 @@ vi.mock('@git/nodes', () => ({
 }));
 
 vi.mock('@git/artefact', () => ({
-  getArtefact: mocks.getArtefact
+  getArtefact: mocks.getArtefact,
+  getArtefactFromRef: mocks.getArtefactFromRef
 }));
 
 describe('buildChatContext', () => {
   beforeEach(() => {
     mocks.getNodes.mockReset();
     mocks.getArtefact.mockReset();
+    mocks.getArtefactFromRef.mockReset();
   });
 
   it('includes artefact snapshot and recent messages', async () => {

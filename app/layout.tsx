@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'ResearchTree',
+  title: 'SideQuest',
   description: 'Git-backed reasoning workspace'
 };
 

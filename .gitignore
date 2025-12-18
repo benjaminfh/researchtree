@@ -7,6 +7,7 @@
 /.next/
 /.test-projects/
 .DS_Store
+tsconfig.tsbuildinfo
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

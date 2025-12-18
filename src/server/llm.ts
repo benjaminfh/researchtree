@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { ChatMessage } from './context';
+import { toOpenAIReasoningEffort, type ThinkingSetting } from '@/src/shared/thinking';
 
 export type LLMProvider = 'openai' | 'gemini' | 'mock';
 
@@ -13,6 +14,7 @@ export interface LLMStreamOptions {
   messages: ChatMessage[];
   signal?: AbortSignal;
   provider?: LLMProvider;
+  thinking?: ThinkingSetting;
 }
 
 const encoder = new TextEncoder();
@@ -47,17 +49,18 @@ export function getDefaultModelForProvider(provider: LLMProvider): string {
 export async function* streamAssistantCompletion({
   messages,
   signal,
-  provider
+  provider,
+  thinking
 }: LLMStreamOptions): AsyncGenerator<LLMStreamChunk> {
   const resolvedProvider = resolveLLMProvider(provider);
 
   if (resolvedProvider === 'openai') {
-    yield* streamFromOpenAI(messages, signal);
+    yield* streamFromOpenAI(messages, signal, thinking);
     return;
   }
 
   if (resolvedProvider === 'gemini') {
-    yield* streamFromGemini(messages, signal);
+    yield* streamFromGemini(messages, signal, thinking);
     return;
   }
 
@@ -68,7 +71,11 @@ export function encodeChunk(content: string): Uint8Array {
   return encoder.encode(content);
 }
 
-async function* streamFromOpenAI(messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<LLMStreamChunk> {
+async function* streamFromOpenAI(
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  thinking?: ThinkingSetting
+): AsyncGenerator<LLMStreamChunk> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     console.warn('[LLM] Missing OPENAI_API_KEY, using mock provider instead.');
@@ -85,12 +92,27 @@ async function* streamFromOpenAI(messages: ChatMessage[], signal?: AbortSignal):
     content: message.content
   })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
-  const stream = await openAIClient.chat.completions.create({
+  const reasoningEffort = thinking ? toOpenAIReasoningEffort(thinking) : null;
+  const baseRequest = {
     model: DEFAULT_OPENAI_MODEL,
     messages: formattedMessages,
     temperature: 0.2,
     stream: true
-  });
+  } as const;
+
+  let stream: any;
+  try {
+    stream = await openAIClient.chat.completions.create({
+      ...baseRequest,
+      ...(reasoningEffort ? ({ reasoning_effort: reasoningEffort } as any) : null)
+    } as any);
+  } catch (error) {
+    if (reasoningEffort) {
+      stream = await openAIClient.chat.completions.create(baseRequest as any);
+    } else {
+      throw error;
+    }
+  }
 
   if (signal) {
     signal.addEventListener('abort', () => {
@@ -120,7 +142,11 @@ async function* streamFromOpenAI(messages: ChatMessage[], signal?: AbortSignal):
   }
 }
 
-async function* streamFromGemini(messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<LLMStreamChunk> {
+async function* streamFromGemini(
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  thinking?: ThinkingSetting
+): AsyncGenerator<LLMStreamChunk> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.warn('[LLM] Missing GEMINI_API_KEY, using mock provider instead.');
@@ -132,15 +158,25 @@ async function* streamFromGemini(messages: ChatMessage[], signal?: AbortSignal):
     geminiClient = new GoogleGenerativeAI(apiKey);
   }
 
-  const contents = messages.map((message) => ({
-    role: message.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: message.content }]
-  }));
+  const systemInstruction = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content)
+    .join('\n\n')
+    .trim();
+  const contents = messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: message.content }]
+    }));
 
-  const pickModel = (modelName: string) => geminiClient!.getGenerativeModel({ model: modelName });
+  const pickModel = (modelName: string) =>
+    geminiClient!.getGenerativeModel(systemInstruction ? { model: modelName, systemInstruction } : { model: modelName });
 
   const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
-  const stream = await pickModel(modelName).generateContentStream({ contents });
+  const model = pickModel(modelName);
+  let stream: any;
+  stream = await model.generateContentStream({ contents } as any);
 
   for await (const chunk of stream.stream) {
     if (signal?.aborted) {

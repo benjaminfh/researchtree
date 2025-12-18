@@ -14,6 +14,7 @@ export const INITIAL_BRANCH = 'main';
 export const PROJECT_FILES = {
   nodes: 'nodes.jsonl',
   artefact: 'artefact.md',
+  stars: 'stars.json',
   metadata: 'project.json',
   readme: 'README.md'
 } as const;

@@ -2,7 +2,8 @@ import { mergeBranch } from '@git/branches';
 import { getProject } from '@git/projects';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { mergeRequestSchema } from '@/src/server/schemas';
-import { withProjectLock } from '@/src/server/locks';
+import { withProjectLockAndRefLock } from '@/src/server/locks';
+import { getCurrentBranchName } from '@git/utils';
 
 interface RouteContext {
   params: { id: string };
@@ -22,13 +23,14 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const { sourceBranch, mergeSummary, targetBranch, applyArtefact } = parsed.data;
-    return await withProjectLock(project.id, async () => {
+    const resolvedTargetBranch = targetBranch ?? (await getCurrentBranchName(project.id));
+    return await withProjectLockAndRefLock(project.id, resolvedTargetBranch, async () => {
       try {
         const mergeNode = await mergeBranch(project.id, sourceBranch, mergeSummary, {
-          targetBranch,
+          targetBranch: resolvedTargetBranch,
           applyArtefact: !!applyArtefact
         });
-        return Response.json({ mergeNode, applyArtefactApplied: !!applyArtefact && !!mergeNode.applyArtefact });
+        return Response.json({ mergeNode, applyArtefactApplied: false });
       } catch (err) {
         const message = (err as Error)?.message ?? 'Merge failed';
         if (message.toLowerCase().includes('does not exist')) {

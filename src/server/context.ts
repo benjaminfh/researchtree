@@ -1,5 +1,5 @@
 import { getNodes } from '@git/nodes';
-import { getArtefact } from '@git/artefact';
+import { getArtefact, getArtefactFromRef } from '@git/artefact';
 import type { NodeRecord } from '@git/types';
 import { readNodesFromRef } from '@git/utils';
 
@@ -25,7 +25,7 @@ interface ContextOptions {
 export async function buildChatContext(projectId: string, options?: ContextOptions): Promise<ChatContext> {
   const limit = options?.limit ?? DEFAULT_HISTORY_LIMIT;
   const nodes = options?.ref ? await readNodesFromRef(projectId, options.ref) : await getNodes(projectId);
-  const artefact = await getArtefact(projectId);
+  const artefact = options?.ref ? await getArtefactFromRef(projectId, options.ref) : await getArtefact(projectId);
 
   const trimmed = nodes.slice(-limit);
   const systemPrompt = buildSystemPrompt(artefact);

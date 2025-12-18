@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
+import { ArchiveBoxArrowDownIcon } from '@/src/components/workspace/HeroIcons';
 import type { ProjectMetadata } from '@git/types';
 
 interface HomePageContentProps {
@@ -58,6 +59,7 @@ export function HomePageContent({ projects }: HomePageContentProps) {
   };
 
   const recentProjects = useMemo(() => projects.filter((p) => !archived.has(p.id)).slice(0, 12), [projects, archived]);
+  const archivedProjects = useMemo(() => projects.filter((p) => archived.has(p.id)), [projects, archived]);
 
   const handleArchive = (id: string) => {
     const next = new Set(archived);
@@ -86,18 +88,25 @@ export function HomePageContent({ projects }: HomePageContentProps) {
       className="grid min-h-screen bg-[rgba(238,243,255,0.4)]"
       style={{ gridTemplateColumns: railCollapsed ? '72px 1fr' : '270px 1fr' }}
     >
-      <aside className="relative flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4">
-        <button
-          type="button"
-          onClick={toggleRail}
-          className="focus-ring absolute left-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
-          aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-        >
-          {railCollapsed ? '›' : '‹'}
-        </button>
+      <aside className="flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleRail}
+            className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
+            aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          >
+            {railCollapsed ? '›' : '‹'}
+          </button>
+          {!railCollapsed ? (
+            <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
+              <span>SideQuest</span>
+            </div>
+          ) : null}
+        </div>
 
         {!railCollapsed ? (
-          <div className="mt-14 flex flex-col gap-3">
+          <div className="mt-6 flex flex-col gap-3">
             <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
               Workspaces
             </div>
@@ -132,7 +141,7 @@ export function HomePageContent({ projects }: HomePageContentProps) {
                           }`}
                           aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
                         >
-                          {isConfirming ? '!' : '🗑️'}
+                          {isConfirming ? '!' : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
                         </button>
                       </div>
                     </li>
@@ -140,38 +149,36 @@ export function HomePageContent({ projects }: HomePageContentProps) {
                 })}
               </ul>
             </div>
-            {archived.size > 0 ? (
+            {archivedProjects.length > 0 ? (
               <div className="mt-4 space-y-2">
                 <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Archived</div>
                 <ul className="grid gap-2">
-                  {projects
-                    .filter((p) => archived.has(p.id))
-                    .map((project) => {
-                      const isConfirming = confirming.has(project.id);
-                      return (
-                        <li key={project.id} className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-sm font-semibold text-slate-900">{project.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isConfirming) {
-                                  handleUnarchive(project.id);
-                                } else {
-                                  setConfirming((prev) => new Set(prev).add(project.id));
-                                }
-                              }}
-                              className={`rounded-full px-3 py-1 text-xs font-semibold shadow-sm transition ${
-                                isConfirming
-                                  ? 'border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
-                                  : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
-                              }`}
-                            >
-                              {isConfirming ? 'Confirm' : 'Unarchive'}
-                            </button>
-                          </div>
-                        </li>
-                      );
+                  {archivedProjects.map((project) => {
+                    const isConfirming = confirming.has(project.id);
+                    return (
+                      <li key={project.id} className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-semibold text-slate-900">{project.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isConfirming) {
+                                handleUnarchive(project.id);
+                              } else {
+                                setConfirming((prev) => new Set(prev).add(project.id));
+                              }
+                            }}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold shadow-sm transition ${
+                              isConfirming
+                                ? 'border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
+                                : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
+                            }`}
+                          >
+                            {isConfirming ? 'Confirm' : 'Unarchive'}
+                          </button>
+                        </div>
+                      </li>
+                    );
                     })}
                 </ul>
               </div>

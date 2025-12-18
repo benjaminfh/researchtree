@@ -1,22 +1,27 @@
 import { getProject } from '@git/projects';
-import { getArtefact, updateArtefact } from '@git/artefact';
-import { getNodes } from '@git/nodes';
+import { getArtefactFromRef, updateArtefact } from '@git/artefact';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { updateArtefactSchema } from '@/src/server/schemas';
-import { withProjectLock } from '@/src/server/locks';
+import { withProjectLockAndRefLock } from '@/src/server/locks';
+import { readNodesFromRef } from '@git/utils';
+import { INITIAL_BRANCH } from '@git/constants';
 
 interface RouteContext {
   params: { id: string };
 }
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   try {
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
-
-    const [artefact, nodes] = await Promise.all([getArtefact(project.id), getNodes(project.id)]);
+    const { searchParams } = new URL(request.url);
+    const ref = searchParams.get('ref')?.trim() || null;
+    const [artefact, nodes] = await Promise.all([
+      ref ? getArtefactFromRef(project.id, ref) : getArtefactFromRef(project.id, INITIAL_BRANCH),
+      ref ? readNodesFromRef(project.id, ref) : readNodesFromRef(project.id, INITIAL_BRANCH)
+    ]);
     const lastState = [...nodes].reverse().find((node) => node.type === 'state');
 
     return Response.json({
@@ -42,15 +47,18 @@ export async function PUT(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    return await withProjectLock(project.id, async () => {
+    const { searchParams } = new URL(request.url);
+    const ref = searchParams.get('ref')?.trim() || INITIAL_BRANCH;
+
+    return await withProjectLockAndRefLock(project.id, ref, async () => {
       try {
-        await updateArtefact(project.id, parsed.data.content, undefined);
+        await updateArtefact(project.id, parsed.data.content, ref);
       } catch (err) {
         const message = (err as Error)?.message ?? 'Failed to update artefact';
         throw badRequest(message);
       }
 
-      const [artefact, nodes] = await Promise.all([getArtefact(project.id), getNodes(project.id)]);
+      const [artefact, nodes] = await Promise.all([getArtefactFromRef(project.id, ref), readNodesFromRef(project.id, ref)]);
       const lastState = [...nodes].reverse().find((node) => node.type === 'state');
 
       return Response.json(

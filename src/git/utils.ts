@@ -127,6 +127,18 @@ export async function getCurrentBranchName(projectId: string): Promise<string> {
   return trimmed;
 }
 
+export async function forceCheckoutRef(projectId: string, ref: string): Promise<void> {
+  await assertProjectExists(projectId);
+  const git = simpleGit(getProjectPath(projectId));
+  try {
+    await git.raw(['checkout', '-f', ref]);
+  } catch {
+    await git.raw(['reset', '--hard']).catch(() => undefined);
+    await git.raw(['clean', '-fd']).catch(() => undefined);
+    await git.raw(['checkout', '-f', ref]);
+  }
+}
+
 export function isTrunk(branch: string): boolean {
   return branch === INITIAL_BRANCH;
 }

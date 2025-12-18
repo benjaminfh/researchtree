@@ -1,12 +1,13 @@
-import { appendNode } from '@git/nodes';
+import { appendNodeToRefNoCheckout } from '@git/nodes';
 import { getProject } from '@git/projects';
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
-import { buildChatContext } from '@/src/server/context';
+import { buildChatContext, type ChatMessage } from '@/src/server/context';
 import { encodeChunk, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { withProjectLock } from '@/src/server/locks';
+import { acquireProjectRefLock } from '@/src/server/locks';
+import { getThinkingSystemInstruction, type ThinkingSetting } from '@/src/shared/thinking';
 
 interface RouteContext {
   params: { id: string };
@@ -25,51 +26,101 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { message, intent, llmProvider, ref } = parsed.data;
+    const { message, intent, llmProvider, ref, thinking } = parsed.data as typeof parsed.data & { thinking?: ThinkingSetting };
     const provider = resolveLLMProvider(llmProvider);
     const tokenLimit = await getProviderTokenLimit(provider);
 
-    return await withProjectLock(project.id, async () => {
-      await appendNode(
-        project.id,
-        { type: 'message', role: 'user', content: message, contextWindow: [], tokensUsed: undefined },
-        { ref }
-      );
+    const targetRef = ref ?? 'main';
+    const releaseLock = await acquireProjectRefLock(project.id, targetRef);
+    const abortController = new AbortController();
 
-      const context = await buildChatContext(project.id, { tokenLimit, ref });
+    try {
+      await appendNodeToRefNoCheckout(project.id, targetRef, {
+        type: 'message',
+        role: 'user',
+        content: message,
+        contextWindow: [],
+        tokensUsed: undefined
+      });
+      const context = await buildChatContext(project.id, { tokenLimit, ref: targetRef });
+      const thinkingInstruction = getThinkingSystemInstruction(thinking);
+      const messagesForCompletion: ChatMessage[] = thinkingInstruction
+        ? [
+            ...context.messages.slice(0, 1),
+            { role: 'system', content: thinkingInstruction } satisfies ChatMessage,
+            ...context.messages.slice(1)
+          ]
+        : context.messages;
 
-      const controller = new AbortController();
-      registerStream(project.id, controller, ref);
+      registerStream(project.id, abortController, targetRef);
 
-      let buffered = '';
-      try {
-        for await (const chunk of streamAssistantCompletion({ messages: context.messages, signal: controller.signal, provider })) {
-          buffered += chunk.content;
-        }
-      } finally {
-        releaseStream(project.id, ref);
-      }
+      let released = false;
+      const releaseAll = () => {
+        if (released) return;
+        released = true;
+        releaseStream(project.id, targetRef);
+        releaseLock();
+      };
 
-      await appendNode(
-        project.id,
-        {
-          type: 'message',
-          role: 'assistant',
-          content: buffered,
-          interrupted: controller.signal.aborted
-        },
-        { ref }
-      );
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controllerStream) {
+          let buffered = '';
+          let streamError: unknown = null;
 
-      const stream = new ReadableStream({
-        start(controllerStream) {
-          controllerStream.enqueue(encodeChunk(buffered));
+          try {
+            for await (const chunk of streamAssistantCompletion({
+              messages: messagesForCompletion,
+              signal: abortController.signal,
+              provider
+            })) {
+              buffered += chunk.content;
+              controllerStream.enqueue(encodeChunk(chunk.content));
+            }
+          } catch (error) {
+            streamError = error;
+          }
+
+          try {
+            await appendNodeToRefNoCheckout(
+              project.id,
+              targetRef,
+              {
+                type: 'message',
+                role: 'assistant',
+                content: buffered,
+                interrupted: abortController.signal.aborted || streamError !== null
+              }
+            );
+          } catch (error) {
+            streamError = streamError ?? error;
+          } finally {
+            releaseAll();
+          }
+
+          if (streamError) {
+            controllerStream.error(streamError);
+            return;
+          }
           controllerStream.close();
+        },
+        cancel() {
+          abortController.abort();
+          releaseAll();
         }
       });
 
-      return new Response(stream, { headers: { 'Content-Type': 'text/plain' } });
-    });
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive'
+        }
+      });
+    } catch (error) {
+      releaseStream(project.id, targetRef);
+      releaseLock();
+      throw error;
+    }
   } catch (error) {
     return handleRouteError(error);
   }

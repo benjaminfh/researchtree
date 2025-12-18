@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   getCurrentBranchName: vi.fn(),
   createBranch: vi.fn(),
   appendNode: vi.fn(),
-  getCommitHashForNode: vi.fn()
+  getCommitHashForNode: vi.fn(),
+  readNodesFromRef: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -15,7 +16,8 @@ vi.mock('@git/projects', () => ({
 
 vi.mock('@git/utils', () => ({
   getCurrentBranchName: mocks.getCurrentBranchName,
-  getCommitHashForNode: mocks.getCommitHashForNode
+  getCommitHashForNode: mocks.getCommitHashForNode,
+  readNodesFromRef: mocks.readNodesFromRef
 }));
 
 vi.mock('@git/branches', () => ({
@@ -43,6 +45,9 @@ describe('/api/projects/[id]/edit', () => {
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.getCommitHashForNode.mockResolvedValue('commit-hash');
     mocks.appendNode.mockResolvedValue({ id: 'node-1', type: 'message' });
+    mocks.readNodesFromRef.mockResolvedValue([
+      { id: 'node-5', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: null }
+    ]);
   });
 
   it('creates edit branch and appends node', async () => {
@@ -54,13 +59,39 @@ describe('/api/projects/[id]/edit', () => {
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash');
     expect(mocks.appendNode).toHaveBeenCalledWith(
       'project-1',
-      expect.objectContaining({ content: 'Edited message' }),
+      expect.objectContaining({ role: 'user', content: 'Edited message' }),
       expect.objectContaining({ ref: 'edit-123' })
     );
   });
 
+  it('preserves the original node role when editing', async () => {
+    mocks.readNodesFromRef.mockResolvedValueOnce([
+      { id: 'node-5', type: 'message', role: 'assistant', content: 'Original', timestamp: 0, parent: null }
+    ]);
+    const res = await POST(createRequest({ content: 'Edited assistant', branchName: 'edit-123', fromRef: 'main', nodeId: 'node-5' }), {
+      params: { id: 'project-1' }
+    });
+    expect(res.status).toBe(201);
+    expect(mocks.appendNode).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({ role: 'assistant', content: 'Edited assistant' }),
+      expect.objectContaining({ ref: 'edit-123' })
+    );
+  });
+
+  it('returns 400 when the node is not a message', async () => {
+    mocks.readNodesFromRef.mockResolvedValueOnce([{ id: 'node-5', type: 'merge' }]);
+    const res = await POST(createRequest({ content: 'Edited message', branchName: 'edit-123', fromRef: 'main', nodeId: 'node-5' }), {
+      params: { id: 'project-1' }
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('uses default branch name and current ref when not provided', async () => {
     mocks.getCurrentBranchName.mockResolvedValueOnce('feature/foo');
+    mocks.readNodesFromRef.mockResolvedValueOnce([
+      { id: 'node-1', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: null }
+    ]);
     const res = await POST(createRequest({ content: 'Default branch', nodeId: 'node-1' }), { params: { id: 'project-1' } });
     expect(res.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', expect.stringMatching(/^edit-/), 'commit-hash');

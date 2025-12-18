@@ -56,6 +56,9 @@ describe('Project operations', () => {
     const artefact = await fs.readFile(getProjectFilePath(project.id, 'artefact'), 'utf-8');
     expect(artefact).toBe('');
 
+    const stars = JSON.parse(await fs.readFile(getProjectFilePath(project.id, 'stars'), 'utf-8'));
+    expect(stars).toEqual({ starredNodeIds: [] });
+
     expect(await fs.stat(getProjectFilePath(project.id, 'metadata'))).toBeTruthy();
     expect(await fs.stat(getProjectFilePath(project.id, 'readme'))).toBeTruthy();
 

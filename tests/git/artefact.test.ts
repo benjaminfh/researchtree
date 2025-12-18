@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
-import { createBranch, deleteProject, getArtefact, initProject, switchBranch, updateArtefact } from '../../src/git';
+import { createBranch, deleteProject, getArtefact, getArtefactFromRef, initProject, switchBranch, updateArtefact } from '../../src/git';
 import { setProjectsRoot } from '../../src/git/constants';
 import { getProjectFilePath } from '../../src/git/utils';
 import {
@@ -49,7 +49,7 @@ describe('Artefact operations', () => {
   });
 
   it('updateArtefact updates file and creates state node on trunk', async () => {
-    await updateArtefact(projectId, 'Artefact content');
+    await updateArtefact(projectId, 'Artefact content', 'main');
     const filePath = getProjectFilePath(projectId, 'artefact');
     const artefactContent = await fs.readFile(filePath, 'utf-8');
     expect(artefactContent).toBe('Artefact content');
@@ -65,26 +65,29 @@ describe('Artefact operations', () => {
     expect(lastNode.artefactSnapshot).toMatch(/^[0-9a-f]{40}$/i);
   });
 
-  it('updateArtefact writes to trunk even if current branch was switched', async () => {
+  it('updateArtefact defaults to the currently checked-out branch', async () => {
     await createBranch(projectId, 'feature');
     await switchBranch(projectId, 'feature');
     await expect(updateArtefact(projectId, 'Content')).resolves.not.toThrow();
-    await switchBranch(projectId, 'main');
     expect(await getArtefact(projectId)).toBe('Content');
+    await switchBranch(projectId, 'main');
+    expect(await getArtefact(projectId)).toBe('');
   });
 
-  it('updateArtefact rejects non-trunk target ref', async () => {
+  it('updateArtefact can target a specific ref', async () => {
     await createBranch(projectId, 'feature');
-    await expect(updateArtefact(projectId, 'Should fail', 'feature')).rejects.toThrow(/trunk/i);
+    await expect(updateArtefact(projectId, 'Branch canvas', 'feature')).resolves.not.toThrow();
+    expect(await getArtefactFromRef(projectId, 'feature')).toBe('Branch canvas');
+    expect(await getArtefactFromRef(projectId, 'main')).toBe('');
   });
 
-  it('getArtefact on branch shows trunk content read-only', async () => {
-    await updateArtefact(projectId, 'Main artefact');
+  it('branch canvas snapshots do not follow trunk after divergence', async () => {
+    await updateArtefact(projectId, 'Main artefact', 'main');
     await createBranch(projectId, 'feature');
     await switchBranch(projectId, 'feature');
     expect(await getArtefact(projectId)).toBe('Main artefact');
     await switchBranch(projectId, 'main');
-    await updateArtefact(projectId, 'Updated main');
+    await updateArtefact(projectId, 'Updated main', 'main');
     await switchBranch(projectId, 'feature');
     expect(await getArtefact(projectId)).toBe('Main artefact');
   });
