@@ -6,6 +6,7 @@ import ReactFlow, {
   type Edge,
   type EdgeProps,
   Handle,
+  PanOnScrollMode,
   type ReactFlowInstance,
   type Viewport,
   type Node,
@@ -405,7 +406,7 @@ export function buildGraphNodes(
     }
   }
 
-  const graphNodes = Array.from(nodeById.values()).map((node) => {
+  const graphNodes: GraphNode[] = Array.from(nodeById.values()).map((node): GraphNode => {
     const parents: string[] = [];
     if (node.parent) parents.push(node.parent);
     if (node.type === 'merge') {
@@ -1078,14 +1079,14 @@ export function WorkspaceGraph({
                 }
                 const bottom = computeBottomViewport();
                 followBottomByModeRef.current[mode] = Math.abs(viewport.y - bottom.y) < 24;
-              }}
-              panOnScroll={shouldPanOnScroll}
-              panOnScrollMode="vertical"
-              panOnDrag={false}
-              translateExtent={translateExtent}
-              zoomOnScroll={false}
-              zoomOnPinch={false}
-              zoomOnDoubleClick={false}
+	              }}
+	              panOnScroll={shouldPanOnScroll}
+	              panOnScrollMode={PanOnScrollMode.Vertical}
+	              panOnDrag={false}
+	              translateExtent={translateExtent}
+	              zoomOnScroll={false}
+	              zoomOnPinch={false}
+	              zoomOnDoubleClick={false}
               minZoom={1}
               maxZoom={1}
               proOptions={{ hideAttribution: true }}
@@ -1109,5 +1110,5 @@ function formatLabel(node: NodeRecord) {
   if (node.type === 'message') {
     return `${node.content.slice(0, 42)}${node.content.length > 42 ? '…' : ''}`;
   }
-  return node.id;
+  throw new Error('Unhandled node type');
 }

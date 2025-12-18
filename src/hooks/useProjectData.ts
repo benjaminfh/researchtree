@@ -1,4 +1,4 @@
-import useSWR from 'swr';
+import useSWR, { type KeyedMutator } from 'swr';
 import type { NodeRecord } from '@git/types';
 
 const fetcher = async <T>(url: string): Promise<T> => {
@@ -15,8 +15,8 @@ export interface ProjectData {
   artefactMeta: { artefact: string; lastUpdatedAt: number | null } | null;
   isLoading: boolean;
   error: Error | undefined;
-  mutateHistory: () => Promise<void>;
-  mutateArtefact: () => Promise<void>;
+  mutateHistory: KeyedMutator<{ nodes: NodeRecord[] }>;
+  mutateArtefact: KeyedMutator<{ artefact: string; lastUpdatedAt: number | null }>;
 }
 
 interface UseProjectDataOptions {
