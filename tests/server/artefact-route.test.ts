@@ -3,9 +3,7 @@ import { GET } from '@/app/api/projects/[id]/artefact/route';
 
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
-  getArtefact: vi.fn(),
   getArtefactFromRef: vi.fn(),
-  getNodes: vi.fn(),
   readNodesFromRef: vi.fn()
 }));
 
@@ -14,12 +12,7 @@ vi.mock('@git/projects', () => ({
 }));
 
 vi.mock('@git/artefact', () => ({
-  getArtefact: mocks.getArtefact,
   getArtefactFromRef: mocks.getArtefactFromRef
-}));
-
-vi.mock('@git/nodes', () => ({
-  getNodes: mocks.getNodes
 }));
 
 vi.mock('@git/utils', () => ({
@@ -31,22 +24,22 @@ const baseUrl = 'http://localhost/api/projects/project-1/artefact';
 describe('/api/projects/[id]/artefact', () => {
   beforeEach(() => {
     mocks.getProject.mockReset();
-    mocks.getArtefact.mockReset();
     mocks.getArtefactFromRef.mockReset();
-    mocks.getNodes.mockReset();
     mocks.readNodesFromRef.mockReset();
   });
 
   it('returns artefact content with last state metadata', async () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
-    mocks.getArtefact.mockResolvedValue('# Artefact content');
-    mocks.getNodes.mockResolvedValue([
+    mocks.getArtefactFromRef.mockResolvedValue('# Artefact content');
+    mocks.readNodesFromRef.mockResolvedValue([
       { id: '1', type: 'message', role: 'user', content: 'hi', timestamp: 1, parent: null },
       { id: '2', type: 'state', artefactSnapshot: 'abc', timestamp: 2, parent: '1' }
     ]);
 
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
+    expect(mocks.getArtefactFromRef).toHaveBeenCalledWith('project-1', 'main');
+    expect(mocks.readNodesFromRef).toHaveBeenCalledWith('project-1', 'main');
     const data = await res.json();
     expect(data.artefact).toContain('Artefact');
     expect(data.lastStateNodeId).toBe('2');
@@ -55,8 +48,8 @@ describe('/api/projects/[id]/artefact', () => {
 
   it('handles missing state nodes', async () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
-    mocks.getArtefact.mockResolvedValue('');
-    mocks.getNodes.mockResolvedValue([]);
+    mocks.getArtefactFromRef.mockResolvedValue('');
+    mocks.readNodesFromRef.mockResolvedValue([]);
 
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);

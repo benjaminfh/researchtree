@@ -3,7 +3,8 @@ import { POST } from '@/app/api/projects/[id]/merge/route';
 
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
-  mergeBranch: vi.fn()
+  mergeBranch: vi.fn(),
+  getCurrentBranchName: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -12,6 +13,10 @@ vi.mock('@git/projects', () => ({
 
 vi.mock('@git/branches', () => ({
   mergeBranch: mocks.mergeBranch
+}));
+
+vi.mock('@git/utils', () => ({
+  getCurrentBranchName: mocks.getCurrentBranchName
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/merge';
@@ -29,6 +34,7 @@ describe('/api/projects/[id]/merge', () => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.mergeBranch.mockResolvedValue({ id: 'merge-1', type: 'merge' });
+    mocks.getCurrentBranchName.mockResolvedValue('main');
   });
 
   it('merges a branch and returns merge node', async () => {
@@ -40,7 +46,7 @@ describe('/api/projects/[id]/merge', () => {
       'project-1',
       'feature',
       'bring back work',
-      expect.objectContaining({ applyArtefact: false, targetBranch: undefined })
+      expect.objectContaining({ applyArtefact: false, targetBranch: 'main' })
     );
     const json = await res.json();
     expect(json.mergeNode).toBeDefined();
@@ -63,7 +69,7 @@ describe('/api/projects/[id]/merge', () => {
       params: { id: 'project-1' }
     });
     expect(mocks.mergeBranch).toHaveBeenCalledWith('project-1', 'feature', 'summary', {
-      targetBranch: undefined,
+      targetBranch: 'main',
       applyArtefact: true
     });
   });

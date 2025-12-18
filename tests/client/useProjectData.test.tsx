@@ -82,10 +82,16 @@ describe('useProjectData', () => {
           json: async () => ({ nodes: [] })
         } as Response);
       }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ artefact: '', lastUpdatedAt: null })
-      } as Response);
+      if (urlStr.includes('/artefact')) {
+        if (!urlStr.includes('ref=feature%2Fone')) {
+          throw new Error('Missing ref param');
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ artefact: '', lastUpdatedAt: null })
+        } as Response);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
     });
 
     global.fetch = fetchMock as unknown as typeof fetch;

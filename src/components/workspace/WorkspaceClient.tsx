@@ -7,7 +7,8 @@ import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@g
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
-import ReactMarkdown from 'react-markdown';
+import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
+import { features } from '@/src/config/features';
 import useSWR from 'swr';
 import type { FC } from 'react';
 import { WorkspaceGraph } from './WorkspaceGraph';
@@ -16,11 +17,14 @@ import { InsightFrame } from './InsightFrame';
 import {
   ArrowUpRightIcon,
   ArrowUpIcon,
+  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   HomeIcon,
   PaperClipIcon,
+  PencilIcon,
   QuestionMarkCircleIcon,
+  Square2StackIcon,
   XMarkIcon
 } from './HeroIcons';
 
@@ -57,15 +61,26 @@ const NodeBubble: FC<{
   isStarred?: boolean;
   onToggleStar?: () => void;
   onEdit?: (node: MessageNode) => void;
+  isCanvasDiffPinned?: boolean;
+  onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
 }> = ({
   node,
   muted = false,
   subtitle,
   isStarred = false,
   onToggleStar,
-  onEdit
+  onEdit,
+  isCanvasDiffPinned = false,
+  onPinCanvasDiff
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
+  const canCopy = node.type === 'message' && node.content.length > 0;
+  const [copyFeedback, setCopyFeedback] = useState(false);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showCanvasDiff, setShowCanvasDiff] = useState(false);
+  const [confirmPinCanvasDiff, setConfirmPinCanvasDiff] = useState(false);
+  const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
+  const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
   const base = `relative max-w-[82%] overflow-hidden rounded-2xl px-4 py-3 transition ${
     isUser ? 'min-w-[300px]' : ''
   }`;
@@ -78,39 +93,175 @@ const NodeBubble: FC<{
     : 'bg-white text-slate-900';
   const align = isUser ? 'ml-auto items-end' : 'mr-auto items-start';
 
+  const copyToClipboard = async (text: string) => {
+    if (typeof navigator === 'undefined') return;
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // ignore and fall back
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+        copyFeedbackTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <article className={`flex flex-col gap-1 ${align}`}>
       <div className={`${base} ${palette}`}>
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <span>{new Date(node.timestamp).toLocaleTimeString()}</span>
-          {onToggleStar ? (
-            <button
-              type="button"
-              onClick={onToggleStar}
-              className="rounded-full px-2 py-1 text-slate-500 hover:bg-primary/10 hover:text-primary focus:outline-none"
-              aria-label={isStarred ? 'Unstar node' : 'Star node'}
-            >
-              {isStarred ? '★' : '☆'}
-            </button>
-          ) : null}
-        </div>
         {'content' in node && node.content ? (
           <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">{node.content}</p>
         ) : null}
         {node.type === 'state' ? <p className="mt-2 text-sm font-medium text-slate-700">Canvas updated</p> : null}
         {node.type === 'merge' ? <p className="mt-2 text-sm font-medium text-slate-700">Merge: {node.mergeSummary}</p> : null}
-        {node.type === 'message' && onEdit ? (
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              onClick={() => onEdit(node)}
-              className="text-sm font-medium text-primary hover:text-primary/80 focus:outline-none"
-            >
-              Edit
-            </button>
+        {node.type === 'merge' && node.canvasDiff ? (
+          <div className="mt-3 rounded-xl bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <button
+                type="button"
+                onClick={() => setShowCanvasDiff((prev) => !prev)}
+                className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                aria-label={showCanvasDiff ? 'Hide canvas diff' : 'Show canvas diff'}
+              >
+                {showCanvasDiff ? 'Hide canvas diff' : 'Show canvas diff'}
+              </button>
+
+              {onPinCanvasDiff ? (
+                isCanvasDiffPinned ? (
+                  <span className="font-semibold text-emerald-700" aria-label="Canvas diff is in context">
+                    Diff in context
+                  </span>
+                ) : confirmPinCanvasDiff ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isPinningCanvasDiff}
+                      onClick={() => {
+                        void (async () => {
+                          if (node.type !== 'merge') return;
+                          setPinCanvasDiffError(null);
+                          setIsPinningCanvasDiff(true);
+                          try {
+                            await onPinCanvasDiff(node.id);
+                            setConfirmPinCanvasDiff(false);
+                          } catch (err) {
+                            setPinCanvasDiffError((err as Error)?.message ?? 'Failed to add diff to context');
+                          } finally {
+                            setIsPinningCanvasDiff(false);
+                          }
+                        })();
+                      }}
+                      className="rounded-full bg-primary px-3 py-1 font-semibold text-white transition hover:bg-primary/90 disabled:opacity-60"
+                      aria-label="Confirm add canvas diff to context"
+                    >
+                      {isPinningCanvasDiff ? 'Adding…' : 'Confirm'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isPinningCanvasDiff}
+                      onClick={() => {
+                        setConfirmPinCanvasDiff(false);
+                        setPinCanvasDiffError(null);
+                      }}
+                      className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                      aria-label="Cancel add canvas diff to context"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmPinCanvasDiff(true)}
+                    className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                    aria-label="Add canvas diff to context"
+                  >
+                    Add diff to context
+                  </button>
+                )
+              ) : null}
+            </div>
+
+            {showCanvasDiff ? (
+              <pre className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-white p-3 text-xs leading-relaxed text-slate-800">
+                {node.canvasDiff}
+              </pre>
+            ) : null}
+            {pinCanvasDiffError ? <p className="mt-2 text-xs text-red-600">{pinCanvasDiffError}</p> : null}
           </div>
         ) : null}
         {subtitle ? <div className="mt-2 text-xs text-slate-500">{subtitle}</div> : null}
+
+        <div
+          className={`mt-3 flex flex-wrap items-center gap-2 text-xs text-muted ${
+            isUser ? 'justify-end' : 'justify-start'
+          }`}
+        >
+          {isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
+          {onToggleStar ? (
+            <button
+              type="button"
+              onClick={onToggleStar}
+              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none"
+              aria-label={isStarred ? 'Unstar node' : 'Star node'}
+            >
+              {isStarred ? '★' : '☆'}
+            </button>
+          ) : null}
+          {canCopy ? (
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  await copyToClipboard(node.content);
+                  setCopyFeedback(true);
+                  if (copyFeedbackTimeoutRef.current) {
+                    clearTimeout(copyFeedbackTimeoutRef.current);
+                  }
+                  copyFeedbackTimeoutRef.current = setTimeout(() => {
+                    setCopyFeedback(false);
+                  }, 1200);
+                })();
+              }}
+              className={`rounded-full bg-slate-100 px-2 py-1 hover:bg-primary/10 focus:outline-none ${
+                copyFeedback ? 'text-emerald-600' : 'text-slate-600 hover:text-primary'
+              }`}
+              aria-label="Copy message"
+            >
+              {copyFeedback ? <CheckIcon className="h-4 w-4" /> : <Square2StackIcon className="h-4 w-4" />}
+            </button>
+          ) : null}
+          {node.type === 'message' && onEdit && (node.role === 'user' || features.uiEditAnyMessage) ? (
+            <button
+              type="button"
+              onClick={() => onEdit(node)}
+              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none"
+              aria-label="Edit message"
+            >
+              <PencilIcon className="h-4 w-4" />
+            </button>
+          ) : null}
+          {!isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
+        </div>
       </div>
     </article>
   );
@@ -125,7 +276,9 @@ const ChatNodeRow: FC<{
   isStarred?: boolean;
   onToggleStar?: () => void;
   onEdit?: (node: MessageNode) => void;
-}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit }) => {
+  isCanvasDiffPinned?: boolean;
+  onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
+}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName);
 
@@ -146,6 +299,8 @@ const ChatNodeRow: FC<{
           isStarred={isStarred}
           onToggleStar={onToggleStar}
           onEdit={onEdit}
+          isCanvasDiffPinned={isCanvasDiffPinned}
+          onPinCanvasDiff={onPinCanvasDiff}
         />
       </div>
     </div>
@@ -168,7 +323,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [mergePreview, setMergePreview] = useState<{ trunk: string; branch: string } | null>(null);
   const [isMergePreviewLoading, setIsMergePreviewLoading] = useState(false);
   const [mergePreviewError, setMergePreviewError] = useState<string | null>(null);
-  const [adoptBranchCanvas, setAdoptBranchCanvas] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingNode, setEditingNode] = useState<MessageNode | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -192,7 +346,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [graphHistories, setGraphHistories] = useState<Record<string, NodeRecord[]> | null>(null);
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
-  const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('nodes');
+  const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
 
   const {
@@ -233,11 +387,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     () => `researchtree:provider:${project.id}:${branchName}`,
     [project.id, branchName]
   );
+  const [thinking, setThinking] = useState<ThinkingSetting>('medium');
+  const thinkingStorageKey = useMemo(
+    () => `researchtree:thinking:${project.id}:${branchName}`,
+    [project.id, branchName]
+  );
+  const [thinkingHydratedKey, setThinkingHydratedKey] = useState<string | null>(null);
+  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
 
   const { sendMessage, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
     provider,
+    thinking,
     onChunk: (chunk) => setStreamPreview((prev) => prev + chunk),
     onComplete: async () => {
       setStreamPreview('');
@@ -281,6 +444,49 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setDraft(savedDraft);
     }
   }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setThinkingHydratedKey(null);
+    const saved = window.localStorage.getItem(thinkingStorageKey) as ThinkingSetting | null;
+    const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved);
+    setThinking(isValid ? (saved as ThinkingSetting) : 'medium');
+    setThinkingHydratedKey(thinkingStorageKey);
+  }, [thinkingStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (thinkingHydratedKey !== thinkingStorageKey) return;
+    window.localStorage.setItem(thinkingStorageKey, thinking);
+  }, [thinking, thinkingHydratedKey, thinkingStorageKey]);
+
+  useEffect(() => {
+    if (!thinkingMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const container = thinkingMenuRef.current;
+      const target = event.target;
+      if (!container || !(target instanceof Node)) return;
+      if (!container.contains(target)) {
+        setThinkingMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setThinkingMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [thinkingMenuOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -416,7 +622,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   }, [isGraphVisible, branchName, nodes]);
 
   useEffect(() => {
-    if (branchName !== trunkName) return;
     if (typeof window === 'undefined') return;
     if (artefactDraft === artefact) return;
 
@@ -443,7 +648,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setArtefactError(null);
       void (async () => {
         try {
-          const res = await fetch(`/api/projects/${project.id}/artefact`, {
+          const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(branchName)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: artefactDraft }),
@@ -501,7 +706,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setMergePreview(null);
       setMergePreviewError(null);
       setIsMergePreviewLoading(false);
-      setAdoptBranchCanvas(false);
       return;
     }
     const controller = new AbortController();
@@ -566,6 +770,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
+  const scrollFollowThreshold = 72;
 
   const combinedNodes = useMemo(() => (streamingNode ? [...nodes, streamingNode] : nodes), [nodes, streamingNode]);
   const lastUpdatedTimestamp = useMemo(() => {
@@ -581,15 +786,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return buildLineDiff(mergePreview.trunk, mergePreview.branch);
   }, [mergePreview]);
   const hasCanvasChanges = mergeDiff.some((line) => line.type !== 'context');
-
-  useEffect(() => {
-    if (!showMergeModal) {
-      return;
-    }
-    if (!hasCanvasChanges && adoptBranchCanvas) {
-      setAdoptBranchCanvas(false);
-    }
-  }, [showMergeModal, hasCanvasChanges, adoptBranchCanvas]);
   const shouldFetchTrunk = branchName !== trunkName;
   const historyFetcher = async (url: string) => {
     const res = await fetch(url);
@@ -673,21 +869,50 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     };
   }, [combinedNodes, sharedCount]);
 
+  const pinnedCanvasDiffMergeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const node of combinedNodes) {
+      if (node.type === 'message' && node.pinnedFromMergeId) {
+        ids.add(node.pinnedFromMergeId);
+      }
+    }
+    return ids;
+  }, [combinedNodes]);
+
+  const pinCanvasDiffToContext = async (mergeNodeId: string) => {
+    const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mergeNodeId, targetBranch: branchName })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error?.message ?? 'Failed to add diff to context');
+    }
+    await mutateHistory();
+  };
+
   useEffect(() => {
     shouldScrollToBottomRef.current = true;
   }, [branchName]);
 
-	  useEffect(() => {
-	    if (!shouldScrollToBottomRef.current) return;
-	    if (isLoading) return;
-	    const el = messageListRef.current;
-	    if (!el) return;
-	    // Ensure we scroll after the DOM has painted with the final node list.
-	    requestAnimationFrame(() => {
-	      el.scrollTop = el.scrollHeight;
-	      shouldScrollToBottomRef.current = false;
-	    });
-	  }, [branchName, isLoading, combinedNodes.length]);
+		  useEffect(() => {
+		    if (!shouldScrollToBottomRef.current) return;
+		    if (isLoading) return;
+		    const el = messageListRef.current;
+		    if (!el) return;
+		    // Ensure we scroll after the DOM has painted with the final node list.
+		    requestAnimationFrame(() => {
+		      el.scrollTop = el.scrollHeight;
+		    });
+		  }, [branchName, isLoading, combinedNodes.length, streamPreview]);
+
+  const handleMessageListScroll = () => {
+    const el = messageListRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldScrollToBottomRef.current = distance <= scrollFollowThreshold;
+  };
 
   const switchBranch = async (name: string) => {
     if (name === branchName) return;
@@ -708,6 +933,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setBranches(data.branches);
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
+        window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, thinking);
       }
       await Promise.all([mutateHistory(), mutateArtefact()]);
     } catch (err) {
@@ -737,6 +963,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setNewBranchName('');
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
+        window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, thinking);
       }
       await Promise.all([mutateHistory(), mutateArtefact()]);
     } catch (err) {
@@ -760,7 +987,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               {railCollapsed ? <ChevronRightIcon className="h-5 w-5" /> : <ChevronLeftIcon className="h-5 w-5" />}
             </button>
             {!railCollapsed ? (
-              <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
+              <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
                 <span>SideQuest</span>
               </div>
             ) : null}
@@ -873,7 +1100,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                         <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
                         <li>Branch to try edits without losing the trunk.</li>
-                        <li>Canvas edits are trunk-only to keep outputs stable.</li>
+                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                       </ul>
                     </div>
                   ) : (
@@ -903,7 +1130,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         <div className="relative flex h-full min-h-0 flex-col bg-white">
           <div className="px-6 pt-6 md:px-8 lg:px-12">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold tracking-wide text-primary">
                 <span>SideQuest</span>
                 <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">Workspace</span>
               </div>
@@ -967,6 +1194,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     ref={messageListRef}
                     data-testid="chat-message-list"
                     className="flex-1 min-h-0 overflow-y-auto pr-1 pb-20"
+                    onScroll={handleMessageListScroll}
                   >
                   {isLoading ? (
                     <p className="text-sm text-muted">Loading history…</p>
@@ -991,6 +1219,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 isStarred={starredSet.has(node.id)}
                                 onToggleStar={() => void toggleStar(node.id)}
                                 onEdit={undefined}
+                                isCanvasDiffPinned={undefined}
+                                onPinCanvasDiff={undefined}
                               />
                             ))}
                           </div>
@@ -1010,7 +1240,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           isStarred={starredSet.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
-                            node.type === 'message' && node.role === 'user'
+                            node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
                               ? (n) => {
                                   setEditingNode(n);
                                   setEditDraft(n.content);
@@ -1020,6 +1250,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 }
                               : undefined
                           }
+                          isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
+                          onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToContext : undefined}
                         />
                       ))}
                     </div>
@@ -1165,46 +1397,32 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         )}
                       </div>
                     ) : (
-	                      <div className="flex flex-1 min-h-0 flex-col gap-3">
-	                        <InsightFrame className="relative flex-1 min-h-0" innerClassName="relative">
-	                          {branchName !== trunkName ? (
-	                            artefact ? (
-	                              <div className="h-full min-h-0 overflow-y-auto p-4">
-	                                <div className="prose prose-slate max-w-none text-sm">
-	                                  <ReactMarkdown>{artefact}</ReactMarkdown>
-	                                </div>
-	                              </div>
-	                            ) : (
-	                              <div className="flex h-full items-center justify-center text-sm text-muted">No canvas content yet.</div>
-	                            )
-	                          ) : (
-	                            <div className="relative h-full">
-	                              <textarea
-	                                value={artefactDraft}
-	                                onChange={(event) => setArtefactDraft(event.target.value)}
-	                                className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
-	                              />
-	                              {isSavingArtefact || artefactError ? (
-	                                <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
-	                                  {isSavingArtefact ? (
-	                                    <>
-	                                      <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
-	                                      <span>Saving…</span>
-	                                    </>
-                                  ) : null}
-                                  {!isSavingArtefact && artefactError ? (
-                                    <span className="text-red-600">{artefactError}</span>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          )}
-                        </InsightFrame>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
+		                      <div className="flex flex-1 min-h-0 flex-col gap-3">
+		                        <InsightFrame className="relative flex-1 min-h-0" innerClassName="relative">
+                              <div className="relative h-full">
+                                <textarea
+                                  value={artefactDraft}
+                                  onChange={(event) => setArtefactDraft(event.target.value)}
+                                  className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
+                                />
+                                {isSavingArtefact || artefactError ? (
+                                  <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                                    {isSavingArtefact ? (
+                                      <>
+                                        <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
+                                        <span>Saving…</span>
+                                      </>
+                                    ) : null}
+                                    {!isSavingArtefact && artefactError ? <span className="text-red-600">{artefactError}</span> : null}
+                                  </div>
+                                ) : null}
+                              </div>
+		                        </InsightFrame>
+		                      </div>
+	                    )}
+	                  </div>
+	                </section>
+	              )}
             </div>
           </div>
         </div>
@@ -1247,12 +1465,47 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   }}
                 />
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="hidden sm:inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700"
-                  >
-                    Thinking ▾
-                  </button>
+                  <div ref={thinkingMenuRef} className="relative hidden sm:block">
+                    <button
+                      type="button"
+                      onClick={() => setThinkingMenuOpen((prev) => !prev)}
+                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="Thinking mode"
+                      aria-haspopup="menu"
+                      aria-expanded={thinkingMenuOpen}
+                      disabled={state.isStreaming}
+                    >
+                      Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                    </button>
+                    {thinkingMenuOpen ? (
+                      <div
+                        role="menu"
+                        className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                      >
+                        {THINKING_SETTINGS.map((setting) => {
+                          const active = thinking === setting;
+                          return (
+                            <button
+                              key={setting}
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={active}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
+                              }`}
+                              onClick={() => {
+                                setThinking(setting);
+                                setThinkingMenuOpen(false);
+                              }}
+                            >
+                              <span>{THINKING_SETTING_LABELS[setting]}</span>
+                              {active ? <span aria-hidden="true">✓</span> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
                   {state.isStreaming ? (
                     <button
                       type="button"
@@ -1289,7 +1542,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               Merge {displayBranchName(branchName)} into trunk
             </h3>
             <p className="text-sm text-muted">
-              Summarize what to bring back, preview the Canvas diff, and optionally adopt the branch Canvas on trunk.
+              Summarize what to bring back and preview the Canvas diff. Canvas changes are never auto-applied.
             </p>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800" htmlFor="merge-summary">
@@ -1346,21 +1599,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 )}
               </div>
             </div>
-            <label className="mt-4 flex items-start gap-3 rounded-2xl border border-divider/80 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-              <input
-                type="checkbox"
-                className="mt-1 h-4 w-4 rounded border-slate-400 text-primary focus:ring-primary/60"
-                checked={adoptBranchCanvas}
-                disabled={!hasCanvasChanges || !!mergePreviewError || isMergePreviewLoading || isMerging}
-                onChange={(event) => setAdoptBranchCanvas(event.target.checked)}
-              />
-              <span>
-                <span className="font-semibold text-slate-900">Adopt Canvas from {branchName}</span>
-                <span className="mt-1 block text-xs text-muted">
-                  Replace the trunk Canvas with this branch’s Canvas snapshot. Only available when the Canvas differs.
-                </span>
-              </span>
-            </label>
             {mergeError ? <p className="mt-3 text-sm text-red-600">{mergeError}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -1392,8 +1630,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       body: JSON.stringify({
                         sourceBranch: branchName,
                         targetBranch: trunkName,
-                        mergeSummary: mergeSummary.trim(),
-                        applyArtefact: adoptBranchCanvas
+                        mergeSummary: mergeSummary.trim()
                       })
                     });
                     if (!res.ok) {
@@ -1502,6 +1739,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     }
                     if (typeof window !== 'undefined') {
                       window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
+                      window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, thinking);
                     }
                     await Promise.all([mutateHistory(), mutateArtefact()]);
                     setShowEditModal(false);

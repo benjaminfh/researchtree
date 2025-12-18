@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { LLMProvider } from '@/src/server/llm';
+import type { ThinkingSetting } from '@/src/shared/thinking';
 
 const decoder = new TextDecoder();
 
@@ -12,11 +13,12 @@ interface UseChatStreamOptions {
   projectId: string;
   ref?: string;
   provider?: LLMProvider;
+  thinking?: ThinkingSetting;
   onChunk?: (chunk: string) => void;
   onComplete?: () => void;
 }
 
-export function useChatStream({ projectId, ref, provider, onChunk, onComplete }: UseChatStreamOptions) {
+export function useChatStream({ projectId, ref, provider, thinking, onChunk, onComplete }: UseChatStreamOptions) {
   const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
   const activeRequest = useRef<AbortController | null>(null);
 
@@ -31,7 +33,7 @@ export function useChatStream({ projectId, ref, provider, onChunk, onComplete }:
         const response = await fetch(`/api/projects/${projectId}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, llmProvider: provider, ref }),
+          body: JSON.stringify({ message, llmProvider: provider, ref, thinking }),
           signal: activeRequest.current.signal
         });
 
@@ -43,7 +45,7 @@ export function useChatStream({ projectId, ref, provider, onChunk, onComplete }:
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value);
+          const chunk = decoder.decode(value, { stream: true });
           onChunk?.(chunk);
         }
 
@@ -60,7 +62,7 @@ export function useChatStream({ projectId, ref, provider, onChunk, onComplete }:
         activeRequest.current = null;
       }
     },
-    [projectId, provider, onChunk, onComplete]
+    [projectId, provider, ref, thinking, onChunk, onComplete]
   );
 
   const interrupt = useCallback(async () => {

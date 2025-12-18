@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { simpleGit } from 'simple-git';
 import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
-import { assertProjectExists, ensureGitUserConfig, getCurrentBranchName, getProjectFilePath, getProjectPath } from './utils';
+import { assertProjectExists, ensureGitUserConfig, forceCheckoutRef, getCurrentBranchName, getProjectFilePath, getProjectPath } from './utils';
 
 interface StarsFile {
   starredNodeIds: string[];
@@ -32,9 +32,7 @@ export async function setStarredNodeIds(projectId: string, starredNodeIds: strin
   const git = simpleGit(getProjectPath(projectId));
   const currentBranch = await getCurrentBranchName(projectId).catch(() => INITIAL_BRANCH);
 
-  if (currentBranch !== INITIAL_BRANCH) {
-    await git.checkout(INITIAL_BRANCH);
-  }
+  await forceCheckoutRef(projectId, INITIAL_BRANCH);
 
   const filePath = getProjectFilePath(projectId, 'stars');
   await fs.writeFile(filePath, JSON.stringify({ starredNodeIds: next }, null, 2) + '\n');
@@ -43,7 +41,7 @@ export async function setStarredNodeIds(projectId: string, starredNodeIds: strin
   await git.commit(`[stars] Update starred nodes (${next.length})`);
 
   if (currentBranch !== INITIAL_BRANCH) {
-    await git.checkout(currentBranch);
+    await forceCheckoutRef(projectId, currentBranch);
   }
   return next;
 }

@@ -1,10 +1,10 @@
 import { appendNode } from '@git/nodes';
 import { createBranch } from '@git/branches';
 import { getProject } from '@git/projects';
-import { getCurrentBranchName, getCommitHashForNode } from '@git/utils';
+import { getCurrentBranchName, getCommitHashForNode, readNodesFromRef } from '@git/utils';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { editMessageSchema } from '@/src/server/schemas';
-import { withProjectLock } from '@/src/server/locks';
+import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 
 interface RouteContext {
   params: { id: string };
@@ -29,6 +29,17 @@ export async function POST(request: Request, { params }: RouteContext) {
     const sourceRef = fromRef?.trim() || currentBranch;
 
     return await withProjectLock(project.id, async () => {
+      const releaseRefLock = await acquireProjectRefLock(project.id, sourceRef);
+      try {
+      const sourceNodes = await readNodesFromRef(project.id, sourceRef);
+      const targetNode = sourceNodes.find((node) => node.id === nodeId);
+      if (!targetNode) {
+        throw badRequest(`Node ${nodeId} not found on ref ${sourceRef}`);
+      }
+      if (targetNode.type !== 'message') {
+        throw badRequest('Only message nodes can be edited');
+      }
+
       try {
         const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
         await createBranch(project.id, targetBranch, commitHash);
@@ -41,13 +52,16 @@ export async function POST(request: Request, { params }: RouteContext) {
         project.id,
         {
           type: 'message',
-          role: 'user',
+          role: targetNode.role,
           content
         },
         { ref: targetBranch }
       );
 
       return Response.json({ branchName: targetBranch, node }, { status: 201 });
+      } finally {
+        releaseRefLock();
+      }
     });
   } catch (error) {
     return handleRouteError(error);

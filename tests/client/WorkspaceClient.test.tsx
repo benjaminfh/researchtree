@@ -73,6 +73,14 @@ const sampleNodes: NodeRecord[] = [
     content: 'All tasks queued.',
     timestamp: 1700000001000,
     parent: 'node-user'
+  },
+  {
+    id: 'node-user-branch',
+    type: 'message',
+    role: 'user',
+    content: 'Branch-only follow-up.',
+    timestamp: 1700000002000,
+    parent: 'node-assistant'
   }
 ];
 
@@ -120,7 +128,8 @@ describe('WorkspaceClient', () => {
         return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
       }
       if (url.includes('/history')) {
-        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+        const nodes = url.includes('ref=main') ? sampleNodes.slice(0, 2) : sampleNodes;
+        return new Response(JSON.stringify({ nodes }), { status: 200 });
       }
       if (url.includes('/branches') && init?.method === 'PATCH') {
         return new Response(JSON.stringify({ branchName: 'main', branches: baseBranches }), { status: 200 });
@@ -149,7 +158,12 @@ describe('WorkspaceClient', () => {
 
     expect(screen.getByText('How is progress going?')).toBeInTheDocument();
     expect(screen.getByText('All tasks queued.')).toBeInTheDocument();
+    expect(screen.getByText('Branch-only follow-up.')).toBeInTheDocument();
     expect(screen.getByText('Artefact state')).toBeInTheDocument();
+
+    // Copy is exposed for every message, while edit is only exposed for user messages by default.
+    expect(screen.getAllByRole('button', { name: 'Copy message' })).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(1);
   });
 
   it('sends the draft when the user presses ⌘+Enter', async () => {
@@ -197,6 +211,55 @@ describe('WorkspaceClient', () => {
 
     expect(mutateHistoryMock).toHaveBeenCalledTimes(1);
     expect(mutateArtefactMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds a merge canvas diff into context as a persisted assistant message', async () => {
+    const user = userEvent.setup();
+    const nodesWithMerge: NodeRecord[] = [
+      ...sampleNodes,
+      {
+        id: 'merge-1',
+        type: 'merge',
+        mergeFrom: 'feature/phase-1',
+        mergeSummary: 'Bring back canvas changes',
+        sourceCommit: 'abc',
+        sourceNodeIds: [],
+        canvasDiff: '+hello',
+        timestamp: 1700000003000,
+        parent: 'node-user-branch'
+      }
+    ];
+
+    mockUseProjectData.mockReturnValueOnce({
+      nodes: nodesWithMerge,
+      artefact: '## Artefact state',
+      artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+      isLoading: false,
+      error: undefined,
+      mutateHistory: mutateHistoryMock,
+      mutateArtefact: mutateArtefactMock
+    } as ReturnType<typeof useProjectData>);
+
+    render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
+    );
+
+    expect(screen.getByText('Merge: Bring back canvas changes')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Add canvas diff to context' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm add canvas diff to context' }));
+
+    await waitFor(() => {
+      expect(mutateHistoryMock).toHaveBeenCalled();
+    });
+
+    const pinCall = (global.fetch as any).mock.calls.find(
+      ([input]: [RequestInfo | URL]) => input.toString().includes('/merge/pin-canvas-diff')
+    );
+    expect(pinCall).toBeTruthy();
+    const [, init] = pinCall as [RequestInfo | URL, RequestInit];
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(init?.body as string)).toEqual({ mergeNodeId: 'merge-1', targetBranch: 'feature/phase-2' });
   });
 
   it('shows stop controls and error text while streaming', async () => {
@@ -252,6 +315,23 @@ describe('WorkspaceClient', () => {
     expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
   });
 
+  it('updates and persists the thinking mode selection', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    const thinkingTrigger = screen.getByRole('button', { name: 'Thinking mode' });
+    expect(thinkingTrigger).toHaveTextContent('Thinking: Medium');
+
+    await user.click(thinkingTrigger);
+    await user.click(screen.getByRole('menuitemradio', { name: 'High' }));
+
+    expect(thinkingTrigger).toHaveTextContent('Thinking: High');
+    expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
+    await waitFor(() => {
+      expect(capturedChatOptions?.thinking).toBe('high');
+    });
+  });
+
   it('patch-updates graph histories when the graph is visible and history changes', async () => {
     const user = userEvent.setup();
     let currentNodes = [...sampleNodes];
@@ -277,6 +357,7 @@ describe('WorkspaceClient', () => {
 
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
+      expect(capturedWorkspaceGraphProps.mode).toBe('collapsed');
       expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(2);
     });
 
@@ -310,6 +391,53 @@ describe('WorkspaceClient', () => {
 
     await waitFor(() => {
       expect((list as any).scrollTop).toBe(2000);
+    });
+
+    (globalThis as any).requestAnimationFrame = raf;
+  });
+
+  it('keeps the chat pinned to bottom when new nodes arrive', async () => {
+    const user = userEvent.setup();
+    let currentNodes = [...sampleNodes];
+
+    mockUseProjectData.mockImplementation(
+      () =>
+        ({
+          nodes: currentNodes,
+          artefact: '## Artefact state',
+          artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+          isLoading: false,
+          error: undefined,
+          mutateHistory: mutateHistoryMock,
+          mutateArtefact: mutateArtefactMock
+        }) as ReturnType<typeof useProjectData>
+    );
+
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
+    );
+
+    await user.click(await screen.findByRole('button', { name: /show shared/i }));
+
+    const list = await screen.findByTestId('chat-message-list');
+    Object.defineProperty(list, 'scrollHeight', { value: 2000, configurable: true });
+    Object.defineProperty(list, 'scrollTop', { value: 2000, writable: true, configurable: true });
+
+    const raf = globalThis.requestAnimationFrame;
+    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0 as any;
+    };
+
+    Object.defineProperty(list, 'scrollHeight', { value: 3000, configurable: true });
+    currentNodes = [
+      ...currentNodes,
+      { id: 'node-new', type: 'message', role: 'assistant', content: 'Newest node', timestamp: 1700000003000, parent: 'node-user-branch' } as any
+    ];
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    await waitFor(() => {
+      expect((list as any).scrollTop).toBe(3000);
     });
 
     (globalThis as any).requestAnimationFrame = raf;

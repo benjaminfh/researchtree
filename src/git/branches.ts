@@ -5,12 +5,58 @@ import type { BranchSummary, NodeRecord } from './types';
 import {
   assertProjectExists,
   buildCommitMessage,
-  ensureCleanWorkingTree,
   ensureGitUserConfig,
+  forceCheckoutRef,
   getCurrentBranchName,
   getProjectPath,
   readNodesFromRef
 } from './utils';
+import { getArtefactFromRef } from './artefact';
+
+function buildLineDiff(base: string, incoming: string): string {
+  const baseLines = base.length > 0 ? base.split(/\r?\n/) : [];
+  const incomingLines = incoming.length > 0 ? incoming.split(/\r?\n/) : [];
+  const m = baseLines.length;
+  const n = incomingLines.length;
+  if (m === 0 && n === 0) {
+    return '';
+  }
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i -= 1) {
+    for (let j = n - 1; j >= 0; j -= 1) {
+      if (baseLines[i] === incomingLines[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+  const out: string[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    if (baseLines[i] === incomingLines[j]) {
+      out.push(` ${baseLines[i]}`);
+      i += 1;
+      j += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      out.push(`-${baseLines[i]}`);
+      i += 1;
+    } else {
+      out.push(`+${incomingLines[j]}`);
+      j += 1;
+    }
+  }
+  while (i < m) {
+    out.push(`-${baseLines[i]}`);
+    i += 1;
+  }
+  while (j < n) {
+    out.push(`+${incomingLines[j]}`);
+    j += 1;
+  }
+  return out.join('\n');
+}
 
 export async function getCurrentBranch(projectId: string): Promise<string> {
   return getCurrentBranchName(projectId);
@@ -26,9 +72,7 @@ export async function createBranch(projectId: string, branchName: string, fromRe
 
   const currentBranch = await getCurrentBranchName(projectId);
   const sourceRef = fromRef ?? currentBranch;
-  if (sourceRef !== currentBranch) {
-    await git.checkout(sourceRef);
-  }
+  await forceCheckoutRef(projectId, sourceRef);
   await git.checkoutLocalBranch(branchName);
 }
 
@@ -39,7 +83,7 @@ export async function switchBranch(projectId: string, branchName: string): Promi
   if (!branches.all.includes(branchName)) {
     throw new Error(`Branch ${branchName} does not exist`);
   }
-  await git.checkout(branchName);
+  await forceCheckoutRef(projectId, branchName);
 }
 
 export async function listBranches(projectId: string): Promise<BranchSummary[]> {
@@ -105,7 +149,6 @@ export async function mergeBranch(
 
   await assertProjectExists(projectId);
   const git = simpleGit(getProjectPath(projectId));
-  await ensureCleanWorkingTree(projectId);
   await ensureGitUserConfig(projectId);
 
   const branches = await git.branchLocal();
@@ -125,9 +168,7 @@ export async function mergeBranch(
     throw new Error(`Target branch ${targetBranch} does not exist`);
   }
 
-  if ((await getCurrentBranchName(projectId)) !== target) {
-    await git.checkout(target);
-  }
+  await forceCheckoutRef(projectId, target);
 
   const targetNodes = await readNodesFromRef(projectId, target);
   const sourceNodes = await readNodesFromRef(projectId, sourceBranch);
@@ -135,6 +176,11 @@ export async function mergeBranch(
   const targetIds = new Set(targetNodes.map((node) => node.id));
   const sourceSpecific = sourceNodes.filter((node) => !targetIds.has(node.id));
   const sourceCommit = (await git.revparse([sourceBranch])).trim();
+  const [targetArtefact, sourceArtefact] = await Promise.all([
+    getArtefactFromRef(projectId, target),
+    getArtefactFromRef(projectId, sourceCommit)
+  ]);
+  const canvasDiff = buildLineDiff(targetArtefact, sourceArtefact);
 
   try {
     await git.merge(['-s', 'ours', '--no-commit', sourceBranch]);
@@ -145,7 +191,8 @@ export async function mergeBranch(
         mergeSummary,
         sourceCommit,
         sourceNodeIds: sourceSpecific.map((node) => node.id),
-        applyArtefact
+        applyArtefact,
+        canvasDiff: canvasDiff || undefined
       },
       parentId,
       target

@@ -3,7 +3,7 @@ import { POST } from '@/app/api/projects/[id]/chat/route';
 
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
-  appendNode: vi.fn(),
+  appendNodeToRefNoCheckout: vi.fn(),
   buildChatContext: vi.fn(),
   streamAssistantCompletion: vi.fn(),
   registerStream: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('@git/projects', () => ({
 }));
 
 vi.mock('@git/nodes', () => ({
-  appendNode: mocks.appendNode
+  appendNodeToRefNoCheckout: mocks.appendNodeToRefNoCheckout
 }));
 
 vi.mock('@/src/server/context', () => ({
@@ -65,12 +65,14 @@ describe('/api/projects/[id]/chat', () => {
       yield { type: 'text', content: 'foo' };
       yield { type: 'text', content: 'bar' };
     });
-    mocks.appendNode.mockResolvedValue(undefined);
+    mocks.appendNodeToRefNoCheckout.mockResolvedValue(undefined);
+    mocks.registerStream.mockImplementation(() => undefined);
+    mocks.releaseStream.mockImplementation(() => undefined);
   });
 
   it('streams assistant response and appends nodes', async () => {
     const appended: any[] = [];
-    mocks.appendNode.mockImplementation(async (_projectId: string, node: any) => {
+    mocks.appendNodeToRefNoCheckout.mockImplementation(async (_projectId: string, _ref: string, node: any) => {
       appended.push(node);
       return node;
     });
@@ -86,7 +88,7 @@ describe('/api/projects/[id]/chat', () => {
 
   it('accepts ref and passes it through to context builder and stream registry', async () => {
     const appended: any[] = [];
-    mocks.appendNode.mockImplementation(async (_projectId: string, node: any) => {
+    mocks.appendNodeToRefNoCheckout.mockImplementation(async (_projectId: string, _ref: string, node: any) => {
       appended.push(node);
       return node;
     });
@@ -102,22 +104,33 @@ describe('/api/projects/[id]/chat', () => {
     expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
   });
 
-  it('accepts ref and passes it through to context builder and stream registry', async () => {
+  it('marks assistant node interrupted when aborted mid-stream', async () => {
     const appended: any[] = [];
-    mocks.appendNode.mockImplementation(async (_projectId: string, node: any) => {
+    mocks.appendNodeToRefNoCheckout.mockImplementation(async (_projectId: string, _ref: string, node: any) => {
       appended.push(node);
       return node;
     });
 
-    const response = await POST(createRequest({ message: 'Hi there', ref: 'feature/test' }), {
-      params: { id: 'project-1' }
+    mocks.registerStream.mockImplementation((_projectId: string, controller: AbortController) => {
+      setTimeout(() => controller.abort(), 0);
     });
-    expect(response.status).toBe(200);
 
-    expect(mocks.buildChatContext).toHaveBeenCalledWith('project-1', expect.objectContaining({ ref: 'feature/test' }));
-    expect(mocks.registerStream).toHaveBeenCalledWith('project-1', expect.any(AbortController), 'feature/test');
-    expect(mocks.releaseStream).toHaveBeenCalledWith('project-1', 'feature/test');
+    mocks.streamAssistantCompletion.mockImplementation(async function* ({ signal }: any) {
+      yield { type: 'text', content: 'foo' };
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (signal?.aborted) {
+        return;
+      }
+      yield { type: 'text', content: 'bar' };
+    });
+
+    const response = await POST(createRequest({ message: 'Hi there' }), { params: { id: 'project-1' } });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toBe('foo');
+
     expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
+    expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foo', interrupted: true });
   });
 
   it('returns 400 for invalid body', async () => {

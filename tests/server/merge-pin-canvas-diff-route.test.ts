@@ -1,0 +1,144 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { POST } from '@/app/api/projects/[id]/merge/pin-canvas-diff/route';
+
+const mocks = vi.hoisted(() => ({
+  getProject: vi.fn(),
+  getCurrentBranchName: vi.fn(),
+  readNodesFromRef: vi.fn(),
+  appendNodeToRefNoCheckout: vi.fn()
+}));
+
+vi.mock('@git/projects', () => ({
+  getProject: mocks.getProject
+}));
+
+vi.mock('@git/utils', () => ({
+  getCurrentBranchName: mocks.getCurrentBranchName,
+  readNodesFromRef: mocks.readNodesFromRef
+}));
+
+vi.mock('@git/nodes', () => ({
+  appendNodeToRefNoCheckout: mocks.appendNodeToRefNoCheckout
+}));
+
+const baseUrl = 'http://localhost/api/projects/project-1/merge/pin-canvas-diff';
+
+function createRequest(body: unknown) {
+  return new Request(baseUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
+  beforeEach(() => {
+    Object.values(mocks).forEach((mock) => mock.mockReset());
+    mocks.getProject.mockResolvedValue({ id: 'project-1' });
+    mocks.getCurrentBranchName.mockResolvedValue('main');
+    mocks.readNodesFromRef.mockResolvedValue([
+      {
+        id: 'merge-1',
+        type: 'merge',
+        mergeFrom: 'feature',
+        mergeSummary: 'summary',
+        sourceCommit: 'abc',
+        sourceNodeIds: [],
+        canvasDiff: '+added',
+        timestamp: 1700000000000,
+        parent: null
+      }
+    ]);
+    mocks.appendNodeToRefNoCheckout.mockResolvedValue({
+      id: 'pinned-1',
+      type: 'message',
+      role: 'assistant',
+      content: '+added',
+      pinnedFromMergeId: 'merge-1',
+      timestamp: 1700000001000,
+      parent: 'merge-1'
+    });
+  });
+
+  it('returns 404 when project missing', async () => {
+    mocks.getProject.mockResolvedValueOnce(null);
+    const res = await POST(createRequest({ mergeNodeId: 'merge-1' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(404);
+  });
+
+  it('validates body', async () => {
+    const res = await POST(createRequest({ mergeNodeId: '' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when merge node not found', async () => {
+    mocks.readNodesFromRef.mockResolvedValueOnce([]);
+    const res = await POST(createRequest({ mergeNodeId: 'merge-1' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when merge node has no canvas diff', async () => {
+    mocks.readNodesFromRef.mockResolvedValueOnce([
+      {
+        id: 'merge-1',
+        type: 'merge',
+        mergeFrom: 'feature',
+        mergeSummary: 'summary',
+        sourceCommit: 'abc',
+        sourceNodeIds: [],
+        canvasDiff: '',
+        timestamp: 1700000000000,
+        parent: null
+      }
+    ]);
+    const res = await POST(createRequest({ mergeNodeId: 'merge-1' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns an existing pinned node if already pinned', async () => {
+    mocks.readNodesFromRef.mockResolvedValueOnce([
+      {
+        id: 'merge-1',
+        type: 'merge',
+        mergeFrom: 'feature',
+        mergeSummary: 'summary',
+        sourceCommit: 'abc',
+        sourceNodeIds: [],
+        canvasDiff: '+added',
+        timestamp: 1700000000000,
+        parent: null
+      },
+      {
+        id: 'pinned-1',
+        type: 'message',
+        role: 'assistant',
+        content: '+added',
+        pinnedFromMergeId: 'merge-1',
+        timestamp: 1700000001000,
+        parent: 'merge-1'
+      }
+    ]);
+    const res = await POST(createRequest({ mergeNodeId: 'merge-1' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    expect(mocks.appendNodeToRefNoCheckout).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.alreadyPinned).toBe(true);
+    expect(json.pinnedNode?.id).toBe('pinned-1');
+  });
+
+  it('pins the canvas diff as an assistant message on the target branch', async () => {
+    const res = await POST(createRequest({ mergeNodeId: 'merge-1', targetBranch: 'main' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    expect(mocks.getCurrentBranchName).not.toHaveBeenCalled();
+    expect(mocks.appendNodeToRefNoCheckout).toHaveBeenCalledWith('project-1', 'main', {
+      type: 'message',
+      role: 'assistant',
+      content: '+added',
+      pinnedFromMergeId: 'merge-1'
+    });
+    const json = await res.json();
+    expect(json.alreadyPinned).toBe(false);
+    expect(json.pinnedNode?.id).toBe('pinned-1');
+  });
+});
+

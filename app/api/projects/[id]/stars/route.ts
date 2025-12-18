@@ -1,7 +1,8 @@
 import { getProject } from '@git/projects';
 import { getStarredNodeIds, toggleStar } from '@git/stars';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
-import { withProjectLock } from '@/src/server/locks';
+import { withProjectLockAndRefLock } from '@/src/server/locks';
+import { INITIAL_BRANCH } from '@git/constants';
 import { z } from 'zod';
 
 interface RouteContext {
@@ -36,7 +37,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (!parsed.success) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
-    return await withProjectLock(project.id, async () => {
+    return await withProjectLockAndRefLock(project.id, INITIAL_BRANCH, async () => {
       const starredNodeIds = await toggleStar(project.id, parsed.data.nodeId);
       return Response.json({ starredNodeIds });
     });
@@ -44,4 +45,3 @@ export async function POST(request: Request, { params }: RouteContext) {
     return handleRouteError(error);
   }
 }
-

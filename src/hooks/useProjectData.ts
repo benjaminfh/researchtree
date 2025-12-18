@@ -28,8 +28,9 @@ export function useProjectData(projectId: string, options?: UseProjectDataOption
   const ref = options?.ref?.trim();
   const artefactRef = options?.artefactRef?.trim();
   const historyKey = ref ? `/api/projects/${projectId}/history?ref=${encodeURIComponent(ref)}` : `/api/projects/${projectId}/history`;
-  const artefactKey = artefactRef
-    ? `/api/projects/${projectId}/artefact?ref=${encodeURIComponent(artefactRef)}`
+  const artefactEffectiveRef = artefactRef ?? ref;
+  const artefactKey = artefactEffectiveRef
+    ? `/api/projects/${projectId}/artefact?ref=${encodeURIComponent(artefactEffectiveRef)}`
     : `/api/projects/${projectId}/artefact`;
 
   const {

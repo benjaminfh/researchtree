@@ -9,7 +9,8 @@ export const chatRequestSchema = z.object({
   message: z.string().min(1).max(6000),
   intent: z.string().max(280).optional(),
   llmProvider: z.enum(['openai', 'gemini', 'mock']).optional(),
-  ref: z.string().min(1).max(120).optional()
+  ref: z.string().min(1).max(120).optional(),
+  thinking: z.enum(['off', 'low', 'medium', 'high']).optional()
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -34,6 +35,11 @@ export const mergeRequestSchema = z.object({
   targetBranch: z.string().min(1).max(120).optional()
 });
 
+export const pinCanvasDiffSchema = z.object({
+  mergeNodeId: z.string().min(1),
+  targetBranch: z.string().min(1).max(120).optional()
+});
+
 export const editMessageSchema = z.object({
   content: z.string().min(1).max(6000),
   branchName: z.string().min(1).max(120).optional(),
@@ -48,5 +54,6 @@ export const updateArtefactSchema = z.object({
 });
 
 export type MergeRequestInput = z.infer<typeof mergeRequestSchema>;
+export type PinCanvasDiffInput = z.infer<typeof pinCanvasDiffSchema>;
 export type EditMessageInput = z.infer<typeof editMessageSchema>;
 export type UpdateArtefactInput = z.infer<typeof updateArtefactSchema>;

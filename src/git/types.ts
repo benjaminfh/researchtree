@@ -16,6 +16,7 @@ export interface MessageNode extends BaseNode {
   role: 'system' | 'user' | 'assistant';
   content: string;
   interrupted?: boolean;
+  pinnedFromMergeId?: string;
 }
 
 export interface StateNode extends BaseNode {
@@ -30,20 +31,30 @@ export interface MergeNode extends BaseNode {
   sourceCommit: string;
   sourceNodeIds: string[];
   applyArtefact?: boolean;
+  canvasDiff?: string;
 }
 
 export type NodeRecord = MessageNode | StateNode | MergeNode;
 
 export type MessageNodeInput = Pick<
   MessageNode,
-  'type' | 'role' | 'content' | 'interrupted' | 'contextWindow' | 'modelUsed' | 'tokensUsed'
+  'type' | 'role' | 'content' | 'interrupted' | 'pinnedFromMergeId' | 'contextWindow' | 'modelUsed' | 'tokensUsed'
 >;
 
 export type StateNodeInput = Pick<StateNode, 'type' | 'artefactSnapshot' | 'contextWindow' | 'modelUsed' | 'tokensUsed'>;
 
 export type MergeNodeInput = Pick<
   MergeNode,
-  'type' | 'mergeFrom' | 'mergeSummary' | 'sourceCommit' | 'sourceNodeIds' | 'contextWindow' | 'modelUsed' | 'tokensUsed' | 'applyArtefact'
+  | 'type'
+  | 'mergeFrom'
+  | 'mergeSummary'
+  | 'sourceCommit'
+  | 'sourceNodeIds'
+  | 'contextWindow'
+  | 'modelUsed'
+  | 'tokensUsed'
+  | 'applyArtefact'
+  | 'canvasDiff'
 >;
 
 export type NodeInput = MessageNodeInput | StateNodeInput | MergeNodeInput;

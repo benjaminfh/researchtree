@@ -1,7 +1,7 @@
 import { getProject } from '@git/projects';
-import { getNodes } from '@git/nodes';
 import { readNodesFromRef } from '@git/utils';
 import { handleRouteError, notFound } from '@/src/server/http';
+import { INITIAL_BRANCH } from '@git/constants';
 
 interface RouteContext {
   params: { id: string };
@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
     const refParam = searchParams.get('ref');
-    const nodes = refParam ? await readNodesFromRef(project.id, refParam) : await getNodes(project.id);
+    const nodes = await readNodesFromRef(project.id, refParam?.trim() || INITIAL_BRANCH);
 
     let result = nodes;
     if (limitParam) {
