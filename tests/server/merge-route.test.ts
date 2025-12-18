@@ -46,7 +46,7 @@ describe('/api/projects/[id]/merge', () => {
       'project-1',
       'feature',
       'bring back work',
-      expect.objectContaining({ applyArtefact: false, targetBranch: 'main' })
+      expect.objectContaining({ targetBranch: 'main' })
     );
     const json = await res.json();
     expect(json.mergeNode).toBeDefined();
@@ -64,14 +64,16 @@ describe('/api/projects/[id]/merge', () => {
     );
   });
 
-  it('passes applyArtefact flag', async () => {
-    await POST(createRequest({ sourceBranch: 'feature', mergeSummary: 'summary', applyArtefact: true }), {
+  it('passes sourceAssistantNodeId when provided', async () => {
+    await POST(createRequest({ sourceBranch: 'feature', mergeSummary: 'summary', sourceAssistantNodeId: 'node-a1' }), {
       params: { id: 'project-1' }
     });
-    expect(mocks.mergeBranch).toHaveBeenCalledWith('project-1', 'feature', 'summary', {
-      targetBranch: 'main',
-      applyArtefact: true
-    });
+    expect(mocks.mergeBranch).toHaveBeenCalledWith(
+      'project-1',
+      'feature',
+      'summary',
+      expect.objectContaining({ sourceAssistantNodeId: 'node-a1' })
+    );
   });
 
   it('validates body', async () => {

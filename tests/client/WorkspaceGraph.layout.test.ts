@@ -127,4 +127,32 @@ describe('buildGraphNodes', () => {
     expect(merge.parents).not.toContain('c1');
     expect(merge.parents).not.toContain('c2');
   });
+
+  it('assigns shared nodes to trunk lane regardless of branch entry order', () => {
+    const mainNodes = [
+      { id: 'a', type: 'message', role: 'user', content: 'a', timestamp: 1, parent: null },
+      { id: 'b', type: 'message', role: 'assistant', content: 'b', timestamp: 2, parent: 'a' }
+    ];
+    const featureNodes = [
+      { id: 'a', type: 'message', role: 'user', content: 'a', timestamp: 1, parent: null },
+      { id: 'b', type: 'message', role: 'assistant', content: 'b', timestamp: 2, parent: 'a' },
+      { id: 'c', type: 'message', role: 'user', content: 'c', timestamp: 3, parent: 'b' }
+    ];
+
+    const branchHistoriesFeatureFirst = { feature: featureNodes, main: mainNodes } as any;
+    const branchHistoriesMainFirst = { main: mainNodes, feature: featureNodes } as any;
+
+    const nodesA = buildGraphNodes(branchHistoriesFeatureFirst, 'feature', 'main');
+    const nodesB = buildGraphNodes(branchHistoriesMainFirst, 'feature', 'main');
+
+    const byIdA = new Map(nodesA.map((n) => [n.id, n]));
+    const byIdB = new Map(nodesB.map((n) => [n.id, n]));
+
+    expect(byIdA.get('a')?.laneBranchId).toBe('main');
+    expect(byIdB.get('a')?.laneBranchId).toBe('main');
+    expect(byIdA.get('b')?.laneBranchId).toBe('main');
+    expect(byIdB.get('b')?.laneBranchId).toBe('main');
+    expect(byIdA.get('c')?.laneBranchId).toBe('feature');
+    expect(byIdB.get('c')?.laneBranchId).toBe('feature');
+  });
 });

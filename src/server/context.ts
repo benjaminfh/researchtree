@@ -56,6 +56,18 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
         role: 'system',
         content: summary
       });
+
+      if (node.mergedAssistantContent?.trim()) {
+        const payloadCost = estimateTokens(node.mergedAssistantContent);
+        if (tokenBudget - payloadCost < 0) {
+          continue;
+        }
+        tokenBudget -= payloadCost;
+        messages.push({
+          role: 'assistant',
+          content: node.mergedAssistantContent
+        });
+      }
     }
   }
 

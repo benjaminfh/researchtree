@@ -31,8 +31,8 @@ export type SwitchBranchInput = z.infer<typeof switchBranchSchema>;
 export const mergeRequestSchema = z.object({
   sourceBranch: z.string().min(1).max(120),
   mergeSummary: z.string().min(1).max(4000),
-  applyArtefact: z.boolean().optional(),
-  targetBranch: z.string().min(1).max(120).optional()
+  targetBranch: z.string().min(1).max(120).optional(),
+  sourceAssistantNodeId: z.string().min(1).optional()
 });
 
 export const pinCanvasDiffSchema = z.object({

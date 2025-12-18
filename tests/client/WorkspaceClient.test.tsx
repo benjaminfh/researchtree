@@ -262,6 +262,66 @@ describe('WorkspaceClient', () => {
     expect(JSON.parse(init?.body as string)).toEqual({ mergeNodeId: 'merge-1', targetBranch: 'feature/phase-2' });
   });
 
+  it('merges using the selected assistant payload message', async () => {
+    const user = userEvent.setup();
+    const nodesWithBranchAssistant: NodeRecord[] = [
+      ...sampleNodes,
+      {
+        id: 'node-assistant-branch',
+        type: 'message',
+        role: 'assistant',
+        content: 'Branch final payload.',
+        timestamp: 1700000002500,
+        parent: 'node-user-branch'
+      }
+    ];
+
+    mockUseProjectData.mockReturnValueOnce({
+      nodes: nodesWithBranchAssistant,
+      artefact: '## Artefact state',
+      artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+      isLoading: false,
+      error: undefined,
+      mutateHistory: mutateHistoryMock,
+      mutateArtefact: mutateArtefactMock
+    } as ReturnType<typeof useProjectData>);
+
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches as any}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /merge into trunk/i }));
+    expect(await screen.findByText(/merge summary/i)).toBeInTheDocument();
+    expect(screen.getByText('Branch final payload.')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Merge summary'), 'Bring back the final payload');
+
+    const mergeButtons = screen.getAllByRole('button', { name: /merge into trunk/i });
+    const confirmButton = mergeButtons[mergeButtons.length - 1];
+    await waitFor(() => {
+      expect(confirmButton).not.toBeDisabled();
+    });
+    await user.click(confirmButton);
+
+    const mergeCall = (global.fetch as any).mock.calls.find(
+      ([input]: [RequestInfo | URL]) => input.toString().includes('/api/projects/proj-1/merge')
+    );
+    expect(mergeCall).toBeTruthy();
+    const [, init] = mergeCall as [RequestInfo | URL, RequestInit];
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(init?.body as string)).toEqual({
+      sourceBranch: 'feature/phase-2',
+      targetBranch: 'main',
+      mergeSummary: 'Bring back the final payload',
+      sourceAssistantNodeId: 'node-assistant-branch'
+    });
+  });
+
   it('shows stop controls and error text while streaming', async () => {
     chatState.isStreaming = true;
     chatState.error = 'Network issue';

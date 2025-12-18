@@ -61,6 +61,7 @@ describe('Integration workflow', () => {
       const mergeNode = await mergeBranch(projectId, 'explore-alternative', 'Explored alternative approach');
       expect(mergeNode.type).toBe('merge');
       expect(mergeNode.sourceNodeIds.length).toBe(2);
+      expect(mergeNode.mergedAssistantContent).toBe('Alternative answer');
 
       const finalMainNodes = await getNodes(projectId);
       expect(finalMainNodes.length).toBe(5);
