@@ -134,7 +134,7 @@ async function getBranchCreatedTimestamp(git: ReturnType<typeof simpleGit>, bran
 
 interface MergeOptions {
   targetBranch?: string;
-  applyArtefact?: boolean;
+  sourceAssistantNodeId?: string;
 }
 
 export async function mergeBranch(
@@ -153,8 +153,8 @@ export async function mergeBranch(
 
   const branches = await git.branchLocal();
   const targetBranch = typeof targetBranchOrOptions === 'string' ? targetBranchOrOptions : targetBranchOrOptions?.targetBranch;
-  const applyArtefact =
-    typeof targetBranchOrOptions === 'object' && targetBranchOrOptions !== null ? targetBranchOrOptions.applyArtefact ?? false : false;
+  const sourceAssistantNodeId =
+    typeof targetBranchOrOptions === 'object' && targetBranchOrOptions !== null ? targetBranchOrOptions.sourceAssistantNodeId : undefined;
 
   if (!branches.all.includes(sourceBranch)) {
     throw new Error(`Branch ${sourceBranch} does not exist`);
@@ -171,11 +171,39 @@ export async function mergeBranch(
   await forceCheckoutRef(projectId, target);
 
   const targetNodes = await readNodesFromRef(projectId, target);
-  const sourceNodes = await readNodesFromRef(projectId, sourceBranch);
+  const sourceCommit = (await git.revparse([sourceBranch])).trim();
+  const sourceNodes = await readNodesFromRef(projectId, sourceCommit);
   const parentId = targetNodes[targetNodes.length - 1]?.id ?? null;
   const targetIds = new Set(targetNodes.map((node) => node.id));
   const sourceSpecific = sourceNodes.filter((node) => !targetIds.has(node.id));
-  const sourceCommit = (await git.revparse([sourceBranch])).trim();
+
+  const resolvedPayloadNode =
+    sourceAssistantNodeId?.trim().length
+      ? sourceSpecific.find((node) => node.type === 'message' && node.id === sourceAssistantNodeId)
+      : [...sourceSpecific]
+          .reverse()
+          .find((node) => node.type === 'message' && node.role === 'assistant' && node.content?.trim().length);
+
+  if (sourceAssistantNodeId?.trim().length) {
+    if (!resolvedPayloadNode) {
+      throw new Error(`Source assistant node ${sourceAssistantNodeId} not found on ${sourceBranch} (or is not unique to that branch)`);
+    }
+    if (resolvedPayloadNode.type !== 'message' || resolvedPayloadNode.role !== 'assistant') {
+      throw new Error('sourceAssistantNodeId must reference an assistant message node');
+    }
+  } else if (!resolvedPayloadNode) {
+    throw new Error(`No assistant message found on ${sourceBranch} to merge`);
+  }
+
+  const mergedAssistantNodeId =
+    resolvedPayloadNode && resolvedPayloadNode.type === 'message' && resolvedPayloadNode.role === 'assistant'
+      ? resolvedPayloadNode.id
+      : undefined;
+  const mergedAssistantContent =
+    resolvedPayloadNode && resolvedPayloadNode.type === 'message' && resolvedPayloadNode.role === 'assistant'
+      ? resolvedPayloadNode.content
+      : undefined;
+
   const [targetArtefact, sourceArtefact] = await Promise.all([
     getArtefactFromRef(projectId, target),
     getArtefactFromRef(projectId, sourceCommit)
@@ -191,8 +219,9 @@ export async function mergeBranch(
         mergeSummary,
         sourceCommit,
         sourceNodeIds: sourceSpecific.map((node) => node.id),
-        applyArtefact,
-        canvasDiff: canvasDiff || undefined
+        canvasDiff: canvasDiff || undefined,
+        mergedAssistantNodeId,
+        mergedAssistantContent
       },
       parentId,
       target

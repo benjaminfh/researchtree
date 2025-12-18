@@ -72,7 +72,10 @@ See `src/git/types.ts`.
   - `mergeSummary: string` (human summary injected into future contexts)
   - `sourceCommit: string` (commit hash of source branch at merge time)
   - `sourceNodeIds: string[]` (IDs in source branch not present in target branch)
-  - `applyArtefact?: boolean` (intention flag; see “Merges” below)
+  - `applyArtefact?: boolean` (legacy flag on older nodes; no longer produced by the API)
+  - `mergedAssistantNodeId?: string` (source branch assistant node ID chosen as the merge “payload”)
+  - `mergedAssistantContent?: string` (snapshot of the chosen assistant payload content)
+  - `canvasDiff?: string` (snapshot of canvas diff; see below)
 
 ### Common Fields
 - `id` (UUID)
@@ -273,9 +276,13 @@ MVP merge behavior:
 - Uses `git merge -s ours --no-commit <sourceBranch>` to preserve the DAG structure while keeping target branch file contents.
 - Appends a `merge` node describing what to bring back.
 
-`applyArtefact`:
-- Currently recorded as intent on the merge node (`applyArtefact?: boolean`).
-- In the newer merge direction, the merge node can carry a `canvasDiff` but does not automatically apply artefact changes.
+Merge “payload” (chat content):
+- We do not merge the full source branch chat history into the target branch.
+- Instead, each merge snapshots a single “final assistant” message from the source branch into the merge node (`mergedAssistantNodeId`, `mergedAssistantContent`).
+- Context assembly includes this payload as an assistant message, so future generations can build on what was merged without importing the whole branch.
+
+Legacy `applyArtefact`:
+- Older merge nodes may include `applyArtefact?: boolean`, but merges no longer auto-apply `artefact.md` and the API no longer accepts this flag.
 
 `canvasDiff`:
 - Stored on the merge node as a simple line-based diff string where each line is prefixed with:
@@ -304,6 +311,8 @@ Given a `ref`:
 - Convert message nodes into chat messages.
 - Inject merge summaries as additional system messages:
   - `Merge summary from <mergeFrom>: <mergeSummary>`
+- Inject merge payload as an assistant message (if present):
+  - `mergedAssistantContent`
 - Apply a rough token budget to trim history.
 
 This ensures branch chats see the correct snapshot of both history and artefact for that branch.
@@ -324,6 +333,6 @@ To reason about safety:
 
 ## Known Constraints / Follow-Ups
 
-- **`applyArtefact` is legacy/intent-only**: merges do not auto-apply `artefact.md`; instead we store `canvasDiff` on the merge node and optionally pin that diff into context as a durable assistant message.
+ - **Canvas merges are “diff-only”**: merges do not auto-apply `artefact.md`; instead we store `canvasDiff` on the merge node and optionally pin that diff into context as a durable assistant message.
 - **Non-chat operations still rely on checkout**: branch ops, artefact updates, stars writes. If we want full concurrency across those, they should be converted to ref-safe git plumbing as well (or run in separate worktrees).
 - The in-memory lock maps are per server process. A multi-process deployment would require a shared lock mechanism (DB/Redis) or a different storage approach.

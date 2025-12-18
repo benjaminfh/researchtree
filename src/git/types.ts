@@ -32,6 +32,8 @@ export interface MergeNode extends BaseNode {
   sourceNodeIds: string[];
   applyArtefact?: boolean;
   canvasDiff?: string;
+  mergedAssistantNodeId?: string;
+  mergedAssistantContent?: string;
 }
 
 export type NodeRecord = MessageNode | StateNode | MergeNode;
@@ -55,6 +57,8 @@ export type MergeNodeInput = Pick<
   | 'tokensUsed'
   | 'applyArtefact'
   | 'canvasDiff'
+  | 'mergedAssistantNodeId'
+  | 'mergedAssistantContent'
 >;
 
 export type NodeInput = MessageNodeInput | StateNodeInput | MergeNodeInput;

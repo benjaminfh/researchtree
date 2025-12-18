@@ -20,7 +20,7 @@ Finalize the “branch → explore → merge → continue” loop so it is:
 ## Phase 3 Gap Audit (Outstanding / Drift)
 Phase 3 planning assumed trunk-only Canvas and “applyArtefact” adoption. The implementation has moved to:
 - Canvas is branch-local editable (Phase 3 doc + `README.md` still say trunk-only).
-- `applyArtefact` is legacy/intent-only (merge does not auto-apply `artefact.md`; merge route returns `applyArtefactApplied: false`).
+- `applyArtefact` is legacy only (merge does not auto-apply `artefact.md`; the API no longer accepts/returns an apply flag).
 
 Remaining Phase 3-ish items worth cleaning up:
 - Update `README.md` to reflect ref-safe chat writes + Canvas-per-branch + forced checkout rule.
@@ -54,7 +54,7 @@ Recommended implementation:
 ### 2) Update Merge API + Git Helper
 Route: `POST /api/projects/[id]/merge`
 - Add optional request field `sourceAssistantNodeId?: string`.
-- Keep `applyArtefact` only for backward compatibility; treat it as intent-only (or remove once UI no longer sends it).
+- Do not accept `applyArtefact` (legacy nodes may still carry the field).
 
 Git helper: `src/git/branches.ts:mergeBranch`
 - Resolve the source payload node (default last assistant).
@@ -93,4 +93,3 @@ Workspace chat rendering (`src/components/workspace/WorkspaceClient.tsx`):
   - canvas diff snapshot.
 - Canvas diff is never injected automatically; pinning creates a durable assistant message node that remains in history.
 - Context builder uses merge payload and pinned diff correctly without pulling entire merged branch history.
-

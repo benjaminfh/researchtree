@@ -133,6 +133,11 @@ const NodeBubble: FC<{
         ) : null}
         {node.type === 'state' ? <p className="mt-2 text-sm font-medium text-slate-700">Canvas updated</p> : null}
         {node.type === 'merge' ? <p className="mt-2 text-sm font-medium text-slate-700">Merge: {node.mergeSummary}</p> : null}
+        {node.type === 'merge' && node.mergedAssistantContent?.trim() ? (
+          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">{node.mergedAssistantContent}</p>
+        ) : node.type === 'merge' ? (
+          <p className="mt-2 text-sm italic text-slate-500">Merged payload unavailable (legacy merge)</p>
+        ) : null}
         {node.type === 'merge' && node.canvasDiff ? (
           <div className="mt-3 rounded-xl bg-slate-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
@@ -323,6 +328,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [mergePreview, setMergePreview] = useState<{ trunk: string; branch: string } | null>(null);
   const [isMergePreviewLoading, setIsMergePreviewLoading] = useState(false);
   const [mergePreviewError, setMergePreviewError] = useState<string | null>(null);
+  const [mergePayloadNodeId, setMergePayloadNodeId] = useState<string | null>(null);
+  const [showMergePayloadPicker, setShowMergePayloadPicker] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingNode, setEditingNode] = useState<MessageNode | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -868,6 +875,42 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       branchNodes: combinedNodes.slice(sharedCount)
     };
   }, [combinedNodes, sharedCount]);
+
+  const mergePayloadCandidates = useMemo(() => {
+    return branchNodes.filter(
+      (node) =>
+        node.type === 'message' &&
+        node.role === 'assistant' &&
+        node.id !== 'streaming' &&
+        node.content.trim().length > 0 &&
+        node.createdOnBranch !== trunkName
+    ) as MessageNode[];
+  }, [branchNodes, trunkName]);
+
+  const selectedMergePayload = useMemo(() => {
+    if (mergePayloadCandidates.length === 0) return null;
+    if (mergePayloadNodeId) {
+      const found = mergePayloadCandidates.find((node) => node.id === mergePayloadNodeId);
+      if (found) return found;
+    }
+    return mergePayloadCandidates[mergePayloadCandidates.length - 1] ?? null;
+  }, [mergePayloadCandidates, mergePayloadNodeId]);
+
+  useEffect(() => {
+    if (!showMergeModal) {
+      setMergePayloadNodeId(null);
+      setShowMergePayloadPicker(false);
+      return;
+    }
+    if (mergePayloadCandidates.length === 0) {
+      setMergePayloadNodeId(null);
+      return;
+    }
+    if (mergePayloadNodeId && mergePayloadCandidates.some((node) => node.id === mergePayloadNodeId)) {
+      return;
+    }
+    setMergePayloadNodeId(mergePayloadCandidates[mergePayloadCandidates.length - 1]?.id ?? null);
+  }, [showMergeModal, mergePayloadCandidates, mergePayloadNodeId]);
 
   const pinnedCanvasDiffMergeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1558,6 +1601,58 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 disabled={isMerging}
               />
             </div>
+
+            <div className="mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium text-slate-800">Merge payload (assistant)</span>
+                {mergePayloadCandidates.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowMergePayloadPicker((prev) => !prev)}
+                    className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                    disabled={isMerging}
+                    aria-label={showMergePayloadPicker ? 'Hide payload picker' : 'Show payload picker'}
+                  >
+                    {showMergePayloadPicker ? 'Hide advanced' : 'Advanced'}
+                  </button>
+                ) : null}
+              </div>
+
+              {selectedMergePayload ? (
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-divider/80 bg-slate-50 p-3 text-sm text-slate-800">
+                  <p className="whitespace-pre-line leading-relaxed">{selectedMergePayload.content}</p>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-rose-700">
+                  This branch has no assistant messages to merge yet. Generate a response on this branch first.
+                </p>
+              )}
+
+              {showMergePayloadPicker && mergePayloadCandidates.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  <label className="text-sm font-medium text-slate-800" htmlFor="merge-payload-select">
+                    Choose payload message
+                  </label>
+                  <select
+                    id="merge-payload-select"
+                    value={mergePayloadNodeId ?? ''}
+                    onChange={(event) => setMergePayloadNodeId(event.target.value || null)}
+                    className="w-full rounded-lg border border-divider/80 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                    disabled={isMerging}
+                  >
+                    {mergePayloadCandidates.map((node) => {
+                      const firstLine = node.content.split(/\r?\n/)[0] ?? '';
+                      const label = `${new Date(node.timestamp).toLocaleTimeString()} · ${firstLine}`.slice(0, 120);
+                      return (
+                        <option key={node.id} value={node.id}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ) : null}
+            </div>
             <div className="mt-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-slate-800">Canvas diff</span>
@@ -1621,6 +1716,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     setMergeError('Merge summary is required.');
                     return;
                   }
+                  if (!selectedMergePayload) {
+                    setMergeError('This branch has no assistant payload to merge yet.');
+                    return;
+                  }
                   setIsMerging(true);
                   setMergeError(null);
                   try {
@@ -1630,7 +1729,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       body: JSON.stringify({
                         sourceBranch: branchName,
                         targetBranch: trunkName,
-                        mergeSummary: mergeSummary.trim()
+                        mergeSummary: mergeSummary.trim(),
+                        sourceAssistantNodeId: selectedMergePayload.id
                       })
                     });
                     if (!res.ok) {
@@ -1647,7 +1747,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   }
                 }}
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
-                disabled={isMerging || isMergePreviewLoading}
+                disabled={isMerging || isMergePreviewLoading || !selectedMergePayload}
               >
                 {isMerging ? 'Merging…' : 'Merge into trunk'}
               </button>

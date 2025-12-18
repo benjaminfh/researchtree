@@ -114,10 +114,12 @@ describe('Branch operations', () => {
   it('mergeBranch creates merge node on current branch', async () => {
     await createBranch(projectId, 'feature');
     await appendNode(projectId, { type: 'message', role: 'user', content: 'Feature work' });
+    await appendNode(projectId, { type: 'message', role: 'assistant', content: 'Feature answer' });
     await switchBranch(projectId, 'main');
     const mergeNode = await mergeBranch(projectId, 'feature', 'Merged feature');
 
     expect(mergeNode.type).toBe('merge');
+    expect(mergeNode.mergedAssistantContent).toBe('Feature answer');
     const nodes = await getNodes(projectId);
     expect(nodes[nodes.length - 1].type).toBe('merge');
   });
@@ -130,6 +132,8 @@ describe('Branch operations', () => {
       const node = await appendNode(projectId, { type: 'message', role: 'user', content: `Feature ${i}` });
       nodeIds.push(node.id);
     }
+    const payload = await appendNode(projectId, { type: 'message', role: 'assistant', content: 'Final feature payload' });
+    nodeIds.push(payload.id);
     await switchBranch(projectId, 'main');
     const mergeNode = await mergeBranch(projectId, 'feature', 'Test merge summary');
 
@@ -137,6 +141,8 @@ describe('Branch operations', () => {
     expect(mergeNode.mergeSummary).toBe('Test merge summary');
     assertValidCommitHash(mergeNode.sourceCommit);
     expect(mergeNode.sourceNodeIds).toEqual(nodeIds);
+    expect(mergeNode.mergedAssistantNodeId).toBe(payload.id);
+    expect(mergeNode.mergedAssistantContent).toBe('Final feature payload');
   });
 
   it('mergeBranch works when merging to non-trunk branch', async () => {
@@ -153,6 +159,7 @@ describe('Branch operations', () => {
   it('mergeBranch preserves git DAG structure', async () => {
     await createBranch(projectId, 'feature');
     await appendNode(projectId, { type: 'message', role: 'user', content: 'Feature work' });
+    await appendNode(projectId, { type: 'message', role: 'assistant', content: 'Feature answer' });
     await switchBranch(projectId, 'main');
     await appendNode(projectId, { type: 'message', role: 'assistant', content: 'Main work' });
     await mergeBranch(projectId, 'feature', 'Merge feature');
@@ -168,12 +175,14 @@ describe('Branch operations', () => {
       const node = await appendNode(projectId, { type: 'message', role: 'user', content: `Feature ${i}` });
       createdNodes.push(node.id);
     }
+    const payload = await appendNode(projectId, { type: 'message', role: 'assistant', content: 'Feature payload' });
+    createdNodes.push(payload.id);
     await switchBranch(projectId, 'main');
     await mergeBranch(projectId, 'feature', 'Merge feature');
     await switchBranch(projectId, 'feature');
 
     const nodes = await getNodes(projectId);
-    expect(nodes.map((n) => n.id).slice(-3)).toEqual(createdNodes);
+    expect(nodes.map((n) => n.id).slice(-4)).toEqual(createdNodes);
     expect(nodes.some((n) => n.type === 'merge')).toBe(false);
   });
 
@@ -184,7 +193,10 @@ describe('Branch operations', () => {
     await switchBranch(projectId, 'main');
     await mergeBranch(projectId, 'feature', 'Merge feature');
 
-    const nodesContent = await readProjectFile(projectId, 'nodes');
-    expect(nodesContent.includes('Feature content')).toBe(false);
+    const nodes = await getNodes(projectId);
+    const merge = nodes.find((n) => n.type === 'merge');
+    expect(merge?.type).toBe('merge');
+    expect(merge && merge.type === 'merge' ? merge.mergedAssistantContent : null).toBe('Feature content');
+    expect(nodes.some((n) => n.type === 'message' && n.content === 'Feature content')).toBe(false);
   });
 });

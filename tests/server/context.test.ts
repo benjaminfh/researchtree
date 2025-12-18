@@ -63,4 +63,63 @@ describe('buildChatContext', () => {
     // Only a subset of nodes should be included once budget is exhausted
     expect(context.messages.filter((msg) => msg.role === 'user').length).toBeLessThan(3);
   });
+
+  it('includes merge summary and merged assistant payload', async () => {
+    mocks.getNodes.mockResolvedValue([
+      {
+        id: 'a',
+        type: 'message',
+        role: 'user',
+        content: 'Hi',
+        timestamp: Date.now(),
+        parent: null
+      },
+      {
+        id: 'm',
+        type: 'merge',
+        mergeFrom: 'feature',
+        mergeSummary: 'Bring back final answer',
+        sourceCommit: 'abc',
+        sourceNodeIds: ['x'],
+        mergedAssistantNodeId: 'x',
+        mergedAssistantContent: 'Final payload text',
+        canvasDiff: '+diff text',
+        timestamp: Date.now(),
+        parent: 'a'
+      }
+    ]);
+    mocks.getArtefact.mockResolvedValue('Artefact');
+
+    const context = await buildChatContext('project-1');
+
+    expect(context.messages.some((msg) => msg.role === 'system' && msg.content.includes('Merge summary from feature'))).toBe(true);
+    expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('Final payload text'))).toBe(true);
+    expect(context.messages.some((msg) => msg.content.includes('+diff text'))).toBe(false);
+  });
+
+  it('includes pinned canvas diffs only when they are persisted as assistant messages', async () => {
+    mocks.getNodes.mockResolvedValue([
+      {
+        id: 'a',
+        type: 'message',
+        role: 'user',
+        content: 'Hi',
+        timestamp: Date.now(),
+        parent: null
+      },
+      {
+        id: 'p1',
+        type: 'message',
+        role: 'assistant',
+        content: '+diff text',
+        pinnedFromMergeId: 'm',
+        timestamp: Date.now(),
+        parent: 'a'
+      }
+    ]);
+    mocks.getArtefact.mockResolvedValue('Artefact');
+
+    const context = await buildChatContext('project-1');
+    expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('+diff text'))).toBe(true);
+  });
 });
