@@ -387,7 +387,13 @@ export function buildGraphNodes(
   const firstSeenBranchById = new Map<string, string>();
   const activeNodeIds = new Set<string>();
 
-  for (const [branchName, nodes] of Object.entries(branchHistories)) {
+  const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
+    if (a === trunkName && b !== trunkName) return -1;
+    if (a !== trunkName && b === trunkName) return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const [branchName, nodes] of orderedBranchEntries) {
     for (const node of nodes) {
       if (!nodeById.has(node.id)) {
         nodeById.set(node.id, node);
