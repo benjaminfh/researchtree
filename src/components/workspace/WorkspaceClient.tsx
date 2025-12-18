@@ -1571,13 +1571,19 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               style={{ paddingLeft: railCollapsed ? '96px' : '320px' }}
             >
               <div className="flex items-center gap-3 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
-                <button
-                  type="button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                  aria-label="Add attachment"
-                >
-                  <PaperClipIcon className="h-5 w-5" />
-                </button>
+                <div className="flex h-10 w-10 items-center justify-center">
+                  {features.uiAttachments ? (
+                    <button
+                      type="button"
+                      className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
+                      aria-label="Add attachment"
+                    >
+                      <PaperClipIcon className="h-5 w-5" />
+                    </button>
+                  ) : (
+                    <span aria-hidden="true" />
+                  )}
+                </div>
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
