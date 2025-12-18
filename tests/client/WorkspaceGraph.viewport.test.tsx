@@ -34,6 +34,7 @@ vi.mock('reactflow', () => {
     },
     Background: () => null,
     Handle: () => null,
+    PanOnScrollMode: { Vertical: 'vertical' },
     Position: { Top: 'top', Bottom: 'bottom' }
   };
 });

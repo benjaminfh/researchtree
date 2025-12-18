@@ -128,7 +128,11 @@ describe('WorkspaceClient', () => {
         return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
       }
       if (url.includes('/history')) {
-        const nodes = url.includes('ref=main') ? sampleNodes.slice(0, 2) : sampleNodes;
+        const parsedUrl = new URL(url, 'http://localhost');
+        const ref = parsedUrl.searchParams.get('ref');
+        const limit = parsedUrl.searchParams.get('limit');
+        const base = ref === 'main' ? sampleNodes.slice(0, 2) : sampleNodes;
+        const nodes = limit ? base.slice(0, Number(limit)) : base;
         return new Response(JSON.stringify({ nodes }), { status: 200 });
       }
       if (url.includes('/branches') && init?.method === 'PATCH') {
@@ -159,7 +163,7 @@ describe('WorkspaceClient', () => {
     expect(screen.getByText('How is progress going?')).toBeInTheDocument();
     expect(screen.getByText('All tasks queued.')).toBeInTheDocument();
     expect(screen.getByText('Branch-only follow-up.')).toBeInTheDocument();
-    expect(screen.getByText('Artefact state')).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/## Artefact state/)).toBeInTheDocument();
 
     // Copy is exposed for every message, while edit is only exposed for user messages by default.
     expect(screen.getAllByRole('button', { name: 'Copy message' })).toHaveLength(3);
@@ -230,7 +234,8 @@ describe('WorkspaceClient', () => {
       }
     ];
 
-    mockUseProjectData.mockReturnValueOnce({
+    // This component re-renders quickly (SWR + effects); keep the mocked history stable across renders.
+    mockUseProjectData.mockReturnValue({
       nodes: nodesWithMerge,
       artefact: '## Artefact state',
       artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
@@ -244,7 +249,7 @@ describe('WorkspaceClient', () => {
       <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
     );
 
-    expect(screen.getByText('Merge: Bring back canvas changes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add canvas diff to context' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Add canvas diff to context' }));
     await user.click(screen.getByRole('button', { name: 'Confirm add canvas diff to context' }));
@@ -276,7 +281,8 @@ describe('WorkspaceClient', () => {
       }
     ];
 
-    mockUseProjectData.mockReturnValueOnce({
+    // This component re-renders quickly (SWR + effects); keep the mocked history stable across renders.
+    mockUseProjectData.mockReturnValue({
       nodes: nodesWithBranchAssistant,
       artefact: '## Artefact state',
       artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
@@ -285,6 +291,31 @@ describe('WorkspaceClient', () => {
       mutateHistory: mutateHistoryMock,
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>);
+
+    (global.fetch as any).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/history')) {
+        const parsedUrl = new URL(url, 'http://localhost');
+        const ref = parsedUrl.searchParams.get('ref');
+        const limit = parsedUrl.searchParams.get('limit');
+        const base = ref === 'main' ? sampleNodes.slice(0, 2) : sampleNodes;
+        const nodes = limit ? base.slice(0, Number(limit)) : base;
+        return new Response(JSON.stringify({ nodes }), { status: 200 });
+      }
+      if (url.includes('/branches') && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ branchName: 'main', branches: baseBranches }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      if (url.endsWith('/merge')) {
+        return new Response(JSON.stringify({ mergeNode: { id: 'merge-1', type: 'merge' } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
 
     render(
       <WorkspaceClient
@@ -295,13 +326,13 @@ describe('WorkspaceClient', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: /merge into trunk/i }));
+    await user.click(screen.getByRole('button', { name: /merge/i }));
     expect(await screen.findByText(/merge summary/i)).toBeInTheDocument();
-    expect(screen.getByText('Branch final payload.')).toBeInTheDocument();
+    expect(screen.getAllByText('Branch final payload.')).toHaveLength(2);
 
     await user.type(screen.getByLabelText('Merge summary'), 'Bring back the final payload');
 
-    const mergeButtons = screen.getAllByRole('button', { name: /merge into trunk/i });
+    const mergeButtons = screen.getAllByRole('button', { name: /merge/i });
     const confirmButton = mergeButtons[mergeButtons.length - 1];
     await waitFor(() => {
       expect(confirmButton).not.toBeDisabled();
@@ -320,6 +351,11 @@ describe('WorkspaceClient', () => {
       mergeSummary: 'Bring back the final payload',
       sourceAssistantNodeId: 'node-assistant-branch'
     });
+
+    const branchSwitchCall = (global.fetch as any).mock.calls.find(
+      ([input, init]: [RequestInfo | URL, RequestInit]) => input.toString().includes('/branches') && init?.method === 'PATCH'
+    );
+    expect(branchSwitchCall).toBeTruthy();
   });
 
   it('shows stop controls and error text while streaming', async () => {
@@ -337,7 +373,8 @@ describe('WorkspaceClient', () => {
   });
 
   it('renders loading and error states from the history hook', () => {
-    mockUseProjectData.mockReturnValueOnce({
+    // This component re-renders quickly (SWR + effects); keep the mocked state stable across renders.
+    let currentProjectData: ReturnType<typeof useProjectData> = {
       nodes: [],
       artefact: '',
       artefactMeta: null,
@@ -345,12 +382,14 @@ describe('WorkspaceClient', () => {
       error: undefined,
       mutateHistory: mutateHistoryMock,
       mutateArtefact: mutateArtefactMock
-    } as ReturnType<typeof useProjectData>);
+    } as ReturnType<typeof useProjectData>;
+
+    mockUseProjectData.mockImplementation(() => currentProjectData);
 
     const { rerender } = render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(screen.getByText('Loading history…')).toBeInTheDocument();
 
-    mockUseProjectData.mockReturnValueOnce({
+    currentProjectData = {
       nodes: [],
       artefact: '',
       artefactMeta: null,
@@ -358,7 +397,7 @@ describe('WorkspaceClient', () => {
       error: new Error('boom'),
       mutateHistory: mutateHistoryMock,
       mutateArtefact: mutateArtefactMock
-    } as ReturnType<typeof useProjectData>);
+    } as ReturnType<typeof useProjectData>;
 
     rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(screen.getByText('Failed to load history.')).toBeInTheDocument();
@@ -428,7 +467,7 @@ describe('WorkspaceClient', () => {
     rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
     await waitFor(() => {
-      expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(3);
+      expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(4);
     });
   });
 

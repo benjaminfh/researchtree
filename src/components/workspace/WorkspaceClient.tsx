@@ -63,6 +63,7 @@ const NodeBubble: FC<{
   onEdit?: (node: MessageNode) => void;
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
+  highlighted?: boolean;
 }> = ({
   node,
   muted = false,
@@ -71,7 +72,8 @@ const NodeBubble: FC<{
   onToggleStar,
   onEdit,
   isCanvasDiffPinned = false,
-  onPinCanvasDiff
+  onPinCanvasDiff,
+  highlighted = false
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const canCopy = node.type === 'message' && node.content.length > 0;
@@ -81,6 +83,7 @@ const NodeBubble: FC<{
   const [confirmPinCanvasDiff, setConfirmPinCanvasDiff] = useState(false);
   const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
   const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
+  const [showMergePayload, setShowMergePayload] = useState(false);
   const base = `relative max-w-[82%] overflow-hidden rounded-2xl px-4 py-3 transition ${
     isUser ? 'min-w-[300px]' : ''
   }`;
@@ -127,16 +130,43 @@ const NodeBubble: FC<{
 
   return (
     <article className={`flex flex-col gap-1 ${align}`}>
-      <div className={`${base} ${palette}`}>
+      <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
         {'content' in node && node.content ? (
           <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">{node.content}</p>
         ) : null}
         {node.type === 'state' ? <p className="mt-2 text-sm font-medium text-slate-700">Canvas updated</p> : null}
-        {node.type === 'merge' ? <p className="mt-2 text-sm font-medium text-slate-700">Merge: {node.mergeSummary}</p> : null}
-        {node.type === 'merge' && node.mergedAssistantContent?.trim() ? (
-          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">{node.mergedAssistantContent}</p>
-        ) : node.type === 'merge' ? (
-          <p className="mt-2 text-sm italic text-slate-500">Merged payload unavailable (legacy merge)</p>
+        {node.type === 'merge' ? (
+          <div className="mt-2 space-y-1">
+            <p className="text-sm font-medium text-slate-700">
+              Merged from <span className="font-semibold">{node.mergeFrom}</span>
+            </p>
+            <p className="text-sm font-medium text-slate-700">{node.mergeSummary}</p>
+          </div>
+        ) : null}
+
+        {node.type === 'merge' ? (
+          node.mergedAssistantContent?.trim() ? (
+            <div className="mt-3 rounded-xl bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                <span className="font-semibold text-slate-700">Merged payload</span>
+                <button
+                  type="button"
+                  onClick={() => setShowMergePayload((prev) => !prev)}
+                  className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                  aria-label={showMergePayload ? 'Hide merged payload' : 'Show merged payload'}
+                >
+                  {showMergePayload ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">
+                {showMergePayload
+                  ? node.mergedAssistantContent
+                  : `${node.mergedAssistantContent.slice(0, 280)}${node.mergedAssistantContent.length > 280 ? '…' : ''}`}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm italic text-slate-500">Merged payload unavailable (legacy merge)</p>
+          )
         ) : null}
         {node.type === 'merge' && node.canvasDiff ? (
           <div className="mt-3 rounded-xl bg-slate-50 p-3">
@@ -283,12 +313,13 @@ const ChatNodeRow: FC<{
   onEdit?: (node: MessageNode) => void;
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
-}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff }) => {
+  highlighted?: boolean;
+}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff, highlighted }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName);
 
   return (
-    <div className="grid grid-cols-[14px_1fr] items-stretch">
+    <div className="grid grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
       <div className="flex justify-center">
         <div
           data-testid="chat-row-stripe"
@@ -306,6 +337,7 @@ const ChatNodeRow: FC<{
           onEdit={onEdit}
           isCanvasDiffPinned={isCanvasDiffPinned}
           onPinCanvasDiff={onPinCanvasDiff}
+          highlighted={!!highlighted}
         />
       </div>
     </div>
@@ -325,11 +357,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [mergeSummary, setMergeSummary] = useState('');
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [showMergeModal, setShowMergeModal] = useState(false);
-  const [mergePreview, setMergePreview] = useState<{ trunk: string; branch: string } | null>(null);
+  const [mergePreview, setMergePreview] = useState<{ target: string; source: string } | null>(null);
   const [isMergePreviewLoading, setIsMergePreviewLoading] = useState(false);
   const [mergePreviewError, setMergePreviewError] = useState<string | null>(null);
   const [mergePayloadNodeId, setMergePayloadNodeId] = useState<string | null>(null);
   const [showMergePayloadPicker, setShowMergePayloadPicker] = useState(false);
+  const [mergeTargetBranch, setMergeTargetBranch] = useState<string>('main');
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingNode, setEditingNode] = useState<MessageNode | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -722,7 +755,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       try {
         const baseUrl = `/api/projects/${project.id}/artefact`;
         const [trunkRes, branchRes] = await Promise.all([
-          fetch(`${baseUrl}?ref=${encodeURIComponent(trunkName)}`, { signal: controller.signal }),
+          fetch(`${baseUrl}?ref=${encodeURIComponent(mergeTargetBranch)}`, { signal: controller.signal }),
           fetch(`${baseUrl}?ref=${encodeURIComponent(branchName)}`, { signal: controller.signal })
         ]);
         if (!trunkRes.ok || !branchRes.ok) {
@@ -733,8 +766,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           return;
         }
         setMergePreview({
-          trunk: trunkPayload?.artefact ?? '',
-          branch: branchPayload?.artefact ?? ''
+          target: trunkPayload?.artefact ?? '',
+          source: branchPayload?.artefact ?? ''
         });
       } catch (error) {
         if ((error as DOMException).name === 'AbortError') {
@@ -752,7 +785,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return () => {
       controller.abort();
     };
-  }, [showMergeModal, branchName, trunkName, project.id]);
+  }, [showMergeModal, branchName, mergeTargetBranch, project.id]);
 
   const [railCollapsed, setRailCollapsed] = useState(false);
   useEffect(() => {
@@ -778,6 +811,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
   const scrollFollowThreshold = 72;
+  const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const combinedNodes = useMemo(() => (streamingNode ? [...nodes, streamingNode] : nodes), [nodes, streamingNode]);
   const lastUpdatedTimestamp = useMemo(() => {
@@ -790,7 +826,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (!mergePreview) {
       return [];
     }
-    return buildLineDiff(mergePreview.trunk, mergePreview.branch);
+    return buildLineDiff(mergePreview.target, mergePreview.source);
   }, [mergePreview]);
   const hasCanvasChanges = mergeDiff.some((line) => line.type !== 'context');
   const shouldFetchTrunk = branchName !== trunkName;
@@ -883,9 +919,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         node.role === 'assistant' &&
         node.id !== 'streaming' &&
         node.content.trim().length > 0 &&
-        node.createdOnBranch !== trunkName
+        (node.createdOnBranch ? node.createdOnBranch === branchName : true)
     ) as MessageNode[];
-  }, [branchNodes, trunkName]);
+  }, [branchNodes, branchName]);
 
   const selectedMergePayload = useMemo(() => {
     if (mergePayloadCandidates.length === 0) return null;
@@ -900,8 +936,22 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (!showMergeModal) {
       setMergePayloadNodeId(null);
       setShowMergePayloadPicker(false);
+      setMergeTargetBranch(trunkName);
       return;
     }
+    const desiredDefault =
+      branchName === trunkName
+        ? branches.find((b) => b.name !== branchName)?.name ?? trunkName
+        : trunkName;
+    setMergeTargetBranch((prev) => {
+      if (prev && prev !== branchName && branches.some((b) => b.name === prev)) {
+        return prev;
+      }
+      if (desiredDefault !== branchName && branches.some((b) => b.name === desiredDefault)) {
+        return desiredDefault;
+      }
+      return branches.find((b) => b.name !== branchName)?.name ?? trunkName;
+    });
     if (mergePayloadCandidates.length === 0) {
       setMergePayloadNodeId(null);
       return;
@@ -910,7 +960,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       return;
     }
     setMergePayloadNodeId(mergePayloadCandidates[mergePayloadCandidates.length - 1]?.id ?? null);
-  }, [showMergeModal, mergePayloadCandidates, mergePayloadNodeId]);
+  }, [showMergeModal, mergePayloadCandidates, mergePayloadNodeId, trunkName, branchName, branches]);
 
   const pinnedCanvasDiffMergeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -934,6 +984,45 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     }
     await mutateHistory();
   };
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingScrollTo) return;
+    if (branchName !== pendingScrollTo.targetBranch) return;
+    if (!nodes.some((node) => node.id === pendingScrollTo.nodeId)) return;
+    const container = messageListRef.current;
+    if (!container) return;
+
+    const escapeSelector = (value: string) => {
+      if (typeof (globalThis as any).CSS?.escape === 'function') {
+        return (globalThis as any).CSS.escape(value);
+      }
+      return value.replace(/["\\]/g, '\\$&');
+    };
+
+    requestAnimationFrame(() => {
+      const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ block: 'center' });
+      }
+      setHighlightedNodeId(pendingScrollTo.nodeId);
+      setPendingScrollTo(null);
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedNodeId(null);
+      }, 2500);
+    });
+  }, [pendingScrollTo, branchName, nodes]);
 
   useEffect(() => {
     shouldScrollToBottomRef.current = true;
@@ -1264,6 +1353,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 onEdit={undefined}
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
+                                highlighted={highlightedNodeId === node.id}
                               />
                             ))}
                           </div>
@@ -1295,6 +1385,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
                           onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToContext : undefined}
+                          highlighted={highlightedNodeId === node.id}
                         />
                       ))}
                     </div>
@@ -1305,12 +1396,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   <p className="text-sm italic text-muted">No new messages on this branch yet.</p>
                 ) : null}
 
-                {branchName !== trunkName ? (
+                {sortedBranches.length > 1 ? (
                   <button
                     type="button"
                     onClick={() => {
                       setMergeError(null);
                       setMergeSummary('');
+                      setMergeTargetBranch(trunkName);
                       setShowMergeModal(true);
                     }}
                     disabled={isMerging}
@@ -1319,7 +1411,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <ArrowUpRightIcon className="h-4 w-4" />
                     </span>
-                    Merge into trunk
+                    Merge…
                   </button>
                 ) : null}
 
@@ -1582,11 +1674,31 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-900">
-              Merge {displayBranchName(branchName)} into trunk
+              Merge {displayBranchName(branchName)} into {displayBranchName(mergeTargetBranch)}
             </h3>
             <p className="text-sm text-muted">
               Summarize what to bring back and preview the Canvas diff. Canvas changes are never auto-applied.
             </p>
+            <div className="mt-4 space-y-2">
+              <label className="text-sm font-medium text-slate-800" htmlFor="merge-target-branch">
+                Target branch
+              </label>
+              <select
+                id="merge-target-branch"
+                value={mergeTargetBranch}
+                onChange={(event) => setMergeTargetBranch(event.target.value)}
+                className="w-full rounded-lg border border-divider/80 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                disabled={isMerging}
+              >
+                {sortedBranches
+                  .filter((branch) => branch.name !== branchName)
+                  .map((branch) => (
+                    <option key={branch.name} value={branch.name}>
+                      {displayBranchName(branch.name)}
+                    </option>
+                  ))}
+              </select>
+            </div>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800" htmlFor="merge-summary">
                 Merge summary
@@ -1596,7 +1708,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 value={mergeSummary}
                 onChange={(event) => setMergeSummary(event.target.value)}
                 rows={4}
-                placeholder="What should come back to trunk?"
+                placeholder={`What should come back to ${displayBranchName(mergeTargetBranch)}?`}
                 className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isMerging}
               />
@@ -1686,7 +1798,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     </div>
                   ) : (
                     <p className="px-3 py-2 text-sm text-muted">
-                      No Canvas differences between {displayBranchName(branchName)} and trunk.
+                      No Canvas differences between {displayBranchName(branchName)} and {displayBranchName(mergeTargetBranch)}.
                     </p>
                   )
                 ) : (
@@ -1720,6 +1832,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     setMergeError('This branch has no assistant payload to merge yet.');
                     return;
                   }
+                  if (mergeTargetBranch === branchName) {
+                    setMergeError('Target branch must be different from the source branch.');
+                    return;
+                  }
                   setIsMerging(true);
                   setMergeError(null);
                   try {
@@ -1728,7 +1844,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         sourceBranch: branchName,
-                        targetBranch: trunkName,
+                        targetBranch: mergeTargetBranch,
                         mergeSummary: mergeSummary.trim(),
                         sourceAssistantNodeId: selectedMergePayload.id
                       })
@@ -1737,7 +1853,15 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       const data = await res.json().catch(() => null);
                       throw new Error(data?.error?.message ?? 'Merge failed');
                     }
-                    await Promise.all([mutateHistory(), mutateArtefact()]);
+                    const data = (await res.json().catch(() => null)) as { mergeNode?: { id: string } } | null;
+                    const mergeNodeId = data?.mergeNode?.id ?? null;
+                    if (mergeNodeId) {
+                      setPendingScrollTo({ nodeId: mergeNodeId, targetBranch: mergeTargetBranch });
+                    }
+
+                    // Switch to the target so the user immediately sees the merge node created there.
+                    await switchBranch(mergeTargetBranch);
+
                     setShowMergeModal(false);
                     setMergeSummary('');
                   } catch (err) {
@@ -1749,7 +1873,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={isMerging || isMergePreviewLoading || !selectedMergePayload}
               >
-                {isMerging ? 'Merging…' : 'Merge into trunk'}
+                {isMerging ? 'Merging…' : `Merge into ${displayBranchName(mergeTargetBranch)}`}
               </button>
             </div>
           </div>
