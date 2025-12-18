@@ -378,6 +378,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const autosaveSpinnerUntilRef = useRef<number | null>(null);
   const autosaveSpinnerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insightTab, setInsightTab] = useState<'graph' | 'canvas'>('canvas');
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [graphDetailError, setGraphDetailError] = useState<string | null>(null);
+  const [isGraphDetailBusy, setIsGraphDetailBusy] = useState(false);
+  const [confirmGraphAddCanvas, setConfirmGraphAddCanvas] = useState(false);
+  const [graphCopyFeedback, setGraphCopyFeedback] = useState(false);
+  const graphCopyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insightCollapsed, setInsightCollapsed] = useState(false);
   const [chatPaneWidth, setChatPaneWidth] = useState<number | null>(null);
   const paneContainerRef = useRef<HTMLDivElement | null>(null);
@@ -414,6 +420,29 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       await mutateStars({ starredNodeIds: data.starredNodeIds }, false);
     } catch {
       await mutateStars({ starredNodeIds: prev }, false);
+    }
+  };
+
+  const copyTextToClipboard = async (text: string) => {
+    if (typeof navigator === 'undefined') return;
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // ignore and fall back
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch {
+      // ignore
     }
   };
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
@@ -620,26 +649,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setGraphHistoryLoading(true);
       setGraphHistoryError(null);
       try {
-        const MAX_PER_BRANCH = 500;
-        const entries = await Promise.all(
-          sortedBranches.map(async (branch) => {
-            const limit = Math.min(branch.nodeCount, MAX_PER_BRANCH);
-            const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(branch.name)}&limit=${limit}`,
-              { signal: controller.signal }
-            );
-            if (!res.ok) {
-              throw new Error(`Failed to load history for ${branch.name}`);
-            }
-            const data = (await res.json()) as { nodes: NodeRecord[] };
-            return [branch.name, data.nodes ?? []] as const;
-          })
-        );
-        const mapped: Record<string, NodeRecord[]> = {};
-        for (const [name, nodes] of entries) {
-          mapped[name] = nodes;
+        const res = await fetch(`/api/projects/${project.id}/graph`, { signal: controller.signal });
+        if (!res.ok) {
+          throw new Error('Failed to load graph');
         }
-        setGraphHistories(mapped);
+        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
+        setGraphHistories(data.branchHistories ?? {});
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         setGraphHistoryError((err as Error).message);
@@ -655,11 +670,56 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (!isGraphVisible) return;
     setGraphHistories((prev) => {
       if (!prev) return prev;
+      const MAX_PER_BRANCH = 500;
+      const nextNodes =
+        nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
       const current = prev[branchName];
-      if (current === nodes) return prev;
-      return { ...prev, [branchName]: nodes };
+      if (current === nextNodes) return prev;
+      // Avoid thrashing the graph when the active history hasn't changed meaningfully.
+      if (current && current.length === nextNodes.length && current[current.length - 1]?.id === nextNodes[nextNodes.length - 1]?.id) {
+        return prev;
+      }
+      return { ...prev, [branchName]: nextNodes };
     });
   }, [isGraphVisible, branchName, nodes]);
+
+  useEffect(() => {
+    if (insightTab !== 'graph') {
+      setSelectedGraphNodeId(null);
+    }
+  }, [insightTab]);
+
+  useEffect(() => {
+    setGraphDetailError(null);
+    setIsGraphDetailBusy(false);
+    setConfirmGraphAddCanvas(false);
+    setGraphCopyFeedback(false);
+    if (graphCopyFeedbackTimeoutRef.current) {
+      clearTimeout(graphCopyFeedbackTimeoutRef.current);
+      graphCopyFeedbackTimeoutRef.current = null;
+    }
+  }, [selectedGraphNodeId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (insightTab !== 'graph') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedGraphNodeId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [insightTab]);
+
+  useEffect(() => {
+    return () => {
+      if (graphCopyFeedbackTimeoutRef.current) {
+        clearTimeout(graphCopyFeedbackTimeoutRef.current);
+        graphCopyFeedbackTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -972,16 +1032,21 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return ids;
   }, [combinedNodes]);
 
-  const pinCanvasDiffToContext = async (mergeNodeId: string) => {
+  const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mergeNodeId, targetBranch: branchName })
+      body: JSON.stringify({ mergeNodeId, targetBranch })
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       throw new Error(data?.error?.message ?? 'Failed to add diff to context');
     }
+    return (await res.json().catch(() => null)) as { pinnedNode?: NodeRecord; alreadyPinned?: boolean } | null;
+  };
+
+  const pinCanvasDiffToCurrentBranch = async (mergeNodeId: string) => {
+    await pinCanvasDiffToContext(mergeNodeId, branchName);
     await mutateHistory();
   };
 
@@ -1008,6 +1073,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       return value.replace(/["\\]/g, '\\$&');
     };
 
+    if (hideShared && sharedNodes.some((node) => node.id === pendingScrollTo.nodeId)) {
+      // Ensure the target node is actually rendered before attempting to scroll.
+      setHideShared(false);
+      return;
+    }
+
     requestAnimationFrame(() => {
       const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
       if (el instanceof HTMLElement) {
@@ -1022,7 +1093,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         setHighlightedNodeId(null);
       }, 2500);
     });
-  }, [pendingScrollTo, branchName, nodes]);
+  }, [pendingScrollTo, branchName, nodes, hideShared, sharedNodes]);
 
   useEffect(() => {
     shouldScrollToBottomRef.current = true;
@@ -1384,7 +1455,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                               : undefined
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
-                          onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToContext : undefined}
+                          onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToCurrentBranch : undefined}
                           highlighted={highlightedNodeId === node.id}
                         />
                       ))}
@@ -1527,7 +1598,249 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                               mode={graphMode}
                               onModeChange={setGraphMode}
                               starredNodeIds={starredNodeIds}
+                              selectedNodeId={selectedGraphNodeId}
+                              onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
                             />
+                            {selectedGraphNodeId ? (
+                              <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
+                                {(() => {
+                                  const activeMatch = combinedNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
+                                  let record: NodeRecord | null = activeMatch;
+                                  let targetBranch: string = branchName;
+
+                                  if (!record && graphHistories) {
+                                    for (const [b, hist] of Object.entries(graphHistories)) {
+                                      const found = hist.find((node) => node.id === selectedGraphNodeId);
+                                      if (found) {
+                                        record = found;
+                                        targetBranch = b;
+                                        break;
+                                      }
+                                    }
+                                  }
+
+                                  if (!record) {
+                                    return (
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-muted">Selected node not found in current histories.</div>
+                                        <button
+                                          type="button"
+                                          className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                                          aria-label="Clear graph selection"
+                                          onClick={() => setSelectedGraphNodeId(null)}
+                                        >
+                                          Clear
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  const title =
+                                    record.type === 'merge'
+                                      ? `Notes brought in from ${displayBranchName(record.mergeFrom)}`
+                                      : record.type === 'state'
+                                      ? 'Canvas saved'
+                                      : record.type === 'message' && record.role === 'assistant'
+                                      ? 'Assistant replied'
+                                      : record.type === 'message' && record.role === 'user'
+                                      ? 'You said'
+                                      : record.type === 'message' && record.role === 'system'
+                                      ? 'System note'
+                                      : 'Selected node';
+
+                                  const mergeRecord = record.type === 'merge' ? record : null;
+                                  const canvasDiff = mergeRecord?.canvasDiff?.trim() ?? '';
+                                  const hasCanvasDiff = !!mergeRecord && canvasDiff.length > 0;
+                                  const nodesOnTargetBranch =
+                                    targetBranch === branchName ? combinedNodes : graphHistories?.[targetBranch] ?? [];
+                                  const isCanvasDiffPinned =
+                                    !!mergeRecord &&
+                                    nodesOnTargetBranch.some(
+                                      (node) =>
+                                        node.type === 'message' && node.role === 'assistant' && node.pinnedFromMergeId === mergeRecord.id
+                                    );
+
+                                  const copyText =
+                                    record.type === 'message'
+                                      ? record.content
+                                      : mergeRecord
+                                      ? [
+                                          `Summary:\n${mergeRecord.mergeSummary ?? ''}`.trim(),
+                                          mergeRecord.mergedAssistantContent?.trim()
+                                            ? `Assistant notes:\n${mergeRecord.mergedAssistantContent}`.trim()
+                                            : '',
+                                          hasCanvasDiff ? `Canvas changes:\n${canvasDiff}`.trim() : ''
+                                        ]
+                                          .filter((part) => part.trim().length > 0)
+                                          .join('\n\n')
+                                      : record.type === 'state'
+                                      ? 'Canvas saved'
+                                      : '';
+
+                                  return (
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <div className="text-sm font-semibold text-slate-900">{title}</div>
+                                          <div className="text-xs text-muted">
+                                            {new Date(record.timestamp).toLocaleString()}
+                                            {targetBranch !== branchName ? ` · on ${displayBranchName(targetBranch)}` : ''}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={!copyText}
+                                            className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                                            aria-label="Copy selection"
+                                            onClick={() => {
+                                              void (async () => {
+                                                await copyTextToClipboard(copyText);
+                                                setGraphCopyFeedback(true);
+                                                if (graphCopyFeedbackTimeoutRef.current) {
+                                                  clearTimeout(graphCopyFeedbackTimeoutRef.current);
+                                                }
+                                                graphCopyFeedbackTimeoutRef.current = setTimeout(() => {
+                                                  setGraphCopyFeedback(false);
+                                                }, 1200);
+                                              })();
+                                            }}
+                                          >
+                                            {graphCopyFeedback ? 'Copied' : 'Copy'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                                            aria-label="Clear graph selection"
+                                            onClick={() => setSelectedGraphNodeId(null)}
+                                          >
+                                            Clear
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {record.type === 'message' ? (
+                                        <div className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                          {record.content}
+                                        </div>
+                                      ) : null}
+
+                                      {mergeRecord ? (
+                                        <div className="space-y-2">
+                                          <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                            <div className="font-semibold text-slate-800">Summary</div>
+                                            <div className="mt-1 whitespace-pre-wrap">{mergeRecord.mergeSummary}</div>
+                                          </div>
+                                          {mergeRecord.mergedAssistantContent?.trim() ? (
+                                            <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                              <div className="font-semibold text-slate-800">Assistant notes</div>
+                                              <div className="mt-1 whitespace-pre-wrap">{mergeRecord.mergedAssistantContent}</div>
+                                            </div>
+                                          ) : null}
+                                          {hasCanvasDiff ? (
+                                            <details className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">
+                                              <summary className="cursor-pointer select-none font-semibold text-slate-800">
+                                                Canvas changes
+                                              </summary>
+                                              <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-slate-700">
+                                                {canvasDiff}
+                                              </pre>
+                                            </details>
+                                          ) : (
+                                            <div className="text-xs text-muted">No canvas changes recorded on this node.</div>
+                                          )}
+                                        </div>
+                                      ) : null}
+
+                                      {graphDetailError ? <p className="text-xs text-red-600">{graphDetailError}</p> : null}
+
+                                      <div className="flex justify-end gap-2">
+                                        {mergeRecord && hasCanvasDiff ? (
+                                          isCanvasDiffPinned ? (
+                                            <span className="self-center text-xs font-semibold text-emerald-700" aria-label="Canvas changes already added">
+                                              Canvas changes added
+                                            </span>
+                                          ) : confirmGraphAddCanvas ? (
+                                            <>
+                                              <button
+                                                type="button"
+                                                disabled={isGraphDetailBusy}
+                                                className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
+                                                aria-label="Confirm add canvas changes to chat"
+                                                onClick={() => {
+                                                  void (async () => {
+                                                    setGraphDetailError(null);
+                                                    setIsGraphDetailBusy(true);
+                                                    try {
+                                                      if (targetBranch === branchName) {
+                                                        await pinCanvasDiffToCurrentBranch(mergeRecord.id);
+                                                      } else {
+                                                        const result = await pinCanvasDiffToContext(mergeRecord.id, targetBranch);
+                                                        const pinnedNode = result?.pinnedNode;
+                                                        if (pinnedNode && graphHistories?.[targetBranch]) {
+                                                          setGraphHistories((prev) => {
+                                                            if (!prev) return prev;
+                                                            const existing = prev[targetBranch] ?? [];
+                                                            if (existing.some((n) => n.id === pinnedNode.id)) return prev;
+                                                            return { ...prev, [targetBranch]: [...existing, pinnedNode] };
+                                                          });
+                                                        }
+                                                      }
+                                                      setConfirmGraphAddCanvas(false);
+                                                    } catch (err) {
+                                                      setGraphDetailError((err as Error)?.message ?? 'Failed to add canvas changes');
+                                                    } finally {
+                                                      setIsGraphDetailBusy(false);
+                                                    }
+                                                  })();
+                                                }}
+                                              >
+                                                {isGraphDetailBusy ? 'Adding…' : 'Confirm'}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={isGraphDetailBusy}
+                                                className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                                                aria-label="Cancel add canvas changes to chat"
+                                                onClick={() => {
+                                                  setConfirmGraphAddCanvas(false);
+                                                  setGraphDetailError(null);
+                                                }}
+                                              >
+                                                Cancel
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              disabled={isGraphDetailBusy}
+                                              className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                                              aria-label="Add canvas changes to chat"
+                                              onClick={() => setConfirmGraphAddCanvas(true)}
+                                            >
+                                              Add canvas changes
+                                            </button>
+                                          )
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90"
+                                          aria-label="Jump to message"
+                                          onClick={async () => {
+                                            setPendingScrollTo({ nodeId: selectedGraphNodeId, targetBranch });
+                                            if (targetBranch !== branchName) {
+                                              await switchBranch(targetBranch);
+                                            }
+                                          }}
+                                        >
+                                          Jump to message
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </div>

@@ -26,6 +26,8 @@ interface WorkspaceGraphProps {
   mode?: 'nodes' | 'collapsed' | 'starred';
   starredNodeIds?: string[];
   onModeChange?: (mode: 'nodes' | 'collapsed' | 'starred') => void;
+  selectedNodeId?: string | null;
+  onSelectNode?: (nodeId: string | null) => void;
 }
 
 interface DotNodeData {
@@ -34,6 +36,8 @@ interface DotNodeData {
   isActive: boolean;
   icon?: 'assistant' | 'user' | 'merge';
   labelTranslateX: number;
+  isSelected?: boolean;
+  isActiveHead?: boolean;
 }
 
 interface GitEdgeData {
@@ -64,13 +68,14 @@ const DotNode = ({ data }: NodeProps<DotNodeData>) => (
       className="!h-2 !w-2 !border-0 !bg-transparent"
       style={{ left: 5, bottom: -2, opacity: 0 }}
     />
-    <span
-      className="inline-flex"
-      style={{
-        color: data.color,
-        filter: data.isActive ? `drop-shadow(0 0 0 ${data.color}66)` : 'none'
-      }}
-    >
+    <span className={`inline-flex rounded-full ${data.isSelected ? 'ring-2 ring-primary/40 ring-offset-2' : ''}`}>
+      <span
+        className="inline-flex"
+        style={{
+          color: data.color,
+          filter: data.isActive ? `drop-shadow(0 0 0 ${data.color}66)` : 'none'
+        }}
+      >
       {data.icon === 'assistant' ? (
         <CpuChipIcon className="h-4 w-4" />
       ) : data.icon === 'user' ? (
@@ -80,12 +85,18 @@ const DotNode = ({ data }: NodeProps<DotNodeData>) => (
       ) : (
         <span className="h-4 w-4 rounded-full" style={{ backgroundColor: data.color }} />
       )}
+      </span>
     </span>
     <span
-      className="max-w-[360px] truncate whitespace-nowrap text-sm font-medium text-slate-800"
+      className="flex max-w-[360px] items-center gap-2 whitespace-nowrap text-sm font-medium text-slate-800"
       style={{ transform: `translateX(${data.labelTranslateX}px)` }}
     >
-      {data.label}
+      <span className="truncate">{data.label}</span>
+      {data.isActiveHead ? (
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary ring-1 ring-primary/20">
+          Current
+        </span>
+      ) : null}
     </span>
   </div>
 );
@@ -914,7 +925,9 @@ export function WorkspaceGraph({
   trunkName,
   mode = 'nodes',
   starredNodeIds = [],
-  onModeChange
+  onModeChange,
+  selectedNodeId,
+  onSelectNode
 }: WorkspaceGraphProps) {
   const graphNodes = useMemo(
     () =>
@@ -930,6 +943,25 @@ export function WorkspaceGraph({
     () => layoutGraph(graphNodes, activeBranchName, trunkName),
     [graphNodes, activeBranchName, trunkName]
   );
+
+  const activeHeadId = useMemo(() => {
+    const activeHistory = branchHistories[activeBranchName] ?? [];
+    return activeHistory[activeHistory.length - 1]?.id ?? null;
+  }, [branchHistories, activeBranchName]);
+
+  const decoratedNodes = useMemo(() => {
+    return nodes.map((node) => {
+      const isActiveHead = !!activeHeadId && node.id === activeHeadId;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          isSelected: !!selectedNodeId && node.id === selectedNodeId,
+          isActiveHead
+        }
+      };
+    });
+  }, [nodes, selectedNodeId, activeHeadId]);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -1061,13 +1093,19 @@ export function WorkspaceGraph({
             </div>
           ) : (
             <ReactFlow
-              nodes={nodes}
+              nodes={decoratedNodes}
               edges={edges}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               nodesDraggable={false}
               nodesConnectable={false}
               defaultViewport={DEFAULT_VIEWPORT}
+              onNodeClick={(_event, node) => {
+                onSelectNode?.(node.id);
+              }}
+              onPaneClick={() => {
+                onSelectNode?.(null);
+              }}
               onInit={(instance) => {
                 setFlowInstance(instance);
               }}

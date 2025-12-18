@@ -139,6 +139,10 @@ The Next.js workspace lets you try the git-backed chat UI locally.
    - Prefer the CLI? `scripts/playground.ts` still works for scripted demos.
    - Open `/projects/<id>` to chat, stream responses, and view the artefact pane. The composer supports `⌘+Enter` to send plus `Shift+Enter` or `Option+Enter` for multi-line drafts, and the Stop button aborts long generations.
    - The Canvas (`artefact.md`) is edited per-branch (the UI autosaves to `?ref=<branch>`). Merges record a Canvas diff but do not auto-apply it; you can optionally “Add diff to context” on the merge node to persist the diff as an assistant message for future prompts.
+   - Use **Quest graph** (Canvas/Graph toggle) to navigate the reasoning DAG:
+     - Click a node to open the detail strip (with **Copy**, **Jump to message**, and merge-specific actions).
+     - For merge nodes with Canvas changes, use **Add canvas changes** (then confirm) to pin the diff into chat context.
+     - Press `Esc` or click empty graph space to clear the current selection.
    - Use the provider selector in the workspace header to switch between OpenAI, Gemini, or the mock provider. The `LLM_PROVIDER` env var sets the default. Provider choices persist per branch.
    - Branch UI: create/switch branches from the workspace header. When you’re on a non-trunk branch, the conversation shows shared history collapsed by default; expand to reveal upstream messages (muted) with a divider at the split.
    - Project list: each entry shows branch + node counts and a soft “Hide/Unhide” toggle (stored in localStorage) so you can temporarily remove noisy workspaces without deleting the repo.

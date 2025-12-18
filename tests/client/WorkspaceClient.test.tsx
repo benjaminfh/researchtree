@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { act } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -124,6 +124,21 @@ describe('WorkspaceClient', () => {
 
     global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches: baseBranches,
+            trunkName: 'main',
+            currentBranch: baseProject.branchName,
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes.slice(0, 2)
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
       if (url.includes('/stars')) {
         return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
       }
@@ -457,6 +472,9 @@ describe('WorkspaceClient', () => {
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
       expect(capturedWorkspaceGraphProps.mode).toBe('collapsed');
+      // Loaded graph histories include multiple branches (not just the fallback active-branch history).
+      expect(capturedWorkspaceGraphProps.branchHistories?.main?.length).toBeGreaterThan(0);
+      // Active branch history initially comes from the graph payload; it updates when the active history changes.
       expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(2);
     });
 
@@ -560,5 +578,284 @@ describe('WorkspaceClient', () => {
 
     const list = screen.getByTestId('chat-message-list');
     expect(list.className).not.toMatch(/space-y-/);
+  });
+
+  it('jumps to a shared node by revealing shared history and scrolling it into view', async () => {
+    const user = userEvent.setup();
+    const originalScrollIntoView = (HTMLElement.prototype as any).scrollIntoView;
+    const scrollIntoViewMock = vi.fn();
+    (HTMLElement.prototype as any).scrollIntoView = scrollIntoViewMock;
+
+    const raf = globalThis.requestAnimationFrame;
+    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0 as any;
+    };
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    // Default on non-trunk branches is to hide shared history.
+    expect(screen.queryByText('How is progress going?')).not.toBeInTheDocument();
+    expect(screen.getByText('Branch-only follow-up.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps).not.toBeNull();
+    });
+
+    await act(async () => {
+      capturedWorkspaceGraphProps?.onSelectNode?.('node-user');
+    });
+
+    expect(screen.getByRole('button', { name: 'Jump to message' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: 'Jump to message' })).not.toBeInTheDocument();
+
+    await act(async () => {
+      capturedWorkspaceGraphProps?.onSelectNode?.('node-user');
+    });
+    await user.click(screen.getByRole('button', { name: 'Jump to message' }));
+
+    await waitFor(() => {
+      const list = screen.getByTestId('chat-message-list');
+      expect(within(list).getByText('How is progress going?')).toBeInTheDocument();
+      expect(scrollIntoViewMock).toHaveBeenCalled();
+    });
+
+    (globalThis as any).requestAnimationFrame = raf;
+    (HTMLElement.prototype as any).scrollIntoView = originalScrollIntoView;
+  });
+
+  it('jumps to a node on another branch by switching branches first', async () => {
+    const user = userEvent.setup();
+    const originalScrollIntoView = (HTMLElement.prototype as any).scrollIntoView;
+    const scrollIntoViewMock = vi.fn();
+    (HTMLElement.prototype as any).scrollIntoView = scrollIntoViewMock;
+
+    const raf = globalThis.requestAnimationFrame;
+    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0 as any;
+    };
+
+    const branches = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 3, isTrunk: false },
+      { name: 'feature/other', headCommit: 'ghi', nodeCount: 2, isTrunk: false }
+    ] as const;
+
+    const otherNodes: NodeRecord[] = [
+      {
+        id: 'other-1',
+        type: 'message',
+        role: 'user',
+        content: 'Other branch node',
+        timestamp: 1700000000000,
+        parent: null
+      },
+      {
+        id: 'other-2',
+        type: 'message',
+        role: 'assistant',
+        content: 'Other branch response',
+        timestamp: 1700000001000,
+        parent: 'other-1'
+      }
+    ];
+
+    mockUseProjectData.mockImplementation((_projectId, options) => {
+      if (options?.ref === 'feature/other') {
+        return {
+          nodes: otherNodes,
+          artefact: '## Other artefact',
+          artefactMeta: { artefact: '## Other artefact', lastUpdatedAt: null },
+          isLoading: false,
+          error: undefined,
+          mutateHistory: mutateHistoryMock,
+          mutateArtefact: mutateArtefactMock
+        } as ReturnType<typeof useProjectData>;
+      }
+      return {
+        nodes: sampleNodes,
+        artefact: '## Artefact state',
+        artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+        isLoading: false,
+        error: undefined,
+        mutateHistory: mutateHistoryMock,
+        mutateArtefact: mutateArtefactMock
+      } as ReturnType<typeof useProjectData>;
+    });
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches,
+            trunkName: 'main',
+            currentBranch: 'feature/phase-2',
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes,
+              'feature/other': otherNodes
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/history')) {
+        const parsedUrl = new URL(url, 'http://localhost');
+        const ref = parsedUrl.searchParams.get('ref');
+        if (ref === 'feature/other') {
+          return new Response(JSON.stringify({ nodes: otherNodes }), { status: 200 });
+        }
+        const base = ref === 'main' ? sampleNodes.slice(0, 2) : sampleNodes;
+        return new Response(JSON.stringify({ nodes: base }), { status: 200 });
+      }
+      if (url.includes('/branches') && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ branchName: 'feature/other', branches }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as any;
+
+    render(<WorkspaceClient project={baseProject} initialBranches={branches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps).not.toBeNull();
+    });
+
+    await act(async () => {
+      capturedWorkspaceGraphProps?.onSelectNode?.('other-1');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Jump to message' }));
+
+    await waitFor(() => {
+      expect(scrollIntoViewMock).toHaveBeenCalled();
+      const list = screen.getByTestId('chat-message-list');
+      expect(within(list).getByText('Other branch node')).toBeInTheDocument();
+    });
+
+    const branchPatchCall = (global.fetch as any).mock.calls.find((call: any[]) => String(call[0]).includes('/branches') && call[1]?.method === 'PATCH');
+    expect(branchPatchCall).toBeTruthy();
+    expect(JSON.parse(branchPatchCall[1].body)).toMatchObject({ name: 'feature/other' });
+
+    (globalThis as any).requestAnimationFrame = raf;
+    (HTMLElement.prototype as any).scrollIntoView = originalScrollIntoView;
+  });
+
+  it('can add canvas changes to chat from a merge node selected in the graph', async () => {
+    const user = userEvent.setup();
+
+    const mergeNode: NodeRecord = {
+      id: 'merge-1',
+      type: 'merge',
+      mergeFrom: 'feature/phase-2',
+      mergeSummary: 'Bring back the canvas edits',
+      sourceCommit: 'abc',
+      sourceNodeIds: ['node-user', 'node-assistant'],
+      canvasDiff: '+hello',
+      mergedAssistantContent: 'Here are the takeaways',
+      timestamp: 1700000003000,
+      parent: 'node-assistant'
+    } as any;
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches: baseBranches,
+            trunkName: 'main',
+            currentBranch: baseProject.branchName,
+            branchHistories: {
+              main: [...sampleNodes.slice(0, 2), mergeNode],
+              'feature/phase-2': sampleNodes
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/merge/pin-canvas-diff')) {
+        return new Response(
+          JSON.stringify({
+            pinnedNode: {
+              id: 'pinned-1',
+              type: 'message',
+              role: 'assistant',
+              content: '+hello',
+              pinnedFromMergeId: 'merge-1',
+              timestamp: 1700000004000,
+              parent: 'merge-1'
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as any;
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps).not.toBeNull();
+    });
+
+    await act(async () => {
+      capturedWorkspaceGraphProps?.onSelectNode?.('merge-1');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Add canvas changes to chat' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm add canvas changes to chat' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Canvas changes added')).toBeInTheDocument();
+    });
+
+    const pinCall = (global.fetch as any).mock.calls.find((call: any[]) => String(call[0]).includes('/merge/pin-canvas-diff'));
+    expect(pinCall).toBeTruthy();
+    expect(JSON.parse(pinCall[1].body)).toMatchObject({ mergeNodeId: 'merge-1', targetBranch: 'main' });
+  });
+
+  it('copies the selected node content from the graph detail panel', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps).not.toBeNull();
+    });
+
+    await act(async () => {
+      capturedWorkspaceGraphProps?.onSelectNode?.('node-user');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Copy selection' }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('How is progress going?');
+    });
   });
 });
