@@ -7,7 +7,7 @@ import { readNodesFromRef } from '@git/utils';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
 import { rtCreateProjectShadow } from '@/src/store/pg/projects';
-import { rtUpdateArtefactShadow } from '@/src/store/pg/artefacts';
+import { rtSaveArtefactDraft } from '@/src/store/pg/drafts';
 
 interface RouteContext {
   params: { id: string };
@@ -69,16 +69,13 @@ export async function PUT(request: Request, { params }: RouteContext) {
       if (process.env.RT_PG_SHADOW_WRITE === 'true') {
         try {
           await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
-          await rtUpdateArtefactShadow({
+          await rtSaveArtefactDraft({
             projectId: project.id,
             refName: ref,
-            content: parsed.data.content ?? '',
-            stateNodeId: null,
-            stateNodeJson: null,
-            commitMessage: 'Update artefact'
+            content: parsed.data.content ?? ''
           });
         } catch (error) {
-          console.error('[pg-shadow-write] Failed to update artefact', error);
+          console.error('[pg-shadow-write] Failed to save artefact draft', error);
         }
       }
 
