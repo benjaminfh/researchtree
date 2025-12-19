@@ -20,11 +20,15 @@ export async function GET(request: Request, { params }: RouteContext) {
     const refParam = searchParams.get('ref');
     const nodes = await readNodesFromRef(project.id, refParam?.trim() || INITIAL_BRANCH);
 
-    let result = nodes;
+    // Canvas saves create `state` nodes in the git backend; those are not user-facing chat turns.
+    // Keep them out of the history API response to avoid flooding the chat UI.
+    const nonStateNodes = nodes.filter((node) => node.type !== 'state');
+
+    let result = nonStateNodes;
     if (limitParam) {
       const limit = Number.parseInt(limitParam, 10);
       if (!Number.isNaN(limit) && limit > 0) {
-        result = nodes.slice(-limit);
+        result = nonStateNodes.slice(-limit);
       }
     }
 
