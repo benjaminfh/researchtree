@@ -31,9 +31,12 @@ export function CreateProjectForm() {
         throw new Error(data?.error?.message ?? 'Failed to create project.');
       }
 
-      setName('');
-      setDescription('');
-      router.refresh();
+      const created = (await response.json().catch(() => null)) as { id?: string } | null;
+      const projectId = created?.id;
+      if (!projectId) {
+        throw new Error('Project created but response was missing an id.');
+      }
+      router.push(`/projects/${projectId}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
