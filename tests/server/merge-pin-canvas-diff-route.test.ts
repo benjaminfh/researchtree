@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   getCurrentBranchName: vi.fn(),
   readNodesFromRef: vi.fn(),
-  appendNodeToRefNoCheckout: vi.fn()
+  appendNodeToRefNoCheckout: vi.fn(),
+  rtCreateProjectShadow: vi.fn(),
+  rtAppendNodeToRefShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -19,6 +21,14 @@ vi.mock('@git/utils', () => ({
 
 vi.mock('@git/nodes', () => ({
   appendNodeToRefNoCheckout: mocks.appendNodeToRefNoCheckout
+}));
+
+vi.mock('@/src/store/pg/projects', () => ({
+  rtCreateProjectShadow: mocks.rtCreateProjectShadow
+}));
+
+vi.mock('@/src/store/pg/nodes', () => ({
+  rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/merge/pin-canvas-diff';
@@ -58,6 +68,7 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
       timestamp: 1700000001000,
       parent: 'merge-1'
     });
+    process.env.RT_PG_SHADOW_WRITE = 'false';
   });
 
   it('returns 404 when project missing', async () => {
@@ -140,5 +151,23 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
     expect(json.alreadyPinned).toBe(false);
     expect(json.pinnedNode?.id).toBe('pinned-1');
   });
-});
 
+  it('shadow-writes pinned node when RT_PG_SHADOW_WRITE=true', async () => {
+    process.env.RT_PG_SHADOW_WRITE = 'true';
+    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
+    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
+    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+      newCommitId: 'c1',
+      nodeId: 'pinned-1',
+      ordinal: 0,
+      artefactId: null,
+      artefactContentHash: null
+    });
+
+    const res = await POST(createRequest({ mergeNodeId: 'merge-1', targetBranch: 'main' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'project-1', refName: 'main', nodeId: 'pinned-1' })
+    );
+  });
+});

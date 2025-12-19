@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   buildChatContext: vi.fn(),
   streamAssistantCompletion: vi.fn(),
   registerStream: vi.fn(),
-  releaseStream: vi.fn()
+  releaseStream: vi.fn(),
+  rtCreateProjectShadow: vi.fn(),
+  rtAppendNodeToRefShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -34,6 +36,14 @@ vi.mock('@/src/server/llm', () => {
 vi.mock('@/src/server/stream-registry', () => ({
   registerStream: mocks.registerStream,
   releaseStream: mocks.releaseStream
+}));
+
+vi.mock('@/src/store/pg/projects', () => ({
+  rtCreateProjectShadow: mocks.rtCreateProjectShadow
+}));
+
+vi.mock('@/src/store/pg/nodes', () => ({
+  rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1
 }));
 
 vi.mock('@/src/server/providerCapabilities', () => ({
@@ -68,6 +78,7 @@ describe('/api/projects/[id]/chat', () => {
     mocks.appendNodeToRefNoCheckout.mockResolvedValue(undefined);
     mocks.registerStream.mockImplementation(() => undefined);
     mocks.releaseStream.mockImplementation(() => undefined);
+    process.env.RT_PG_SHADOW_WRITE = 'false';
   });
 
   it('streams assistant response and appends nodes', async () => {
@@ -84,6 +95,49 @@ describe('/api/projects/[id]/chat', () => {
 
     expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foobar', interrupted: false });
+  });
+
+  it('shadow-writes user+assistant nodes when RT_PG_SHADOW_WRITE=true', async () => {
+    process.env.RT_PG_SHADOW_WRITE = 'true';
+    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
+    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
+
+    mocks.appendNodeToRefNoCheckout.mockImplementation(async (_projectId: string, _ref: string, node: any) => {
+      if (node.role === 'user') return { ...node, id: 'user-1' };
+      return { ...node, id: 'asst-1' };
+    });
+    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+      newCommitId: 'c1',
+      nodeId: 'user-1',
+      ordinal: 0,
+      artefactId: null,
+      artefactContentHash: null
+    });
+
+    const res = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        refName: 'main',
+        kind: 'message',
+        role: 'user',
+        nodeId: 'user-1',
+        attachDraft: true
+      })
+    );
+    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        refName: 'main',
+        kind: 'message',
+        role: 'assistant',
+        nodeId: 'asst-1',
+        attachDraft: false
+      })
+    );
   });
 
   it('accepts ref and passes it through to context builder and stream registry', async () => {

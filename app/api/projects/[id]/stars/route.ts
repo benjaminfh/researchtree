@@ -5,7 +5,6 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { INITIAL_BRANCH } from '@git/constants';
 import { z } from 'zod';
 import { requireUser } from '@/src/server/auth';
-import { rtSyncStarsShadow } from '@/src/store/pg/stars';
 
 interface RouteContext {
   params: { id: string };
@@ -27,6 +26,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     if (process.env.RT_PG_SHADOW_WRITE === 'true') {
       try {
         const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+        const { rtSyncStarsShadow } = await import('@/src/store/pg/stars');
         await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
         await rtSyncStarsShadow({ projectId: project.id, nodeIds: starredNodeIds });
       } catch (error) {
@@ -58,6 +58,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       if (process.env.RT_PG_SHADOW_WRITE === 'true') {
         try {
           const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+          const { rtSyncStarsShadow } = await import('@/src/store/pg/stars');
           await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
           await rtSyncStarsShadow({ projectId: project.id, nodeIds: starredNodeIds });
         } catch (error) {
