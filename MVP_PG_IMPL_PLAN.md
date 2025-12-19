@@ -66,6 +66,13 @@ These are the “don’t get stuck in a debugging loop” rules we’ve already 
 4. **Dev server can run stale compiled route code**:
    - If you’re seeing old behavior after a change, stop `next dev`, delete `.next/`, restart.
 
+### Feature flags (rollout switches)
+
+- `RT_PG_SHADOW_WRITE=true|false`: git remains source of truth, but we write shadow provenance rows to Postgres.
+- `RT_PG_READ=true|false`: read history/canvas from Postgres (with git fallback on error while migrating).
+
+Rule: keep HTTP routes stable; flags only change route internals.
+
 ### SECURITY DEFINER + extensions
 
 1. **SECURITY DEFINER functions must be explicit about search path**:
@@ -98,6 +105,14 @@ These are the “don’t get stuck in a debugging loop” rules we’ve already 
    - On “send message” (user turn) and on merge (if needed).
 3. **Never render canvas save nodes in chat**:
    - If legacy git writes still produce `state` nodes, filter them out at the history endpoint while migrating.
+
+### Testing + local dev stability
+
+1. **Keep tests offline**:
+   - Tests should not hit Supabase/PostgREST. Force `RT_PG_SHADOW_WRITE=false` and `RT_PG_READ=false` in `tests/setup.ts`.
+2. **Avoid importing Next server-only modules at module scope in route handlers**:
+   - Importing Supabase server clients often pulls in `next/headers` (`cookies()`), which can cause Vitest worker teardown hangs.
+   - Use dynamic imports inside the `RT_PG_*` branches in API routes.
 
 ---
 
@@ -401,6 +416,11 @@ Behavior (inside one function/transaction):
 6. Insert `commit_order` row at `new_ordinal`.
 7. Update `refs.tip_commit_id`, `refs.tip_ordinal`, `updated_at`.
 
+**Canvas draft snapshot (important)**:
+
+- Canvas autosaves are stored in `artefact_drafts` (mutable) and must not create chat-visible nodes or separate commits.
+- At the user turn boundary, the append-node RPC may optionally snapshot the caller’s current draft into `artefacts` on the **same commit** as the message node (so node↔ordinal mapping stays 1:1), but only when the draft hash differs from the latest immutable artefact hash on that ref.
+
 ### 5.3 Update artefact (canvas) on a ref
 
 This replaces `src/git/artefact.ts:updateArtefact`. It must:
@@ -470,6 +490,14 @@ Keyset paging (no offsets):
 * newest page: `order by ordinal desc limit N`
 * older page: `where ordinal < $before order by ordinal desc limit N`
 
+### 6.2 Draft-first canvas reads (MVP)
+
+When `RT_PG_READ=true`, the canvas endpoint should return:
+
+1. the current user’s draft for `(project_id, ref_name)` if present (fast autosave UX), else
+2. the latest immutable artefact on the ref history (join `commit_order` → `artefacts`), else
+3. empty.
+
 ---
 
 ## 14. Route-by-route migration checklist (how we apply the lessons)
@@ -494,12 +522,13 @@ We keep the same HTTP routes, but progressively move their internals from `src/g
 - Git remains source of truth for the visible canvas until we switch reads.
 - Shadow-write writes drafts only (`rt_save_artefact_draft`).
 - Do not create provenance nodes/commits for autosaves; only snapshot at turn boundary.
+- When reads flip, use “draft-first” logic (draft → latest immutable artefact → empty), with git fallback during rollout.
 
 ### `/api/projects/[id]/chat`
 
 - Add shadow-write of:
-  - user message node → `rt_append_node_to_ref(...)`
-  - assistant message node → `rt_append_node_to_ref(...)`
+  - user message node → `rt_append_node_to_ref_v1(...)` with `attachDraft=true` (snapshots draft onto the same commit if changed)
+  - assistant message node → `rt_append_node_to_ref_v1(...)` with `attachDraft=false`
 - Preserve node IDs (app generates today); store them as `nodes.id`.
 - Strict ordering: ensure a per-ref lock/lease is held for the duration of streaming, or use DB row locks + short lock timeout with clear UX.
 
@@ -509,6 +538,7 @@ We keep the same HTTP routes, but progressively move their internals from `src/g
 - When reads flip:
   - use `commit_order` to page deterministically
   - join `nodes` to fetch node payloads in ordinal order
+  - keep a git fallback on errors while rollout is in progress
 
 ### `/api/projects/[id]/merge` (+ `/merge/pin-canvas-diff`)
 
@@ -685,12 +715,15 @@ Implement `scripts/migrate_git_to_pg.ts`:
 * Add Supabase Auth to the app (sessions + login/logout).
 * Land DB migrations (tables + indexes + RLS + RPC functions).
 * Implement `src/store/*` wrappers.
-* Add feature flag `USE_PG_STORE=true/false`.
+* Add feature flags:
+  * `RT_PG_SHADOW_WRITE=true/false` (shadow-write to Postgres)
+  * `RT_PG_READ=true/false` (read from Postgres with git fallback)
 
-### Phase 1: Read-from-Postgres, write-to-git (optional intermediate)
+### Phase 1: Shadow-write + read flip (safe rollout)
 
-* Flip read endpoints (branches/history/artefact/graph) to Postgres.
-* Keep write paths on git until confidence is high.
+* Keep git as the source of truth.
+* Enable `RT_PG_SHADOW_WRITE=true` to populate Postgres for verification.
+* Enable `RT_PG_READ=true` for `/history` + `/artefact` first (git fallback on errors).
 
 ### Phase 2: Write-to-Postgres (RPC), optionally dual-write briefly
 
