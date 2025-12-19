@@ -9,6 +9,7 @@ import { getThinkingSystemInstruction, type ThinkingSetting } from '@/src/shared
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
+import { createSupabaseServerClient } from '@/src/server/supabase/server';
 
 interface RouteContext {
   params: { id: string };
@@ -47,16 +48,23 @@ export async function POST(request: Request, { params }: RouteContext) {
       const releaseRefLock = await acquireProjectRefLock(params.id, sourceRef);
       try {
         if (store.mode === 'pg') {
-          const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
           const { rtCreateRefFromNodeParentShadowV1 } = await import('@/src/store/pg/branches');
           const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
           const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
 
-          const sourceRows = await rtGetHistoryShadowV1({ projectId: params.id, refName: sourceRef, limit: 500 });
-          const sourceNodes = sourceRows.map((r) => r.nodeJson).filter(Boolean) as any[];
-          const targetNode = sourceNodes.find((node) => String(node.id) === nodeId);
+          const supabase = createSupabaseServerClient();
+          const { data, error } = await supabase
+            .from('nodes')
+            .select('content_json')
+            .eq('project_id', params.id)
+            .eq('id', nodeId)
+            .maybeSingle();
+          if (error) {
+            throw new Error(error.message);
+          }
+          const targetNode = (data as any)?.content_json as any | null;
           if (!targetNode) {
-            throw badRequest(`Node ${nodeId} not found on ref ${sourceRef}`);
+            throw badRequest(`Node ${nodeId} not found`);
           }
           if (targetNode.type !== 'message') {
             throw badRequest('Only message nodes can be edited');
@@ -71,7 +79,8 @@ export async function POST(request: Request, { params }: RouteContext) {
 
           await rtSetCurrentRefShadowV1({ projectId: params.id, refName: targetBranch });
 
-          const lastTargetRows = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetBranch, limit: 1 });
+          const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
+          const lastTargetRows = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetBranch, limit: 1 }).catch(() => []);
           const lastTargetNode = (lastTargetRows[0]?.nodeJson as any) ?? null;
           const parentId = lastTargetNode?.id ? String(lastTargetNode.id) : null;
 

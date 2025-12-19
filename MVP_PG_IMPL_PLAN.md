@@ -66,6 +66,12 @@ These are the “don’t get stuck in a debugging loop” rules we’ve already 
 4. **Dev server can run stale compiled route code**:
    - If you’re seeing old behavior after a change, stop `next dev`, delete `.next/`, restart.
 
+### `commit_order` self-repair (history completeness)
+
+If a ref has a valid `refs.tip_commit_id` but its `commit_order` rows are missing (or only contain nodes appended after branching), history reads will look “incomplete” even though the commit DAG is intact.
+
+Fix: apply `supabase/migrations/2025-12-19_0021_rt_rebuild_commit_order_v1.sql`, which adds `rt_rebuild_commit_order_v1` (rebuilds a ref’s ordering by walking `parent1_commit_id` from the tip). Use it as a manual repair if needed for projects created during early migration iterations.
+
 ### Feature flags (rollout switches)
 
 - `RT_STORE=git|pg`: selects the provenance backend for the deployment (picked at deploy start; no mid-run flipping).

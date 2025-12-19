@@ -16,7 +16,8 @@ const mocks = vi.hoisted(() => ({
   rtAppendNodeToRefShadowV1: vi.fn(),
   rtSetCurrentRefShadowV1: vi.fn(),
   rtGetHistoryShadowV1: vi.fn(),
-  rtGetCurrentRefShadowV1: vi.fn()
+  rtGetCurrentRefShadowV1: vi.fn(),
+  createSupabaseServerClient: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -65,6 +66,10 @@ vi.mock('@/src/store/pg/prefs', () => ({
 
 vi.mock('@/src/store/pg/reads', () => ({
   rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
+}));
+
+vi.mock('@/src/server/supabase/server', () => ({
+  createSupabaseServerClient: mocks.createSupabaseServerClient
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/edit';
@@ -180,10 +185,23 @@ describe('/api/projects/[id]/edit', () => {
     process.env.RT_STORE = 'pg';
     mocks.rtCreateRefFromNodeParentShadowV1.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
     mocks.rtSetCurrentRefShadowV1.mockResolvedValue(undefined);
+    mocks.createSupabaseServerClient.mockReturnValue({
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  content_json: { id: 'node-5', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: null }
+                },
+                error: null
+              })
+            })
+          })
+        })
+      })
+    });
     mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
-      if (refName === 'main') {
-        return [{ ordinal: 0, nodeJson: { id: 'node-5', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: null } }];
-      }
       if (refName === 'edit-123') {
         return [{ ordinal: 0, nodeJson: { id: 'node-4', type: 'message', role: 'user', content: 'Before', timestamp: 0, parent: null } }];
       }
@@ -201,6 +219,7 @@ describe('/api/projects/[id]/edit', () => {
       params: { id: 'project-1' }
     });
     expect(res.status).toBe(201);
+    expect(mocks.createSupabaseServerClient).toHaveBeenCalled();
     expect(mocks.rtCreateRefFromNodeParentShadowV1).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'project-1', sourceRefName: 'main', newRefName: 'edit-123', nodeId: 'node-5' })
     );

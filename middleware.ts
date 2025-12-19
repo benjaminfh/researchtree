@@ -1,5 +1,9 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { getStoreConfig } from './src/server/storeConfig';
+
+// Fail fast if the deployment hasn't selected a provenance store.
+getStoreConfig();
 
 function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();

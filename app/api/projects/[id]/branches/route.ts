@@ -56,10 +56,16 @@ export async function POST(request: Request, { params }: RouteContext) {
         const { rtCreateRefFromRefShadowV1 } = await import('@/src/store/pg/branches');
         const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
 
+        const existingBranches = await rtListRefsShadowV1({ projectId: params.id });
         const baseRef =
           parsed.data.fromRef ??
           (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' })).refName ??
           'main';
+
+        const baseExists = existingBranches.some((b) => b.name === baseRef);
+        if (!baseExists) {
+          throw badRequest(`Branch ${baseRef} does not exist`);
+        }
 
         await rtCreateRefFromRefShadowV1({
           projectId: params.id,

@@ -88,6 +88,35 @@ describe('/api/projects/[id]/branches', () => {
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main');
   });
 
+  it('creates branch via Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+    mocks.rtListRefsShadowV1.mockResolvedValue([
+      { name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true },
+      { name: 'feature', headCommit: 'b', nodeCount: 0, isTrunk: false }
+    ]);
+    mocks.rtCreateRefFromRefShadowV1.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });
+    mocks.rtSetCurrentRefShadowV1.mockResolvedValue(undefined);
+
+    const res = await POST(createRequest({ name: 'new-branch', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
+    expect(res.status).toBe(201);
+    expect(mocks.rtCreateRefFromRefShadowV1).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      newRefName: 'new-branch',
+      fromRefName: 'main'
+    });
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when creating a Postgres branch from a missing base ref', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+    mocks.rtListRefsShadowV1.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true }]);
+
+    const res = await POST(createRequest({ name: 'new-branch', fromRef: 'nope' }, 'POST'), { params: { id: 'project-1' } });
+    expect(res.status).toBe(400);
+  });
+
   it('switches branch', async () => {
     mocks.listBranches.mockResolvedValue([
       { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true },
