@@ -6,6 +6,8 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { readNodesFromRef } from '@git/utils';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
+import { rtCreateProjectShadow } from '@/src/store/pg/projects';
+import { rtUpdateArtefactShadow } from '@/src/store/pg/artefacts';
 
 interface RouteContext {
   params: { id: string };
@@ -63,6 +65,22 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
       const [artefact, nodes] = await Promise.all([getArtefactFromRef(project.id, ref), readNodesFromRef(project.id, ref)]);
       const lastState = [...nodes].reverse().find((node) => node.type === 'state');
+
+      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+        try {
+          await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
+          await rtUpdateArtefactShadow({
+            projectId: project.id,
+            refName: ref,
+            content: parsed.data.content ?? '',
+            stateNodeId: lastState?.id ?? null,
+            stateNodeJson: lastState ?? null,
+            commitMessage: 'Update artefact'
+          });
+        } catch (error) {
+          console.error('[pg-shadow-write] Failed to update artefact', error);
+        }
+      }
 
       return Response.json(
         {
