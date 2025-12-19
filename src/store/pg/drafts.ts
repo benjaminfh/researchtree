@@ -9,8 +9,7 @@ export async function rtSaveArtefactDraft(input: {
   const { data, error } = await supabase.rpc('rt_save_artefact_draft', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
-    p_content: input.content ?? '',
-    p_lock_timeout_ms: 3000
+    p_content: input.content ?? ''
   });
 
   if (error) {
@@ -27,4 +26,3 @@ export async function rtSaveArtefactDraft(input: {
     updatedAt: String(row.updated_at)
   };
 }
-
