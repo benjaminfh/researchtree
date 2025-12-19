@@ -370,6 +370,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [editBranchName, setEditBranchName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [editProvider, setEditProvider] = useState<LLMProvider>('mock');
+  const [editThinking, setEditThinking] = useState<ThinkingSetting>('medium');
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
@@ -1502,6 +1504,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                   setEditDraft(n.content);
                                   setEditBranchName('');
                                   setEditError(null);
+                                  setEditProvider(provider);
+                                  setEditThinking(thinking);
                                   setShowEditModal(true);
                                 }
                               : undefined
@@ -2270,6 +2274,38 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 required
               />
             </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                <span className="font-semibold text-slate-700">Provider</span>
+                <select
+                  value={editProvider}
+                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
+                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                  disabled={isEditing}
+                >
+                  {providerOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                <span className="font-semibold text-slate-700">Thinking</span>
+                <select
+                  value={editThinking}
+                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
+                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                  disabled={isEditing}
+                >
+                  {THINKING_SETTINGS.map((setting) => (
+                    <option key={setting} value={setting}>
+                      {THINKING_SETTING_LABELS[setting]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800">Updated content</label>
               <textarea
@@ -2318,6 +2354,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         content: editDraft.trim(),
                         branchName: editBranchName.trim(),
                         fromRef: branchName,
+                        llmProvider: editProvider,
+                        thinking: editThinking,
                         nodeId: editingNode?.id
                       })
                     });
@@ -2333,8 +2371,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       setBranches(branchesData.branches);
                     }
                     if (typeof window !== 'undefined') {
-                      window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
-                      window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, thinking);
+                      window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, editProvider);
+                      window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, editThinking);
                     }
                     await Promise.all([mutateHistory(), mutateArtefact()]);
                     setShowEditModal(false);

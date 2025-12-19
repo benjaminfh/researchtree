@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   appendNode: vi.fn(),
   getCommitHashForNode: vi.fn(),
   readNodesFromRef: vi.fn(),
+  buildChatContext: vi.fn(),
+  streamAssistantCompletion: vi.fn(),
+  resolveLLMProvider: vi.fn(),
+  getProviderTokenLimit: vi.fn(),
   rtCreateProjectShadow: vi.fn(),
   rtCreateRefFromNodeParentShadowV1: vi.fn(),
   rtAppendNodeToRefShadowV1: vi.fn(),
@@ -30,6 +34,19 @@ vi.mock('@git/branches', () => ({
 
 vi.mock('@git/nodes', () => ({
   appendNode: mocks.appendNode
+}));
+
+vi.mock('@/src/server/context', () => ({
+  buildChatContext: mocks.buildChatContext
+}));
+
+vi.mock('@/src/server/llm', () => ({
+  streamAssistantCompletion: mocks.streamAssistantCompletion,
+  resolveLLMProvider: mocks.resolveLLMProvider
+}));
+
+vi.mock('@/src/server/providerCapabilities', () => ({
+  getProviderTokenLimit: mocks.getProviderTokenLimit
 }));
 
 vi.mock('@/src/store/pg/projects', () => ({
@@ -64,14 +81,33 @@ describe('/api/projects/[id]/edit', () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.getCommitHashForNode.mockResolvedValue('commit-hash');
-    mocks.appendNode.mockResolvedValue({ id: 'node-1', type: 'message' });
+    mocks.appendNode.mockImplementation(async (_projectId: string, node: any) => {
+      if (node?.type === 'message' && node?.role === 'assistant') {
+        return { id: 'node-asst-1', ...node };
+      }
+      return { id: 'node-user-1', ...node };
+    });
     mocks.readNodesFromRef.mockResolvedValue([
       { id: 'node-5', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: null }
     ]);
-    process.env.RT_PG_SHADOW_WRITE = 'false';
+    mocks.buildChatContext.mockResolvedValue({
+      systemPrompt: 'system',
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'Edited message' }
+      ]
+    });
+    mocks.resolveLLMProvider.mockReturnValue('mock');
+    mocks.getProviderTokenLimit.mockResolvedValue(4000);
+    mocks.streamAssistantCompletion.mockImplementation(async function* () {
+      yield { type: 'text', content: 'foo' };
+      yield { type: 'text', content: 'bar' };
+    });
+    process.env.RT_STORE = 'git';
+    process.env.RT_SHADOW_WRITE = 'false';
   });
 
-  it('creates edit branch and appends node', async () => {
+  it('creates edit branch, appends edited user node, and generates assistant reply', async () => {
     const res = await POST(createRequest({ content: 'Edited message', branchName: 'edit-123', fromRef: 'main', nodeId: 'node-5' }), {
       params: { id: 'project-1' }
     });
@@ -81,6 +117,13 @@ describe('/api/projects/[id]/edit', () => {
     expect(mocks.appendNode).toHaveBeenCalledWith(
       'project-1',
       expect.objectContaining({ role: 'user', content: 'Edited message' }),
+      expect.objectContaining({ ref: 'edit-123' })
+    );
+    expect(mocks.buildChatContext).toHaveBeenCalledWith('project-1', expect.objectContaining({ ref: 'edit-123' }));
+    expect(mocks.streamAssistantCompletion).toHaveBeenCalledWith(expect.objectContaining({ provider: 'mock' }));
+    expect(mocks.appendNode).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({ role: 'assistant', content: 'foobar' }),
       expect.objectContaining({ ref: 'edit-123' })
     );
   });
@@ -98,6 +141,7 @@ describe('/api/projects/[id]/edit', () => {
       expect.objectContaining({ role: 'assistant', content: 'Edited assistant' }),
       expect.objectContaining({ ref: 'edit-123' })
     );
+    expect(mocks.streamAssistantCompletion).not.toHaveBeenCalled();
   });
 
   it('returns 400 when the node is not a message', async () => {
@@ -129,8 +173,8 @@ describe('/api/projects/[id]/edit', () => {
     expect(res.status).toBe(404);
   });
 
-  it('shadow-writes edit branch + node when RT_PG_SHADOW_WRITE=true', async () => {
-    process.env.RT_PG_SHADOW_WRITE = 'true';
+  it('shadow-writes edit branch + node when RT_SHADOW_WRITE=true', async () => {
+    process.env.RT_SHADOW_WRITE = 'true';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtCreateRefFromNodeParentShadowV1.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
@@ -152,7 +196,10 @@ describe('/api/projects/[id]/edit', () => {
     );
     expect(mocks.rtSetCurrentRefShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'edit-123' });
     expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'project-1', refName: 'edit-123', nodeId: 'node-1' })
+      expect.objectContaining({ projectId: 'project-1', refName: 'edit-123', nodeId: 'node-user-1', attachDraft: true })
+    );
+    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'project-1', refName: 'edit-123', nodeId: 'node-asst-1', attachDraft: false })
     );
   });
 });

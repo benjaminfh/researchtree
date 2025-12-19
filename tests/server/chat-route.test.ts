@@ -78,7 +78,8 @@ describe('/api/projects/[id]/chat', () => {
     mocks.appendNodeToRefNoCheckout.mockResolvedValue(undefined);
     mocks.registerStream.mockImplementation(() => undefined);
     mocks.releaseStream.mockImplementation(() => undefined);
-    process.env.RT_PG_SHADOW_WRITE = 'false';
+    process.env.RT_STORE = 'git';
+    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('streams assistant response and appends nodes', async () => {
@@ -97,8 +98,8 @@ describe('/api/projects/[id]/chat', () => {
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foobar', interrupted: false });
   });
 
-  it('shadow-writes user+assistant nodes when RT_PG_SHADOW_WRITE=true', async () => {
-    process.env.RT_PG_SHADOW_WRITE = 'true';
+  it('shadow-writes user+assistant nodes when RT_SHADOW_WRITE=true', async () => {
+    process.env.RT_SHADOW_WRITE = 'true';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
 

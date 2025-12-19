@@ -68,8 +68,9 @@ These are the “don’t get stuck in a debugging loop” rules we’ve already 
 
 ### Feature flags (rollout switches)
 
-- `RT_PG_SHADOW_WRITE=true|false`: git remains source of truth, but we write shadow provenance rows to Postgres.
-- `RT_PG_READ=true|false`: read history/canvas from Postgres (with git fallback on error while migrating).
+- Preferred:
+  - `RT_STORE=git|pg`: selects the provenance backend for the deployment (picked at deploy start; no mid-run flipping).
+  - `RT_SHADOW_WRITE=true|false`: when `RT_STORE=git`, also shadow-write provenance rows to Postgres for validation.
 
 Rule: keep HTTP routes stable; flags only change route internals.
 
@@ -109,7 +110,7 @@ Rule: keep HTTP routes stable; flags only change route internals.
 ### Testing + local dev stability
 
 1. **Keep tests offline**:
-   - Tests should not hit Supabase/PostgREST. Force `RT_PG_SHADOW_WRITE=false` and `RT_PG_READ=false` in `tests/setup.ts`.
+   - Tests should not hit Supabase/PostgREST. Force `RT_STORE=git` and `RT_SHADOW_WRITE=false` in `tests/setup.ts`.
 2. **Avoid importing Next server-only modules at module scope in route handlers**:
    - Importing Supabase server clients often pulls in `next/headers` (`cookies()`), which can cause Vitest worker teardown hangs.
    - Use dynamic imports inside the `RT_PG_*` branches in API routes.
@@ -492,7 +493,7 @@ Keyset paging (no offsets):
 
 ### 6.2 Draft-first canvas reads (MVP)
 
-When `RT_PG_READ=true`, the canvas endpoint should return:
+When `RT_STORE=pg`, the canvas endpoint should return:
 
 1. the current user’s draft for `(project_id, ref_name)` if present (fast autosave UX), else
 2. the latest immutable artefact on the ref history (join `commit_order` → `artefacts`), else
@@ -716,14 +717,14 @@ Implement `scripts/migrate_git_to_pg.ts`:
 * Land DB migrations (tables + indexes + RLS + RPC functions).
 * Implement `src/store/*` wrappers.
 * Add feature flags:
-  * `RT_PG_SHADOW_WRITE=true/false` (shadow-write to Postgres)
-  * `RT_PG_READ=true/false` (read from Postgres with git fallback)
+  * `RT_STORE=git|pg`
+  * `RT_SHADOW_WRITE=true/false` (shadow-write to Postgres when `RT_STORE=git`)
 
 ### Phase 1: Shadow-write + read flip (safe rollout)
 
 * Keep git as the source of truth.
-* Enable `RT_PG_SHADOW_WRITE=true` to populate Postgres for verification.
-* Enable `RT_PG_READ=true` for `/history` + `/artefact` first (git fallback on errors).
+* Enable `RT_SHADOW_WRITE=true` to populate Postgres for verification.
+* Optional: for read verification, set `RT_STORE=pg` in a non-prod deployment.
 
 ### Phase 2: Write-to-Postgres (RPC), optionally dual-write briefly
 

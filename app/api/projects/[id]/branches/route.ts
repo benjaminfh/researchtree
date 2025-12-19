@@ -5,14 +5,15 @@ import { createBranchSchema, switchBranchSchema } from '@/src/server/schemas';
 import { getCurrentBranchName } from '@git/utils';
 import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
+import { getStoreConfig } from '@/src/server/storeConfig';
+import { requireProjectAccess } from '@/src/server/authz';
 
 interface RouteContext {
   params: { id: string };
 }
 
 async function getPreferredBranch(projectId: string): Promise<string> {
-  const shouldUsePrefs =
-    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  const shouldUsePrefs = getStoreConfig().usePgPrefs;
   if (!shouldUsePrefs) {
     return getCurrentBranchName(projectId);
   }
@@ -30,12 +31,27 @@ async function getPreferredBranch(projectId: string): Promise<string> {
 export async function GET(_req: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
-    const branches = await listBranches(project.id);
+    await requireProjectAccess(project);
     const currentBranch = await getPreferredBranch(project.id);
+
+    if (store.readFromPg) {
+      try {
+        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+        const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
+        await rtCreateProjectShadow({ projectId: project.id, name: project.name ?? 'Untitled', description: project.description });
+        const branches = await rtListRefsShadowV1({ projectId: project.id });
+        return Response.json({ branches, currentBranch });
+      } catch (error) {
+        console.error('[pg-read] Failed to read branches, falling back to git', error);
+      }
+    }
+
+    const branches = await listBranches(project.id);
     return Response.json({ branches, currentBranch });
   } catch (error) {
     return handleRouteError(error);
@@ -45,10 +61,12 @@ export async function GET(_req: Request, { params }: RouteContext) {
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
     const body = await request.json().catch(() => null);
     const parsed = createBranchSchema.safeParse(body);
     if (!parsed.success) {
@@ -59,9 +77,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       const branches = await listBranches(project.id);
       const branchName = parsed.data.name;
 
-      const shouldUsePrefs =
-        process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
-      if (shouldUsePrefs) {
+      if (store.usePgPrefs) {
         try {
           const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
           const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
@@ -82,10 +98,12 @@ export async function POST(request: Request, { params }: RouteContext) {
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
     const body = await request.json().catch(() => null);
     const parsed = switchBranchSchema.safeParse(body);
     if (!parsed.success) {
@@ -98,9 +116,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         throw badRequest(`Branch ${parsed.data.name} does not exist`);
       }
 
-      const shouldUsePrefs =
-        process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
-      if (shouldUsePrefs) {
+      if (store.usePgPrefs) {
         try {
           const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
           const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');

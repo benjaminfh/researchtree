@@ -45,7 +45,8 @@ describe('/api/projects/[id]/merge', () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.mergeBranch.mockResolvedValue({ id: 'merge-1', type: 'merge' });
     mocks.getCurrentBranchName.mockResolvedValue('main');
-    process.env.RT_PG_SHADOW_WRITE = 'false';
+    process.env.RT_STORE = 'git';
+    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('merges a branch and returns merge node', async () => {
@@ -98,8 +99,8 @@ describe('/api/projects/[id]/merge', () => {
     expect(res.status).toBe(404);
   });
 
-  it('shadow-writes merge when RT_PG_SHADOW_WRITE=true', async () => {
-    process.env.RT_PG_SHADOW_WRITE = 'true';
+  it('shadow-writes merge when RT_SHADOW_WRITE=true', async () => {
+    process.env.RT_SHADOW_WRITE = 'true';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.mergeBranch.mockResolvedValue({
       id: 'merge-1',

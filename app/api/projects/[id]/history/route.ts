@@ -4,14 +4,15 @@ import { handleRouteError, notFound } from '@/src/server/http';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
 import type { NodeRecord } from '@git/types';
+import { getStoreConfig } from '@/src/server/storeConfig';
+import { requireProjectAccess } from '@/src/server/authz';
 
 interface RouteContext {
   params: { id: string };
 }
 
 async function getPreferredBranch(projectId: string): Promise<string> {
-  const shouldUsePrefs =
-    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  const shouldUsePrefs = getStoreConfig().usePgPrefs;
   if (!shouldUsePrefs) return INITIAL_BRANCH;
   try {
     const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
@@ -31,12 +32,13 @@ export async function GET(request: Request, { params }: RouteContext) {
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
     const refParam = searchParams.get('ref');
     const refName = refParam?.trim() || (await getPreferredBranch(project.id));
 
-    if (process.env.RT_PG_READ === 'true') {
+    if (getStoreConfig().readFromPg) {
       const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
       const effectiveLimit = Number.isFinite(limit as number) && (limit as number) > 0 ? (limit as number) : undefined;
 

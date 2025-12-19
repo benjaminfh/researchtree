@@ -2,6 +2,7 @@ import { getNodes } from '@git/nodes';
 import { getArtefact, getArtefactFromRef } from '@git/artefact';
 import type { NodeRecord } from '@git/types';
 import { readNodesFromRef } from '@git/utils';
+import { getStoreConfig } from './storeConfig';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -24,8 +25,28 @@ interface ContextOptions {
 
 export async function buildChatContext(projectId: string, options?: ContextOptions): Promise<ChatContext> {
   const limit = options?.limit ?? DEFAULT_HISTORY_LIMIT;
-  const nodes = options?.ref ? await readNodesFromRef(projectId, options.ref) : await getNodes(projectId);
-  const artefact = options?.ref ? await getArtefactFromRef(projectId, options.ref) : await getArtefact(projectId);
+  const shouldReadPg = getStoreConfig().readFromPg && Boolean(options?.ref?.trim());
+  const resolvedRef = options?.ref?.trim();
+
+  let nodes: NodeRecord[];
+  let artefact: string;
+
+  if (shouldReadPg && resolvedRef) {
+    try {
+      const { rtGetHistoryShadowV1, rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
+      const rows = await rtGetHistoryShadowV1({ projectId, refName: resolvedRef, limit });
+      nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+      const canvas = await rtGetCanvasShadowV1({ projectId, refName: resolvedRef });
+      artefact = canvas.content ?? '';
+    } catch (error) {
+      console.error('[pg-read] Failed to build chat context from Postgres, falling back to git', error);
+      nodes = await readNodesFromRef(projectId, resolvedRef);
+      artefact = await getArtefactFromRef(projectId, resolvedRef);
+    }
+  } else {
+    nodes = resolvedRef ? await readNodesFromRef(projectId, resolvedRef) : await getNodes(projectId);
+    artefact = resolvedRef ? await getArtefactFromRef(projectId, resolvedRef) : await getArtefact(projectId);
+  }
 
   const trimmed = nodes.slice(-limit);
   const systemPrompt = buildSystemPrompt(artefact);

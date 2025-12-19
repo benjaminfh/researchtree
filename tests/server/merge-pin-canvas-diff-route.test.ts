@@ -68,7 +68,8 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
       timestamp: 1700000001000,
       parent: 'merge-1'
     });
-    process.env.RT_PG_SHADOW_WRITE = 'false';
+    process.env.RT_STORE = 'git';
+    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('returns 404 when project missing', async () => {
@@ -152,8 +153,8 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
     expect(json.pinnedNode?.id).toBe('pinned-1');
   });
 
-  it('shadow-writes pinned node when RT_PG_SHADOW_WRITE=true', async () => {
-    process.env.RT_PG_SHADOW_WRITE = 'true';
+  it('shadow-writes pinned node when RT_SHADOW_WRITE=true', async () => {
+    process.env.RT_SHADOW_WRITE = 'true';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({

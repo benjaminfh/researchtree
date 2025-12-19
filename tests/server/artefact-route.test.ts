@@ -38,7 +38,7 @@ describe('/api/projects/[id]/artefact', () => {
     mocks.readNodesFromRef.mockReset();
     mocks.rtCreateProjectShadow.mockReset();
     mocks.rtGetCanvasShadowV1.mockReset();
-    process.env.RT_PG_READ = 'false';
+    process.env.RT_STORE = 'git';
   });
 
   it('returns artefact content with last state metadata', async () => {
@@ -93,8 +93,8 @@ describe('/api/projects/[id]/artefact', () => {
     expect(res.status).toBe(404);
   });
 
-  it('uses Postgres when RT_PG_READ=true', async () => {
-    process.env.RT_PG_READ = 'true';
+  it('uses Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtGetCanvasShadowV1.mockResolvedValue({
@@ -114,7 +114,7 @@ describe('/api/projects/[id]/artefact', () => {
   });
 
   it('falls back to git when Postgres read fails', async () => {
-    process.env.RT_PG_READ = 'true';
+    process.env.RT_STORE = 'pg';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtGetCanvasShadowV1.mockRejectedValue(new Error('pg down'));

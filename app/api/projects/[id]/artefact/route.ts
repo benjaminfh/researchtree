@@ -6,14 +6,15 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { readNodesFromRef } from '@git/utils';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
+import { getStoreConfig } from '@/src/server/storeConfig';
+import { requireProjectAccess } from '@/src/server/authz';
 
 interface RouteContext {
   params: { id: string };
 }
 
 async function getPreferredBranch(projectId: string): Promise<string> {
-  const shouldUsePrefs =
-    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  const shouldUsePrefs = getStoreConfig().usePgPrefs;
   if (!shouldUsePrefs) return INITIAL_BRANCH;
   try {
     const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
@@ -29,15 +30,17 @@ async function getPreferredBranch(projectId: string): Promise<string> {
 export async function GET(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
     const { searchParams } = new URL(request.url);
     const ref = searchParams.get('ref')?.trim() || null;
     const effectiveRef = ref ?? (await getPreferredBranch(project.id));
 
-    if (process.env.RT_PG_READ === 'true') {
+    if (store.readFromPg) {
       const refName = effectiveRef;
       try {
         const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
@@ -74,10 +77,12 @@ export async function GET(request: Request, { params }: RouteContext) {
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
 
     const body = await request.json().catch(() => null);
     const parsed = updateArtefactSchema.safeParse(body);
@@ -99,7 +104,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
       const [artefact, nodes] = await Promise.all([getArtefactFromRef(project.id, ref), readNodesFromRef(project.id, ref)]);
       const lastState = [...nodes].reverse().find((node) => node.type === 'state');
 
-      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+      if (store.shadowWriteToPg || store.mode === 'pg') {
         try {
           const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
           const { rtSaveArtefactDraft } = await import('@/src/store/pg/drafts');

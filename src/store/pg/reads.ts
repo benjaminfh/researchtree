@@ -1,5 +1,12 @@
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 
+export interface PgBranchSummary {
+  name: string;
+  headCommit: string;
+  nodeCount: number;
+  isTrunk: boolean;
+}
+
 export async function rtGetHistoryShadowV1(input: {
   projectId: string;
   refName: string;
@@ -45,3 +52,33 @@ export async function rtGetCanvasShadowV1(input: {
   };
 }
 
+export async function rtListRefsShadowV1(input: { projectId: string }): Promise<PgBranchSummary[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('rt_list_refs_v1', {
+    p_project_id: input.projectId
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const rows = Array.isArray(data) ? data : [];
+  return rows.map((row) => ({
+    name: String(row.name),
+    headCommit: String(row.head_commit ?? ''),
+    nodeCount: Number(row.node_count ?? 0),
+    isTrunk: Boolean(row.is_trunk)
+  }));
+}
+
+export async function rtGetStarredNodeIdsShadowV1(input: { projectId: string }): Promise<string[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('rt_get_starred_node_ids_v1', {
+    p_project_id: input.projectId
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const ids = Array.isArray(data) ? data : (data as any);
+  if (!ids) return [];
+  // Supabase may return uuid[] as string[].
+  return (ids as any[]).map((x) => String(x));
+}

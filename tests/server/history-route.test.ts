@@ -32,7 +32,7 @@ describe('/api/projects/[id]/history', () => {
     mocks.readNodesFromRef.mockReset();
     mocks.rtCreateProjectShadow.mockReset();
     mocks.rtGetHistoryShadowV1.mockReset();
-    process.env.RT_PG_READ = 'false';
+    process.env.RT_STORE = 'git';
   });
 
   it('returns nodes with optional limit', async () => {
@@ -60,8 +60,8 @@ describe('/api/projects/[id]/history', () => {
     expect(res.status).toBe(404);
   });
 
-  it('uses Postgres when RT_PG_READ=true', async () => {
-    process.env.RT_PG_READ = 'true';
+  it('uses Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtGetHistoryShadowV1.mockResolvedValue([
@@ -80,7 +80,7 @@ describe('/api/projects/[id]/history', () => {
   });
 
   it('falls back to git when Postgres read fails', async () => {
-    process.env.RT_PG_READ = 'true';
+    process.env.RT_STORE = 'pg';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtGetHistoryShadowV1.mockRejectedValue(new Error('pg down'));

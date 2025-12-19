@@ -9,7 +9,8 @@ const mocks = vi.hoisted(() => ({
   getCurrentBranchName: vi.fn(),
   rtCreateProjectShadow: vi.fn(),
   rtGetCurrentRefShadowV1: vi.fn(),
-  rtSetCurrentRefShadowV1: vi.fn()
+  rtSetCurrentRefShadowV1: vi.fn(),
+  rtListRefsShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -35,6 +36,10 @@ vi.mock('@/src/store/pg/prefs', () => ({
   rtSetCurrentRefShadowV1: mocks.rtSetCurrentRefShadowV1
 }));
 
+vi.mock('@/src/store/pg/reads', () => ({
+  rtListRefsShadowV1: mocks.rtListRefsShadowV1
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/branches';
 
 function createRequest(body: unknown, method: 'POST' | 'PATCH') {
@@ -51,7 +56,8 @@ describe('/api/projects/[id]/branches', () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.listBranches.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true }]);
     mocks.getCurrentBranchName.mockResolvedValue('main');
-    process.env.RT_PG_PREFS = 'false';
+    process.env.RT_STORE = 'git';
+    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('lists branches', async () => {
@@ -60,6 +66,22 @@ describe('/api/projects/[id]/branches', () => {
     const json = await res.json();
     expect(json.branches).toHaveLength(1);
     expect(json.currentBranch).toBe('main');
+  });
+
+  it('reads branches from Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
+    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
+    mocks.rtListRefsShadowV1.mockResolvedValue([
+      { name: 'main', headCommit: '', nodeCount: 2, isTrunk: true },
+      { name: 'feature', headCommit: '', nodeCount: 0, isTrunk: false }
+    ]);
+
+    const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(mocks.rtListRefsShadowV1).toHaveBeenCalledWith({ projectId: 'project-1' });
+    expect(json.branches).toHaveLength(2);
   });
 
   it('creates branch', async () => {
@@ -78,8 +100,8 @@ describe('/api/projects/[id]/branches', () => {
     expect(mocks.switchBranch).toHaveBeenCalledWith('project-1', 'feature');
   });
 
-  it('prefers per-user current branch when RT_PG_PREFS=true', async () => {
-    process.env.RT_PG_PREFS = 'true';
+  it('prefers per-user current branch when RT_SHADOW_WRITE=true', async () => {
+    process.env.RT_SHADOW_WRITE = 'true';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'feature' });
@@ -90,8 +112,8 @@ describe('/api/projects/[id]/branches', () => {
     expect(json.currentBranch).toBe('feature');
   });
 
-  it('sets per-user current branch on PATCH when RT_PG_PREFS=true', async () => {
-    process.env.RT_PG_PREFS = 'true';
+  it('sets per-user current branch on PATCH when RT_SHADOW_WRITE=true', async () => {
+    process.env.RT_SHADOW_WRITE = 'true';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.listBranches.mockResolvedValue([
       { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true },
@@ -107,7 +129,7 @@ describe('/api/projects/[id]/branches', () => {
   });
 
   it('falls back to git switchBranch if prefs update fails', async () => {
-    process.env.RT_PG_PREFS = 'true';
+    process.env.RT_SHADOW_WRITE = 'true';
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.listBranches.mockResolvedValue([
       { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true },

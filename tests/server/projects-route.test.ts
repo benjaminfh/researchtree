@@ -31,7 +31,8 @@ describe('/api/projects route', () => {
     mocks.listProjects.mockReset();
     mocks.initProject.mockReset();
     mocks.rtCreateProjectShadow.mockReset();
-    process.env.RT_PG_SHADOW_WRITE = 'false';
+    process.env.RT_STORE = 'git';
+    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('returns project list on GET', async () => {
@@ -54,8 +55,7 @@ describe('/api/projects route', () => {
     expect(data).toEqual(project);
   });
 
-  it('shadow-writes project on POST when RT_PG_SHADOW_WRITE=true', async () => {
-    process.env.RT_PG_SHADOW_WRITE = 'true';
+  it('creates Postgres project row on POST (rt_create_project)', async () => {
     const project = { id: '1', name: 'Test', createdAt: 'now' };
     mocks.initProject.mockResolvedValue(project as any);
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: '1' });

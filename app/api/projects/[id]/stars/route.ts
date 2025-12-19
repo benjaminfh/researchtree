@@ -5,6 +5,8 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { INITIAL_BRANCH } from '@git/constants';
 import { z } from 'zod';
 import { requireUser } from '@/src/server/auth';
+import { getStoreConfig } from '@/src/server/storeConfig';
+import { requireProjectAccess } from '@/src/server/authz';
 
 interface RouteContext {
   params: { id: string };
@@ -17,13 +19,15 @@ const toggleStarSchema = z.object({
 export async function GET(_req: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
     const starredNodeIds = await getStarredNodeIds(project.id);
 
-    if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+    if (store.shadowWriteToPg) {
       try {
         const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
         const { rtSyncStarsShadow } = await import('@/src/store/pg/stars');
@@ -43,10 +47,12 @@ export async function GET(_req: Request, { params }: RouteContext) {
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
     const body = await request.json().catch(() => null);
     const parsed = toggleStarSchema.safeParse(body);
     if (!parsed.success) {
@@ -55,7 +61,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     return await withProjectLockAndRefLock(project.id, INITIAL_BRANCH, async () => {
       const starredNodeIds = await toggleStar(project.id, parsed.data.nodeId);
 
-      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+      if (store.shadowWriteToPg) {
         try {
           const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
           const { rtSyncStarsShadow } = await import('@/src/store/pg/stars');

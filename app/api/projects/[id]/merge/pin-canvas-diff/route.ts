@@ -5,14 +5,15 @@ import { withProjectRefLock } from '@/src/server/locks';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { pinCanvasDiffSchema } from '@/src/server/schemas';
 import { requireUser } from '@/src/server/auth';
+import { getStoreConfig } from '@/src/server/storeConfig';
+import { requireProjectAccess } from '@/src/server/authz';
 
 interface RouteContext {
   params: { id: string };
 }
 
 async function getPreferredBranch(projectId: string): Promise<string> {
-  const shouldUsePrefs =
-    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  const shouldUsePrefs = getStoreConfig().usePgPrefs;
   if (!shouldUsePrefs) {
     return getCurrentBranchName(projectId);
   }
@@ -30,10 +31,12 @@ async function getPreferredBranch(projectId: string): Promise<string> {
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
+    await requireProjectAccess(project);
 
     const body = await request.json().catch(() => null);
     const parsed = pinCanvasDiffSchema.safeParse(body);
@@ -68,7 +71,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         pinnedFromMergeId: mergeNodeId
       });
 
-      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+      if (store.shadowWriteToPg) {
         try {
           const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
           const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');

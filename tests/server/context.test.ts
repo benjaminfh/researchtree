@@ -5,7 +5,10 @@ const mocks = vi.hoisted(() => {
   return {
     getNodes: vi.fn(),
     getArtefact: vi.fn(),
-    getArtefactFromRef: vi.fn()
+    getArtefactFromRef: vi.fn(),
+    readNodesFromRef: vi.fn(),
+    rtGetHistoryShadowV1: vi.fn(),
+    rtGetCanvasShadowV1: vi.fn()
   };
 });
 
@@ -18,11 +21,24 @@ vi.mock('@git/artefact', () => ({
   getArtefactFromRef: mocks.getArtefactFromRef
 }));
 
+vi.mock('@git/utils', () => ({
+  readNodesFromRef: mocks.readNodesFromRef
+}));
+
+vi.mock('@/src/store/pg/reads', () => ({
+  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
+  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1
+}));
+
 describe('buildChatContext', () => {
   beforeEach(() => {
     mocks.getNodes.mockReset();
     mocks.getArtefact.mockReset();
     mocks.getArtefactFromRef.mockReset();
+    mocks.readNodesFromRef.mockReset();
+    mocks.rtGetHistoryShadowV1.mockReset();
+    mocks.rtGetCanvasShadowV1.mockReset();
+    process.env.RT_STORE = 'git';
   });
 
   it('includes artefact snapshot and recent messages', async () => {
@@ -121,5 +137,32 @@ describe('buildChatContext', () => {
 
     const context = await buildChatContext('project-1');
     expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('+diff text'))).toBe(true);
+  });
+
+  it('reads nodes + canvas from Postgres when RT_STORE=pg and ref is provided', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetHistoryShadowV1.mockResolvedValue([
+      { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null } }
+    ]);
+    mocks.rtGetCanvasShadowV1.mockResolvedValue({ content: 'Canvas PG', contentHash: 'x', updatedAt: null, source: 'draft' });
+
+    const context = await buildChatContext('project-1', { ref: 'main' });
+    expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+    expect(mocks.rtGetCanvasShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'main' });
+    expect(context.messages[0].content).toContain('Canvas PG');
+    expect(context.messages.some((m) => m.role === 'user' && m.content === 'Hello')).toBe(true);
+  });
+
+  it('falls back to git when Postgres context read fails', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetHistoryShadowV1.mockRejectedValue(new Error('pg down'));
+    mocks.readNodesFromRef.mockResolvedValue([
+      { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null }
+    ]);
+    mocks.getArtefactFromRef.mockResolvedValue('Canvas git');
+
+    const context = await buildChatContext('project-1', { ref: 'main' });
+    expect(mocks.readNodesFromRef).toHaveBeenCalledWith('project-1', 'main');
+    expect(context.messages[0].content).toContain('Canvas git');
   });
 });
