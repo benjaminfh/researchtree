@@ -73,8 +73,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
             projectId: project.id,
             refName: ref,
             content: parsed.data.content ?? '',
-            stateNodeId: lastState?.id ?? null,
-            stateNodeJson: lastState ?? null,
+            stateNodeId: null,
+            stateNodeJson: null,
             commitMessage: 'Update artefact'
           });
         } catch (error) {

@@ -904,11 +904,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const combinedNodes = useMemo(() => (streamingNode ? [...nodes, streamingNode] : nodes), [nodes, streamingNode]);
+  const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
   const lastUpdatedTimestamp = useMemo(() => {
-    const historyLatest = combinedNodes[combinedNodes.length - 1]?.timestamp ?? null;
+    const historyLatest = visibleNodes[visibleNodes.length - 1]?.timestamp ?? null;
     const artefactUpdated = artefactMeta?.lastUpdatedAt ?? null;
     return historyLatest && artefactUpdated ? Math.max(historyLatest, artefactUpdated) : historyLatest ?? artefactUpdated;
-  }, [combinedNodes, artefactMeta]);
+  }, [visibleNodes, artefactMeta]);
 
   const mergeDiff = useMemo<DiffLine[]>(() => {
     if (!mergePreview) {
@@ -946,10 +947,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       return;
     }
 
+    const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
     const trunkPrefix =
-      trunkHistory?.nodes && trunkHistory.nodes.length > 0
-        ? prefixLength(trunkHistory.nodes, combinedNodes)
-        : Math.min(trunkNodeCount, combinedNodes.length);
+      trunkNodes.length > 0 ? prefixLength(trunkNodes, visibleNodes) : Math.min(trunkNodeCount, visibleNodes.length);
     setSharedCount(trunkPrefix);
 
     const aborted = { current: false };
@@ -960,11 +960,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         others.map(async (b) => {
           try {
             const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${combinedNodes.length}`
+              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${visibleNodes.length}`
             );
             if (!res.ok) return null;
             const data = (await res.json()) as { nodes: NodeRecord[] };
-            return { name: b.name, nodes: data.nodes ?? [] };
+            return { name: b.name, nodes: (data.nodes ?? []).filter((node) => node.type !== 'state') };
           } catch {
             return null;
           }
@@ -972,9 +972,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       );
       const longest = histories.reduce((max, entry) => {
         if (!entry) return max;
-        const min = Math.min(entry.nodes.length, combinedNodes.length);
+        const min = Math.min(entry.nodes.length, visibleNodes.length);
         let idx = 0;
-        while (idx < min && entry.nodes[idx]?.id === combinedNodes[idx]?.id) {
+        while (idx < min && entry.nodes[idx]?.id === visibleNodes[idx]?.id) {
           idx += 1;
         }
         return Math.max(max, idx);
@@ -987,18 +987,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return () => {
       aborted.current = true;
     };
-  }, [branchName, trunkName, trunkHistory, trunkNodeCount, combinedNodes, branches, project.id]);
+  }, [branchName, trunkName, trunkHistory, trunkNodeCount, visibleNodes, branches, project.id]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
   }, [branchName, trunkName]);
   const { sharedNodes, branchNodes } = useMemo(() => {
-    const shared = combinedNodes.slice(0, sharedCount);
+    const shared = visibleNodes.slice(0, sharedCount);
     return {
       sharedNodes: shared,
-      branchNodes: combinedNodes.slice(sharedCount)
+      branchNodes: visibleNodes.slice(sharedCount)
     };
-  }, [combinedNodes, sharedCount]);
+  }, [visibleNodes, sharedCount]);
 
   const mergePayloadCandidates = useMemo(() => {
     return branchNodes.filter(
@@ -1052,13 +1052,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   const pinnedCanvasDiffMergeIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const node of combinedNodes) {
+    for (const node of visibleNodes) {
       if (node.type === 'message' && node.pinnedFromMergeId) {
         ids.add(node.pinnedFromMergeId);
       }
     }
     return ids;
-  }, [combinedNodes]);
+  }, [visibleNodes]);
 
   const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
@@ -1136,7 +1136,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 		    requestAnimationFrame(() => {
 		      el.scrollTop = el.scrollHeight;
 		    });
-		  }, [branchName, isLoading, combinedNodes.length, streamPreview]);
+		  }, [branchName, isLoading, visibleNodes.length, streamPreview]);
 
   const handleMessageListScroll = () => {
     const el = messageListRef.current;
@@ -1404,7 +1404,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Conversation</p>
                   <p className="text-sm text-muted">
-                    Branch {displayBranchName(branchName)} · {combinedNodes.length} message{combinedNodes.length === 1 ? '' : 's'}
+                    Branch {displayBranchName(branchName)} · {visibleNodes.length} message{visibleNodes.length === 1 ? '' : 's'}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1455,7 +1455,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <p className="text-sm text-muted">Loading history…</p>
                   ) : error ? (
                     <p className="text-sm text-red-600">Failed to load history.</p>
-                  ) : combinedNodes.length === 0 ? (
+                  ) : visibleNodes.length === 0 ? (
                     <p className="text-sm text-muted">No nodes yet. Start with a system prompt or question.</p>
                   ) : (
                     <div className="flex flex-col">
@@ -1642,7 +1642,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                             <WorkspaceGraph
                               branchHistories={
                                 graphHistories ?? {
-                                  [branchName]: combinedNodes
+                                  [branchName]: visibleNodes
                                 }
                               }
                               activeBranchName={branchName}
@@ -1656,7 +1656,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
                                 {(() => {
-                                  const activeMatch = combinedNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
+                                  const activeMatch = visibleNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
                                   let record: NodeRecord | null = activeMatch;
                                   let targetBranch: string = branchName;
 
@@ -1704,7 +1704,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                   const canvasDiff = mergeRecord?.canvasDiff?.trim() ?? '';
                                   const hasCanvasDiff = !!mergeRecord && canvasDiff.length > 0;
                                   const nodesOnTargetBranch =
-                                    targetBranch === branchName ? combinedNodes : graphHistories?.[targetBranch] ?? [];
+                                    targetBranch === branchName ? visibleNodes : graphHistories?.[targetBranch] ?? [];
                                   const isCanvasDiffPinned =
                                     !!mergeRecord &&
                                     nodesOnTargetBranch.some(
