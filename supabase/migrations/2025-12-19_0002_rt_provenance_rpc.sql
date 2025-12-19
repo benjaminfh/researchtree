@@ -1,9 +1,9 @@
 -- RPC functions (writes go through SQL for atomicity)
 
 create or replace function public.rt_create_project(
-  p_project_id uuid default null,
   p_name text,
-  p_description text default null
+  p_description text default null,
+  p_project_id uuid default null
 )
 returns uuid
 language plpgsql
@@ -36,11 +36,11 @@ $$;
 create or replace function public.rt_append_node_to_ref(
   p_project_id uuid,
   p_ref_name text,
-  p_node_id uuid default null,
   p_kind text,
   p_role text,
   p_content_json jsonb,
   p_commit_message text default null,
+  p_node_id uuid default null,
   p_lock_timeout_ms integer default 3000
 )
 returns table (
@@ -108,7 +108,6 @@ end;
 $$;
 
 -- Expose to Supabase authenticated users
-grant execute on function public.rt_create_project(uuid, text, text) to authenticated;
-grant execute on function public.rt_append_node_to_ref(uuid, text, uuid, text, text, jsonb, text, integer) to authenticated;
+grant execute on function public.rt_create_project(text, text, uuid) to authenticated;
+grant execute on function public.rt_append_node_to_ref(uuid, text, text, text, jsonb, text, uuid, integer) to authenticated;
 grant execute on function public.rt_is_project_member(uuid) to authenticated;
-
