@@ -6,8 +6,6 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { readNodesFromRef } from '@git/utils';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
-import { rtCreateProjectShadow } from '@/src/store/pg/projects';
-import { rtSaveArtefactDraft } from '@/src/store/pg/drafts';
 
 interface RouteContext {
   params: { id: string };
@@ -22,6 +20,25 @@ export async function GET(request: Request, { params }: RouteContext) {
     }
     const { searchParams } = new URL(request.url);
     const ref = searchParams.get('ref')?.trim() || null;
+
+    if (process.env.RT_PG_READ === 'true') {
+      const refName = ref ?? INITIAL_BRANCH;
+      try {
+        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+        const { rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
+        await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
+        const canvas = await rtGetCanvasShadowV1({ projectId: project.id, refName });
+        const updatedAtMs = canvas.updatedAt ? Date.parse(canvas.updatedAt) : null;
+        return Response.json({
+          artefact: canvas.content,
+          lastStateNodeId: null,
+          lastUpdatedAt: Number.isFinite(updatedAtMs as number) ? updatedAtMs : null
+        });
+      } catch (error) {
+        console.error('[pg-read] Failed to read artefact, falling back to git', error);
+      }
+    }
+
     const [artefact, nodes] = await Promise.all([
       ref ? getArtefactFromRef(project.id, ref) : getArtefactFromRef(project.id, INITIAL_BRANCH),
       ref ? readNodesFromRef(project.id, ref) : readNodesFromRef(project.id, INITIAL_BRANCH)
@@ -68,6 +85,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
       if (process.env.RT_PG_SHADOW_WRITE === 'true') {
         try {
+          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+          const { rtSaveArtefactDraft } = await import('@/src/store/pg/drafts');
           await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
           await rtSaveArtefactDraft({
             projectId: project.id,

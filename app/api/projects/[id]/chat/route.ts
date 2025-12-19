@@ -37,13 +37,38 @@ export async function POST(request: Request, { params }: RouteContext) {
     const abortController = new AbortController();
 
     try {
-      await appendNodeToRefNoCheckout(project.id, targetRef, {
+      const userNode = await appendNodeToRefNoCheckout(project.id, targetRef, {
         type: 'message',
         role: 'user',
         content: message,
         contextWindow: [],
         tokensUsed: undefined
       });
+
+      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+        try {
+          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+          const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+          await rtCreateProjectShadow({
+            projectId: project.id,
+            name: project.name ?? 'Untitled',
+            description: project.description
+          });
+          await rtAppendNodeToRefShadowV1({
+            projectId: project.id,
+            refName: targetRef,
+            kind: userNode.type,
+            role: userNode.role,
+            contentJson: userNode,
+            nodeId: userNode.id,
+            commitMessage: 'user_message',
+            attachDraft: true
+          });
+        } catch (error) {
+          console.error('[pg-shadow-write] Failed to append user node', error);
+        }
+      }
+
       const context = await buildChatContext(project.id, { tokenLimit, ref: targetRef });
       const thinkingInstruction = getThinkingSystemInstruction(thinking);
       const messagesForCompletion: ChatMessage[] = thinkingInstruction
@@ -83,7 +108,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           }
 
           try {
-            await appendNodeToRefNoCheckout(
+            const assistantNode = await appendNodeToRefNoCheckout(
               project.id,
               targetRef,
               {
@@ -93,6 +118,30 @@ export async function POST(request: Request, { params }: RouteContext) {
                 interrupted: abortController.signal.aborted || streamError !== null
               }
             );
+
+            if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+              try {
+                const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+                const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+                await rtCreateProjectShadow({
+                  projectId: project.id,
+                  name: project.name ?? 'Untitled',
+                  description: project.description
+                });
+                await rtAppendNodeToRefShadowV1({
+                  projectId: project.id,
+                  refName: targetRef,
+                  kind: assistantNode.type,
+                  role: assistantNode.role,
+                  contentJson: assistantNode,
+                  nodeId: assistantNode.id,
+                  commitMessage: 'assistant_message',
+                  attachDraft: false
+                });
+              } catch (error) {
+                console.error('[pg-shadow-write] Failed to append assistant node', error);
+              }
+            }
           } catch (error) {
             streamError = streamError ?? error;
           } finally {

@@ -16,3 +16,13 @@ export async function rtToggleStarShadow(input: { projectId: string; nodeId: str
   return { starred: Boolean(row.starred) };
 }
 
+export async function rtSyncStarsShadow(input: { projectId: string; nodeIds: string[] }): Promise<void> {
+  const supabase = createSupabaseServerClient();
+  const { error } = await supabase.rpc('rt_sync_stars', {
+    p_project_id: input.projectId,
+    p_node_ids: input.nodeIds
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}

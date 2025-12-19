@@ -51,6 +51,30 @@ export async function POST(request: Request, { params }: RouteContext) {
         pinnedFromMergeId: mergeNodeId
       });
 
+      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+        try {
+          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+          const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+          await rtCreateProjectShadow({
+            projectId: project.id,
+            name: project.name ?? 'Untitled',
+            description: project.description
+          });
+          await rtAppendNodeToRefShadowV1({
+            projectId: project.id,
+            refName: resolvedTargetBranch,
+            kind: pinnedNode.type,
+            role: pinnedNode.role,
+            contentJson: pinnedNode,
+            nodeId: pinnedNode.id,
+            commitMessage: 'pin_canvas_diff',
+            attachDraft: false
+          });
+        } catch (error) {
+          console.error('[pg-shadow-write] Failed to pin canvas diff', error);
+        }
+      }
+
       return Response.json({ pinnedNode, alreadyPinned: false });
     });
   } catch (error) {

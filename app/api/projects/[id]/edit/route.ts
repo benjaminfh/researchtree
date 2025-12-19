@@ -50,6 +50,26 @@ export async function POST(request: Request, { params }: RouteContext) {
         throw badRequest(message);
       }
 
+      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+        try {
+          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+          const { rtCreateRefFromNodeParentShadowV1 } = await import('@/src/store/pg/branches');
+          await rtCreateProjectShadow({
+            projectId: project.id,
+            name: project.name ?? 'Untitled',
+            description: project.description
+          });
+          await rtCreateRefFromNodeParentShadowV1({
+            projectId: project.id,
+            sourceRefName: sourceRef,
+            newRefName: targetBranch,
+            nodeId
+          });
+        } catch (error) {
+          console.error('[pg-shadow-write] Failed to create edit branch', error);
+        }
+      }
+
       const node = await appendNode(
         project.id,
         {
@@ -59,6 +79,30 @@ export async function POST(request: Request, { params }: RouteContext) {
         },
         { ref: targetBranch }
       );
+
+      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+        try {
+          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+          const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+          await rtCreateProjectShadow({
+            projectId: project.id,
+            name: project.name ?? 'Untitled',
+            description: project.description
+          });
+          await rtAppendNodeToRefShadowV1({
+            projectId: project.id,
+            refName: targetBranch,
+            kind: node.type,
+            role: node.role,
+            contentJson: node,
+            nodeId: node.id,
+            commitMessage: 'edit_message',
+            attachDraft: false
+          });
+        } catch (error) {
+          console.error('[pg-shadow-write] Failed to append edited node', error);
+        }
+      }
 
       return Response.json({ branchName: targetBranch, node }, { status: 201 });
       } finally {

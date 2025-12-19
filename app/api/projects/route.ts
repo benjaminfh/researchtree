@@ -2,7 +2,6 @@ import { initProject, listProjects } from '@git/projects';
 import { createProjectSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
-import { rtCreateProjectShadow } from '@/src/store/pg/projects';
 
 export async function GET() {
   try {
@@ -26,6 +25,7 @@ export async function POST(request: Request) {
 
     if (process.env.RT_PG_SHADOW_WRITE === 'true') {
       try {
+        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
         await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
       } catch (error) {
         console.error('[pg-shadow-write] Failed to create project row', error);

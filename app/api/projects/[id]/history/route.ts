@@ -3,6 +3,7 @@ import { readNodesFromRef } from '@git/utils';
 import { handleRouteError, notFound } from '@/src/server/http';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
+import type { NodeRecord } from '@git/types';
 
 interface RouteContext {
   params: { id: string };
@@ -18,7 +19,26 @@ export async function GET(request: Request, { params }: RouteContext) {
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
     const refParam = searchParams.get('ref');
-    const nodes = await readNodesFromRef(project.id, refParam?.trim() || INITIAL_BRANCH);
+    const refName = refParam?.trim() || INITIAL_BRANCH;
+
+    if (process.env.RT_PG_READ === 'true') {
+      const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+      const effectiveLimit = Number.isFinite(limit as number) && (limit as number) > 0 ? (limit as number) : undefined;
+
+      try {
+        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+        const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
+        await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
+        const rows = await rtGetHistoryShadowV1({ projectId: project.id, refName, limit: effectiveLimit });
+        const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+        const nonStateNodes = pgNodes.filter((node) => node.type !== 'state');
+        return Response.json({ nodes: nonStateNodes });
+      } catch (error) {
+        console.error('[pg-read] Failed to read history, falling back to git', error);
+      }
+    }
+
+    const nodes = await readNodesFromRef(project.id, refName);
 
     // Canvas saves create `state` nodes in the git backend; those are not user-facing chat turns.
     // Keep them out of the history API response to avoid flooding the chat UI.

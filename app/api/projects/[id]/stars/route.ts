@@ -5,8 +5,7 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { INITIAL_BRANCH } from '@git/constants';
 import { z } from 'zod';
 import { requireUser } from '@/src/server/auth';
-import { rtCreateProjectShadow } from '@/src/store/pg/projects';
-import { rtToggleStarShadow } from '@/src/store/pg/stars';
+import { rtSyncStarsShadow } from '@/src/store/pg/stars';
 
 interface RouteContext {
   params: { id: string };
@@ -24,6 +23,17 @@ export async function GET(_req: Request, { params }: RouteContext) {
       throw notFound('Project not found');
     }
     const starredNodeIds = await getStarredNodeIds(project.id);
+
+    if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+      try {
+        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+        await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
+        await rtSyncStarsShadow({ projectId: project.id, nodeIds: starredNodeIds });
+      } catch (error) {
+        console.error('[pg-shadow-write] Failed to sync stars', error);
+      }
+    }
+
     return Response.json({ starredNodeIds });
   } catch (error) {
     return handleRouteError(error);
@@ -47,8 +57,9 @@ export async function POST(request: Request, { params }: RouteContext) {
 
       if (process.env.RT_PG_SHADOW_WRITE === 'true') {
         try {
+          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
           await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
-          await rtToggleStarShadow({ projectId: project.id, nodeId: parsed.data.nodeId });
+          await rtSyncStarsShadow({ projectId: project.id, nodeIds: starredNodeIds });
         } catch (error) {
           console.error('[pg-shadow-write] Failed to toggle star', error);
         }

@@ -32,6 +32,29 @@ export async function POST(request: Request, { params }: RouteContext) {
           targetBranch: resolvedTargetBranch,
           sourceAssistantNodeId: sourceAssistantNodeId?.trim() || undefined
         });
+
+        if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+          try {
+            const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+            const { rtMergeOursShadowV1 } = await import('@/src/store/pg/merge');
+            await rtCreateProjectShadow({
+              projectId: project.id,
+              name: project.name ?? 'Untitled',
+              description: project.description
+            });
+            await rtMergeOursShadowV1({
+              projectId: project.id,
+              targetRefName: resolvedTargetBranch,
+              sourceRefName: sourceBranch,
+              mergeNodeId: mergeNode.id,
+              mergeNodeJson: mergeNode,
+              commitMessage: 'merge'
+            });
+          } catch (error) {
+            console.error('[pg-shadow-write] Failed to shadow merge', error);
+          }
+        }
+
         return Response.json({ mergeNode });
       } catch (err) {
         const message = (err as Error)?.message ?? 'Merge failed';

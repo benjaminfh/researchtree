@@ -49,6 +49,58 @@ We drop:
 
 ---
 
+## 1.3 Implementation lessons (write these rules down)
+
+These are the “don’t get stuck in a debugging loop” rules we’ve already hit while implementing shadow-writes.
+
+### Supabase RPC + schema cache gotchas
+
+1. **Avoid RPC overloads and signature churn**:
+   - Don’t define multiple functions with the same name.
+   - Avoid changing parameter names/order after routes ship; PostgREST may keep an old signature cached.
+   - Prefer versioned function names (`rt_*_v1`) so you can evolve without cache ambiguity.
+2. **Default args rule**: in Postgres, once a parameter has a default, all following parameters must also have defaults. Keep optional params at the end.
+3. **After applying migrations, reload PostgREST schema cache**:
+   - Run `select pg_notify('pgrst', 'reload schema');`
+   - Then wait ~30–60s if needed (Supabase can lag) and retry.
+4. **Dev server can run stale compiled route code**:
+   - If you’re seeing old behavior after a change, stop `next dev`, delete `.next/`, restart.
+
+### SECURITY DEFINER + extensions
+
+1. **SECURITY DEFINER functions must be explicit about search path**:
+   - Always add `security definer set search_path = public` to RPCs.
+2. **Schema-qualify `pgcrypto` helpers in Supabase**:
+   - Supabase commonly installs `pgcrypto` into the `extensions` schema.
+   - Use `extensions.digest(convert_to(text,'utf8'), 'sha256'::text)` (not bare `digest(...)`).
+
+### RLS and server-side calling pattern
+
+1. **Do not rely on service-role in product routes**:
+   - Product API routes should run as the signed-in user so RLS and `auth.uid()` checks behave like production.
+   - Reserve the service role for one-time migration/backfill scripts.
+2. **Even with SECURITY DEFINER, enforce auth + membership inside the function**:
+   - All RPCs should `raise` if `auth.uid()` is null or the user is not a project member.
+
+### Shadow-write safety (important)
+
+1. **Shadow-write should be idempotent when possible**:
+   - Prefer “sync whole set” RPCs (`rt_sync_stars`) over “toggle” RPCs when cache/signature mismatch risk exists.
+2. **Do not FK shadow data to not-yet-migrated tables**:
+   - Example: `stars.node_id` cannot FK to `nodes.id` until nodes are written to Postgres.
+   - In shadow mode, drop that FK (we do this for stars), then re-introduce it once `nodes` is migrated.
+
+### Canvas saves must not spam provenance/chat
+
+1. **Canvas autosaves are drafts (mutable)**:
+   - Store them in a draft table (`artefact_drafts`) keyed by `(project_id, ref_name, user_id)` (upsert).
+2. **Only snapshot drafts into immutable artefacts at turn boundaries**:
+   - On “send message” (user turn) and on merge (if needed).
+3. **Never render canvas save nodes in chat**:
+   - If legacy git writes still produce `state` nodes, filter them out at the history endpoint while migrating.
+
+---
+
 ## 2. Target architecture (Postgres primitives)
 
 We implement a “git-ish spine” with:
@@ -417,6 +469,59 @@ Keyset paging (no offsets):
 
 * newest page: `order by ordinal desc limit N`
 * older page: `where ordinal < $before order by ordinal desc limit N`
+
+---
+
+## 14. Route-by-route migration checklist (how we apply the lessons)
+
+We keep the same HTTP routes, but progressively move their internals from `src/git/*` to RPC-backed Postgres.
+
+### Cross-cutting rules for every route
+
+- Every route calls `requireUser()` and uses the cookie-authenticated Supabase client (no service role).
+- Every write path uses a single RPC (one transaction).
+- Every shadow-write path is wrapped in `try/catch` and logs `[pg-shadow-write] ...` without breaking the user flow.
+- After any migration/RPC change in Supabase: run `select pg_notify('pgrst', 'reload schema');` before debugging.
+
+### `/api/projects/[id]/stars`
+
+- Git remains source of truth until nodes migrate.
+- Shadow-write uses `rt_sync_stars(project_id, node_ids[])` (idempotent).
+- Ensure `stars.node_id` has no FK while nodes are not in PG (drop FK now; add back later).
+
+### `/api/projects/[id]/artefact`
+
+- Git remains source of truth for the visible canvas until we switch reads.
+- Shadow-write writes drafts only (`rt_save_artefact_draft`).
+- Do not create provenance nodes/commits for autosaves; only snapshot at turn boundary.
+
+### `/api/projects/[id]/chat`
+
+- Add shadow-write of:
+  - user message node → `rt_append_node_to_ref(...)`
+  - assistant message node → `rt_append_node_to_ref(...)`
+- Preserve node IDs (app generates today); store them as `nodes.id`.
+- Strict ordering: ensure a per-ref lock/lease is held for the duration of streaming, or use DB row locks + short lock timeout with clear UX.
+
+### `/api/projects/[id]/history`
+
+- Until reads flip, keep git reads but filter out any non-chat nodes (`type='state'`).
+- When reads flip:
+  - use `commit_order` to page deterministically
+  - join `nodes` to fetch node payloads in ordinal order
+
+### `/api/projects/[id]/merge` (+ `/merge/pin-canvas-diff`)
+
+- Shadow-write merge commit (2 parents) and merge node payload.
+- Never auto-apply canvas; merge records diff/summary only.
+
+### `/api/projects/[id]/branches` + `/edit` + `/graph`
+
+- Defer until commits/nodes/commit_order writes exist (chat shadow-write).
+- Then implement:
+  - branches: `refs` list
+  - edit mapping: `nodeId -> commit_id -> ordinal` (via `commit_order`)
+  - graph: last N commits per ref + parent pointers from `commits`
 
 This preserves strict ordering deterministically and makes “node index i” a real, stable concept on a ref.
 
