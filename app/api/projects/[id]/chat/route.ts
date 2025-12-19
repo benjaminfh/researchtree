@@ -8,6 +8,7 @@ import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
 import { getThinkingSystemInstruction, type ThinkingSetting } from '@/src/shared/thinking';
+import { requireUser } from '@/src/server/auth';
 
 interface RouteContext {
   params: { id: string };
@@ -15,6 +16,7 @@ interface RouteContext {
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');

@@ -5,6 +5,7 @@ import { getStarredNodeIds } from '@git/stars';
 import { handleRouteError, notFound } from '@/src/server/http';
 import { INITIAL_BRANCH } from '@git/constants';
 import type { NodeRecord } from '@git/types';
+import { requireUser } from '@/src/server/auth';
 
 interface RouteContext {
   params: { id: string };
@@ -22,6 +23,7 @@ function capNodesForGraph(nodes: NodeRecord[], max: number): NodeRecord[] {
 
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
@@ -57,4 +59,3 @@ export async function GET(_request: Request, { params }: RouteContext) {
     return handleRouteError(error);
   }
 }
-

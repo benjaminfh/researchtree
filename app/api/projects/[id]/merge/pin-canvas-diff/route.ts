@@ -4,6 +4,7 @@ import { getCurrentBranchName, readNodesFromRef } from '@git/utils';
 import { withProjectRefLock } from '@/src/server/locks';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { pinCanvasDiffSchema } from '@/src/server/schemas';
+import { requireUser } from '@/src/server/auth';
 
 interface RouteContext {
   params: { id: string };
@@ -11,6 +12,7 @@ interface RouteContext {
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
@@ -55,4 +57,3 @@ export async function POST(request: Request, { params }: RouteContext) {
     return handleRouteError(error);
   }
 }
-

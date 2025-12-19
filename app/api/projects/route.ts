@@ -1,9 +1,11 @@
 import { initProject, listProjects } from '@git/projects';
 import { createProjectSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError } from '@/src/server/http';
+import { requireUser } from '@/src/server/auth';
 
 export async function GET() {
   try {
+    await requireUser();
     const projects = await listProjects();
     return Response.json({ projects });
   } catch (error) {
@@ -13,6 +15,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    await requireUser();
     const body = await request.json().catch(() => null);
     const parsed = createProjectSchema.safeParse(body);
     if (!parsed.success) {

@@ -5,6 +5,7 @@ import { updateArtefactSchema } from '@/src/server/schemas';
 import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { readNodesFromRef } from '@git/utils';
 import { INITIAL_BRANCH } from '@git/constants';
+import { requireUser } from '@/src/server/auth';
 
 interface RouteContext {
   params: { id: string };
@@ -12,6 +13,7 @@ interface RouteContext {
 
 export async function GET(request: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
@@ -36,6 +38,7 @@ export async function GET(request: Request, { params }: RouteContext) {
 
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');

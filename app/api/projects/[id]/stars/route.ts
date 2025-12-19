@@ -4,6 +4,7 @@ import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { INITIAL_BRANCH } from '@git/constants';
 import { z } from 'zod';
+import { requireUser } from '@/src/server/auth';
 
 interface RouteContext {
   params: { id: string };
@@ -15,6 +16,7 @@ const toggleStarSchema = z.object({
 
 export async function GET(_req: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
@@ -28,6 +30,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');

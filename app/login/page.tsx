@@ -1,0 +1,23 @@
+import { LoginForm } from './LoginForm';
+
+function sanitizeRedirectTo(input: string | null): string {
+  if (!input) return '/';
+  if (!input.startsWith('/')) return '/';
+  if (input.startsWith('//')) return '/';
+  return input;
+}
+
+export default function LoginPage({ searchParams }: { searchParams?: { redirectTo?: string } }) {
+  const redirectTo = sanitizeRedirectTo(searchParams?.redirectTo ?? null);
+  return (
+    <main className="min-h-screen bg-white px-6 py-12">
+      <div className="mx-auto max-w-sm">
+        <div className="mb-8">
+          <p className="text-3xl font-semibold tracking-tight text-slate-900">SideQuest</p>
+          <h1 className="mt-2 text-lg font-medium text-slate-600">Welcome Back</h1>
+        </div>
+        <LoginForm redirectTo={redirectTo} />
+      </div>
+    </main>
+  );
+}

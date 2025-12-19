@@ -4,6 +4,7 @@ import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { mergeRequestSchema } from '@/src/server/schemas';
 import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { getCurrentBranchName } from '@git/utils';
+import { requireUser } from '@/src/server/auth';
 
 interface RouteContext {
   params: { id: string };
@@ -11,6 +12,7 @@ interface RouteContext {
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
+    await requireUser();
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
