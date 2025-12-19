@@ -2,6 +2,7 @@ import { initProject, listProjects } from '@git/projects';
 import { createProjectSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
+import { rtCreateProjectShadow } from '@/src/store/pg/projects';
 
 export async function GET() {
   try {
@@ -22,6 +23,15 @@ export async function POST(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
     const project = await initProject(parsed.data.name, parsed.data.description);
+
+    if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+      try {
+        await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
+      } catch (error) {
+        console.error('[pg-shadow-write] Failed to create project row', error);
+      }
+    }
+
     return Response.json(project, { status: 201 });
   } catch (error) {
     return handleRouteError(error);
