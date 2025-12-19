@@ -5,6 +5,8 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { INITIAL_BRANCH } from '@git/constants';
 import { z } from 'zod';
 import { requireUser } from '@/src/server/auth';
+import { rtCreateProjectShadow } from '@/src/store/pg/projects';
+import { rtToggleStarShadow } from '@/src/store/pg/stars';
 
 interface RouteContext {
   params: { id: string };
@@ -42,6 +44,16 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
     return await withProjectLockAndRefLock(project.id, INITIAL_BRANCH, async () => {
       const starredNodeIds = await toggleStar(project.id, parsed.data.nodeId);
+
+      if (process.env.RT_PG_SHADOW_WRITE === 'true') {
+        try {
+          await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
+          await rtToggleStarShadow({ projectId: project.id, nodeId: parsed.data.nodeId });
+        } catch (error) {
+          console.error('[pg-shadow-write] Failed to toggle star', error);
+        }
+      }
+
       return Response.json({ starredNodeIds });
     });
   } catch (error) {
