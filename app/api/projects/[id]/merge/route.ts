@@ -10,6 +10,23 @@ interface RouteContext {
   params: { id: string };
 }
 
+async function getPreferredBranch(projectId: string): Promise<string> {
+  const shouldUsePrefs =
+    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  if (!shouldUsePrefs) {
+    return getCurrentBranchName(projectId);
+  }
+  try {
+    const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+    await rtCreateProjectShadow({ projectId, name: 'Untitled' });
+    const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' });
+    return refName;
+  } catch {
+    return getCurrentBranchName(projectId);
+  }
+}
+
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -25,7 +42,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const { sourceBranch, mergeSummary, targetBranch, sourceAssistantNodeId } = parsed.data;
-    const resolvedTargetBranch = targetBranch ?? (await getCurrentBranchName(project.id));
+    const resolvedTargetBranch = targetBranch ?? (await getPreferredBranch(project.id));
     return await withProjectLockAndRefLock(project.id, resolvedTargetBranch, async () => {
       try {
         const mergeNode = await mergeBranch(project.id, sourceBranch, mergeSummary, {

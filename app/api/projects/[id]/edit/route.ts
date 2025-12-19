@@ -11,6 +11,23 @@ interface RouteContext {
   params: { id: string };
 }
 
+async function getPreferredBranch(projectId: string): Promise<string> {
+  const shouldUsePrefs =
+    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  if (!shouldUsePrefs) {
+    return getCurrentBranchName(projectId);
+  }
+  try {
+    const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+    await rtCreateProjectShadow({ projectId, name: 'Untitled' });
+    const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' });
+    return refName;
+  } catch {
+    return getCurrentBranchName(projectId);
+  }
+}
+
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -26,7 +43,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const { content, branchName, fromRef, nodeId } = parsed.data;
-    const currentBranch = await getCurrentBranchName(project.id);
+    const currentBranch = await getPreferredBranch(project.id);
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const sourceRef = fromRef?.trim() || currentBranch;
 
@@ -67,6 +84,19 @@ export async function POST(request: Request, { params }: RouteContext) {
           });
         } catch (error) {
           console.error('[pg-shadow-write] Failed to create edit branch', error);
+        }
+      }
+
+      const shouldUsePrefs =
+        process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+      if (shouldUsePrefs) {
+        try {
+          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+          const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+          await rtCreateProjectShadow({ projectId: project.id, name: project.name ?? 'Untitled', description: project.description });
+          await rtSetCurrentRefShadowV1({ projectId: project.id, refName: targetBranch });
+        } catch (error) {
+          console.error('[pg-prefs] Failed to set current branch', error);
         }
       }
 

@@ -11,6 +11,21 @@ interface RouteContext {
   params: { id: string };
 }
 
+async function getPreferredBranch(projectId: string): Promise<string> {
+  const shouldUsePrefs =
+    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  if (!shouldUsePrefs) return INITIAL_BRANCH;
+  try {
+    const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+    await rtCreateProjectShadow({ projectId, name: 'Untitled' });
+    const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: INITIAL_BRANCH });
+    return refName;
+  } catch {
+    return INITIAL_BRANCH;
+  }
+}
+
 export async function GET(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -20,9 +35,10 @@ export async function GET(request: Request, { params }: RouteContext) {
     }
     const { searchParams } = new URL(request.url);
     const ref = searchParams.get('ref')?.trim() || null;
+    const effectiveRef = ref ?? (await getPreferredBranch(project.id));
 
     if (process.env.RT_PG_READ === 'true') {
-      const refName = ref ?? INITIAL_BRANCH;
+      const refName = effectiveRef;
       try {
         const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
         const { rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
@@ -40,8 +56,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     }
 
     const [artefact, nodes] = await Promise.all([
-      ref ? getArtefactFromRef(project.id, ref) : getArtefactFromRef(project.id, INITIAL_BRANCH),
-      ref ? readNodesFromRef(project.id, ref) : readNodesFromRef(project.id, INITIAL_BRANCH)
+      getArtefactFromRef(project.id, effectiveRef),
+      readNodesFromRef(project.id, effectiveRef)
     ]);
     const lastState = [...nodes].reverse().find((node) => node.type === 'state');
 
@@ -70,7 +86,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
     }
 
     const { searchParams } = new URL(request.url);
-    const ref = searchParams.get('ref')?.trim() || INITIAL_BRANCH;
+    const ref = searchParams.get('ref')?.trim() || (await getPreferredBranch(project.id));
 
     return await withProjectLockAndRefLock(project.id, ref, async () => {
       try {

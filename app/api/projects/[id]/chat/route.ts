@@ -14,6 +14,21 @@ interface RouteContext {
   params: { id: string };
 }
 
+async function getPreferredBranch(projectId: string): Promise<string> {
+  const shouldUsePrefs =
+    process.env.RT_PG_PREFS === 'true' || process.env.RT_PG_READ === 'true' || process.env.RT_PG_SHADOW_WRITE === 'true';
+  if (!shouldUsePrefs) return 'main';
+  try {
+    const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+    await rtCreateProjectShadow({ projectId, name: 'Untitled' });
+    const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' });
+    return refName;
+  } catch {
+    return 'main';
+  }
+}
+
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -32,7 +47,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const provider = resolveLLMProvider(llmProvider);
     const tokenLimit = await getProviderTokenLimit(provider);
 
-    const targetRef = ref ?? 'main';
+    const targetRef = ref ?? (await getPreferredBranch(project.id));
     const releaseLock = await acquireProjectRefLock(project.id, targetRef);
     const abortController = new AbortController();
 
