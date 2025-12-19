@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
 import { ArchiveBoxArrowDownIcon } from '@/src/components/workspace/HeroIcons';
+import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import type { ProjectMetadata } from '@git/types';
 
 interface HomePageContentProps {
@@ -88,7 +89,7 @@ export function HomePageContent({ projects }: HomePageContentProps) {
       className="grid min-h-screen bg-[rgba(238,243,255,0.4)]"
       style={{ gridTemplateColumns: railCollapsed ? '72px 1fr' : '270px 1fr' }}
     >
-      <aside className="flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4">
+      <aside className="relative z-40 flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -106,7 +107,7 @@ export function HomePageContent({ projects }: HomePageContentProps) {
         </div>
 
         {!railCollapsed ? (
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="mt-6 flex flex-1 flex-col gap-3">
             <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
               Workspaces
             </div>
@@ -183,8 +184,16 @@ export function HomePageContent({ projects }: HomePageContentProps) {
                 </ul>
               </div>
             ) : null}
+
+            <div className="mt-auto flex items-start pb-2">
+              <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
+            </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-auto flex items-start pb-2">
+            <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
+          </div>
+        )}
       </aside>
 
       <section className="flex min-h-screen flex-col overflow-hidden">

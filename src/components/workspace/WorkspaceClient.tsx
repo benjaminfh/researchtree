@@ -14,6 +14,7 @@ import type { FC } from 'react';
 import { WorkspaceGraph } from './WorkspaceGraph';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
+import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import {
   ArrowUpRightIcon,
   ArrowUpIcon,
@@ -867,6 +868,33 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   };
 
   const [showHints, setShowHints] = useState(false);
+  const hintsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showHints) return;
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (hintsRef.current?.contains(target)) return;
+      setShowHints(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setShowHints(false);
+      }
+    }
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showHints]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -1179,7 +1207,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   return (
     <div className="h-screen overflow-hidden bg-white text-slate-800">
       <div className="grid h-full" style={{ gridTemplateColumns: railCollapsed ? '72px 1fr' : '270px 1fr' }}>
-        <aside className="relative flex h-full flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur">
+        <aside className="relative z-40 flex h-full flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1271,7 +1299,35 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             ) : null}
 
             {railCollapsed ? (
-              <div className="mt-auto flex justify-start pb-2">
+              <div className="mt-auto flex flex-col items-start gap-3 pb-2">
+                <div ref={hintsRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowHints((prev) => !prev)}
+                    className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                    aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
+                    aria-expanded={showHints}
+                  >
+                    <QuestionMarkCircleIcon className="h-5 w-5" />
+                  </button>
+                  {showHints ? (
+                    <div
+                      className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
+                      role="dialog"
+                      aria-label="Session tips"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-slate-900">Session tips</p>
+                      </div>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                        <li>Branch to try edits without losing the trunk.</li>
+                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+                <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
                 <Link
                   href="/"
                   className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
@@ -1283,39 +1339,35 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             ) : (
               <div className="mt-auto space-y-3 pb-2">
                 <div className="flex flex-col items-start gap-3">
-                  {showHints ? (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setShowHints(false)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setShowHints(false);
-                        }
-                      }}
-                      className="w-full cursor-pointer rounded-2xl bg-white/80 p-4 text-sm shadow-sm transition hover:bg-primary/10"
-                      aria-label="Hide session tips"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-slate-900">Session tips</p>
-                      </div>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                        <li>Branch to try edits without losing the trunk.</li>
-                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                      </ul>
-                    </div>
-                  ) : (
+                  <div ref={hintsRef} className="relative">
                     <button
                       type="button"
-                      onClick={() => setShowHints(true)}
+                      onClick={() => setShowHints((prev) => !prev)}
                       className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
-                      aria-label="Show session tips"
+                      aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
+                      aria-expanded={showHints}
                     >
                       <QuestionMarkCircleIcon className="h-5 w-5" />
                     </button>
-                  )}
+                    {showHints ? (
+                      <div
+                        className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
+                        role="dialog"
+                        aria-label="Session tips"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold text-slate-900">Session tips</p>
+                        </div>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                          <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                          <li>Branch to try edits without losing the trunk.</li>
+                          <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
 
                   <Link
                     href="/"
