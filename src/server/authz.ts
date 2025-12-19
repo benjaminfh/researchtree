@@ -1,5 +1,6 @@
 import { forbidden } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
+import { createSupabaseServerClient } from '@/src/server/supabase/server';
 
 export interface ProjectForAuthz {
   id: string;
@@ -9,19 +10,12 @@ export interface ProjectForAuthz {
 
 export async function requireProjectAccess(project: ProjectForAuthz): Promise<void> {
   await requireUser();
-  try {
-    const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-    await rtCreateProjectShadow({
-      projectId: project.id,
-      name: project.name ?? 'Untitled',
-      description: project.description ?? undefined
-    });
-  } catch (error) {
-    const message = (error as Error)?.message ?? 'Not authorized';
-    if (message.toLowerCase().includes('not authorized')) {
-      throw forbidden('Not authorized');
-    }
-    throw error;
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.from('projects').select('id').eq('id', project.id).maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!data) {
+    throw forbidden('Not authorized');
   }
 }
-

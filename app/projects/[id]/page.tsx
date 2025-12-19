@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getProject } from '@git/projects';
-import { listBranches } from '@git/branches';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { resolveLLMProvider, getDefaultModelForProvider } from '@/src/server/llm';
+import { getStoreConfig } from '@/src/server/storeConfig';
+import { requireUser } from '@/src/server/auth';
+import { createSupabaseServerClient } from '@/src/server/supabase/server';
 
 interface ProjectPageProps {
   params: {
@@ -12,11 +13,50 @@ interface ProjectPageProps {
 }
 
 export default async function ProjectWorkspace({ params }: ProjectPageProps) {
-  const project = await getProject(params.id);
-  if (!project) {
-    notFound();
+  const store = getStoreConfig();
+
+  let project: { id: string; name: string; description?: string; createdAt: string; branchName?: string };
+  let branches: any[];
+
+  if (store.mode === 'pg') {
+    await requireUser();
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from('projects')
+      .select('id,name,description,created_at')
+      .eq('id', params.id)
+      .maybeSingle();
+    if (error) {
+      throw new Error(error.message);
+    }
+    if (!data) {
+      notFound();
+    }
+
+    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+    const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
+    const current = await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' }).catch(() => ({
+      refName: 'main'
+    }));
+
+    project = {
+      id: String((data as any).id),
+      name: String((data as any).name),
+      description: (data as any).description ?? undefined,
+      createdAt: new Date((data as any).created_at).toISOString(),
+      branchName: current.refName
+    };
+    branches = await rtListRefsShadowV1({ projectId: params.id });
+  } else {
+    const { getProject } = await import('@git/projects');
+    const { listBranches } = await import('@git/branches');
+    const gitProject = await getProject(params.id);
+    if (!gitProject) {
+      notFound();
+    }
+    project = gitProject;
+    branches = await listBranches(params.id);
   }
-  const branches = await listBranches(params.id);
 
   const providerOptions = (['openai', 'gemini', 'mock'] as const).map((id) => ({
     id,

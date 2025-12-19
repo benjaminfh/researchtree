@@ -68,11 +68,68 @@ These are the “don’t get stuck in a debugging loop” rules we’ve already 
 
 ### Feature flags (rollout switches)
 
-- Preferred:
-  - `RT_STORE=git|pg`: selects the provenance backend for the deployment (picked at deploy start; no mid-run flipping).
-  - `RT_SHADOW_WRITE=true|false`: when `RT_STORE=git`, also shadow-write provenance rows to Postgres for validation.
+- `RT_STORE=git|pg`: selects the provenance backend for the deployment (picked at deploy start; no mid-run flipping).
 
-Rule: keep HTTP routes stable; flags only change route internals.
+Rule: a deployment runs **exactly one** store. No git↔pg fallback and no dual-write in product routes.
+
+---
+
+## 1.4 Single-store deployments (NO git fallbacks)
+
+Top priority: remove all “Postgres failed → fall back to git” control flows. Deployments will be either git-only or pg-only; never both.
+
+### Contract
+
+1. When `RT_STORE=pg`:
+   - No git reads/writes at runtime (no `@git/*` calls).
+   - Route failures are surfaced (5xx) instead of silently “falling back”.
+2. When `RT_STORE=git`:
+   - No Postgres provenance reads/writes at runtime (no `rt_get_*`, `rt_append_*`, etc).
+   - Supabase may still be used for auth + membership checks (this is not a provenance fallback).
+3. Remove all “soft fallback / ignore errors” patterns:
+   - No `try { pg } catch { git }`
+   - No `console.error(...)` then returning success anyway
+
+### Inventory (what must be deleted)
+
+We delete every instance of these patterns:
+
+1. Explicit fallbacks:
+   - `console.error('[pg-read] ... falling back to git')`
+   - `catch { return <git result> }` in a pg-mode branch
+2. Soft fallbacks:
+   - “PG op failed, but we still return success” (creates orphaned/half-migrated state)
+   - “If Supabase not configured, return on-disk data” for endpoints that should be RLS-protected
+
+Recommended grep queries:
+
+- `rg -n "falling back to git|fallback to git|\\[pg-read\\]" app src tests -S`
+- `rg -n "shadowWriteToPg|RT_SHADOW_WRITE" app src tests -S`
+- `rg -n "@git/" app/api src/server -S` (ensure none execute in `RT_STORE=pg`)
+
+### Refactor approach (mechanical + safe)
+
+1. **Simplify store config**
+   - `getStoreConfig()` should expose only `mode: 'git' | 'pg'`.
+   - Delete all dual-store flags (ex: `RT_SHADOW_WRITE`) and any “readFromPg/usePgPrefs” derived booleans that hide fallback logic.
+2. **Mode-gate every route**
+   - Structure: `if (store.mode === 'pg') { /* pg-only */ return } else { /* git-only */ return }`
+   - Never `try pg; catch git`.
+3. **Remove git existence checks from pg paths**
+   - In pg-mode, validate project existence/authorization via `projects`/RLS (or `requireProjectAccess`).
+   - Do not call `@git/projects.getProject()` just to confirm the project exists.
+4. **Remove git imports from pg bundles**
+   - In routes/components that need both implementations, use dynamic imports inside the `if (store.mode === '...')` branch so the other side doesn’t load.
+5. **Update tests**
+   - Delete tests that assert fallback behavior.
+   - Add tests that in `RT_STORE=pg`, a failing PG read returns error (not a git response), and that git functions are not called.
+
+### Rollout sequence (minimize breakage)
+
+1. Remove fallback from **read** endpoints first: history/artefact/graph/context.
+2. Remove fallback from **write** endpoints: chat/edit/merge/branches/stars/artefact draft.
+3. Remove `RT_SHADOW_WRITE` and delete all dual-write codepaths.
+4. Update/replace tests accordingly.
 
 ### SECURITY DEFINER + extensions
 

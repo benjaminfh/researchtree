@@ -21,6 +21,10 @@ export function unauthorized(message = 'Unauthorized', details?: ErrorDetails): 
   return new ApiError(401, 'UNAUTHORIZED', message, details);
 }
 
+export function forbidden(message = 'Forbidden', details?: ErrorDetails): ApiError {
+  return new ApiError(403, 'FORBIDDEN', message, details);
+}
+
 export function notFound(message: string): ApiError {
   return new ApiError(404, 'NOT_FOUND', message);
 }
