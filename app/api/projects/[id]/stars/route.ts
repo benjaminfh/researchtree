@@ -1,5 +1,3 @@
-import { getProject } from '@git/projects';
-import { getStarredNodeIds, toggleStar } from '@git/stars';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { INITIAL_BRANCH } from '@git/constants';
@@ -20,24 +18,21 @@ export async function GET(_req: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
+    await requireProjectAccess({ id: params.id });
+
+    if (store.mode === 'pg') {
+      const { rtGetStarredNodeIdsShadowV1 } = await import('@/src/store/pg/reads');
+      const starredNodeIds = await rtGetStarredNodeIdsShadowV1({ projectId: params.id });
+      return Response.json({ starredNodeIds });
+    }
+
+    const { getProject } = await import('@git/projects');
+    const { getStarredNodeIds } = await import('@git/stars');
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
-    await requireProjectAccess(project);
     const starredNodeIds = await getStarredNodeIds(project.id);
-
-    if (store.shadowWriteToPg) {
-      try {
-        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-        const { rtSyncStarsShadow } = await import('@/src/store/pg/stars');
-        await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
-        await rtSyncStarsShadow({ projectId: project.id, nodeIds: starredNodeIds });
-      } catch (error) {
-        console.error('[pg-shadow-write] Failed to sync stars', error);
-      }
-    }
-
     return Response.json({ starredNodeIds });
   } catch (error) {
     return handleRouteError(error);
@@ -48,30 +43,27 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    const project = await getProject(params.id);
-    if (!project) {
-      throw notFound('Project not found');
-    }
-    await requireProjectAccess(project);
+    await requireProjectAccess({ id: params.id });
     const body = await request.json().catch(() => null);
     const parsed = toggleStarSchema.safeParse(body);
     if (!parsed.success) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
-    return await withProjectLockAndRefLock(project.id, INITIAL_BRANCH, async () => {
-      const starredNodeIds = await toggleStar(project.id, parsed.data.nodeId);
 
-      if (store.shadowWriteToPg) {
-        try {
-          const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-          const { rtSyncStarsShadow } = await import('@/src/store/pg/stars');
-          await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
-          await rtSyncStarsShadow({ projectId: project.id, nodeIds: starredNodeIds });
-        } catch (error) {
-          console.error('[pg-shadow-write] Failed to toggle star', error);
-        }
+    return await withProjectLockAndRefLock(params.id, INITIAL_BRANCH, async () => {
+      if (store.mode === 'pg') {
+        const { rtToggleStarV1 } = await import('@/src/store/pg/stars');
+        const starredNodeIds = await rtToggleStarV1({ projectId: params.id, nodeId: parsed.data.nodeId });
+        return Response.json({ starredNodeIds });
       }
 
+      const { getProject } = await import('@git/projects');
+      const { toggleStar } = await import('@git/stars');
+      const project = await getProject(params.id);
+      if (!project) {
+        throw notFound('Project not found');
+      }
+      const starredNodeIds = await toggleStar(project.id, parsed.data.nodeId);
       return Response.json({ starredNodeIds });
     });
   } catch (error) {

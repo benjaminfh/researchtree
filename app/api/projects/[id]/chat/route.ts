@@ -1,5 +1,3 @@
-import { appendNodeToRefNoCheckout } from '@git/nodes';
-import { getProject } from '@git/projects';
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext, type ChatMessage } from '@/src/server/context';
@@ -18,28 +16,21 @@ interface RouteContext {
 }
 
 async function getPreferredBranch(projectId: string): Promise<string> {
-  const shouldUsePrefs = getStoreConfig().usePgPrefs;
-  if (!shouldUsePrefs) return 'main';
-  try {
-    const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+  const store = getStoreConfig();
+  if (store.mode === 'pg') {
     const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-    await rtCreateProjectShadow({ projectId, name: 'Untitled' });
     const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' });
     return refName;
-  } catch {
-    return 'main';
   }
+  const { getCurrentBranchName } = await import('@git/utils');
+  return getCurrentBranchName(projectId).catch(() => 'main');
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    const project = await getProject(params.id);
-    if (!project) {
-      throw notFound('Project not found');
-    }
-    await requireProjectAccess(project);
+    await requireProjectAccess({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = chatRequestSchema.safeParse(body);
@@ -51,20 +42,18 @@ export async function POST(request: Request, { params }: RouteContext) {
     const provider = resolveLLMProvider(llmProvider);
     const tokenLimit = await getProviderTokenLimit(provider);
 
-    const targetRef = ref ?? (await getPreferredBranch(project.id));
-    const releaseLock = await acquireProjectRefLock(project.id, targetRef);
+    const targetRef = ref ?? (await getPreferredBranch(params.id));
+    const releaseLock = await acquireProjectRefLock(params.id, targetRef);
     const abortController = new AbortController();
 
     try {
       let userNode: any;
       if (store.mode === 'pg') {
-        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
+        const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
         const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-        await rtCreateProjectShadow({
-          projectId: project.id,
-          name: project.name ?? 'Untitled',
-          description: project.description
-        });
+        const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+        const lastNode = (last[0]?.nodeJson as any) ?? null;
+        const parentId = lastNode?.id ? String(lastNode.id) : null;
         const nodeId = uuidv4();
         userNode = {
           id: nodeId,
@@ -72,13 +61,13 @@ export async function POST(request: Request, { params }: RouteContext) {
           role: 'user',
           content: message,
           timestamp: Date.now(),
-          parent: null,
+          parent: parentId,
           createdOnBranch: targetRef,
           contextWindow: [],
           tokensUsed: undefined
         };
         await rtAppendNodeToRefShadowV1({
-          projectId: project.id,
+          projectId: params.id,
           refName: targetRef,
           kind: userNode.type,
           role: userNode.role,
@@ -88,6 +77,12 @@ export async function POST(request: Request, { params }: RouteContext) {
           attachDraft: true
         });
       } else {
+        const { getProject } = await import('@git/projects');
+        const { appendNodeToRefNoCheckout } = await import('@git/nodes');
+        const project = await getProject(params.id);
+        if (!project) {
+          throw notFound('Project not found');
+        }
         userNode = await appendNodeToRefNoCheckout(project.id, targetRef, {
           type: 'message',
           role: 'user',
@@ -95,33 +90,9 @@ export async function POST(request: Request, { params }: RouteContext) {
           contextWindow: [],
           tokensUsed: undefined
         });
-
-        if (store.shadowWriteToPg) {
-          try {
-            const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-            const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-            await rtCreateProjectShadow({
-              projectId: project.id,
-              name: project.name ?? 'Untitled',
-              description: project.description
-            });
-            await rtAppendNodeToRefShadowV1({
-              projectId: project.id,
-              refName: targetRef,
-              kind: userNode.type,
-              role: userNode.role,
-              contentJson: userNode,
-              nodeId: userNode.id,
-              commitMessage: 'user_message',
-              attachDraft: true
-            });
-          } catch (error) {
-            console.error('[pg-shadow-write] Failed to append user node', error);
-          }
-        }
       }
 
-      const context = await buildChatContext(project.id, { tokenLimit, ref: targetRef });
+      const context = await buildChatContext(params.id, { tokenLimit, ref: targetRef });
       const thinkingInstruction = getThinkingSystemInstruction(thinking);
       const messagesForCompletion: ChatMessage[] = thinkingInstruction
         ? [
@@ -131,13 +102,13 @@ export async function POST(request: Request, { params }: RouteContext) {
           ]
         : context.messages;
 
-      registerStream(project.id, abortController, targetRef);
+      registerStream(params.id, abortController, targetRef);
 
       let released = false;
       const releaseAll = () => {
         if (released) return;
         released = true;
-        releaseStream(project.id, targetRef);
+        releaseStream(params.id, targetRef);
         releaseLock();
       };
 
@@ -161,13 +132,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
           try {
             if (store.mode === 'pg') {
-              const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
               const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-              await rtCreateProjectShadow({
-                projectId: project.id,
-                name: project.name ?? 'Untitled',
-                description: project.description
-              });
               const assistantNode = {
                 id: uuidv4(),
                 type: 'message',
@@ -179,7 +144,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 interrupted: abortController.signal.aborted || streamError !== null
               };
               await rtAppendNodeToRefShadowV1({
-                projectId: project.id,
+                projectId: params.id,
                 refName: targetRef,
                 kind: assistantNode.type,
                 role: assistantNode.role,
@@ -189,36 +154,18 @@ export async function POST(request: Request, { params }: RouteContext) {
                 attachDraft: false
               });
             } else {
+              const { getProject } = await import('@git/projects');
+              const { appendNodeToRefNoCheckout } = await import('@git/nodes');
+              const project = await getProject(params.id);
+              if (!project) {
+                throw notFound('Project not found');
+              }
               const assistantNode = await appendNodeToRefNoCheckout(project.id, targetRef, {
                 type: 'message',
                 role: 'assistant',
                 content: buffered,
                 interrupted: abortController.signal.aborted || streamError !== null
               });
-
-              if (store.shadowWriteToPg) {
-                try {
-                  const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-                  const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-                  await rtCreateProjectShadow({
-                    projectId: project.id,
-                    name: project.name ?? 'Untitled',
-                    description: project.description
-                  });
-                  await rtAppendNodeToRefShadowV1({
-                    projectId: project.id,
-                    refName: targetRef,
-                    kind: assistantNode.type,
-                    role: assistantNode.role,
-                    contentJson: assistantNode,
-                    nodeId: assistantNode.id,
-                    commitMessage: 'assistant_message',
-                    attachDraft: false
-                  });
-                } catch (error) {
-                  console.error('[pg-shadow-write] Failed to append assistant node', error);
-                }
-              }
             }
           } catch (error) {
             streamError = streamError ?? error;
@@ -246,7 +193,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         }
       });
     } catch (error) {
-      releaseStream(project.id, targetRef);
+      releaseStream(params.id, targetRef);
       releaseLock();
       throw error;
     }

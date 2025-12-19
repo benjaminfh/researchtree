@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   getCurrentBranchName: vi.fn(),
   readNodesFromRef: vi.fn(),
   getStarredNodeIds: vi.fn(),
-  rtCreateProjectShadow: vi.fn(),
   rtListRefsShadowV1: vi.fn(),
   rtGetHistoryShadowV1: vi.fn(),
   rtGetStarredNodeIdsShadowV1: vi.fn(),
@@ -29,10 +28,6 @@ vi.mock('@git/utils', () => ({
 
 vi.mock('@git/stars', () => ({
   getStarredNodeIds: mocks.getStarredNodeIds
-}));
-
-vi.mock('@/src/store/pg/projects', () => ({
-  rtCreateProjectShadow: mocks.rtCreateProjectShadow
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
@@ -108,8 +103,6 @@ describe('/api/projects/[id]/graph', () => {
 
   it('uses Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
-    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtListRefsShadowV1.mockResolvedValue([
       { name: 'main', headCommit: '', nodeCount: 650, isTrunk: true },
       { name: 'feature/x', headCommit: '', nodeCount: 3, isTrunk: false }

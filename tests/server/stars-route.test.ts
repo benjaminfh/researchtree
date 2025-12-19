@@ -5,8 +5,8 @@ const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   getStarredNodeIds: vi.fn(),
   toggleStar: vi.fn(),
-  rtCreateProjectShadow: vi.fn(),
-  rtSyncStarsShadow: vi.fn()
+  rtGetStarredNodeIdsShadowV1: vi.fn(),
+  rtToggleStarV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -18,12 +18,12 @@ vi.mock('@git/stars', () => ({
   toggleStar: mocks.toggleStar
 }));
 
-vi.mock('@/src/store/pg/projects', () => ({
-  rtCreateProjectShadow: mocks.rtCreateProjectShadow
+vi.mock('@/src/store/pg/reads', () => ({
+  rtGetStarredNodeIdsShadowV1: mocks.rtGetStarredNodeIdsShadowV1
 }));
 
 vi.mock('@/src/store/pg/stars', () => ({
-  rtSyncStarsShadow: mocks.rtSyncStarsShadow
+  rtToggleStarV1: mocks.rtToggleStarV1
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/stars';
@@ -42,10 +42,9 @@ describe('/api/projects/[id]/stars', () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
     mocks.getStarredNodeIds.mockResolvedValue(['11111111-1111-1111-1111-111111111111']);
     mocks.toggleStar.mockResolvedValue(['11111111-1111-1111-1111-111111111111']);
-    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
-    mocks.rtSyncStarsShadow.mockResolvedValue(undefined);
+    mocks.rtGetStarredNodeIdsShadowV1.mockResolvedValue(['11111111-1111-1111-1111-111111111111']);
+    mocks.rtToggleStarV1.mockResolvedValue(['11111111-1111-1111-1111-111111111111']);
     process.env.RT_STORE = 'git';
-    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('returns starred node ids', async () => {
@@ -55,24 +54,27 @@ describe('/api/projects/[id]/stars', () => {
     expect(json.starredNodeIds).toEqual(['11111111-1111-1111-1111-111111111111']);
   });
 
-  it('shadow-syncs stars on GET when RT_SHADOW_WRITE=true', async () => {
-    process.env.RT_SHADOW_WRITE = 'true';
+  it('uses Postgres stars when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
-    expect(mocks.rtSyncStarsShadow).toHaveBeenCalledWith({
-      projectId: 'project-1',
-      nodeIds: ['11111111-1111-1111-1111-111111111111']
-    });
+    const json = await res.json();
+    expect(json.starredNodeIds).toEqual(['11111111-1111-1111-1111-111111111111']);
+    expect(mocks.rtGetStarredNodeIdsShadowV1).toHaveBeenCalledWith({ projectId: 'project-1' });
+    expect(mocks.getStarredNodeIds).not.toHaveBeenCalled();
   });
 
-  it('toggles star in git and shadow-syncs on POST when RT_SHADOW_WRITE=true', async () => {
-    process.env.RT_SHADOW_WRITE = 'true';
-    mocks.toggleStar.mockResolvedValueOnce(['22222222-2222-2222-2222-222222222222']);
+  it('toggles star via Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtToggleStarV1.mockResolvedValueOnce(['22222222-2222-2222-2222-222222222222']);
     const res = await POST(createRequest({ nodeId: '22222222-2222-2222-2222-222222222222' }), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
-    expect(mocks.rtSyncStarsShadow).toHaveBeenCalledWith({
+    const json = await res.json();
+    expect(json.starredNodeIds).toEqual(['22222222-2222-2222-2222-222222222222']);
+    expect(mocks.rtToggleStarV1).toHaveBeenCalledWith({
       projectId: 'project-1',
-      nodeIds: ['22222222-2222-2222-2222-222222222222']
+      nodeId: '22222222-2222-2222-2222-222222222222'
     });
+    expect(mocks.toggleStar).not.toHaveBeenCalled();
   });
 });

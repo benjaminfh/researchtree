@@ -1,5 +1,3 @@
-import { getProject } from '@git/projects';
-import { readNodesFromRef } from '@git/utils';
 import { handleRouteError, notFound } from '@/src/server/http';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
@@ -11,50 +9,36 @@ interface RouteContext {
   params: { id: string };
 }
 
-async function getPreferredBranch(projectId: string): Promise<string> {
-  const shouldUsePrefs = getStoreConfig().usePgPrefs;
-  if (!shouldUsePrefs) return INITIAL_BRANCH;
-  try {
-    const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-    await rtCreateProjectShadow({ projectId, name: 'Untitled' });
-    const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: INITIAL_BRANCH });
-    return refName;
-  } catch {
-    return INITIAL_BRANCH;
-  }
-}
-
 export async function GET(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
+    const store = getStoreConfig();
+    await requireProjectAccess({ id: params.id });
+    const { searchParams } = new URL(request.url);
+    const limitParam = searchParams.get('limit');
+    const refParam = searchParams.get('ref');
+    const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+    const effectiveLimit = Number.isFinite(limit as number) && (limit as number) > 0 ? (limit as number) : undefined;
+
+    if (store.mode === 'pg') {
+      const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+      const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
+      const refName =
+        refParam?.trim() || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
+      const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName, limit: effectiveLimit });
+      const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+      const nonStateNodes = pgNodes.filter((node) => node.type !== 'state');
+      return Response.json({ nodes: nonStateNodes });
+    }
+
+    const { getProject } = await import('@git/projects');
+    const { readNodesFromRef } = await import('@git/utils');
+
     const project = await getProject(params.id);
     if (!project) {
       throw notFound('Project not found');
     }
-    await requireProjectAccess(project);
-    const { searchParams } = new URL(request.url);
-    const limitParam = searchParams.get('limit');
-    const refParam = searchParams.get('ref');
-    const refName = refParam?.trim() || (await getPreferredBranch(project.id));
-
-    if (getStoreConfig().readFromPg) {
-      const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
-      const effectiveLimit = Number.isFinite(limit as number) && (limit as number) > 0 ? (limit as number) : undefined;
-
-      try {
-        const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-        const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-        await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
-        const rows = await rtGetHistoryShadowV1({ projectId: project.id, refName, limit: effectiveLimit });
-        const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
-        const nonStateNodes = pgNodes.filter((node) => node.type !== 'state');
-        return Response.json({ nodes: nonStateNodes });
-      } catch (error) {
-        console.error('[pg-read] Failed to read history, falling back to git', error);
-      }
-    }
-
+    const refName = refParam?.trim() || INITIAL_BRANCH;
     const nodes = await readNodesFromRef(project.id, refName);
 
     // Canvas saves create `state` nodes in the git backend; those are not user-facing chat turns.
@@ -63,7 +47,6 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     let result = nonStateNodes;
     if (limitParam) {
-      const limit = Number.parseInt(limitParam, 10);
       if (!Number.isNaN(limit) && limit > 0) {
         result = nonStateNodes.slice(-limit);
       }

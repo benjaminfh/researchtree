@@ -6,8 +6,8 @@ const mocks = vi.hoisted(() => ({
   getCurrentBranchName: vi.fn(),
   readNodesFromRef: vi.fn(),
   appendNodeToRefNoCheckout: vi.fn(),
-  rtCreateProjectShadow: vi.fn(),
-  rtAppendNodeToRefShadowV1: vi.fn()
+  rtAppendNodeToRefShadowV1: vi.fn(),
+  rtGetHistoryShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -23,12 +23,12 @@ vi.mock('@git/nodes', () => ({
   appendNodeToRefNoCheckout: mocks.appendNodeToRefNoCheckout
 }));
 
-vi.mock('@/src/store/pg/projects', () => ({
-  rtCreateProjectShadow: mocks.rtCreateProjectShadow
-}));
-
 vi.mock('@/src/store/pg/nodes', () => ({
   rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1
+}));
+
+vi.mock('@/src/store/pg/reads', () => ({
+  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/merge/pin-canvas-diff';
@@ -68,8 +68,8 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
       timestamp: 1700000001000,
       parent: 'merge-1'
     });
+    mocks.rtGetHistoryShadowV1.mockResolvedValue([]);
     process.env.RT_STORE = 'git';
-    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('returns 404 when project missing', async () => {
@@ -153,10 +153,24 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
     expect(json.pinnedNode?.id).toBe('pinned-1');
   });
 
-  it('shadow-writes pinned node when RT_SHADOW_WRITE=true', async () => {
-    process.env.RT_SHADOW_WRITE = 'true';
-    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
-    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
+  it('pins the canvas diff via Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetHistoryShadowV1.mockResolvedValueOnce([
+      {
+        ordinal: 0,
+        nodeJson: {
+          id: 'merge-1',
+          type: 'merge',
+          mergeFrom: 'feature',
+          mergeSummary: 'summary',
+          sourceCommit: 'abc',
+          sourceNodeIds: [],
+          canvasDiff: '+added',
+          timestamp: 1700000000000,
+          parent: null
+        }
+      }
+    ]);
     mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
       newCommitId: 'c1',
       nodeId: 'pinned-1',
@@ -167,8 +181,7 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
 
     const res = await POST(createRequest({ mergeNodeId: 'merge-1', targetBranch: 'main' }), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
-    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'project-1', refName: 'main', nodeId: 'pinned-1' })
-    );
+    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+    expect(mocks.appendNodeToRefNoCheckout).not.toHaveBeenCalled();
   });
 });

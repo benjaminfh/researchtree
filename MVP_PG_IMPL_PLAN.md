@@ -78,6 +78,27 @@ Rule: a deployment runs **exactly one** store. No git↔pg fallback and no dual-
 
 Top priority: remove all “Postgres failed → fall back to git” control flows. Deployments will be either git-only or pg-only; never both.
 
+### Verification plan (how we prove success)
+
+Success means a deployment runs exactly one provenance store with no fallback behavior.
+
+1. **Static checks (fast + deterministic)**
+   - Repo grep returns zero matches:
+     - `falling back to git|fallback to git|\\[pg-read\\] Failed .* falling back`
+     - `shadowWriteToPg|RT_SHADOW_WRITE|pg-shadow-write`
+   - In `RT_STORE=pg` mode, runtime bundles do not import `@git/*` at module scope (enforce via dynamic imports or split files).
+2. **Unit tests (mocked, store-specific)**
+   - For each API route with store branching:
+     - `RT_STORE=pg`: asserts PG helpers/RPC wrappers called; asserts git helpers not called; asserts PG failures surface as 5xx (no fallback response).
+     - `RT_STORE=git`: asserts git helpers called; asserts PG helpers/RPC wrappers not called.
+   - Delete/replace tests that assert “falls back to git when PG fails”.
+3. **Dev smoke checks (manual)**
+   - With `RT_STORE=pg`: create project, chat, branch, edit, merge, star, canvas draft; verify no `data/projects/*` repo is created and no fallback logs appear.
+   - With `RT_STORE=git`: same flows; verify `data/projects/*` is used and no PG provenance calls are made.
+4. **Guardrails**
+   - Add env validation so invalid/missing `RT_STORE` fails fast.
+   - Optional: add a CI-style check that runs the static grep rules above to prevent regressions.
+
 ### Contract
 
 1. When `RT_STORE=pg`:
@@ -104,7 +125,7 @@ We delete every instance of these patterns:
 Recommended grep queries:
 
 - `rg -n "falling back to git|fallback to git|\\[pg-read\\]" app src tests -S`
-- `rg -n "shadowWriteToPg|RT_SHADOW_WRITE" app src tests -S`
+- `rg -n "shadowWriteToPg|RT_SHADOW_WRITE|pg-shadow-write" app src tests -S`
 - `rg -n "@git/" app/api src/server -S` (ensure none execute in `RT_STORE=pg`)
 
 ### Refactor approach (mechanical + safe)
@@ -128,7 +149,7 @@ Recommended grep queries:
 
 1. Remove fallback from **read** endpoints first: history/artefact/graph/context.
 2. Remove fallback from **write** endpoints: chat/edit/merge/branches/stars/artefact draft.
-3. Remove `RT_SHADOW_WRITE` and delete all dual-write codepaths.
+3. Remove any remaining dual-write codepaths and flags.
 4. Update/replace tests accordingly.
 
 ### SECURITY DEFINER + extensions
@@ -147,14 +168,6 @@ Recommended grep queries:
 2. **Even with SECURITY DEFINER, enforce auth + membership inside the function**:
    - All RPCs should `raise` if `auth.uid()` is null or the user is not a project member.
 
-### Shadow-write safety (important)
-
-1. **Shadow-write should be idempotent when possible**:
-   - Prefer “sync whole set” RPCs (`rt_sync_stars`) over “toggle” RPCs when cache/signature mismatch risk exists.
-2. **Do not FK shadow data to not-yet-migrated tables**:
-   - Example: `stars.node_id` cannot FK to `nodes.id` until nodes are written to Postgres.
-   - In shadow mode, drop that FK (we do this for stars), then re-introduce it once `nodes` is migrated.
-
 ### Canvas saves must not spam provenance/chat
 
 1. **Canvas autosaves are drafts (mutable)**:
@@ -167,7 +180,7 @@ Recommended grep queries:
 ### Testing + local dev stability
 
 1. **Keep tests offline**:
-   - Tests should not hit Supabase/PostgREST. Force `RT_STORE=git` and `RT_SHADOW_WRITE=false` in `tests/setup.ts`.
+   - Tests should not hit Supabase/PostgREST. Force `RT_STORE=git` in `tests/setup.ts`.
 2. **Avoid importing Next server-only modules at module scope in route handlers**:
    - Importing Supabase server clients often pulls in `next/headers` (`cookies()`), which can cause Vitest worker teardown hangs.
    - Use dynamic imports inside the `RT_PG_*` branches in API routes.
@@ -775,18 +788,16 @@ Implement `scripts/migrate_git_to_pg.ts`:
 * Implement `src/store/*` wrappers.
 * Add feature flags:
   * `RT_STORE=git|pg`
-  * `RT_SHADOW_WRITE=true/false` (shadow-write to Postgres when `RT_STORE=git`)
 
-### Phase 1: Shadow-write + read flip (safe rollout)
+### Phase 1: Read flip (safe rollout)
 
-* Keep git as the source of truth.
-* Enable `RT_SHADOW_WRITE=true` to populate Postgres for verification.
-* Optional: for read verification, set `RT_STORE=pg` in a non-prod deployment.
+* Keep git as the source of truth in git deployments.
+* For verification, deploy a separate environment with `RT_STORE=pg` and validate reads end-to-end.
 
 ### Phase 2: Write-to-Postgres (RPC), optionally dual-write briefly
 
 * Flip write paths to RPC.
-* Optional: dual-write to git for a short window for safety.
+* Do not dual-write in product routes (single-store deployments).
 
 ### Phase 3: Postgres only
 

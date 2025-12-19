@@ -153,16 +153,10 @@ describe('buildChatContext', () => {
     expect(context.messages.some((m) => m.role === 'user' && m.content === 'Hello')).toBe(true);
   });
 
-  it('falls back to git when Postgres context read fails', async () => {
+  it('throws when Postgres context read fails in RT_STORE=pg mode', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetHistoryShadowV1.mockRejectedValue(new Error('pg down'));
-    mocks.readNodesFromRef.mockResolvedValue([
-      { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null }
-    ]);
-    mocks.getArtefactFromRef.mockResolvedValue('Canvas git');
-
-    const context = await buildChatContext('project-1', { ref: 'main' });
-    expect(mocks.readNodesFromRef).toHaveBeenCalledWith('project-1', 'main');
-    expect(context.messages[0].content).toContain('Canvas git');
+    await expect(buildChatContext('project-1', { ref: 'main' })).rejects.toThrow('pg down');
+    expect(mocks.readNodesFromRef).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,6 @@ import { GET } from '@/app/api/projects/[id]/history/route';
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   readNodesFromRef: vi.fn(),
-  rtCreateProjectShadow: vi.fn(),
   rtGetHistoryShadowV1: vi.fn()
 }));
 
@@ -14,10 +13,6 @@ vi.mock('@git/projects', () => ({
 
 vi.mock('@git/utils', () => ({
   readNodesFromRef: mocks.readNodesFromRef
-}));
-
-vi.mock('@/src/store/pg/projects', () => ({
-  rtCreateProjectShadow: mocks.rtCreateProjectShadow
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
@@ -30,7 +25,6 @@ describe('/api/projects/[id]/history', () => {
   beforeEach(() => {
     mocks.getProject.mockReset();
     mocks.readNodesFromRef.mockReset();
-    mocks.rtCreateProjectShadow.mockReset();
     mocks.rtGetHistoryShadowV1.mockReset();
     process.env.RT_STORE = 'git';
   });
@@ -62,8 +56,6 @@ describe('/api/projects/[id]/history', () => {
 
   it('uses Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
-    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtGetHistoryShadowV1.mockResolvedValue([
       { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'A', timestamp: 1, parent: null } },
       { ordinal: 1, nodeJson: { id: '2', type: 'state', artefactSnapshot: 'x', timestamp: 2, parent: '1' } },
@@ -79,19 +71,12 @@ describe('/api/projects/[id]/history', () => {
     expect(data.nodes.map((n: any) => n.id)).toEqual(['1', '3']);
   });
 
-  it('falls back to git when Postgres read fails', async () => {
+  it('returns 500 when Postgres read fails in RT_STORE=pg mode', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
-    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
     mocks.rtGetHistoryShadowV1.mockRejectedValue(new Error('pg down'));
 
-    const nodes = [{ id: '1', type: 'message', role: 'user', content: 'A', timestamp: 1, parent: null }];
-    mocks.readNodesFromRef.mockResolvedValue(nodes);
-
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
-    expect(res.status).toBe(200);
-    const data = (await res.json()) as any;
-    expect(mocks.readNodesFromRef).toHaveBeenCalled();
-    expect(data.nodes).toHaveLength(1);
+    expect(res.status).toBe(500);
+    expect(mocks.readNodesFromRef).not.toHaveBeenCalled();
   });
 });

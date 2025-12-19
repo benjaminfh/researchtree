@@ -8,8 +8,9 @@ const mocks = vi.hoisted(() => ({
   streamAssistantCompletion: vi.fn(),
   registerStream: vi.fn(),
   releaseStream: vi.fn(),
-  rtCreateProjectShadow: vi.fn(),
-  rtAppendNodeToRefShadowV1: vi.fn()
+  rtAppendNodeToRefShadowV1: vi.fn(),
+  rtGetHistoryShadowV1: vi.fn(),
+  rtGetCurrentRefShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -38,12 +39,16 @@ vi.mock('@/src/server/stream-registry', () => ({
   releaseStream: mocks.releaseStream
 }));
 
-vi.mock('@/src/store/pg/projects', () => ({
-  rtCreateProjectShadow: mocks.rtCreateProjectShadow
-}));
-
 vi.mock('@/src/store/pg/nodes', () => ({
   rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1
+}));
+
+vi.mock('@/src/store/pg/reads', () => ({
+  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
+}));
+
+vi.mock('@/src/store/pg/prefs', () => ({
+  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1
 }));
 
 vi.mock('@/src/server/providerCapabilities', () => ({
@@ -78,8 +83,9 @@ describe('/api/projects/[id]/chat', () => {
     mocks.appendNodeToRefNoCheckout.mockResolvedValue(undefined);
     mocks.registerStream.mockImplementation(() => undefined);
     mocks.releaseStream.mockImplementation(() => undefined);
+    mocks.rtGetHistoryShadowV1.mockResolvedValue([]);
+    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
     process.env.RT_STORE = 'git';
-    process.env.RT_SHADOW_WRITE = 'false';
   });
 
   it('streams assistant response and appends nodes', async () => {
@@ -98,15 +104,8 @@ describe('/api/projects/[id]/chat', () => {
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foobar', interrupted: false });
   });
 
-  it('shadow-writes user+assistant nodes when RT_SHADOW_WRITE=true', async () => {
-    process.env.RT_SHADOW_WRITE = 'true';
-    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
-    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'project-1' });
-
-    mocks.appendNodeToRefNoCheckout.mockImplementation(async (_projectId: string, _ref: string, node: any) => {
-      if (node.role === 'user') return { ...node, id: 'user-1' };
-      return { ...node, id: 'asst-1' };
-    });
+  it('uses Postgres for user+assistant nodes when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
     mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
       newCommitId: 'c1',
       nodeId: 'user-1',
@@ -125,7 +124,6 @@ describe('/api/projects/[id]/chat', () => {
         refName: 'main',
         kind: 'message',
         role: 'user',
-        nodeId: 'user-1',
         attachDraft: true
       })
     );
@@ -135,10 +133,11 @@ describe('/api/projects/[id]/chat', () => {
         refName: 'main',
         kind: 'message',
         role: 'assistant',
-        nodeId: 'asst-1',
         attachDraft: false
       })
     );
+    expect(mocks.appendNodeToRefNoCheckout).not.toHaveBeenCalled();
+    expect(mocks.getProject).not.toHaveBeenCalled();
   });
 
   it('accepts ref and passes it through to context builder and stream registry', async () => {

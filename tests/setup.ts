@@ -4,9 +4,8 @@ import { afterEach, vi } from 'vitest';
 
 afterEach(() => cleanup());
 
-// Tests should not hit Supabase/PostgREST; keep PG migration flags disabled by default.
+// Tests should not hit Supabase/PostgREST; default to git mode.
 process.env.RT_STORE = 'git';
-process.env.RT_SHADOW_WRITE = 'false';
 
 vi.mock('@/src/server/auth', () => ({
   getUserOrNull: vi.fn(async () => ({ id: 'test-user-id', email: 'test@example.com' })),

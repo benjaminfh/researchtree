@@ -4,13 +4,15 @@ import { GET, POST } from '@/app/api/projects/route';
 const mocks = vi.hoisted(() => ({
   listProjects: vi.fn(),
   initProject: vi.fn(),
+  deleteProject: vi.fn(),
   rtCreateProjectShadow: vi.fn(),
   createSupabaseServerClient: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
   listProjects: mocks.listProjects,
-  initProject: mocks.initProject
+  initProject: mocks.initProject,
+  deleteProject: mocks.deleteProject
 }));
 
 vi.mock('@/src/store/pg/projects', () => ({
@@ -35,13 +37,26 @@ describe('/api/projects route', () => {
   beforeEach(() => {
     mocks.listProjects.mockReset();
     mocks.initProject.mockReset();
+    mocks.deleteProject.mockReset();
     mocks.rtCreateProjectShadow.mockReset();
     mocks.createSupabaseServerClient.mockReset();
     process.env.RT_STORE = 'git';
-    process.env.RT_SHADOW_WRITE = 'false';
-    mocks.createSupabaseServerClient.mockImplementation(() => {
-      throw new Error('supabase not configured');
+    mocks.createSupabaseServerClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'project_members') {
+          throw new Error(`Unexpected table: ${table}`);
+        }
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(async () => ({
+              data: [{ project_id: '1' }],
+              error: null
+            }))
+          }))
+        };
+      })
     });
+    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: '1' });
   });
 
   it('returns project list on GET', async () => {
