@@ -5,6 +5,7 @@ import { type LLMProvider, resolveLLMProvider, getDefaultModelForProvider } from
 const DEFAULT_LIMITS: Record<LLMProvider, number> = {
   openai: 128_000,
   gemini: 200_000,
+  anthropic: 200_000,
   mock: 8_000
 };
 

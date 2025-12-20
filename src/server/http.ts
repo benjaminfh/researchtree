@@ -17,6 +17,14 @@ export function badRequest(message: string, details?: ErrorDetails): ApiError {
   return new ApiError(400, 'BAD_REQUEST', message, details);
 }
 
+export function unauthorized(message = 'Unauthorized', details?: ErrorDetails): ApiError {
+  return new ApiError(401, 'UNAUTHORIZED', message, details);
+}
+
+export function forbidden(message = 'Forbidden', details?: ErrorDetails): ApiError {
+  return new ApiError(403, 'FORBIDDEN', message, details);
+}
+
 export function notFound(message: string): ApiError {
   return new ApiError(404, 'NOT_FOUND', message);
 }

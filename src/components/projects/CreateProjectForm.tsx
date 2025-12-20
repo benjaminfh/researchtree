@@ -31,9 +31,12 @@ export function CreateProjectForm() {
         throw new Error(data?.error?.message ?? 'Failed to create project.');
       }
 
-      setName('');
-      setDescription('');
-      router.refresh();
+      const created = (await response.json().catch(() => null)) as { id?: string } | null;
+      const projectId = created?.id;
+      if (!projectId) {
+        throw new Error('Project created but response was missing an id.');
+      }
+      router.push(`/projects/${projectId}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -85,7 +88,14 @@ export function CreateProjectForm() {
         disabled={isSubmitting}
         className="inline-flex w-fit items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {isSubmitting ? 'Creating…' : 'Create Workspace'}
+        {isSubmitting ? (
+          <span className="inline-flex items-center gap-2">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />
+            <span>Creating…</span>
+          </span>
+        ) : (
+          'Create Workspace'
+        )}
       </button>
     </form>
   );

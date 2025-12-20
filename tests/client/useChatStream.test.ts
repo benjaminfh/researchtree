@@ -89,6 +89,35 @@ describe('useChatStream', () => {
     );
   });
 
+  it('includes anthropic in the chat payload when specified', async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL) => {
+      if (url.toString().includes('/chat')) {
+        return Promise.resolve({
+          ok: true,
+          body: createTextStream(['ok'])
+        } as Response);
+      }
+      throw new Error('Unexpected fetch call');
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook((options) => useChatStream(options), {
+      initialProps: { projectId: 'p-provider-anthropic', provider: 'anthropic' as any }
+    });
+
+    await act(async () => {
+      await result.current.sendMessage('Provider test');
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/p-provider-anthropic/chat',
+      expect.objectContaining({
+        body: JSON.stringify({ message: 'Provider test', llmProvider: 'anthropic', ref: undefined })
+      })
+    );
+  });
+
   it('passes ref through to chat and interrupt endpoints when provided', async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
       const urlStr = url.toString();
@@ -146,7 +175,29 @@ describe('useChatStream', () => {
       await result.current.sendMessage('Hi');
     });
 
-    expect(result.current.state.error).toBe('Unable to send message');
+    expect(result.current.state.error).toBe('Chat request failed');
+    expect(consoleSpy).toHaveBeenCalled();
+  });
+
+  it('surfaces API error message when present', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        body: null,
+        json: async () => ({ error: { message: 'No API key configured for openai.' } })
+      } as any as Response)
+    );
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useChatStream({ projectId: 'p4' }));
+
+    await act(async () => {
+      await result.current.sendMessage('Hi');
+    });
+
+    expect(result.current.state.error).toBe('No API key configured for openai.');
     expect(consoleSpy).toHaveBeenCalled();
   });
 

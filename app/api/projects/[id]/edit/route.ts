@@ -1,21 +1,70 @@
-import { appendNode } from '@git/nodes';
-import { createBranch } from '@git/branches';
-import { getProject } from '@git/projects';
-import { getCurrentBranchName, getCommitHashForNode, readNodesFromRef } from '@git/utils';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
+import { buildChatContext } from '@/src/server/context';
 import { editMessageSchema } from '@/src/server/schemas';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
+import { requireUser } from '@/src/server/auth';
+import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
+import { resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { type ThinkingSetting } from '@/src/shared/thinking';
+import { getStoreConfig } from '@/src/server/storeConfig';
+import { requireProjectAccess } from '@/src/server/authz';
+import { v4 as uuidv4 } from 'uuid';
+import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import type { LLMProvider } from '@/src/server/llm';
+import { getDeployEnv } from '@/src/server/llmConfig';
 
 interface RouteContext {
   params: { id: string };
 }
 
+async function getPreferredBranch(projectId: string): Promise<string> {
+  const store = getStoreConfig();
+  if (store.mode === 'pg') {
+    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+    return (await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' })).refName;
+  }
+  const { getCurrentBranchName } = await import('@git/utils');
+  return getCurrentBranchName(projectId).catch(() => 'main');
+}
+
+async function resolveApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
+  if (provider === 'mock') return null;
+
+  if (getDeployEnv() === 'dev') {
+    if (provider === 'openai') {
+      const envKey = process.env.OPENAI_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+    if (provider === 'gemini') {
+      const envKey = process.env.GEMINI_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+    if (provider === 'anthropic') {
+      const envKey = process.env.ANTHROPIC_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+  }
+
+  try {
+    const { rtGetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
+    return await rtGetUserLlmKeyV1({ provider });
+  } catch {
+    return null;
+  }
+}
+
+function labelForProvider(provider: LLMProvider): string {
+  if (provider === 'openai') return 'OpenAI';
+  if (provider === 'gemini') return 'Gemini';
+  if (provider === 'anthropic') return 'Anthropic';
+  return 'Mock';
+}
+
 export async function POST(request: Request, { params }: RouteContext) {
   try {
-    const project = await getProject(params.id);
-    if (!project) {
-      throw notFound('Project not found');
-    }
+    await requireUser();
+    const store = getStoreConfig();
+    await requireProjectAccess({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = editMessageSchema.safeParse(body);
@@ -23,42 +72,200 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { content, branchName, fromRef, nodeId } = parsed.data;
-    const currentBranch = await getCurrentBranchName(project.id);
+    const { content, branchName, fromRef, nodeId, llmProvider, thinking } = parsed.data as typeof parsed.data & {
+      thinking?: ThinkingSetting;
+    };
+    const currentBranch = await getPreferredBranch(params.id);
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const sourceRef = fromRef?.trim() || currentBranch;
+    const provider = resolveLLMProvider(llmProvider);
 
-    return await withProjectLock(project.id, async () => {
-      const releaseRefLock = await acquireProjectRefLock(project.id, sourceRef);
+    return await withProjectLock(params.id, async () => {
+      const releaseRefLock = await acquireProjectRefLock(params.id, sourceRef);
       try {
-      const sourceNodes = await readNodesFromRef(project.id, sourceRef);
-      const targetNode = sourceNodes.find((node) => node.id === nodeId);
-      if (!targetNode) {
-        throw badRequest(`Node ${nodeId} not found on ref ${sourceRef}`);
-      }
-      if (targetNode.type !== 'message') {
-        throw badRequest('Only message nodes can be edited');
+        if (store.mode === 'pg') {
+          const { rtCreateRefFromNodeParentShadowV1 } = await import('@/src/store/pg/branches');
+          const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+          const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+
+          const supabase = createSupabaseServerClient();
+          const { data, error } = await supabase
+            .from('nodes')
+            .select('content_json')
+            .eq('project_id', params.id)
+            .eq('id', nodeId)
+            .maybeSingle();
+          if (error) {
+            throw new Error(error.message);
+          }
+          const targetNode = (data as any)?.content_json as any | null;
+          if (!targetNode) {
+            throw badRequest(`Node ${nodeId} not found`);
+          }
+          if (targetNode.type !== 'message') {
+            throw badRequest('Only message nodes can be edited');
+          }
+
+          const apiKey = targetNode.role === 'user' ? await resolveApiKeyForProvider(provider) : null;
+          if (targetNode.role === 'user' && provider !== 'mock' && !apiKey) {
+            throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
+              provider
+            });
+          }
+
+          await rtCreateRefFromNodeParentShadowV1({
+            projectId: params.id,
+            sourceRefName: sourceRef,
+            newRefName: targetBranch,
+            nodeId
+          });
+
+          await rtSetCurrentRefShadowV1({ projectId: params.id, refName: targetBranch });
+
+          const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
+          const lastTargetRows = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetBranch, limit: 1 }).catch(() => []);
+          const lastTargetNode = (lastTargetRows[0]?.nodeJson as any) ?? null;
+          const parentId = lastTargetNode?.id ? String(lastTargetNode.id) : null;
+
+          const editedNode = {
+            id: uuidv4(),
+            type: 'message',
+            role: targetNode.role,
+            content,
+            timestamp: Date.now(),
+            parent: parentId,
+            createdOnBranch: targetBranch
+          };
+
+          await rtAppendNodeToRefShadowV1({
+            projectId: params.id,
+            refName: targetBranch,
+            kind: editedNode.type,
+            role: editedNode.role,
+            contentJson: editedNode,
+            nodeId: editedNode.id,
+            commitMessage: 'edit_message',
+            attachDraft: true
+          });
+
+          let assistantNode: any = null;
+          if (editedNode.role === 'user') {
+            try {
+              const tokenLimit = await getProviderTokenLimit(provider);
+              const context = await buildChatContext(params.id, { tokenLimit, ref: targetBranch });
+              const messagesForCompletion = context.messages;
+
+              let buffered = '';
+              for await (const chunk of streamAssistantCompletion({
+                messages: messagesForCompletion,
+                provider,
+                thinking,
+                apiKey
+              })) {
+                buffered += chunk.content;
+              }
+
+              assistantNode = {
+                id: uuidv4(),
+                type: 'message',
+                role: 'assistant',
+                content: buffered,
+                timestamp: Date.now(),
+                parent: editedNode.id,
+                createdOnBranch: targetBranch,
+                interrupted: false
+              };
+
+              await rtAppendNodeToRefShadowV1({
+                projectId: params.id,
+                refName: targetBranch,
+                kind: assistantNode.type,
+                role: assistantNode.role,
+                contentJson: assistantNode,
+                nodeId: assistantNode.id,
+                commitMessage: 'assistant_message',
+                attachDraft: false
+              });
+            } catch (error) {
+              console.error('[edit] Failed to run LLM completion after edit', error);
+            }
+          }
+
+          return Response.json({ branchName: targetBranch, node: editedNode, assistantNode }, { status: 201 });
+        }
+
+        const { appendNode } = await import('@git/nodes');
+        const { createBranch } = await import('@git/branches');
+        const { getProject } = await import('@git/projects');
+        const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
+
+        const project = await getProject(params.id);
+        if (!project) {
+          throw notFound('Project not found');
+        }
+
+        const sourceNodes = await readNodesFromRef(project.id, sourceRef);
+        const targetNode = sourceNodes.find((node) => node.id === nodeId);
+        if (!targetNode) {
+          throw badRequest(`Node ${nodeId} not found on ref ${sourceRef}`);
+        }
+        if (targetNode.type !== 'message') {
+          throw badRequest('Only message nodes can be edited');
+        }
+
+        const apiKey = targetNode.role === 'user' ? await resolveApiKeyForProvider(provider) : null;
+        if (targetNode.role === 'user' && provider !== 'mock' && !apiKey) {
+          throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
+            provider
+          });
+        }
+
+        try {
+          const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
+          await createBranch(project.id, targetBranch, commitHash);
+        } catch (err) {
+          const message = (err as Error)?.message ?? 'Failed to create edit branch';
+          throw badRequest(message);
+        }
+
+        const node = await appendNode(
+          project.id,
+          {
+            type: 'message',
+            role: targetNode.role,
+            content
+          },
+          { ref: targetBranch }
+        );
+
+      let assistantNode: any = null;
+      if (node.type === 'message' && node.role === 'user') {
+        try {
+          const tokenLimit = await getProviderTokenLimit(provider);
+          const context = await buildChatContext(project.id, { tokenLimit, ref: targetBranch });
+          const messagesForCompletion = context.messages;
+
+          let buffered = '';
+          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking, apiKey })) {
+            buffered += chunk.content;
+          }
+
+          assistantNode = await appendNode(
+            project.id,
+            {
+              type: 'message',
+              role: 'assistant',
+              content: buffered,
+              interrupted: false
+            },
+            { ref: targetBranch }
+          );
+        } catch (error) {
+          console.error('[edit] Failed to run LLM completion after edit', error);
+        }
       }
 
-      try {
-        const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
-        await createBranch(project.id, targetBranch, commitHash);
-      } catch (err) {
-        const message = (err as Error)?.message ?? 'Failed to create edit branch';
-        throw badRequest(message);
-      }
-
-      const node = await appendNode(
-        project.id,
-        {
-          type: 'message',
-          role: targetNode.role,
-          content
-        },
-        { ref: targetBranch }
-      );
-
-      return Response.json({ branchName: targetBranch, node }, { status: 201 });
+      return Response.json({ branchName: targetBranch, node, assistantNode }, { status: 201 });
       } finally {
         releaseRefLock();
       }

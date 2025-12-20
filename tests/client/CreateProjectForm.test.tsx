@@ -5,10 +5,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
 
 const refreshMock = vi.fn();
+const pushMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    refresh: refreshMock
+    refresh: refreshMock,
+    push: pushMock
   })
 }));
 
@@ -18,6 +20,7 @@ describe('CreateProjectForm', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     refreshMock.mockReset();
+    pushMock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -35,7 +38,7 @@ describe('CreateProjectForm', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('posts to the projects API and refreshes the router on success', async () => {
+  it('posts to the projects API and navigates to the new workspace on success', async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({
         ok: true,
@@ -65,11 +68,9 @@ describe('CreateProjectForm', () => {
     });
 
     await waitFor(() => {
-      expect(refreshMock).toHaveBeenCalledTimes(1);
+      expect(pushMock).toHaveBeenCalledWith('/projects/proj-123');
     });
-
-    expect(screen.getAllByLabelText('Workspace Name', { selector: 'input' })[0]).toHaveValue('');
-    expect(screen.getAllByLabelText('Description (optional)')[0]).toHaveValue('');
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it('shows an error message when the API returns a failure', async () => {
@@ -90,5 +91,6 @@ describe('CreateProjectForm', () => {
 
     expect(await screen.findByText('Validation failed')).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

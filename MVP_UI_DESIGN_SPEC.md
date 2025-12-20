@@ -83,7 +83,7 @@ Observations distilled from the provided Gemini and ChatGPT screenshots. Use thi
 
 ### Refinements
 
-- Product name: SideQuest (show it on the home page where we currently have "ResearchTree
+- Product name: set via `NEXT_PUBLIC_APP_NAME` (show it on the home page where we currently have "ResearchTree
 Projects" and make that pill 2x bigger, on the project page, smaller pil top left within the main frame)
 - The left hand rail should be on every page:
     - For the home page, it should contain the project history + a collapse button (very top - stable position regardless open/collapsed)
@@ -119,7 +119,7 @@ Projects" and make that pill 2x bigger, on the project page, smaller pil top lef
 - remove node count from side bar project pills
 - remove main frame project view completely
 - Text:
-    - SideQuest Projects -> SideQuest
+    - `NEXT_PUBLIC_APP_NAME` Projects -> `NEXT_PUBLIC_APP_NAME`
     - Git-backed reasoning sessions -> Branchable Chat for Deep Research Sessions
     - Spin up a workspace, branch thinking safely, and keep artefacts alongside the chat history. -> Spin up a workspace, branch your train of thought and context, and work on a canvas
     - artefact -> canvas (in all user-facing contexts)
@@ -128,7 +128,7 @@ Projects" and make that pill 2x bigger, on the project page, smaller pil top lef
 ### Work completed in UI glowup sprint
 - **Global structure**: Added collapsible rail shared across home and workspace pages, sticky top bar, and floating composer with pill styling and safe-area padding so content never collides with the input.
 - **Workspace rail**: Active branch chip, branch list with trunk badge, create-branch form, collapsible Session Tips pill, and home shortcut anchored to the footer in both collapsed/expanded states.
-- **Home rail**: Replaced main grid with SideQuest-branded rail showing recent workspaces (grid cards), archive affordance, and consistent collapse behavior; copy now reflects “SideQuest” + “Branchable Chat for Deep Research Sessions”.
+- **Home rail**: Replaced main grid with an app-name-branded rail showing recent workspaces (grid cards), archive affordance, and consistent collapse behavior; copy now reflects `NEXT_PUBLIC_APP_NAME` + “Branchable Chat for Deep Research Sessions”.
 - **Conversation canvas**: Fully responsive layout with two-column split (chat + canvas), sticky summary header, branch-specific merge button, shared-history divider, merge modal, edit modal, and artefact rename to “Canvas”.
 - **Composer & chat UX**: Floating composer with attachment button, branch indicator, thin gray textarea outline, thinking chip, stop control, and streaming indicator; message bubbles updated with edit affordance, reaction row, and merge/state badges.
 - **Canvas editor**: Trunk-only markdown editor (textarea) with Save/Reset actions, disabled view on branches, and UI copy explaining the constraint; artefact PUT route + trunk guard wired through.

@@ -6,7 +6,11 @@ const mocks = vi.hoisted(() => ({
   listBranches: vi.fn(),
   getCurrentBranchName: vi.fn(),
   readNodesFromRef: vi.fn(),
-  getStarredNodeIds: vi.fn()
+  getStarredNodeIds: vi.fn(),
+  rtListRefsShadowV1: vi.fn(),
+  rtGetHistoryShadowV1: vi.fn(),
+  rtGetStarredNodeIdsShadowV1: vi.fn(),
+  rtGetCurrentRefShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -26,11 +30,22 @@ vi.mock('@git/stars', () => ({
   getStarredNodeIds: mocks.getStarredNodeIds
 }));
 
+vi.mock('@/src/store/pg/reads', () => ({
+  rtListRefsShadowV1: mocks.rtListRefsShadowV1,
+  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
+  rtGetStarredNodeIdsShadowV1: mocks.rtGetStarredNodeIdsShadowV1
+}));
+
+vi.mock('@/src/store/pg/prefs', () => ({
+  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/graph';
 
 describe('/api/projects/[id]/graph', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    process.env.RT_STORE = 'git';
   });
 
   it('returns a bounded graph payload for all branches', async () => {
@@ -85,5 +100,45 @@ describe('/api/projects/[id]/graph', () => {
     const res = await GET(new Request(baseUrl), { params: { id: 'missing' } });
     expect(res.status).toBe(404);
   });
-});
 
+  it('uses Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtListRefsShadowV1.mockResolvedValue([
+      { name: 'main', headCommit: '', nodeCount: 650, isTrunk: true },
+      { name: 'feature/x', headCommit: '', nodeCount: 3, isTrunk: false }
+    ]);
+    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'feature/x' });
+    mocks.rtGetStarredNodeIdsShadowV1.mockResolvedValue(['n-2']);
+
+    const mainNodes = Array.from({ length: 650 }, (_, i) => ({
+      id: `m-${i}`,
+      type: 'message',
+      role: 'user',
+      content: `m${i}`,
+      timestamp: i,
+      parent: i === 0 ? null : `m-${i - 1}`
+    }));
+    const featureNodes = Array.from({ length: 3 }, (_, i) => ({
+      id: `f-${i}`,
+      type: 'message',
+      role: 'assistant',
+      content: `f${i}`,
+      timestamp: i,
+      parent: i === 0 ? null : `f-${i - 1}`
+    }));
+
+    mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
+      const nodes = refName === 'main' ? mainNodes : refName === 'feature/x' ? featureNodes : [];
+      return nodes.map((node, idx) => ({ ordinal: idx, nodeJson: node }));
+    });
+
+    const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.trunkName).toBe('main');
+    expect(data.currentBranch).toBe('feature/x');
+    expect(data.branches).toHaveLength(2);
+    expect(data.starredNodeIds).toEqual(['n-2']);
+    expect(data.branchHistories.main.length).toBe(500);
+  });
+});

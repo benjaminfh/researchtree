@@ -5,7 +5,10 @@ const mocks = vi.hoisted(() => {
   return {
     getNodes: vi.fn(),
     getArtefact: vi.fn(),
-    getArtefactFromRef: vi.fn()
+    getArtefactFromRef: vi.fn(),
+    readNodesFromRef: vi.fn(),
+    rtGetHistoryShadowV1: vi.fn(),
+    rtGetCanvasShadowV1: vi.fn()
   };
 });
 
@@ -18,11 +21,25 @@ vi.mock('@git/artefact', () => ({
   getArtefactFromRef: mocks.getArtefactFromRef
 }));
 
+vi.mock('@git/utils', () => ({
+  readNodesFromRef: mocks.readNodesFromRef
+}));
+
+vi.mock('@/src/store/pg/reads', () => ({
+  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
+  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1
+}));
+
 describe('buildChatContext', () => {
   beforeEach(() => {
     mocks.getNodes.mockReset();
     mocks.getArtefact.mockReset();
     mocks.getArtefactFromRef.mockReset();
+    mocks.readNodesFromRef.mockReset();
+    mocks.rtGetHistoryShadowV1.mockReset();
+    mocks.rtGetCanvasShadowV1.mockReset();
+    process.env.RT_STORE = 'git';
+    process.env.MERGE_USER = 'assistant';
   });
 
   it('includes artefact snapshot and recent messages', async () => {
@@ -92,9 +109,32 @@ describe('buildChatContext', () => {
 
     const context = await buildChatContext('project-1');
 
-    expect(context.messages.some((msg) => msg.role === 'system' && msg.content.includes('Merge summary from feature'))).toBe(true);
+    expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('Merge summary from feature'))).toBe(true);
     expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('Final payload text'))).toBe(true);
     expect(context.messages.some((msg) => msg.content.includes('+diff text'))).toBe(false);
+  });
+
+  it('can attribute merge summary as user message via MERGE_USER', async () => {
+    process.env.MERGE_USER = 'user';
+    mocks.getNodes.mockResolvedValue([
+      {
+        id: 'm',
+        type: 'merge',
+        mergeFrom: 'feature',
+        mergeSummary: 'Bring back final answer',
+        sourceCommit: 'abc',
+        sourceNodeIds: ['x'],
+        mergedAssistantNodeId: 'x',
+        mergedAssistantContent: 'Final payload text',
+        canvasDiff: '+diff text',
+        timestamp: Date.now(),
+        parent: null
+      }
+    ]);
+    mocks.getArtefact.mockResolvedValue('Artefact');
+
+    const context = await buildChatContext('project-1');
+    expect(context.messages.some((msg) => msg.role === 'user' && msg.content.includes('Merge summary from feature'))).toBe(true);
   });
 
   it('includes pinned canvas diffs only when they are persisted as assistant messages', async () => {
@@ -121,5 +161,26 @@ describe('buildChatContext', () => {
 
     const context = await buildChatContext('project-1');
     expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('+diff text'))).toBe(true);
+  });
+
+  it('reads nodes + canvas from Postgres when RT_STORE=pg and ref is provided', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetHistoryShadowV1.mockResolvedValue([
+      { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null } }
+    ]);
+    mocks.rtGetCanvasShadowV1.mockResolvedValue({ content: 'Canvas PG', contentHash: 'x', updatedAt: null, source: 'draft' });
+
+    const context = await buildChatContext('project-1', { ref: 'main' });
+    expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+    expect(mocks.rtGetCanvasShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'main' });
+    expect(context.messages[0].content).toContain('Canvas PG');
+    expect(context.messages.some((m) => m.role === 'user' && m.content === 'Hello')).toBe(true);
+  });
+
+  it('throws when Postgres context read fails in RT_STORE=pg mode', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetHistoryShadowV1.mockRejectedValue(new Error('pg down'));
+    await expect(buildChatContext('project-1', { ref: 'main' })).rejects.toThrow('pg down');
+    expect(mocks.readNodesFromRef).not.toHaveBeenCalled();
   });
 });

@@ -2,11 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { POST } from '@/app/api/projects/[id]/interrupt/route';
 
 const mocks = vi.hoisted(() => ({
-  abortStream: vi.fn()
+  abortStream: vi.fn(),
+  getProject: vi.fn(),
+  requireProjectAccess: vi.fn()
 }));
 
 vi.mock('@/src/server/stream-registry', () => ({
   abortStream: mocks.abortStream
+}));
+
+vi.mock('@git/projects', () => ({
+  getProject: mocks.getProject
+}));
+
+vi.mock('@/src/server/authz', () => ({
+  requireProjectAccess: mocks.requireProjectAccess
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/interrupt';
@@ -14,6 +24,9 @@ const baseUrl = 'http://localhost/api/projects/project-1/interrupt';
 describe('/api/projects/[id]/interrupt', () => {
   beforeEach(() => {
     mocks.abortStream.mockReset();
+    mocks.getProject.mockReset();
+    mocks.requireProjectAccess.mockReset();
+    mocks.getProject.mockResolvedValue({ id: 'project-1', name: 'Test' });
   });
 
   it('aborts active stream', async () => {

@@ -9,11 +9,15 @@ import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { features } from '@/src/config/features';
+import { APP_NAME, storageKey } from '@/src/config/app';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
 import type { FC } from 'react';
 import { WorkspaceGraph } from './WorkspaceGraph';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
+import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import {
   ArrowUpRightIcon,
   ArrowUpIcon,
@@ -76,6 +80,7 @@ const NodeBubble: FC<{
   highlighted = false
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
+  const isAssistantPending = node.type === 'message' && node.role === 'assistant' && node.id === 'assistant-pending';
   const canCopy = node.type === 'message' && node.content.length > 0;
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,9 +89,9 @@ const NodeBubble: FC<{
   const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
   const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
-  const base = `relative max-w-[82%] overflow-hidden rounded-2xl px-4 py-3 transition ${
-    isUser ? 'min-w-[300px]' : ''
-  }`;
+  const isAssistant = node.type === 'message' && node.role === 'assistant';
+  const width = isUser ? 'max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
+  const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
   const palette = muted
     ? isUser
       ? 'bg-slate-100 text-slate-900'
@@ -131,8 +136,20 @@ const NodeBubble: FC<{
   return (
     <article className={`flex flex-col gap-1 ${align}`}>
       <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
-        {'content' in node && node.content ? (
-          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">{node.content}</p>
+        {node.type === 'message' && node.content ? (
+          isAssistant ? (
+            <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.content}</ReactMarkdown>
+            </div>
+          ) : (
+            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{node.content}</p>
+          )
+        ) : null}
+        {isAssistantPending ? (
+          <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
+            <span>Thinking…</span>
+          </div>
         ) : null}
         {node.type === 'state' ? <p className="mt-2 text-sm font-medium text-slate-700">Canvas updated</p> : null}
         {node.type === 'merge' ? (
@@ -141,6 +158,7 @@ const NodeBubble: FC<{
               Merged from <span className="font-semibold">{node.mergeFrom}</span>
             </p>
             <p className="text-sm font-medium text-slate-700">{node.mergeSummary}</p>
+            <p className="text-xs text-slate-500">This merge summary is included in future LLM context.</p>
           </div>
         ) : null}
 
@@ -158,11 +176,15 @@ const NodeBubble: FC<{
                   {showMergePayload ? 'Hide' : 'Show'}
                 </button>
               </div>
-              <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">
-                {showMergePayload
-                  ? node.mergedAssistantContent
-                  : `${node.mergedAssistantContent.slice(0, 280)}${node.mergedAssistantContent.length > 280 ? '…' : ''}`}
-              </p>
+              {showMergePayload ? (
+                <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.mergedAssistantContent}</ReactMarkdown>
+                </div>
+              ) : (
+                <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">
+                  {`${node.mergedAssistantContent.slice(0, 280)}${node.mergedAssistantContent.length > 280 ? '…' : ''}`}
+                </p>
+              )}
             </div>
           ) : (
             <p className="mt-2 text-sm italic text-slate-500">Merged payload unavailable (legacy merge)</p>
@@ -319,7 +341,7 @@ const ChatNodeRow: FC<{
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName);
 
   return (
-    <div className="grid grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
+    <div className="grid min-w-0 grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
       <div className="flex justify-center">
         <div
           data-testid="chat-row-stripe"
@@ -327,7 +349,9 @@ const ChatNodeRow: FC<{
           style={{ backgroundColor: stripeColor, opacity: 0.9 }}
         />
       </div>
-      <div className={`py-2 ${messageInsetClassName ?? ''} ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
+      <div
+        className={`min-w-0 py-2 ${messageInsetClassName ?? ''} ${isUser ? 'flex justify-end' : 'flex justify-start'}`}
+      >
         <NodeBubble
           node={node}
           muted={muted}
@@ -345,8 +369,8 @@ const ChatNodeRow: FC<{
 };
 
 export function WorkspaceClient({ project, initialBranches, defaultProvider, providerOptions }: WorkspaceClientProps) {
-  const COLLAPSE_KEY = 'sidequest:rail-collapsed';
-  const CHAT_WIDTH_KEY = `sidequest:chat-width:${project.id}`;
+  const COLLAPSE_KEY = storageKey('rail-collapsed');
+  const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
@@ -369,6 +393,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [editBranchName, setEditBranchName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [editProvider, setEditProvider] = useState<LLMProvider>('mock');
+  const [editThinking, setEditThinking] = useState<ThinkingSetting>('medium');
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
@@ -401,12 +427,15 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   } = useSWR<{ starredNodeIds: string[] }>(`/api/projects/${project.id}/stars`, fetchJson, { revalidateOnFocus: true });
 
   const starredNodeIds = starsData?.starredNodeIds ?? [];
-  const starredSet = useMemo(() => new Set(starredNodeIds), [starredNodeIds]);
+  const starredKey = useMemo(() => [...new Set(starredNodeIds)].sort().join('|'), [starredNodeIds]);
+  const stableStarredNodeIds = useMemo(() => (starredKey ? starredKey.split('|') : []), [starredKey]);
+  const starredSet = useMemo(() => new Set(stableStarredNodeIds), [stableStarredNodeIds]);
 
   const toggleStar = async (nodeId: string) => {
-    const prev = starredNodeIds;
+    const prev = stableStarredNodeIds;
     const next = starredSet.has(nodeId) ? prev.filter((id) => id !== nodeId) : [...prev, nodeId];
-    await mutateStars({ starredNodeIds: next }, false);
+    const optimistic = [...new Set(next)].sort();
+    await mutateStars({ starredNodeIds: optimistic }, false);
     try {
       const res = await fetch(`/api/projects/${project.id}/stars`, {
         method: 'POST',
@@ -417,7 +446,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         throw new Error('Failed to update star');
       }
       const data = (await res.json()) as { starredNodeIds: string[] };
-      await mutateStars({ starredNodeIds: data.starredNodeIds }, false);
+      const canonical = [...new Set(data.starredNodeIds ?? [])].sort();
+      if (canonical.join('|') !== optimistic.join('|')) {
+        await mutateStars({ starredNodeIds: canonical }, false);
+      }
     } catch {
       await mutateStars({ starredNodeIds: prev }, false);
     }
@@ -450,6 +482,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   });
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [draft, setDraft] = useState('');
+  const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
+  const optimisticDraftRef = useRef<string | null>(null);
+  const [assistantPending, setAssistantPending] = useState(false);
+  const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
   const [provider, setProvider] = useState<LLMProvider>(defaultProvider);
   const providerStorageKey = useMemo(
@@ -470,11 +507,29 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     ref: branchName,
     provider,
     thinking,
-    onChunk: (chunk) => setStreamPreview((prev) => prev + chunk),
+    onChunk: (chunk) => {
+      if (!hasReceivedAssistantChunkRef.current) {
+        hasReceivedAssistantChunkRef.current = true;
+        if (assistantPendingTimerRef.current) {
+          clearTimeout(assistantPendingTimerRef.current);
+          assistantPendingTimerRef.current = null;
+        }
+        setAssistantPending(false);
+        shouldScrollToBottomRef.current = true;
+      }
+      setStreamPreview((prev) => prev + chunk);
+    },
     onComplete: async () => {
-      setStreamPreview('');
-      setDraft('');
       await Promise.all([mutateHistory(), mutateArtefact()]);
+      setStreamPreview('');
+      setOptimisticUserNode(null);
+      optimisticDraftRef.current = null;
+      hasReceivedAssistantChunkRef.current = false;
+      if (assistantPendingTimerRef.current) {
+        clearTimeout(assistantPendingTimerRef.current);
+        assistantPendingTimerRef.current = null;
+      }
+      setAssistantPending(false);
     }
   });
 
@@ -485,13 +540,50 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
-    await sendMessage(draft);
+    shouldScrollToBottomRef.current = true;
+    const sent = draft;
+    optimisticDraftRef.current = sent;
+    setDraft('');
+    hasReceivedAssistantChunkRef.current = false;
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    setAssistantPending(false);
+    setOptimisticUserNode({
+      id: 'optimistic-user',
+      type: 'message',
+      role: 'user',
+      content: sent,
+      timestamp: Date.now(),
+      parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
+      createdOnBranch: branchName
+    });
+    assistantPendingTimerRef.current = setTimeout(() => {
+      setAssistantPending(true);
+      assistantPendingTimerRef.current = null;
+    }, 100);
+    await sendMessage(sent);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await sendDraft();
   };
+
+  const assistantPendingNode: NodeRecord | null =
+    assistantPending && optimisticUserNode && streamPreview.length === 0
+      ? {
+          id: 'assistant-pending',
+          type: 'message',
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+          parent: optimisticUserNode.id,
+          interrupted: false,
+          createdOnBranch: branchName
+        }
+      : null;
 
   const streamingNode: NodeRecord | null =
     streamPreview.length > 0
@@ -501,10 +593,33 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           role: 'assistant',
           content: streamPreview,
           timestamp: Date.now(),
-          parent: null,
+          parent: optimisticUserNode?.id ?? null,
           interrupted: state.error !== null
         }
       : null;
+
+  useEffect(() => {
+    if (!state.error || !optimisticDraftRef.current) return;
+    setDraft(optimisticDraftRef.current);
+    optimisticDraftRef.current = null;
+    setOptimisticUserNode(null);
+    setStreamPreview('');
+    hasReceivedAssistantChunkRef.current = false;
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    setAssistantPending(false);
+  }, [state.error]);
+
+  useEffect(() => {
+    return () => {
+      if (assistantPendingTimerRef.current) {
+        clearTimeout(assistantPendingTimerRef.current);
+        assistantPendingTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -566,6 +681,40 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setChatPaneWidth(parsed);
     }
   }, [CHAT_WIDTH_KEY]);
+
+  useEffect(() => {
+    if (!chatPaneWidth) return;
+    const container = paneContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || rect.width <= 0) return;
+    const rightMin = insightCollapsed ? 56 : 360;
+    const maxChat = Math.max(0, rect.width - rightMin - 24);
+    if (maxChat <= 0) return;
+    const clamped = Math.min(chatPaneWidth, Math.floor(maxChat));
+    if (clamped !== chatPaneWidth) {
+      setChatPaneWidth(clamped);
+    }
+  }, [chatPaneWidth, insightCollapsed]);
+
+  useEffect(() => {
+    const onResize = () => {
+      const container = paneContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (!Number.isFinite(rect.width) || rect.width <= 0) return;
+      const rightMin = insightCollapsed ? 56 : 360;
+      const maxChat = Math.max(0, rect.width - rightMin - 24);
+      if (!chatPaneWidth || maxChat <= 0) return;
+      const clamped = Math.min(chatPaneWidth, Math.floor(maxChat));
+      if (clamped !== chatPaneWidth) {
+        setChatPaneWidth(clamped);
+      }
+    };
+
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [chatPaneWidth, insightCollapsed]);
 
   useEffect(() => {
     const handleMove = (event: MouseEvent | TouchEvent) => {
@@ -641,9 +790,14 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
   const displayBranchName = (name: string) => (name === trunkName ? 'trunk' : name);
   const sortedBranches = branches;
+  const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
+  const lastGraphRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (insightCollapsed || insightTab !== 'graph') return;
+    if (graphHistories && lastGraphRequestKeyRef.current === graphRequestKey && !graphHistoryError) {
+      return;
+    }
     const controller = new AbortController();
     const load = async () => {
       setGraphHistoryLoading(true);
@@ -655,6 +809,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         }
         const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
         setGraphHistories(data.branchHistories ?? {});
+        lastGraphRequestKeyRef.current = graphRequestKey;
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         setGraphHistoryError((err as Error).message);
@@ -664,7 +819,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     };
     void load();
     return () => controller.abort();
-  }, [insightCollapsed, insightTab, sortedBranches, project.id]);
+  }, [insightCollapsed, insightTab, graphRequestKey, project.id, graphHistories, graphHistoryError]);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -867,20 +1022,79 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   };
 
   const [showHints, setShowHints] = useState(false);
+  const hintsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showHints) return;
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (hintsRef.current?.contains(target)) return;
+      setShowHints(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setShowHints(false);
+      }
+    }
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showHints]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
   const scrollFollowThreshold = 72;
+  const previousVisibleCountRef = useRef(0);
+  const previousVisibleBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const combinedNodes = useMemo(() => (streamingNode ? [...nodes, streamingNode] : nodes), [nodes, streamingNode]);
+  const combinedNodes = useMemo(() => {
+    const out: NodeRecord[] = [...nodes];
+    if (optimisticUserNode) {
+      out.push(optimisticUserNode);
+    }
+    if (assistantPendingNode) {
+      out.push(assistantPendingNode);
+    }
+    if (streamingNode) {
+      out.push(streamingNode);
+    }
+    return out;
+  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
+  const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
+
+  useEffect(() => {
+    if (previousVisibleBranchRef.current !== branchName) {
+      previousVisibleBranchRef.current = branchName;
+      previousVisibleCountRef.current = visibleNodes.length;
+      return;
+    }
+    if (visibleNodes.length > previousVisibleCountRef.current) {
+      const el = messageListRef.current;
+      if (el) {
+        requestAnimationFrame(() => {
+          el.scrollTop = el.scrollHeight;
+        });
+      }
+    }
+    previousVisibleCountRef.current = visibleNodes.length;
+  }, [visibleNodes.length, branchName]);
   const lastUpdatedTimestamp = useMemo(() => {
-    const historyLatest = combinedNodes[combinedNodes.length - 1]?.timestamp ?? null;
+    const historyLatest = visibleNodes[visibleNodes.length - 1]?.timestamp ?? null;
     const artefactUpdated = artefactMeta?.lastUpdatedAt ?? null;
     return historyLatest && artefactUpdated ? Math.max(historyLatest, artefactUpdated) : historyLatest ?? artefactUpdated;
-  }, [combinedNodes, artefactMeta]);
+  }, [visibleNodes, artefactMeta]);
 
   const mergeDiff = useMemo<DiffLine[]>(() => {
     if (!mergePreview) {
@@ -918,10 +1132,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       return;
     }
 
+    const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
     const trunkPrefix =
-      trunkHistory?.nodes && trunkHistory.nodes.length > 0
-        ? prefixLength(trunkHistory.nodes, combinedNodes)
-        : Math.min(trunkNodeCount, combinedNodes.length);
+      trunkNodes.length > 0 ? prefixLength(trunkNodes, visibleNodes) : Math.min(trunkNodeCount, visibleNodes.length);
     setSharedCount(trunkPrefix);
 
     const aborted = { current: false };
@@ -932,11 +1145,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         others.map(async (b) => {
           try {
             const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${combinedNodes.length}`
+              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${visibleNodes.length}`
             );
             if (!res.ok) return null;
             const data = (await res.json()) as { nodes: NodeRecord[] };
-            return { name: b.name, nodes: data.nodes ?? [] };
+            return { name: b.name, nodes: (data.nodes ?? []).filter((node) => node.type !== 'state') };
           } catch {
             return null;
           }
@@ -944,9 +1157,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       );
       const longest = histories.reduce((max, entry) => {
         if (!entry) return max;
-        const min = Math.min(entry.nodes.length, combinedNodes.length);
+        const min = Math.min(entry.nodes.length, visibleNodes.length);
         let idx = 0;
-        while (idx < min && entry.nodes[idx]?.id === combinedNodes[idx]?.id) {
+        while (idx < min && entry.nodes[idx]?.id === visibleNodes[idx]?.id) {
           idx += 1;
         }
         return Math.max(max, idx);
@@ -959,18 +1172,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return () => {
       aborted.current = true;
     };
-  }, [branchName, trunkName, trunkHistory, trunkNodeCount, combinedNodes, branches, project.id]);
+  }, [branchName, trunkName, trunkHistory, trunkNodeCount, visibleNodes, branches, project.id]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
   }, [branchName, trunkName]);
   const { sharedNodes, branchNodes } = useMemo(() => {
-    const shared = combinedNodes.slice(0, sharedCount);
+    const shared = visibleNodes.slice(0, sharedCount);
     return {
       sharedNodes: shared,
-      branchNodes: combinedNodes.slice(sharedCount)
+      branchNodes: visibleNodes.slice(sharedCount)
     };
-  }, [combinedNodes, sharedCount]);
+  }, [visibleNodes, sharedCount]);
 
   const mergePayloadCandidates = useMemo(() => {
     return branchNodes.filter(
@@ -1024,13 +1237,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   const pinnedCanvasDiffMergeIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const node of combinedNodes) {
+    for (const node of visibleNodes) {
       if (node.type === 'message' && node.pinnedFromMergeId) {
         ids.add(node.pinnedFromMergeId);
       }
     }
     return ids;
-  }, [combinedNodes]);
+  }, [visibleNodes]);
 
   const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
@@ -1108,7 +1321,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 		    requestAnimationFrame(() => {
 		      el.scrollTop = el.scrollHeight;
 		    });
-		  }, [branchName, isLoading, combinedNodes.length, streamPreview]);
+		  }, [branchName, isLoading, visibleNodes.length, streamPreview]);
 
   const handleMessageListScroll = () => {
     const el = messageListRef.current;
@@ -1134,10 +1347,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       const data = (await res.json()) as { branchName: string; branches: BranchSummary[] };
       setBranchName(data.branchName);
       setBranches(data.branches);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
-        window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, thinking);
-      }
       await Promise.all([mutateHistory(), mutateArtefact()]);
     } catch (err) {
       setBranchActionError((err as Error).message);
@@ -1178,8 +1387,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   return (
     <div className="h-screen overflow-hidden bg-white text-slate-800">
-      <div className="grid h-full" style={{ gridTemplateColumns: railCollapsed ? '72px 1fr' : '270px 1fr' }}>
-        <aside className="relative flex h-full flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur">
+      <div
+        className="grid h-full"
+        style={{ gridTemplateColumns: railCollapsed ? '72px minmax(0, 1fr)' : '270px minmax(0, 1fr)' }}
+      >
+        <aside className="relative z-40 flex h-full flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1191,7 +1403,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             </button>
             {!railCollapsed ? (
               <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
-                <span>SideQuest</span>
+                <span>{APP_NAME}</span>
               </div>
             ) : null}
           </div>
@@ -1271,7 +1483,35 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             ) : null}
 
             {railCollapsed ? (
-              <div className="mt-auto flex justify-start pb-2">
+              <div className="mt-auto flex flex-col items-start gap-3 pb-2">
+                <div ref={hintsRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowHints((prev) => !prev)}
+                    className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                    aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
+                    aria-expanded={showHints}
+                  >
+                    <QuestionMarkCircleIcon className="h-5 w-5" />
+                  </button>
+                  {showHints ? (
+                    <div
+                      className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
+                      role="dialog"
+                      aria-label="Session tips"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-slate-900">Session tips</p>
+                      </div>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                        <li>Branch to try edits without losing the trunk.</li>
+                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+                <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
                 <Link
                   href="/"
                   className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
@@ -1283,39 +1523,35 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             ) : (
               <div className="mt-auto space-y-3 pb-2">
                 <div className="flex flex-col items-start gap-3">
-                  {showHints ? (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setShowHints(false)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setShowHints(false);
-                        }
-                      }}
-                      className="w-full cursor-pointer rounded-2xl bg-white/80 p-4 text-sm shadow-sm transition hover:bg-primary/10"
-                      aria-label="Hide session tips"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-slate-900">Session tips</p>
-                      </div>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                        <li>Branch to try edits without losing the trunk.</li>
-                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                      </ul>
-                    </div>
-                  ) : (
+                  <div ref={hintsRef} className="relative">
                     <button
                       type="button"
-                      onClick={() => setShowHints(true)}
+                      onClick={() => setShowHints((prev) => !prev)}
                       className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
-                      aria-label="Show session tips"
+                      aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
+                      aria-expanded={showHints}
                     >
                       <QuestionMarkCircleIcon className="h-5 w-5" />
                     </button>
-                  )}
+                    {showHints ? (
+                      <div
+                        className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
+                        role="dialog"
+                        aria-label="Session tips"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold text-slate-900">Session tips</p>
+                        </div>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                          <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                          <li>Branch to try edits without losing the trunk.</li>
+                          <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
 
                   <Link
                     href="/"
@@ -1330,11 +1566,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           </div>
         </aside>
 
-        <div className="relative flex h-full min-h-0 flex-col bg-white">
+        <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
           <div className="px-6 pt-6 md:px-8 lg:px-12">
             <div className="flex flex-wrap items-center gap-3">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold tracking-wide text-primary">
-                <span>SideQuest</span>
+                <span>{APP_NAME}</span>
                 <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">Workspace</span>
               </div>
               <h1 className="text-xl font-semibold text-slate-900">{project.name}</h1>
@@ -1342,17 +1578,17 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-36 pt-4 md:px-8 lg:px-12">
-          <div ref={paneContainerRef} className="flex h-full min-h-0 flex-col gap-6 lg:flex-row lg:gap-0">
+          <div className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-36 pt-4 md:px-8 lg:px-12">
+          <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
             <section
-              className={`card-surface relative flex h-full min-h-0 flex-col gap-4 p-5 ${chatPaneWidth ? 'flex-none' : 'flex-1'}`}
-              style={chatPaneWidth ? { width: chatPaneWidth } : undefined}
+              className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${chatPaneWidth ? 'flex-none' : 'flex-1'}`}
+              style={chatPaneWidth ? { width: chatPaneWidth, maxWidth: '100%' } : undefined}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Conversation</p>
                   <p className="text-sm text-muted">
-                    Branch {displayBranchName(branchName)} · {combinedNodes.length} message{combinedNodes.length === 1 ? '' : 's'}
+                    Branch {displayBranchName(branchName)} · {visibleNodes.length} message{visibleNodes.length === 1 ? '' : 's'}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1396,14 +1632,14 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 	                <div
                     ref={messageListRef}
                     data-testid="chat-message-list"
-                    className="flex-1 min-h-0 overflow-y-auto pr-1 pb-20"
-                    onScroll={handleMessageListScroll}
-                  >
+                  className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pb-20"
+                  onScroll={handleMessageListScroll}
+                >
                   {isLoading ? (
                     <p className="text-sm text-muted">Loading history…</p>
                   ) : error ? (
                     <p className="text-sm text-red-600">Failed to load history.</p>
-                  ) : combinedNodes.length === 0 ? (
+                  ) : visibleNodes.length === 0 ? (
                     <p className="text-sm text-muted">No nodes yet. Start with a system prompt or question.</p>
                   ) : (
                     <div className="flex flex-col">
@@ -1450,6 +1686,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                   setEditDraft(n.content);
                                   setEditBranchName('');
                                   setEditError(null);
+                                  setEditProvider(provider);
+                                  setEditThinking(thinking);
                                   setShowEditModal(true);
                                 }
                               : undefined
@@ -1522,7 +1760,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             </div>
 
             <div
-              className={`flex h-full min-h-0 flex-col gap-4 ${
+              className={`flex h-full min-h-0 min-w-0 flex-col gap-4 ${
                 insightCollapsed ? 'lg:w-14 lg:flex-none' : 'lg:min-w-[360px] lg:flex-1'
               }`}
             >
@@ -1590,21 +1828,21 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                             <WorkspaceGraph
                               branchHistories={
                                 graphHistories ?? {
-                                  [branchName]: combinedNodes
+                                  [branchName]: visibleNodes
                                 }
                               }
                               activeBranchName={branchName}
                               trunkName={trunkName}
                               mode={graphMode}
                               onModeChange={setGraphMode}
-                              starredNodeIds={starredNodeIds}
+                              starredNodeIds={stableStarredNodeIds}
                               selectedNodeId={selectedGraphNodeId}
                               onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
                             />
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
                                 {(() => {
-                                  const activeMatch = combinedNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
+                                  const activeMatch = visibleNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
                                   let record: NodeRecord | null = activeMatch;
                                   let targetBranch: string = branchName;
 
@@ -1652,7 +1890,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                   const canvasDiff = mergeRecord?.canvasDiff?.trim() ?? '';
                                   const hasCanvasDiff = !!mergeRecord && canvasDiff.length > 0;
                                   const nodesOnTargetBranch =
-                                    targetBranch === branchName ? combinedNodes : graphHistories?.[targetBranch] ?? [];
+                                    targetBranch === branchName ? visibleNodes : graphHistories?.[targetBranch] ?? [];
                                   const isCanvasDiffPinned =
                                     !!mergeRecord &&
                                     nodesOnTargetBranch.some(
@@ -2031,6 +2269,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isMerging}
               />
+              <p className="text-xs text-muted">
+                This summary is remembered on the target branch and injected into future LLM context as a merge note.
+              </p>
             </div>
 
             <div className="mt-4">
@@ -2218,6 +2459,38 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 required
               />
             </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                <span className="font-semibold text-slate-700">Provider</span>
+                <select
+                  value={editProvider}
+                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
+                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                  disabled={isEditing}
+                >
+                  {providerOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                <span className="font-semibold text-slate-700">Thinking</span>
+                <select
+                  value={editThinking}
+                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
+                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                  disabled={isEditing}
+                >
+                  {THINKING_SETTINGS.map((setting) => (
+                    <option key={setting} value={setting}>
+                      {THINKING_SETTING_LABELS[setting]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800">Updated content</label>
               <textarea
@@ -2266,6 +2539,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         content: editDraft.trim(),
                         branchName: editBranchName.trim(),
                         fromRef: branchName,
+                        llmProvider: editProvider,
+                        thinking: editThinking,
                         nodeId: editingNode?.id
                       })
                     });
@@ -2281,8 +2556,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       setBranches(branchesData.branches);
                     }
                     if (typeof window !== 'undefined') {
-                      window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
-                      window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, thinking);
+                      window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, editProvider);
+                      window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, editThinking);
                     }
                     await Promise.all([mutateHistory(), mutateArtefact()]);
                     setShowEditModal(false);

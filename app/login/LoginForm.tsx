@@ -1,0 +1,102 @@
+'use client';
+
+import { useFormState, useFormStatus } from 'react-dom';
+import { useMemo, useState } from 'react';
+import { signInWithPassword, signUpWithPassword } from './actions';
+
+function SubmitButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      type="submit"
+      disabled={pending}
+    >
+      {pending ? 'Working…' : label}
+    </button>
+  );
+}
+
+const initialState = { error: null as string | null };
+
+export function LoginForm({ redirectTo }: { redirectTo: string }) {
+  const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
+  const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
+  const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
+
+  const activeError = useMemo(() => {
+    return mode === 'signIn' ? signInState.error : signUpState.error;
+  }, [mode, signInState.error, signUpState.error]);
+
+  return (
+    <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h1 className="text-xl font-semibold text-slate-900">{mode === 'signIn' ? 'Sign in' : 'Create an account'}</h1>
+
+      {mode === 'signIn' ? (
+        <form action={signInAction} className="mt-6 space-y-3">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <label className="block">
+            <span className="text-sm font-medium text-slate-800">Email</span>
+            <input
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-slate-800">Password</span>
+            <input
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+
+          {activeError ? <p className="text-sm text-red-700">{activeError}</p> : null}
+
+          <SubmitButton label="Sign in" />
+        </form>
+      ) : (
+        <form action={signUpAction} className="mt-6 space-y-3">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <label className="block">
+            <span className="text-sm font-medium text-slate-800">Email</span>
+            <input
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-slate-800">Password</span>
+            <input
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              required
+            />
+          </label>
+
+          {activeError ? <p className="text-sm text-red-700">{activeError}</p> : null}
+
+          <SubmitButton label="Create account" />
+        </form>
+      )}
+
+      <button
+        type="button"
+        className="mt-5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+        onClick={() => setMode((m) => (m === 'signIn' ? 'signUp' : 'signIn'))}
+      >
+        {mode === 'signIn' ? 'Create an account' : 'Existing User'}
+      </button>
+    </div>
+  );
+}

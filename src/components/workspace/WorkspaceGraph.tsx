@@ -44,6 +44,7 @@ interface GitEdgeData {
   color: string;
   style: 'angular' | 'curve';
   lockedFirst: boolean;
+  strokeWidth?: number;
 }
 
 const rowSpacing = 45;
@@ -60,13 +61,13 @@ const DotNode = ({ data }: NodeProps<DotNodeData>) => (
       type="target"
       position={Position.Top}
       className="!h-2 !w-2 !border-0 !bg-transparent"
-      style={{ left: 5, top: -2, opacity: 0 }}
+      style={{ left: 8, top: -2, opacity: 0 }}
     />
     <Handle
       type="source"
       position={Position.Bottom}
       className="!h-2 !w-2 !border-0 !bg-transparent"
-      style={{ left: 5, bottom: -2, opacity: 0 }}
+      style={{ left: 8, bottom: -2, opacity: 0 }}
     />
     <span className={`inline-flex rounded-full ${data.isSelected ? 'ring-2 ring-primary/40 ring-offset-2' : ''}`}>
       <span
@@ -109,11 +110,13 @@ const GitEdge = ({ sourceX, sourceY, targetX, targetY, data }: EdgeProps<GitEdge
   return (
     <path
       d={path}
-      fill="none"
       className="react-flow__edge-path"
-      stroke={data?.color ?? '#94a3b8'}
-      strokeWidth={2}
-      strokeLinecap="round"
+      style={{
+        fill: 'none',
+        stroke: data?.color ?? '#94a3b8',
+        strokeWidth: data?.strokeWidth ?? 2,
+        strokeLinecap: 'round'
+      }}
     />
   );
 };
@@ -949,6 +952,42 @@ export function WorkspaceGraph({
     return activeHistory[activeHistory.length - 1]?.id ?? null;
   }, [branchHistories, activeBranchName]);
 
+  const decoratedEdges = useMemo(() => {
+    if (edges.length === 0) return edges;
+
+    const byId = new Map(graphNodes.map((node) => [node.id, node]));
+
+    const flowEdgeIds = new Set<string>();
+    let cursor = activeHeadId;
+    while (cursor) {
+      const node = byId.get(cursor);
+      if (!node) break;
+      const primaryParentId = node.parents[0];
+      if (!primaryParentId) break;
+      flowEdgeIds.add(`${primaryParentId}-${cursor}`);
+      cursor = primaryParentId;
+    }
+
+    const edgeColorFor = (parentId: string, childId: string) => {
+      const child = byId.get(childId);
+      const childColor = getBranchColor(child?.originBranchId ?? trunkName, trunkName);
+      return childColor;
+    };
+
+    return edges.map((edge) => {
+      const isFlow = flowEdgeIds.has(edge.id);
+      const color = edgeColorFor(edge.source, edge.target);
+      return {
+        ...edge,
+        data: {
+          ...edge.data,
+          color,
+          strokeWidth: isFlow ? 3 : 2
+        }
+      };
+    });
+  }, [edges, graphNodes, activeHeadId, trunkName]);
+
   const decoratedNodes = useMemo(() => {
     return nodes.map((node) => {
       const isActiveHead = !!activeHeadId && node.id === activeHeadId;
@@ -1094,7 +1133,7 @@ export function WorkspaceGraph({
           ) : (
             <ReactFlow
               nodes={decoratedNodes}
-              edges={edges}
+              edges={decoratedEdges}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               nodesDraggable={false}

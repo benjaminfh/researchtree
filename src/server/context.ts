@@ -1,7 +1,5 @@
-import { getNodes } from '@git/nodes';
-import { getArtefact, getArtefactFromRef } from '@git/artefact';
 import type { NodeRecord } from '@git/types';
-import { readNodesFromRef } from '@git/utils';
+import { getStoreConfig } from './storeConfig';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -16,6 +14,13 @@ export interface ChatContext {
 const DEFAULT_HISTORY_LIMIT = 40;
 const DEFAULT_TOKEN_LIMIT = 8000;
 
+function getMergeUserRole(): Exclude<ChatMessage['role'], 'system'> {
+  const raw = (process.env.MERGE_USER ?? 'assistant').trim().toLowerCase();
+  if (!raw) return 'assistant';
+  if (raw === 'user' || raw === 'assistant') return raw;
+  throw new Error('MERGE_USER must be set to "user" or "assistant"');
+}
+
 interface ContextOptions {
   limit?: number;
   tokenLimit?: number;
@@ -24,18 +29,40 @@ interface ContextOptions {
 
 export async function buildChatContext(projectId: string, options?: ContextOptions): Promise<ChatContext> {
   const limit = options?.limit ?? DEFAULT_HISTORY_LIMIT;
-  const nodes = options?.ref ? await readNodesFromRef(projectId, options.ref) : await getNodes(projectId);
-  const artefact = options?.ref ? await getArtefactFromRef(projectId, options.ref) : await getArtefact(projectId);
+  const store = getStoreConfig();
+  const resolvedRef = options?.ref?.trim() || null;
+
+  let nodes: NodeRecord[];
+  let artefact: string;
+
+  if (store.mode === 'pg') {
+    const refName = resolvedRef ?? 'main';
+    const { rtGetHistoryShadowV1, rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
+    const rows = await rtGetHistoryShadowV1({ projectId, refName, limit });
+    nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+    const canvas = await rtGetCanvasShadowV1({ projectId, refName });
+    artefact = canvas.content ?? '';
+  } else {
+    const { getNodes } = await import('@git/nodes');
+    const { getArtefact, getArtefactFromRef } = await import('@git/artefact');
+    const { readNodesFromRef } = await import('@git/utils');
+    nodes = resolvedRef ? await readNodesFromRef(projectId, resolvedRef) : await getNodes(projectId);
+    artefact = resolvedRef ? await getArtefactFromRef(projectId, resolvedRef) : await getArtefact(projectId);
+  }
 
   const trimmed = nodes.slice(-limit);
   const systemPrompt = buildSystemPrompt(artefact);
   const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
+  const mergeUserRole = getMergeUserRole();
 
   const tokenLimit = options?.tokenLimit ?? DEFAULT_TOKEN_LIMIT;
   let tokenBudget = tokenLimit - estimateTokens(systemPrompt);
 
   for (const node of trimmed) {
     if (node.type === 'message' && node.role && node.content) {
+      if (node.role !== 'user' && node.role !== 'assistant') {
+        continue;
+      }
       const cost = estimateTokens(node.content);
       if (tokenBudget - cost < 0) {
         continue;
@@ -53,7 +80,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
       }
       tokenBudget -= cost;
       messages.push({
-        role: 'system',
+        role: mergeUserRole,
         content: summary
       });
 

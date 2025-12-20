@@ -4,7 +4,8 @@ import { GET } from '@/app/api/projects/[id]/artefact/route';
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   getArtefactFromRef: vi.fn(),
-  readNodesFromRef: vi.fn()
+  readNodesFromRef: vi.fn(),
+  rtGetCanvasShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -19,6 +20,10 @@ vi.mock('@git/utils', () => ({
   readNodesFromRef: mocks.readNodesFromRef
 }));
 
+vi.mock('@/src/store/pg/reads', () => ({
+  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/artefact';
 
 describe('/api/projects/[id]/artefact', () => {
@@ -26,6 +31,8 @@ describe('/api/projects/[id]/artefact', () => {
     mocks.getProject.mockReset();
     mocks.getArtefactFromRef.mockReset();
     mocks.readNodesFromRef.mockReset();
+    mocks.rtGetCanvasShadowV1.mockReset();
+    process.env.RT_STORE = 'git';
   });
 
   it('returns artefact content with last state metadata', async () => {
@@ -78,5 +85,32 @@ describe('/api/projects/[id]/artefact', () => {
     mocks.getProject.mockResolvedValue(null);
     const res = await GET(new Request(baseUrl), { params: { id: 'missing' } });
     expect(res.status).toBe(404);
+  });
+
+  it('uses Postgres when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetCanvasShadowV1.mockResolvedValue({
+      content: '# Draft canvas',
+      contentHash: 'abc',
+      updatedAt: '2020-01-01T00:00:01.000Z',
+      source: 'draft'
+    });
+
+    const res = await GET(new Request(`${baseUrl}?ref=main`), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(mocks.rtGetCanvasShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'main' });
+    expect(mocks.getArtefactFromRef).not.toHaveBeenCalled();
+    expect(data.artefact).toBe('# Draft canvas');
+    expect(data.lastUpdatedAt).toBe(Date.parse('2020-01-01T00:00:01.000Z'));
+  });
+
+  it('returns 500 when Postgres read fails in RT_STORE=pg mode', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetCanvasShadowV1.mockRejectedValue(new Error('pg down'));
+
+    const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
+    expect(res.status).toBe(500);
+    expect(mocks.getArtefactFromRef).not.toHaveBeenCalled();
   });
 });

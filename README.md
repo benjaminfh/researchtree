@@ -112,7 +112,7 @@ The Next.js workspace lets you try the git-backed chat UI locally.
 
 1. **Set environment variables** (create `.env.local`):
    ```
-   LLM_PROVIDER=openai        # or gemini / mock
+   LLM_DEFAULT_PROVIDER=openai        # openai / gemini / anthropic / mock
    OPENAI_API_KEY=sk-...      # required if using OpenAI
    GEMINI_API_KEY=xxx...      # required if using Gemini (Generative Language API)
    RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/data/projects
@@ -121,7 +121,7 @@ The Next.js workspace lets you try the git-backed chat UI locally.
    - `OPENAI_MODEL` (default `gpt-5.2`)
    - `GEMINI_MODEL` (default `gemini-3-pro-preview`; pick a model available to your API key)
 
-   If you don't have API keys handy, set `LLM_PROVIDER=mock` to use the built-in echo responder.
+   If you don't have API keys handy, set `LLM_DEFAULT_PROVIDER=mock` to use the built-in echo responder.
 
 2. **Install dependencies** (once):
    ```bash
@@ -143,7 +143,7 @@ The Next.js workspace lets you try the git-backed chat UI locally.
      - Click a node to open the detail strip (with **Copy**, **Jump to message**, and merge-specific actions).
      - For merge nodes with Canvas changes, use **Add canvas changes** (then confirm) to pin the diff into chat context.
      - Press `Esc` or click empty graph space to clear the current selection.
-   - Use the provider selector in the workspace header to switch between OpenAI, Gemini, or the mock provider. The `LLM_PROVIDER` env var sets the default. Provider choices persist per branch.
+   - Use the provider selector in the workspace header to switch between providers. The `LLM_DEFAULT_PROVIDER` env var sets the default. Provider choices persist per branch.
    - Branch UI: create/switch branches from the workspace header. When you’re on a non-trunk branch, the conversation shows shared history collapsed by default; expand to reveal upstream messages (muted) with a divider at the split.
    - Project list: each entry shows branch + node counts and a soft “Hide/Unhide” toggle (stored in localStorage) so you can temporarily remove noisy workspaces without deleting the repo.
 

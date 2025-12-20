@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
   buildChatContext: vi.fn(),
   streamAssistantCompletion: vi.fn(),
   registerStream: vi.fn(),
-  releaseStream: vi.fn()
+  releaseStream: vi.fn(),
+  rtAppendNodeToRefShadowV1: vi.fn(),
+  rtGetHistoryShadowV1: vi.fn(),
+  rtGetCurrentRefShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -34,6 +37,18 @@ vi.mock('@/src/server/llm', () => {
 vi.mock('@/src/server/stream-registry', () => ({
   registerStream: mocks.registerStream,
   releaseStream: mocks.releaseStream
+}));
+
+vi.mock('@/src/store/pg/nodes', () => ({
+  rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1
+}));
+
+vi.mock('@/src/store/pg/reads', () => ({
+  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
+}));
+
+vi.mock('@/src/store/pg/prefs', () => ({
+  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1
 }));
 
 vi.mock('@/src/server/providerCapabilities', () => ({
@@ -68,6 +83,9 @@ describe('/api/projects/[id]/chat', () => {
     mocks.appendNodeToRefNoCheckout.mockResolvedValue(undefined);
     mocks.registerStream.mockImplementation(() => undefined);
     mocks.releaseStream.mockImplementation(() => undefined);
+    mocks.rtGetHistoryShadowV1.mockResolvedValue([]);
+    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+    process.env.RT_STORE = 'git';
   });
 
   it('streams assistant response and appends nodes', async () => {
@@ -84,6 +102,42 @@ describe('/api/projects/[id]/chat', () => {
 
     expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foobar', interrupted: false });
+  });
+
+  it('uses Postgres for user+assistant nodes when RT_STORE=pg', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+      newCommitId: 'c1',
+      nodeId: 'user-1',
+      ordinal: 0,
+      artefactId: null,
+      artefactContentHash: null
+    });
+
+    const res = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        refName: 'main',
+        kind: 'message',
+        role: 'user',
+        attachDraft: true
+      })
+    );
+    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        refName: 'main',
+        kind: 'message',
+        role: 'assistant',
+        attachDraft: false
+      })
+    );
+    expect(mocks.appendNodeToRefNoCheckout).not.toHaveBeenCalled();
+    expect(mocks.getProject).not.toHaveBeenCalled();
   });
 
   it('accepts ref and passes it through to context builder and stream registry', async () => {
