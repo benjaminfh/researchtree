@@ -18,6 +18,7 @@ import { WorkspaceGraph } from './WorkspaceGraph';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
+import { RailPopover } from '@/src/components/layout/RailPopover';
 import {
   ArrowUpRightIcon,
   ArrowUpIcon,
@@ -1023,6 +1024,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   const [showHints, setShowHints] = useState(false);
   const hintsRef = useRef<HTMLDivElement | null>(null);
+  const hintsButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!showHints) return;
@@ -1488,28 +1490,28 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   <button
                     type="button"
                     onClick={() => setShowHints((prev) => !prev)}
+                    ref={hintsButtonRef}
                     className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                     aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
                     aria-expanded={showHints}
                   >
                     <QuestionMarkCircleIcon className="h-5 w-5" />
                   </button>
-                  {showHints ? (
-                    <div
-                      className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
-                      role="dialog"
-                      aria-label="Session tips"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-semibold text-slate-900">Session tips</p>
-                      </div>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                        <li>Branch to try edits without losing the trunk.</li>
-                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                      </ul>
+                  <RailPopover
+                    open={showHints}
+                    anchorRef={hintsButtonRef}
+                    ariaLabel="Session tips"
+                    className="w-[320px] p-4 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-slate-900">Session tips</p>
                     </div>
-                  ) : null}
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                      <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                      <li>Branch to try edits without losing the trunk.</li>
+                      <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                    </ul>
+                  </RailPopover>
                 </div>
                 <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
                 <Link
@@ -1527,28 +1529,28 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <button
                       type="button"
                       onClick={() => setShowHints((prev) => !prev)}
+                      ref={hintsButtonRef}
                       className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                       aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
                       aria-expanded={showHints}
                     >
                       <QuestionMarkCircleIcon className="h-5 w-5" />
                     </button>
-                    {showHints ? (
-                      <div
-                        className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
-                        role="dialog"
-                        aria-label="Session tips"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-semibold text-slate-900">Session tips</p>
-                        </div>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                          <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                          <li>Branch to try edits without losing the trunk.</li>
-                          <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                        </ul>
+                    <RailPopover
+                      open={showHints}
+                      anchorRef={hintsButtonRef}
+                      ariaLabel="Session tips"
+                      className="w-[320px] p-4 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-slate-900">Session tips</p>
                       </div>
-                    ) : null}
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                        <li>Branch to try edits without losing the trunk.</li>
+                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                      </ul>
+                    </RailPopover>
                   </div>
 
                   <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
