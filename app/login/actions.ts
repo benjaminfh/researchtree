@@ -1,9 +1,18 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 
 type AuthActionState = { error: string | null };
+
+function getRequestOrigin(): string | null {
+  const headerList = headers();
+  const proto = headerList.get('x-forwarded-proto') ?? 'http';
+  const host = headerList.get('x-forwarded-host') ?? headerList.get('host');
+  if (!host) return null;
+  return `${proto}://${host}`;
+}
 
 function sanitizeRedirectTo(input: string | null): string | null {
   if (!input) return null;
@@ -32,6 +41,7 @@ export async function signInWithPassword(_prevState: AuthActionState, formData: 
   }
 
   redirect(redirectTo);
+  return { error: null };
 }
 
 export async function signUpWithPassword(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -45,7 +55,13 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 
   try {
     const supabase = createSupabaseServerActionClient();
-    const { error } = await supabase.auth.signUp({ email, password });
+    const origin = getRequestOrigin();
+    const emailRedirectTo = origin ? `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}` : undefined;
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: emailRedirectTo ? { emailRedirectTo } : undefined
+    });
     if (error) {
       return { error: error.message };
     }
@@ -53,7 +69,8 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
     return { error: (err as Error)?.message ?? 'Sign-up failed.' };
   }
 
-  redirect(redirectTo);
+  redirect(`/check-email?redirectTo=${encodeURIComponent(redirectTo)}&email=${encodeURIComponent(email)}`);
+  return { error: null };
 }
 
 export async function signOut(): Promise<void> {

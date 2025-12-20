@@ -14,6 +14,7 @@ function getSupabaseEnv() {
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
+  if (pathname === '/check-email') return true;
   if (pathname.startsWith('/auth/')) return true;
   return false;
 }
