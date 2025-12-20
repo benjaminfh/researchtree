@@ -3,6 +3,7 @@
 import { useFormState, useFormStatus } from 'react-dom';
 import { useMemo, useState } from 'react';
 import { signInWithPassword, signUpWithPassword } from './actions';
+import Link from 'next/link';
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -65,6 +66,13 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       ) : (
         <form action={signUpAction} className="mt-6 space-y-3">
           <input type="hidden" name="redirectTo" value={redirectTo} />
+          <p className="text-sm text-slate-600">
+            Invite-only for now.{' '}
+            <Link href="/waitlist" className="text-slate-900 underline">
+              Request access
+            </Link>
+            .
+          </p>
           <label className="block">
             <span className="text-sm font-medium text-slate-800">Email</span>
             <input

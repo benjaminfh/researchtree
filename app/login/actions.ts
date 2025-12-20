@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
+import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
 
 type AuthActionState = { error: string | null };
 
@@ -31,6 +32,11 @@ export async function signInWithPassword(_prevState: AuthActionState, formData: 
   }
 
   try {
+    const gate = await checkEmailAllowedForAuth(email);
+    if (!gate.allowed) {
+      return { error: gate.error ?? 'Access denied.' };
+    }
+
     const supabase = createSupabaseServerActionClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -54,16 +60,37 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
   }
 
   try {
+    const gate = await checkEmailAllowedForAuth(email);
+    if (!gate.allowed) {
+      return { error: gate.error ?? 'Access denied.' };
+    }
+
     const supabase = createSupabaseServerActionClient();
     const origin = getRequestOrigin();
     const emailRedirectTo = origin ? `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}` : undefined;
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: emailRedirectTo ? { emailRedirectTo } : undefined
     });
     if (error) {
       return { error: error.message };
+    }
+
+    if (!data.user) {
+      return { error: 'Sign-up failed. Please try again.' };
+    }
+
+    // Supabase may return a user with no identities when the email is already registered.
+    // Avoid redirecting to the "check email" screen in that case (often no email is sent).
+    if ((data.user.identities ?? []).length === 0) {
+      return { error: 'Unable to create an account with that email. Try signing in instead.' };
+    }
+
+    // If email confirmations are disabled, a session may be returned immediately.
+    if (data.session) {
+      redirect(redirectTo);
+      return { error: null };
     }
   } catch (err) {
     return { error: (err as Error)?.message ?? 'Sign-up failed.' };

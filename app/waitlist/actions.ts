@@ -1,0 +1,29 @@
+'use server';
+
+import { redirect } from 'next/navigation';
+import { requestWaitlistAccess } from '@/src/server/waitlist';
+
+function sanitizeRedirectTo(input: string | null): string {
+  if (!input) return '/login';
+  if (!input.startsWith('/')) return '/login';
+  if (input.startsWith('//')) return '/login';
+  return input;
+}
+
+export async function submitWaitlistRequest(formData: FormData): Promise<void> {
+  const email = String(formData.get('email') ?? '').trim();
+  const redirectTo = sanitizeRedirectTo(String(formData.get('redirectTo') ?? '').trim()) ?? '/login';
+
+  if (!email) {
+    redirect(`${redirectTo}?requested=0&error=${encodeURIComponent('Email is required.')}`);
+  }
+
+  try {
+    await requestWaitlistAccess(email);
+  } catch (err) {
+    const message = (err as Error)?.message ?? 'Request failed.';
+    redirect(`${redirectTo}?requested=0&error=${encodeURIComponent(message)}`);
+  }
+
+  redirect(`${redirectTo}?requested=1&email=${encodeURIComponent(email)}`);
+}
