@@ -25,8 +25,10 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
 
   const activeError = useMemo(() => {
-    return mode === 'signIn' ? signInState.error : signUpState.error;
-  }, [mode, signInState.error, signUpState.error]);
+    const signInError = signInState?.error ?? null;
+    const signUpError = signUpState?.error ?? null;
+    return mode === 'signIn' ? signInError : signUpError;
+  }, [mode, signInState, signUpState]);
 
   return (
     <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
