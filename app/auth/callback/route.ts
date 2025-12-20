@@ -11,12 +11,17 @@ function sanitizeRedirectTo(input: string | null): string | null {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
+  const flow = url.searchParams.get('flow');
   const redirectTo = sanitizeRedirectTo(url.searchParams.get('redirectTo')) ?? '/';
 
   if (code) {
     try {
       const supabase = createSupabaseServerActionClient();
       await supabase.auth.exchangeCodeForSession(code);
+
+      if (flow === 'signup-confirm') {
+        await supabase.auth.signOut();
+      }
     } catch {
       // ignore and fall through
     }
@@ -24,4 +29,3 @@ export async function GET(request: Request) {
 
   return NextResponse.redirect(new URL(redirectTo, url.origin), { status: 303 });
 }
-
