@@ -39,6 +39,7 @@ describe('buildChatContext', () => {
     mocks.rtGetHistoryShadowV1.mockReset();
     mocks.rtGetCanvasShadowV1.mockReset();
     process.env.RT_STORE = 'git';
+    process.env.MERGE_USER = 'assistant';
   });
 
   it('includes artefact snapshot and recent messages', async () => {
@@ -108,9 +109,32 @@ describe('buildChatContext', () => {
 
     const context = await buildChatContext('project-1');
 
-    expect(context.messages.some((msg) => msg.role === 'system' && msg.content.includes('Merge summary from feature'))).toBe(true);
+    expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('Merge summary from feature'))).toBe(true);
     expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('Final payload text'))).toBe(true);
     expect(context.messages.some((msg) => msg.content.includes('+diff text'))).toBe(false);
+  });
+
+  it('can attribute merge summary as user message via MERGE_USER', async () => {
+    process.env.MERGE_USER = 'user';
+    mocks.getNodes.mockResolvedValue([
+      {
+        id: 'm',
+        type: 'merge',
+        mergeFrom: 'feature',
+        mergeSummary: 'Bring back final answer',
+        sourceCommit: 'abc',
+        sourceNodeIds: ['x'],
+        mergedAssistantNodeId: 'x',
+        mergedAssistantContent: 'Final payload text',
+        canvasDiff: '+diff text',
+        timestamp: Date.now(),
+        parent: null
+      }
+    ]);
+    mocks.getArtefact.mockResolvedValue('Artefact');
+
+    const context = await buildChatContext('project-1');
+    expect(context.messages.some((msg) => msg.role === 'user' && msg.content.includes('Merge summary from feature'))).toBe(true);
   });
 
   it('includes pinned canvas diffs only when they are persisted as assistant messages', async () => {

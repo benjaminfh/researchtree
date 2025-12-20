@@ -38,7 +38,17 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
         });
 
         if (!response.ok || !response.body) {
-          throw new Error('Chat request failed');
+          let message = 'Chat request failed';
+          try {
+            const data = (await response.json()) as any;
+            const candidate = data?.error?.message;
+            if (typeof candidate === 'string' && candidate.trim()) {
+              message = candidate.trim();
+            }
+          } catch {
+            // ignore
+          }
+          throw new Error(message);
         }
 
         const reader = response.body.getReader();
@@ -56,7 +66,7 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
           setState({ isStreaming: false, error: null });
         } else {
           console.error('[useChatStream] error', error);
-          setState({ isStreaming: false, error: 'Unable to send message' });
+          setState({ isStreaming: false, error: (error as Error)?.message ?? 'Unable to send message' });
         }
       } finally {
         activeRequest.current = null;

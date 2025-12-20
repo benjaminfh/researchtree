@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
-import { resolveLLMProvider, getDefaultModelForProvider } from '@/src/server/llm';
+import { resolveLLMProvider, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getEnabledProviders } from '@/src/server/llmConfig';
 
 interface ProjectPageProps {
   params: {
@@ -58,9 +59,16 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
     branches = await listBranches(params.id);
   }
 
-  const providerOptions = (['openai', 'gemini', 'mock'] as const).map((id) => ({
+  const labelForProvider = (id: LLMProvider) => {
+    if (id === 'openai') return 'OpenAI';
+    if (id === 'gemini') return 'Gemini';
+    if (id === 'anthropic') return 'Anthropic';
+    return 'Mock';
+  };
+
+  const providerOptions = getEnabledProviders().map((id) => ({
     id,
-    label: id === 'openai' ? 'OpenAI' : id === 'gemini' ? 'Gemini' : 'Mock',
+    label: labelForProvider(id),
     defaultModel: getDefaultModelForProvider(id)
   }));
 

@@ -1,15 +1,17 @@
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
-import { buildChatContext, type ChatMessage } from '@/src/server/context';
+import { buildChatContext } from '@/src/server/context';
 import { encodeChunk, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
-import { getThinkingSystemInstruction, type ThinkingSetting } from '@/src/shared/thinking';
+import { type ThinkingSetting } from '@/src/shared/thinking';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { v4 as uuidv4 } from 'uuid';
 import { requireProjectAccess } from '@/src/server/authz';
+import type { LLMProvider } from '@/src/server/llm';
+import { getDeployEnv } from '@/src/server/llmConfig';
 
 interface RouteContext {
   params: { id: string };
@@ -24,6 +26,39 @@ async function getPreferredBranch(projectId: string): Promise<string> {
   }
   const { getCurrentBranchName } = await import('@git/utils');
   return getCurrentBranchName(projectId).catch(() => 'main');
+}
+
+async function resolveApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
+  if (provider === 'mock') return null;
+
+  if (getDeployEnv() === 'dev') {
+    if (provider === 'openai') {
+      const envKey = process.env.OPENAI_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+    if (provider === 'gemini') {
+      const envKey = process.env.GEMINI_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+    if (provider === 'anthropic') {
+      const envKey = process.env.ANTHROPIC_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+  }
+
+  try {
+    const { rtGetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
+    return await rtGetUserLlmKeyV1({ provider });
+  } catch {
+    return null;
+  }
+}
+
+function labelForProvider(provider: LLMProvider): string {
+  if (provider === 'openai') return 'OpenAI';
+  if (provider === 'gemini') return 'Gemini';
+  if (provider === 'anthropic') return 'Anthropic';
+  return 'Mock';
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
@@ -41,6 +76,12 @@ export async function POST(request: Request, { params }: RouteContext) {
     const { message, intent, llmProvider, ref, thinking } = parsed.data as typeof parsed.data & { thinking?: ThinkingSetting };
     const provider = resolveLLMProvider(llmProvider);
     const tokenLimit = await getProviderTokenLimit(provider);
+    const apiKey = await resolveApiKeyForProvider(provider);
+    if (provider !== 'mock' && !apiKey) {
+      throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
+        provider
+      });
+    }
 
     const targetRef = ref ?? (await getPreferredBranch(params.id));
     const releaseLock = await acquireProjectRefLock(params.id, targetRef);
@@ -93,14 +134,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       }
 
       const context = await buildChatContext(params.id, { tokenLimit, ref: targetRef });
-      const thinkingInstruction = getThinkingSystemInstruction(thinking);
-      const messagesForCompletion: ChatMessage[] = thinkingInstruction
-        ? [
-            ...context.messages.slice(0, 1),
-            { role: 'system', content: thinkingInstruction } satisfies ChatMessage,
-            ...context.messages.slice(1)
-          ]
-        : context.messages;
+      const messagesForCompletion = context.messages;
 
       registerStream(params.id, abortController, targetRef);
 
@@ -121,7 +155,9 @@ export async function POST(request: Request, { params }: RouteContext) {
             for await (const chunk of streamAssistantCompletion({
               messages: messagesForCompletion,
               signal: abortController.signal,
-              provider
+              provider,
+              thinking,
+              apiKey
             })) {
               buffered += chunk.content;
               controllerStream.enqueue(encodeChunk(chunk.content));

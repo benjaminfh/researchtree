@@ -6,6 +6,34 @@ This spec mirrors the migration plan’s core concerns: Supabase Auth + RLS, RPC
 
 ---
 
+## 0) Handover Notes (as of 2025-12-20)
+
+This section reflects the current repo state so the next engineer can pick up testing work without re-discovering context.
+
+### What’s already covered by automated tests
+
+- **Route handler tests** in `tests/server/*` largely run with mocked store/auth layers.
+- **Client tests** in `tests/client/*` cover core UX behaviors (streaming UI timing, autoscroll, graph behavior, etc).
+- **Store/config tests** exist for provider/env selection and helper logic.
+
+### What is not covered (and is still needed for “PG confidence”)
+
+- **DB/RPC/RLS integration tests** are not currently present/running:
+  - no automated verification that RLS prevents cross-user access,
+  - no automated verification that RPCs enforce atomic invariants,
+  - no automated verification of the “no interleaving” lease contract.
+- **Lease tests** are especially important once DB-backed leases land (see `MVP_PG_IMPL_PLAN.md` §1.5 “What remains”).
+
+### Suggested next steps for tests
+
+1. Add a `tests/db/*` suite gated behind a local Supabase stack (optional in CI).
+2. Add integration tests for:
+   - membership/RLS,
+   - append node atomicity + `commit_order`,
+   - branch creation preserves ordinal prefixes,
+   - merge commit parents + merge node insertion,
+   - leases: busy/timeout behavior and no interleaving across sessions.
+
 ## Testing Toolkit
 
 | Layer | Tooling | Notes |

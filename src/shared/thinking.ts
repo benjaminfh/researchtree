@@ -15,6 +15,23 @@ export type ThinkingProvider = LLMProvider | 'anthropic';
 
 export type OpenAIReasoningEffort = 'low' | 'medium' | 'high';
 
+// Gemini thinking configuration options.
+//
+// Gemini 3 supports thinking "levels" (e.g. "low"):
+//   config.thinking_config.thinking_level = "low" | "medium" | "high"
+//
+// Gemini 2.5 and below supports thinking "budgets":
+//   config.thinking_config.thinking_budget = 0 (off) | -1 (dynamic) | [1..N] tokens
+// (Budget ranges depend on model; see provider docs.)
+export const GEMINI_3_THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
+export type Gemini3ThinkingLevel = (typeof GEMINI_3_THINKING_LEVELS)[number];
+
+export const GEMINI_THINKING_BUDGET_SPECIALS = {
+  off: 0,
+  dynamic: -1
+} as const;
+export type GeminiThinkingBudget = number;
+
 export type AnthropicThinkingParam =
   | { type: 'disabled' }
   | { type: 'enabled'; budget_tokens: number };
@@ -27,6 +44,18 @@ export function toOpenAIReasoningEffort(setting: ThinkingSetting): OpenAIReasoni
 export function toOpenAIChatCompletionsThinking(setting: ThinkingSetting): { reasoning_effort?: OpenAIReasoningEffort } {
   const effort = toOpenAIReasoningEffort(setting);
   return effort ? { reasoning_effort: effort } : {};
+}
+
+export function toGemini3ThinkingLevel(setting: ThinkingSetting): Gemini3ThinkingLevel | null {
+  if (setting === 'off') return null;
+  return setting === 'low' || setting === 'high' ? setting : 'medium';
+}
+
+export function toGemini25ThinkingBudget(setting: ThinkingSetting): GeminiThinkingBudget {
+  if (setting === 'off') return GEMINI_THINKING_BUDGET_SPECIALS.off;
+  if (setting === 'low') return 1024;
+  if (setting === 'high') return 8192;
+  return 4096;
 }
 
 export function toAnthropicThinking(setting: ThinkingSetting): AnthropicThinkingParam {
@@ -43,40 +72,17 @@ export function toAnthropicMessagesThinking(setting: ThinkingSetting): { thinkin
   return { thinking: toAnthropicThinking(setting) };
 }
 
-export function toGeminiModelThinking(setting: ThinkingSetting): { systemInstruction?: string } {
-  const instruction = getThinkingSystemInstruction(setting);
-  return instruction ? { systemInstruction: instruction } : {};
-}
-
-export function getThinkingSystemInstruction(setting?: ThinkingSetting): string | null {
-  if (!setting || setting === 'medium') {
-    return null;
-  }
-
-  if (setting === 'off') {
-    return [
-      'Thinking mode: Off.',
-      'Answer directly and do not add extra analysis beyond what is needed for correctness.'
-    ].join('\n');
-  }
-
-  if (setting === 'low') {
-    return ['Thinking mode: Low.', 'Keep responses concise; only include essential reasoning.'].join('\n');
-  }
-
-  return [
-    'Thinking mode: High.',
-    'Take extra time to analyze the request and cover important edge cases.',
-    'Provide a structured answer with rationale and tradeoffs, but keep it readable.'
-  ].join('\n');
-}
-
 export function translateThinkingForProvider(provider: ThinkingProvider, setting: ThinkingSetting) {
   if (provider === 'openai') {
     return { provider, setting, openaiReasoningEffort: toOpenAIReasoningEffort(setting) };
   }
   if (provider === 'gemini') {
-    return { provider, setting, geminiSystemInstruction: getThinkingSystemInstruction(setting) };
+    return {
+      provider,
+      setting,
+      gemini3ThinkingLevel: toGemini3ThinkingLevel(setting),
+      gemini25ThinkingBudget: toGemini25ThinkingBudget(setting)
+    };
   }
   if (provider === 'anthropic') {
     return { provider, setting, anthropicThinking: toAnthropicThinking(setting) };

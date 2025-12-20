@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { APP_NAME } from '@/src/config/app';
 
 export const metadata: Metadata = {
-  title: 'SideQuest',
+  title: APP_NAME,
   description: 'Git-backed reasoning workspace'
 };
 

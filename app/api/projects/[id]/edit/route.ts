@@ -1,15 +1,17 @@
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
-import { buildChatContext, type ChatMessage } from '@/src/server/context';
+import { buildChatContext } from '@/src/server/context';
 import { editMessageSchema } from '@/src/server/schemas';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
-import { getThinkingSystemInstruction, type ThinkingSetting } from '@/src/shared/thinking';
+import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import type { LLMProvider } from '@/src/server/llm';
+import { getDeployEnv } from '@/src/server/llmConfig';
 
 interface RouteContext {
   params: { id: string };
@@ -23,6 +25,39 @@ async function getPreferredBranch(projectId: string): Promise<string> {
   }
   const { getCurrentBranchName } = await import('@git/utils');
   return getCurrentBranchName(projectId).catch(() => 'main');
+}
+
+async function resolveApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
+  if (provider === 'mock') return null;
+
+  if (getDeployEnv() === 'dev') {
+    if (provider === 'openai') {
+      const envKey = process.env.OPENAI_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+    if (provider === 'gemini') {
+      const envKey = process.env.GEMINI_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+    if (provider === 'anthropic') {
+      const envKey = process.env.ANTHROPIC_API_KEY?.trim();
+      if (envKey) return envKey;
+    }
+  }
+
+  try {
+    const { rtGetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
+    return await rtGetUserLlmKeyV1({ provider });
+  } catch {
+    return null;
+  }
+}
+
+function labelForProvider(provider: LLMProvider): string {
+  if (provider === 'openai') return 'OpenAI';
+  if (provider === 'gemini') return 'Gemini';
+  if (provider === 'anthropic') return 'Anthropic';
+  return 'Mock';
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
@@ -43,6 +78,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const currentBranch = await getPreferredBranch(params.id);
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const sourceRef = fromRef?.trim() || currentBranch;
+    const provider = resolveLLMProvider(llmProvider);
 
     return await withProjectLock(params.id, async () => {
       const releaseRefLock = await acquireProjectRefLock(params.id, sourceRef);
@@ -68,6 +104,13 @@ export async function POST(request: Request, { params }: RouteContext) {
           }
           if (targetNode.type !== 'message') {
             throw badRequest('Only message nodes can be edited');
+          }
+
+          const apiKey = targetNode.role === 'user' ? await resolveApiKeyForProvider(provider) : null;
+          if (targetNode.role === 'user' && provider !== 'mock' && !apiKey) {
+            throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
+              provider
+            });
           }
 
           await rtCreateRefFromNodeParentShadowV1({
@@ -108,20 +151,17 @@ export async function POST(request: Request, { params }: RouteContext) {
           let assistantNode: any = null;
           if (editedNode.role === 'user') {
             try {
-              const provider = resolveLLMProvider(llmProvider);
               const tokenLimit = await getProviderTokenLimit(provider);
               const context = await buildChatContext(params.id, { tokenLimit, ref: targetBranch });
-              const thinkingInstruction = getThinkingSystemInstruction(thinking);
-              const messagesForCompletion: ChatMessage[] = thinkingInstruction
-                ? [
-                    ...context.messages.slice(0, 1),
-                    { role: 'system', content: thinkingInstruction } satisfies ChatMessage,
-                    ...context.messages.slice(1)
-                  ]
-                : context.messages;
+              const messagesForCompletion = context.messages;
 
               let buffered = '';
-              for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking })) {
+              for await (const chunk of streamAssistantCompletion({
+                messages: messagesForCompletion,
+                provider,
+                thinking,
+                apiKey
+              })) {
                 buffered += chunk.content;
               }
 
@@ -173,6 +213,13 @@ export async function POST(request: Request, { params }: RouteContext) {
           throw badRequest('Only message nodes can be edited');
         }
 
+        const apiKey = targetNode.role === 'user' ? await resolveApiKeyForProvider(provider) : null;
+        if (targetNode.role === 'user' && provider !== 'mock' && !apiKey) {
+          throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
+            provider
+          });
+        }
+
         try {
           const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
           await createBranch(project.id, targetBranch, commitHash);
@@ -194,20 +241,12 @@ export async function POST(request: Request, { params }: RouteContext) {
       let assistantNode: any = null;
       if (node.type === 'message' && node.role === 'user') {
         try {
-          const provider = resolveLLMProvider(llmProvider);
           const tokenLimit = await getProviderTokenLimit(provider);
           const context = await buildChatContext(project.id, { tokenLimit, ref: targetBranch });
-          const thinkingInstruction = getThinkingSystemInstruction(thinking);
-          const messagesForCompletion: ChatMessage[] = thinkingInstruction
-            ? [
-                ...context.messages.slice(0, 1),
-                { role: 'system', content: thinkingInstruction } satisfies ChatMessage,
-                ...context.messages.slice(1)
-              ]
-            : context.messages;
+          const messagesForCompletion = context.messages;
 
           let buffered = '';
-          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking })) {
+          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking, apiKey })) {
             buffered += chunk.content;
           }
 

@@ -1,4 +1,5 @@
 import { LoginForm } from './LoginForm';
+import { APP_NAME } from '@/src/config/app';
 
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/';
@@ -13,7 +14,7 @@ export default function LoginPage({ searchParams }: { searchParams?: { redirectT
     <main className="min-h-screen bg-white px-6 py-12">
       <div className="mx-auto max-w-sm">
         <div className="mb-8">
-          <p className="text-3xl font-semibold tracking-tight text-slate-900">SideQuest</p>
+          <p className="text-3xl font-semibold tracking-tight text-slate-900">{APP_NAME}</p>
           <h1 className="mt-2 text-lg font-medium text-slate-600">Welcome Back</h1>
         </div>
         <LoginForm redirectTo={redirectTo} />

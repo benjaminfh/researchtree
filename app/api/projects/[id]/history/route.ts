@@ -17,8 +17,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
     const refParam = searchParams.get('ref');
-    const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
-    const effectiveLimit = Number.isFinite(limit as number) && (limit as number) > 0 ? (limit as number) : undefined;
+    const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : null;
+    const effectiveLimit = typeof parsedLimit === 'number' && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
     if (store.mode === 'pg') {
       const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
@@ -47,8 +47,8 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     let result = nonStateNodes;
     if (limitParam) {
-      if (!Number.isNaN(limit) && limit > 0) {
-        result = nonStateNodes.slice(-limit);
+      if (parsedLimit && parsedLimit > 0) {
+        result = nonStateNodes.slice(-parsedLimit);
       }
     }
 

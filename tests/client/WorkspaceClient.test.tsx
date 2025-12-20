@@ -185,6 +185,32 @@ describe('WorkspaceClient', () => {
     expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(1);
   });
 
+  it('renders assistant message content as markdown', async () => {
+    mockUseProjectData.mockReturnValue({
+      nodes: [
+        { id: 'u1', type: 'message', role: 'user', content: 'Hi', timestamp: 1, parent: null },
+        { id: 'a1', type: 'message', role: 'assistant', content: 'Hello **world**', timestamp: 2, parent: 'u1' }
+      ],
+      artefact: '# Artefact',
+      artefactMeta: { artefact: '# Artefact', lastUpdatedAt: null },
+      isLoading: false,
+      error: undefined,
+      mutateHistory: vi.fn(),
+      mutateArtefact: vi.fn()
+    } as any);
+
+    mockUseChatStream.mockReturnValue({
+      sendMessage: vi.fn(),
+      interrupt: vi.fn(),
+      state: { isStreaming: false, error: null }
+    } as any);
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+    const bold = await screen.findByText('world');
+    expect(bold.tagName).toBe('STRONG');
+  });
+
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
@@ -427,6 +453,60 @@ describe('WorkspaceClient', () => {
 
     expect(capturedChatOptions?.provider).toBe('gemini');
     expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
+  });
+
+  it('renders assistant messages with a wider bubble', () => {
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={baseBranches as any}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+      />
+    );
+    const assistantMessage = screen.getByText('All tasks queued.');
+    const bubble = assistantMessage.closest('article')?.querySelector('div');
+    expect(bubble?.className).toContain('max-w-[85%]');
+  });
+
+  it('keeps provider/thinking pinned to branch when switching branches', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem('researchtree:provider:proj-1:feature/phase-2', 'gemini');
+    window.localStorage.setItem('researchtree:provider:proj-1:main', 'openai');
+    window.localStorage.setItem('researchtree:thinking:proj-1:feature/phase-2', 'high');
+    window.localStorage.setItem('researchtree:thinking:proj-1:main', 'medium');
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          branchName: 'main',
+          branches: baseBranches
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as any;
+
+    try {
+      render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+
+      await waitFor(() => {
+        expect((screen.getByLabelText(/Provider/i) as HTMLSelectElement).value).toBe('gemini');
+      });
+
+      await user.click(screen.getByRole('button', { name: 'trunk' }));
+
+      await waitFor(() => {
+        expect((screen.getByLabelText(/Provider/i) as HTMLSelectElement).value).toBe('openai');
+      });
+
+      expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
+      expect(window.localStorage.getItem('researchtree:provider:proj-1:main')).toBe('openai');
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:main')).toBe('medium');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('updates and persists the thinking mode selection', async () => {

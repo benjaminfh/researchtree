@@ -118,12 +118,12 @@ Server routes: /branches, /merge, /edit, /artefact exist with zod validation and
 Git layer: appendNode can checkout a ref before committing; mergeBranch accepts { targetBranch, applyArtefact }; updateArtefact enforces trunk-only edits and checks out main. getCommitHashForNode finds parent commit for edit branching.
 Hooks: useProjectData(ref) and useChatStream({ projectId, ref }) propagate the active branch to history/chat APIs and SWR caches.
 Workspace UI:
-Collapsible rail on all pages with SideQuest branding, branch chips, session tips pill, and home shortcut pinned to the bottom.
+Collapsible rail on all pages with APP_NAME branding (from env), branch chips, session tips pill, and home shortcut pinned to the bottom.
 Conversation pane shows shared-history divider, merge button, merge modal (summary only), message edit buttons (modal creates branch from edited node’s parent).
 Artefact renamed to Canvas; trunk-only editor with Save/Reset actions, read-only view on branches.
 Floating composer anchored to bottom, with light-gray textarea outline, attachment button, stop control, streaming indicator.
 Shared history, merge/state badges, and improved branch-aware provider selection persisted per branch.
-Copy updates: Home page/rail now use “SideQuest”, “workspace”, “canvas” terminology; artefact references updated where user-facing.
+Copy updates: Home page/rail now use the env-defined app name, “workspace”, “canvas” terminology; artefact references updated where user-facing.
 Testing: Client tests updated for new UI strings and selectors; server tests cover new routes; git tests verify ref-aware append and artefact behavior.
 Outstanding Work / Next Steps
 Context builder tests: Implementation already passes `ref` and injects merge summaries, but we still need coverage proving merged-branch history stays trimmed on trunk and that merge-summary system prompts appear. Consider tests for parent-branch trimming after edits.

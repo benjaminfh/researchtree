@@ -1,4 +1,4 @@
--- SideQuest / ResearchTree provenance store (Postgres)
+-- ResearchTree provenance store (Postgres)
 -- Apply in Supabase (SQL Editor or via supabase-cli migrations).
 
 create extension if not exists pgcrypto;
@@ -244,4 +244,3 @@ drop policy if exists commit_order_insert_member on public.commit_order;
 create policy commit_order_insert_member
 on public.commit_order for insert
 with check (public.rt_is_project_member(commit_order.project_id));
-

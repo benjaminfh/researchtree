@@ -193,6 +193,77 @@ Recommended grep queries:
 
 ---
 
+## 1.5 Handover Notes (as of 2025-12-20)
+
+This section is a “current state” snapshot for the next engineer. It is based on the repo’s code paths (not just the original plan).
+
+### What’s accomplished (in-repo)
+
+**Core PG store wiring**
+- `RT_STORE=git|pg` selects a single provenance backend (no fallback paths).
+- PG store wrappers exist under `src/store/pg/*` for:
+  - Projects (`src/store/pg/projects.ts`)
+  - Branches/refs (`src/store/pg/branches.ts`)
+  - Per-user current branch prefs (`src/store/pg/prefs.ts`)
+  - Nodes append (`src/store/pg/nodes.ts`)
+  - Merge (`src/store/pg/merge.ts`)
+  - Stars (`src/store/pg/stars.ts`)
+  - Reads (`src/store/pg/reads.ts`)
+  - Canvas drafts (`src/store/pg/drafts.ts`)
+- API routes are mode-gated (`if (store.mode === 'pg') ... else ...`) and use `requireUser()` + `requireProjectAccess()` for auth/authz.
+
+**Canvas draft policy (no chat spam)**
+- Canvas autosaves write to a draft mechanism (server routes write drafts; immutable artefacts are not appended on every keystroke).
+
+**Context semantics**
+- Chat context uses a single system message at the start.
+- Merge summaries injected into context are attributed to `MERGE_USER=user|assistant` (never `system`/`developer`).
+
+**UX fixes**
+- Chat renders user message immediately and streams assistant; assistant shows a short delayed spinner “Thinking…” before first token.
+- Assistant messages render Markdown; user messages remain plain text.
+- Graph caching and starred flicker improvements are implemented.
+
+**LLM provider config (now broader than the original PG plan)**
+- Provider selection is env-driven:
+  - `DEPLOY_ENV=dev|prod` gates dev-only providers (e.g. `mock` is dev-only).
+  - `LLM_DEFAULT_PROVIDER` replaces the older `LLM_PROVIDER`.
+  - `LLM_ENABLE_*` + `LLM_ALLOWED_MODELS_*` determine enabled providers and the model shown in the UI.
+- Gemini “thinking” is set via `generationConfig.thinkingConfig` (no prompt injection).
+- OpenAI uses `reasoning_effort` (Chat Completions) best-effort.
+- Anthropic streaming support is implemented behind env toggles, but may require further spec alignment before production use.
+
+### What remains (gaps vs plan)
+
+**DB-backed ref leases (critical for “one session per branch”)**
+- The plan specifies `ref_leases` + RPC-enforced leasing to prevent interleaving across tabs/instances.
+- Current code uses in-process locks only (`src/server/locks.ts`), which do **not** protect against:
+  - multiple browser tabs hitting different server instances,
+  - multi-instance deployments.
+- Next step: implement the lease table + RPCs and plumb a per-tab `sessionId` from the client into write routes.
+
+**DB integration test coverage**
+- The repo has strong mocked unit tests for routes and store wrappers.
+- The DB/RPC/RLS integration tests described in `MVP_PG_TEST_SPEC.md` are not implemented (or not wired into CI) yet.
+
+**Migration/backfill tooling**
+- The plan describes `scripts/migrate_git_to_pg.ts`, but it is intentionally deferred (per product decision).
+
+**Integrity checker**
+- The plan recommends an integrity checker endpoint for rollout validation; it is not present in the repo yet.
+
+### Current configuration knobs
+
+- Provenance store: `RT_STORE=git|pg`
+- Deploy mode: `DEPLOY_ENV=dev|prod` (dev allows `mock` provider)
+- Provider defaults/enablement:
+  - `LLM_DEFAULT_PROVIDER`
+  - `LLM_ENABLE_OPENAI|LLM_ENABLE_GEMINI|LLM_ENABLE_ANTHROPIC`
+  - `LLM_ALLOWED_MODELS_OPENAI|LLM_ALLOWED_MODELS_GEMINI|LLM_ALLOWED_MODELS_ANTHROPIC`
+- Merge context attribution: `MERGE_USER=user|assistant`
+
+---
+
 ## 2. Target architecture (Postgres primitives)
 
 We implement a “git-ish spine” with:

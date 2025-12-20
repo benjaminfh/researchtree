@@ -1,9 +1,16 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { ChatMessage } from './context';
-import { toOpenAIReasoningEffort, type ThinkingSetting } from '@/src/shared/thinking';
+import {
+  toAnthropicThinking,
+  toGemini25ThinkingBudget,
+  toGemini3ThinkingLevel,
+  toOpenAIReasoningEffort,
+  type ThinkingSetting
+} from '@/src/shared/thinking';
+import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
 
-export type LLMProvider = 'openai' | 'gemini' | 'mock';
+export type LLMProvider = 'openai' | 'gemini' | 'anthropic' | 'mock';
 
 export interface LLMStreamChunk {
   type: 'text';
@@ -15,52 +22,49 @@ export interface LLMStreamOptions {
   signal?: AbortSignal;
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
+  apiKey?: string | null;
 }
 
 const encoder = new TextEncoder();
 
-const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-5.2';
 const DEFAULT_GEMINI_MODEL = 'gemini-3-pro-preview';
-
-let openAIClient: OpenAI | null = null;
-let geminiClient: GoogleGenerativeAI | null = null;
+const DEFAULT_ANTHROPIC_MAX_TOKENS = 2048;
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
-    return requested;
+    const enabled = new Set(getEnabledProviders());
+    return enabled.has(requested) ? requested : getDefaultProvider();
   }
-  const env = (process.env.LLM_PROVIDER ?? '').toLowerCase();
-  if (env === 'openai' || env === 'gemini') {
-    return env;
-  }
-  return 'mock';
+  return getDefaultProvider();
 }
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {
-  if (provider === 'gemini') {
-    return DEFAULT_GEMINI_MODEL;
-  }
-  if (provider === 'openai') {
-    return DEFAULT_OPENAI_MODEL;
-  }
-  return 'mock';
+  const config = getProviderEnvConfig(provider);
+  if (provider === 'gemini') return config.defaultModel || DEFAULT_GEMINI_MODEL;
+  return config.defaultModel;
 }
 
 export async function* streamAssistantCompletion({
   messages,
   signal,
   provider,
-  thinking
+  thinking,
+  apiKey
 }: LLMStreamOptions): AsyncGenerator<LLMStreamChunk> {
   const resolvedProvider = resolveLLMProvider(provider);
 
   if (resolvedProvider === 'openai') {
-    yield* streamFromOpenAI(messages, signal, thinking);
+    yield* streamFromOpenAI(messages, signal, thinking, apiKey ?? undefined);
     return;
   }
 
   if (resolvedProvider === 'gemini') {
-    yield* streamFromGemini(messages, signal, thinking);
+    yield* streamFromGemini(messages, signal, thinking, apiKey ?? undefined);
+    return;
+  }
+
+  if (resolvedProvider === 'anthropic') {
+    yield* streamFromAnthropic(messages, signal, thinking, apiKey ?? undefined);
     return;
   }
 
@@ -74,18 +78,17 @@ export function encodeChunk(content: string): Uint8Array {
 async function* streamFromOpenAI(
   messages: ChatMessage[],
   signal?: AbortSignal,
-  thinking?: ThinkingSetting
+  thinking?: ThinkingSetting,
+  apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = apiKeyOverride ?? process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing OPENAI_API_KEY, using mock provider instead.');
+    console.warn('[LLM] Missing OpenAI API key, using mock provider instead.');
     yield* streamFromMock(messages, signal);
     return;
   }
 
-  if (!openAIClient) {
-    openAIClient = new OpenAI({ apiKey });
-  }
+  const openAIClient = new OpenAI({ apiKey });
 
   const formattedMessages = messages.map((message) => ({
     role: message.role,
@@ -94,7 +97,7 @@ async function* streamFromOpenAI(
 
   const reasoningEffort = thinking ? toOpenAIReasoningEffort(thinking) : null;
   const baseRequest = {
-    model: DEFAULT_OPENAI_MODEL,
+    model: getDefaultModelForProvider('openai'),
     messages: formattedMessages,
     temperature: 0.2,
     stream: true
@@ -145,18 +148,17 @@ async function* streamFromOpenAI(
 async function* streamFromGemini(
   messages: ChatMessage[],
   signal?: AbortSignal,
-  thinking?: ThinkingSetting
+  thinking?: ThinkingSetting,
+  apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = apiKeyOverride ?? process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing GEMINI_API_KEY, using mock provider instead.');
+    console.warn('[LLM] Missing Gemini API key, using mock provider instead.');
     yield* streamFromMock(messages, signal);
     return;
   }
 
-  if (!geminiClient) {
-    geminiClient = new GoogleGenerativeAI(apiKey);
-  }
+  const geminiClient = new GoogleGenerativeAI(apiKey);
 
   const systemInstruction = messages
     .filter((message) => message.role === 'system')
@@ -171,12 +173,31 @@ async function* streamFromGemini(
     }));
 
   const pickModel = (modelName: string) =>
-    geminiClient!.getGenerativeModel(systemInstruction ? { model: modelName, systemInstruction } : { model: modelName });
+    geminiClient.getGenerativeModel(systemInstruction ? { model: modelName, systemInstruction } : { model: modelName });
 
   const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
   const model = pickModel(modelName);
   let stream: any;
-  stream = await model.generateContentStream({ contents } as any);
+
+  const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
+  const isFlashModel = /flash/i.test(modelName);
+  const thinkingConfig =
+    typeof thinking === 'string'
+      ? isGemini3
+        ? thinking === 'off'
+          ? isFlashModel
+            ? { thinkingLevel: 'minimal' }
+            : null
+          : { thinkingLevel: toGemini3ThinkingLevel(thinking) ?? undefined }
+        : { thinkingBudget: toGemini25ThinkingBudget(thinking) }
+      : null;
+
+  const request: any = { contents };
+  if (thinkingConfig) {
+    request.generationConfig = { thinkingConfig };
+  }
+
+  stream = await model.generateContentStream(request);
 
   for await (const chunk of stream.stream) {
     if (signal?.aborted) {
@@ -185,6 +206,132 @@ async function* streamFromGemini(
     const text = chunk.text();
     if (text) {
       yield { type: 'text', content: text } satisfies LLMStreamChunk;
+    }
+  }
+}
+
+function extractSseEvents(buffer: string): { events: Array<{ event: string | null; data: string }>; rest: string } {
+  const events: Array<{ event: string | null; data: string }> = [];
+  let remaining = buffer;
+
+  while (true) {
+    const separatorIndex = remaining.indexOf('\n\n');
+    if (separatorIndex === -1) break;
+
+    const rawEvent = remaining.slice(0, separatorIndex);
+    remaining = remaining.slice(separatorIndex + 2);
+
+    let eventName: string | null = null;
+    const dataLines: string[] = [];
+    for (const line of rawEvent.split('\n')) {
+      const trimmed = line.trimEnd();
+      if (trimmed.startsWith('event:')) {
+        eventName = trimmed.slice('event:'.length).trim();
+        continue;
+      }
+      if (trimmed.startsWith('data:')) {
+        dataLines.push(trimmed.slice('data:'.length).trimStart());
+      }
+    }
+
+    if (dataLines.length > 0) {
+      events.push({ event: eventName, data: dataLines.join('\n') });
+    }
+  }
+
+  return { events, rest: remaining };
+}
+
+async function* streamFromAnthropic(
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  thinking?: ThinkingSetting,
+  apiKeyOverride?: string
+): AsyncGenerator<LLMStreamChunk> {
+  const apiKey = apiKeyOverride ?? process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.warn('[LLM] Missing Anthropic API key, using mock provider instead.');
+    yield* streamFromMock(messages, signal);
+    return;
+  }
+
+  const system = messages.find((m) => m.role === 'system')?.content ?? '';
+  const anthropicMessages = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({ role: m.role, content: m.content })) as Array<{ role: 'user' | 'assistant'; content: string }>;
+
+  const model = getDefaultModelForProvider('anthropic');
+  const maxTokens = Number.parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? '', 10) || DEFAULT_ANTHROPIC_MAX_TOKENS;
+  const baseBody: any = {
+    model,
+    max_tokens: maxTokens,
+    system,
+    messages: anthropicMessages,
+    stream: true
+  };
+
+  if (thinking && thinking !== 'off') {
+    baseBody.thinking = toAnthropicThinking(thinking);
+  }
+
+  const makeRequest = async (body: any) => {
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    };
+    const beta = (process.env.ANTHROPIC_BETA ?? '').trim();
+    if (beta) {
+      headers['anthropic-beta'] = beta;
+    }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal
+    });
+    return res;
+  };
+
+  let response = await makeRequest(baseBody);
+  if (!response.ok && baseBody.thinking) {
+    // If thinking is rejected (model/flag/beta mismatch), retry without it.
+    const retryBody = { ...baseBody };
+    delete retryBody.thinking;
+    response = await makeRequest(retryBody);
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`[anthropic] ${response.status} ${response.statusText}${text ? `: ${text}` : ''}`);
+  }
+
+  if (!response.body) {
+    throw new Error('[anthropic] Missing response body');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    if (signal?.aborted) break;
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const { events, rest } = extractSseEvents(buffer);
+    buffer = rest;
+
+    for (const evt of events) {
+      if (evt.event === 'content_block_delta') {
+        const parsed = JSON.parse(evt.data);
+        const delta = parsed?.delta;
+        if (delta?.type === 'text_delta' && typeof delta?.text === 'string') {
+          yield { type: 'text', content: delta.text } satisfies LLMStreamChunk;
+        }
+      }
     }
   }
 }

@@ -23,7 +23,7 @@ Notes:
    - Select a merge node in the graph; use **Add canvas changes** (confirm) and verify it shows “Canvas changes added”.
 
 ## 3) Environment
-- `.env.local` present (or `LLM_PROVIDER=mock`).
+- `.env.local` present (or `LLM_DEFAULT_PROVIDER=mock`).
 - `RESEARCHTREE_PROJECTS_ROOT` points at a writable directory.
 - `git` is installed and on PATH.
 
@@ -31,4 +31,3 @@ Notes:
 - No auth / multi-user.
 - No automatic Canvas merge; only diff snapshot + optional pin into context.
 - Locks are in-memory (single-process assumption).
-

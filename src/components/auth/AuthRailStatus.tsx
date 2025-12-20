@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
 import { UserIcon } from '@/src/components/workspace/HeroIcons';
 
@@ -105,6 +106,16 @@ export function AuthRailStatus({ railCollapsed, onRequestExpandRail }: AuthRailS
                 Sign out
               </button>
             </form>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <Link
+              href="/profile"
+              onClick={() => setIsOpen(false)}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Profile
+            </Link>
           </div>
         </div>
       ) : null}

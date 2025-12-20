@@ -7,16 +7,20 @@
 ### CHAT
 [x] when creating a branch via the rail, inherited messages are incomplete
 [x] chat window inherited messages appears to be incomplete in general
-[ ] when the user sends a message, the UI waits until the assistant message is received in full before rendering both. Correct behaviour: we have user message on send, so render immediately (expected behaviour for a chat app) and then once stream first arrices, render assistat box and stream the assistant message in.
+[x] when the user sends a message, the UI waits until the assistant message is received in full before rendering both. Correct behaviour: we have user message on send, so render immediately (expected behaviour for a chat app) and then once stream first arrices, render assistat box and stream the assistant message in.
+[x] assistant messages are not taking up full (or most of / 85% w) the chat container width - they should 
+
+### Branches
+[x] LLM config should be pinned to branch
 
 ### Merge
-[ ] merge modal has summary + payload selection -> is the summary injected into the context? This behaviour is not signalled to the user at all. It needs to be.
-[ ] merge node content is tagged against user "developer" - this is not a known role - unknown consequences. user OR assistant only!
+[x] merge modal has summary + payload selection -> is the summary injected into the context? This behaviour is not signalled to the user at all. It needs to be.
+[x] merge node content is tagged against user "developer" - this is not a known role - unknown consequences. user OR assistant only!
 
 ### Graph
-[ ] the graph loads anew each time the graph toggle is selected - it doesn't seem to cache in the browser (slow perf)
+[x] the graph loads anew each time the graph toggle is selected - it doesn't seem to cache in the browser (slow perf)
 #### Starred
-[ ] when starring / unstarring a message, the graph sometimes bounces. That is, the unstarred nodes disappears (expected) but then blinks –> re-appears and disappears once more. Race condition somewhere??
+[x] when starring / unstarring a message, the graph sometimes bounces. That is, the unstarred nodes disappears (expected) but then blinks –> re-appears and disappears once more. Race condition somewhere??
 
 
 

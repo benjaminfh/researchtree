@@ -8,7 +8,7 @@ export const createProjectSchema = z.object({
 export const chatRequestSchema = z.object({
   message: z.string().min(1).max(6000),
   intent: z.string().max(280).optional(),
-  llmProvider: z.enum(['openai', 'gemini', 'mock']).optional(),
+  llmProvider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
   ref: z.string().min(1).max(120).optional(),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional()
 });
@@ -45,6 +45,8 @@ export const editMessageSchema = z.object({
   branchName: z.string().min(1).max(120).optional(),
   fromRef: z.string().min(1).max(120).optional(),
   label: z.string().max(120).optional(),
+  llmProvider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
+  thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   nodeId: z.string().min(1),
   replaceNode: z.boolean().optional()
 });

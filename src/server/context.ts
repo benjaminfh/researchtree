@@ -14,6 +14,13 @@ export interface ChatContext {
 const DEFAULT_HISTORY_LIMIT = 40;
 const DEFAULT_TOKEN_LIMIT = 8000;
 
+function getMergeUserRole(): Exclude<ChatMessage['role'], 'system'> {
+  const raw = (process.env.MERGE_USER ?? 'assistant').trim().toLowerCase();
+  if (!raw) return 'assistant';
+  if (raw === 'user' || raw === 'assistant') return raw;
+  throw new Error('MERGE_USER must be set to "user" or "assistant"');
+}
+
 interface ContextOptions {
   limit?: number;
   tokenLimit?: number;
@@ -46,12 +53,16 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   const trimmed = nodes.slice(-limit);
   const systemPrompt = buildSystemPrompt(artefact);
   const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
+  const mergeUserRole = getMergeUserRole();
 
   const tokenLimit = options?.tokenLimit ?? DEFAULT_TOKEN_LIMIT;
   let tokenBudget = tokenLimit - estimateTokens(systemPrompt);
 
   for (const node of trimmed) {
     if (node.type === 'message' && node.role && node.content) {
+      if (node.role !== 'user' && node.role !== 'assistant') {
+        continue;
+      }
       const cost = estimateTokens(node.content);
       if (tokenBudget - cost < 0) {
         continue;
@@ -69,7 +80,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
       }
       tokenBudget -= cost;
       messages.push({
-        role: 'system',
+        role: mergeUserRole,
         content: summary
       });
 
