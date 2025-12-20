@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 
 type AuthActionState = { error: string | null };
 
@@ -22,7 +22,7 @@ export async function signInWithPassword(_prevState: AuthActionState, formData: 
   }
 
   try {
-    const supabase = createSupabaseServerClient();
+    const supabase = createSupabaseServerActionClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       return { error: error.message };
@@ -44,7 +44,7 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
   }
 
   try {
-    const supabase = createSupabaseServerClient();
+    const supabase = createSupabaseServerActionClient();
     const { error } = await supabase.auth.signUp({ email, password });
     if (error) {
       return { error: error.message };
@@ -58,7 +58,7 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 
 export async function signOut(): Promise<void> {
   try {
-    const supabase = createSupabaseServerClient();
+    const supabase = createSupabaseServerActionClient();
     await supabase.auth.signOut();
   } catch {
     // ignore
