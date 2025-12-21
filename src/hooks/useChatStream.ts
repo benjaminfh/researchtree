@@ -39,7 +39,7 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
           signal: activeRequest.current.signal
         });
 
-        activeRequestId.current = response.headers.get('x-rt-request-id');
+        activeRequestId.current = (response as any)?.headers?.get?.('x-rt-request-id') ?? null;
 
         if (!response.ok || !response.body) {
           let message = 'Chat request failed';
