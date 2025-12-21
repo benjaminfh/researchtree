@@ -24,11 +24,6 @@ export async function signInWithPassword(_prevState: AuthActionState, formData: 
   }
 
   try {
-    const gate = await checkEmailAllowedForAuth(email);
-    if (!gate.allowed) {
-      return { error: gate.error ?? 'Access denied.' };
-    }
-
     const supabase = createSupabaseServerActionClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {

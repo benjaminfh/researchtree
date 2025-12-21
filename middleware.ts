@@ -9,64 +9,12 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function isWaitlistEnforced(): boolean {
-  const raw = process.env.RT_WAITLIST_ENFORCE?.trim().toLowerCase();
-  if (!raw) return false;
-  return !['0', 'false', 'off', 'no'].includes(raw);
-}
-
-function getAdminUserIds(): Set<string> {
-  const raw = process.env.RT_ADMIN_USER_IDS ?? '';
-  const ids = raw
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  return new Set(ids);
-}
-
-function isAdminUser(userId: string): boolean {
-  return getAdminUserIds().has(userId);
-}
-
 function stripTrailingSlashes(value: string): string {
   let result = value;
   while (result.endsWith('/')) {
     result = result.slice(0, -1);
   }
   return result;
-}
-
-async function isEmailAllowlisted(url: string, serviceRoleKey: string, email: string): Promise<boolean> {
-  const normalized = normalizeEmail(email);
-  const endpoint = `${stripTrailingSlashes(url)}/rest/v1/email_allowlist?select=email&email=eq.${encodeURIComponent(
-    normalized
-  )}&limit=1`;
-
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), 1500);
-
-  try {
-    const res = await fetch(endpoint, {
-      headers: {
-        apikey: serviceRoleKey,
-        authorization: `Bearer ${serviceRoleKey}`,
-        accept: 'application/json'
-      },
-      cache: 'no-store',
-      signal: abortController.signal
-    });
-
-    if (!res.ok) {
-      return false; // fail closed
-    }
-
-    const data = (await res.json()) as Array<{ email: string }>;
-    return data.length > 0;
-  } catch {
-    return false; // fail closed
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function getSupabaseEnv() {
@@ -122,52 +70,7 @@ export async function middleware(request: NextRequest) {
   const { data } = await supabase.auth.getUser();
   const user = data.user;
 
-  if (user && isWaitlistEnforced()) {
-    const email = user.email ? normalizeEmail(user.email) : null;
-    const isAdmin = isAdminUser(user.id);
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? null;
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? null;
-
-    const allowed =
-      !email || isAdmin
-        ? true
-        : !serviceRoleKey || !url
-          ? false
-          : await isEmailAllowlisted(url, serviceRoleKey, email);
-
-    if (!allowed && !isPublicPath(pathname)) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = '/waitlist';
-      redirectUrl.searchParams.set('blocked', '1');
-      if (email) redirectUrl.searchParams.set('email', email);
-      response = NextResponse.redirect(redirectUrl);
-      return response;
-    }
-  }
-
   if (user && pathname === '/login') {
-    if (isWaitlistEnforced()) {
-      const email = user.email ? normalizeEmail(user.email) : null;
-      const isAdmin = isAdminUser(user.id);
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? null;
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? null;
-      const allowed =
-        !email || isAdmin
-          ? true
-          : !serviceRoleKey || !url
-            ? false
-            : await isEmailAllowlisted(url, serviceRoleKey, email);
-
-      if (!allowed) {
-        const redirectUrl = request.nextUrl.clone();
-        redirectUrl.pathname = '/waitlist';
-        redirectUrl.searchParams.set('blocked', '1');
-        if (email) redirectUrl.searchParams.set('email', email);
-        response = NextResponse.redirect(redirectUrl);
-        return response;
-      }
-    }
-
     const redirectTo = sanitizeRedirectTo(request.nextUrl.searchParams.get('redirectTo')) ?? '/';
     const redirectUrl = new URL(redirectTo, request.url);
     response = NextResponse.redirect(redirectUrl);
