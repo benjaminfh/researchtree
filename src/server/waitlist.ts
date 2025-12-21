@@ -1,5 +1,4 @@
 import { createSupabaseAdminClient } from '@/src/server/supabase/admin';
-import { isAdminEmail } from '@/src/server/admin';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -14,7 +13,6 @@ function isWaitlistEnforced(): boolean {
 export async function isEmailWhitelisted(email: string): Promise<boolean> {
   const normalized = normalizeEmail(email);
   if (!isWaitlistEnforced()) return true;
-  if (isAdminEmail(normalized)) return true;
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase.from('email_allowlist').select('email').eq('email', normalized).maybeSingle();

@@ -1,6 +1,7 @@
 import type { LLMProvider } from '@/src/server/llm';
 import { badRequest, internalError } from '@/src/server/http';
 import { getDeployEnv } from '@/src/server/llmConfig';
+import { requireUser } from '@/src/server/auth';
 
 type KeyedProvider = Exclude<LLMProvider, 'mock'>;
 
@@ -38,6 +39,7 @@ function isVaultReadCompatIssue(reason: string): boolean {
 export async function requireUserApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
   if (provider === 'mock') return null;
   const keyed = provider as KeyedProvider;
+  const user = await requireUser();
 
   const envVar = envVarForProvider(provider);
   if (getDeployEnv() !== 'dev' && envVar) {
@@ -48,8 +50,8 @@ export async function requireUserApiKeyForProvider(provider: LLMProvider): Promi
 
   let key: string | null = null;
   try {
-    const { rtGetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
-    key = await rtGetUserLlmKeyV1({ provider: keyed });
+    const { rtGetUserLlmKeyServerV1 } = await import('@/src/store/pg/userLlmKeys');
+    key = await rtGetUserLlmKeyServerV1({ userId: user.id, provider: keyed });
   } catch (error) {
     let configured: boolean | null = null;
     try {

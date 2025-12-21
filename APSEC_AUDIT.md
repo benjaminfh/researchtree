@@ -74,7 +74,7 @@ Notes (repo-specific):
   - Vercel/Edge middleware behavior (if deployed)
 - Roles/tenancy:
   - Primary isolation is per-project membership via `project_members` + RLS (see `supabase/migrations/2025-12-19_0001_rt_provenance_schema.sql`).
-  - “Admin” is env-configured allowlist via `RT_ADMIN_EMAILS` (see `src/server/admin.ts`).
+  - “Admin” is env-configured allowlist via `RT_ADMIN_USER_IDS` (see `src/server/admin.ts`).
 - Critical flows (current app):
   - Auth: login/signup/logout, password reset, auth callback (`app/login/*`, `app/auth/*`, `app/forgot-password/*`, `app/reset-password/*`)
   - Waitlist gating + admin allowlist management (`middleware.ts`, `src/server/waitlist.ts`, `app/admin/waitlist/*`)
@@ -131,7 +131,7 @@ Notes (repo-specific):
 - Authn/authz primitives:
   - `requireUser()` (`src/server/auth.ts`) validates Supabase session server-side.
   - `requireProjectAccess()` (`src/server/authz.ts`) enforces per-project membership (relies on Supabase RLS).
-  - `requireAdminUser()` (`src/server/admin.ts`) enforces admin role via `RT_ADMIN_EMAILS`.
+  - `requireAdminUser()` (`src/server/admin.ts`) enforces admin role via `RT_ADMIN_USER_IDS`.
   - Middleware gate: `middleware.ts` enforces signed-in for pages and applies waitlist gate for page access.
 - Validation:
   - Zod request schemas in `src/server/schemas.ts` (projects/chat/merge/branch/edit/artefact).
@@ -260,7 +260,7 @@ Items that require you to verify or change configuration in Supabase/Vercel (or 
 - [ ] Vercel env: confirm `RT_STORE=pg` in production (git mode is not multi-tenant safe as implemented; see findings).
 - [ ] Vercel env: confirm `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set for all environments that should require auth.
 - [ ] Vercel env: confirm `SUPABASE_SERVICE_ROLE_KEY` is set server-side and available to the runtime that executes `middleware.ts` (Edge vs Node runtime behavior differs).
-- [ ] Vercel env: confirm `RT_WAITLIST_ENFORCE` and `RT_ADMIN_EMAILS` are set as intended in production, and that changes to allowlist/admin lists are controlled.
+- [ ] Vercel env: confirm `RT_WAITLIST_ENFORCE` and `RT_ADMIN_USER_IDS` are set as intended in production, and that changes to allowlist/admin lists are controlled.
 - [ ] Supabase SQL: confirm migrations are applied (especially RLS + RPC defs under `supabase/migrations/**`).
 - [ ] Supabase Auth settings: verify allowed redirect URLs include `https://<your-domain>/auth/callback` and password reset redirects match `RT_APP_ORIGIN`.
 - [ ] Supabase Auth providers: confirm there are no enabled flows (e.g., magic links / OAuth) that can create sessions without passing the app’s allowlist gate, unless you intentionally allow that.

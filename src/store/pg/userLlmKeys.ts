@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import type { LLMProvider } from '@/src/server/llm';
+import { createSupabaseAdminClient } from '@/src/server/supabase/admin';
 
 type KeyedProvider = Exclude<LLMProvider, 'mock'>;
 
@@ -60,10 +61,13 @@ export async function rtSetUserLlmKeyV1(input: { provider: KeyedProvider; secret
   }
 }
 
-export async function rtGetUserLlmKeyV1(input: { provider: LLMProvider }): Promise<string | null> {
+export async function rtGetUserLlmKeyServerV1(input: { userId: string; provider: LLMProvider }): Promise<string | null> {
   assertKeyedProvider(input.provider);
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_user_llm_key_v1', { p_provider: input.provider });
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.rpc('rt_get_user_llm_key_server_v1', {
+    p_user_id: input.userId,
+    p_provider: input.provider
+  });
   if (error) {
     throw new Error(formatRpcError(error));
   }

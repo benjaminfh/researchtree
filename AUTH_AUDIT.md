@@ -96,7 +96,7 @@ Policy snapshot (from migrations; needs DB confirmation that migrations are appl
 - `public.commit_order` (RLS: yes) — `select/insert` member.
 - `public.artefact_drafts` (RLS: yes) — `select/insert/update` `user_id = auth.uid()` (no membership check).
 - `public.project_user_prefs` (RLS: yes) — `select/insert/update` `user_id = auth.uid()` AND `rt_is_project_member(project_id)`.
-- `public.user_llm_keys` (RLS: yes) — `select/insert/update` `user_id = auth.uid()` (see secret UUID concerns).
+- `public.user_llm_keys` (RLS: yes) — `select` `user_id = auth.uid()`; direct `insert/update` removed (writes via RPC only).
 - `public.email_allowlist` (RLS: yes) — no policies defined (effectively deny-by-default for anon/authenticated).
 - `public.waitlist_requests` (RLS: yes) — no policies defined (effectively deny-by-default for anon/authenticated).
 
@@ -141,28 +141,129 @@ Secrets / Vault isolation checks (as B)
 - Execute the cross-tenant tests above in a non-prod environment to validate the Vault ownership assumptions behind `rt_vault_decrypt_secret_compat_v1` and the `user_llm_keys` update policy.
 
 ## AUDIT FINDING TODOs
-- [ ] Confirm waitlist enforcement is not bypassable: `middleware.ts` allowlist check currently fails open (`res.ok` false ➜ allow). Decide desired fail-closed vs fail-open behavior and threat model.
+- [x] Fix waitlist gate fail-open in `middleware.ts` (fail closed on allowlist lookup failure/timeout).
+- [ ] Verify waitlist gate behavior in a live deploy (simulate Supabase allowlist lookup failure; confirm it blocks as intended).
 - [ ] Verify `/admin/waitlist` access control: ensure only intended admins can invoke service-role operations (server-side authz + no client exposure).
 - [ ] Confirm no other service-role usage exists (beyond `middleware.ts` and `src/server/waitlist.ts`), including any hidden runtime config or edge functions.
-- [ ] Evaluate admin identity trust: admin gating uses `RT_ADMIN_EMAILS` vs roles/claims; confirm email verification assumptions and threat model for email changes.
-- [ ] Validate `public.user_llm_keys` RLS policy safety: `user_llm_keys_update_self` appears to allow setting `*_secret_id` to arbitrary UUIDs on the user’s row; assess whether this could be abused to decrypt other Vault secrets if an attacker obtains/guesses a secret UUID.
+- [ ] Evaluate admin identity trust: admin gating uses env allowlist (`RT_ADMIN_USER_IDS`); confirm threat model for admin list changes.
+- [x] Remove direct INSERT/UPDATE surface on `public.user_llm_keys` (force writes through RPCs; reduces PF-2 blast radius).
 - [ ] Confirm production store selection: `RT_STORE=git` stores provenance/messages on disk (not governed by Postgres RLS); ensure prod uses `RT_STORE=pg` if RLS is a requirement for protecting message content.
-- [ ] Urgent: assess `public.rt_vault_decrypt_secret_compat_v1(uuid)` (added in `supabase/migrations/2025-12-21_0003_rt_user_llm_keys_v1_read_vault_compat.sql`) — it is `SECURITY DEFINER` and is granted to `authenticated` but appears to accept an arbitrary secret UUID and return decrypted secret; confirm whether Vault enforces per-user ownership internally, and if not, treat as a vault-wide secret disclosure vector.
-- [ ] Review `public.artefact_drafts` policies: insert/select/update are gated only by `user_id = auth.uid()` (no `rt_is_project_member(project_id)` check), which may allow cross-project draft insertion if an attacker learns a `project_id` (side-channel/DoS risk).
+- [x] PF-1 confirmed: `public.rt_vault_decrypt_secret_compat_v1(uuid)` allows arbitrary Vault secret decryption by any authenticated user.
+- [x] Apply mitigation migration `supabase/migrations/2025-12-21_0006_rt_vault_decrypt_helper_lockdown.sql` in Supabase and verify `authenticated` can no longer execute it.
+- [x] Apply follow-up: revoke client plaintext key reader (`supabase/migrations/2025-12-21_0008_rt_user_llm_keys_revoke_client_plaintext_reader.sql`) and use service-role-only server reader (`supabase/migrations/2025-12-21_0007_rt_user_llm_keys_server_reader_v1.sql`).
+- [x] Require project membership for `public.artefact_drafts` policies (prevents cross-project draft insertion).
+- [x] Verify `public.artefact_drafts` membership enforcement in live DB after applying migrations (policy predicates confirmed via `pg_policies`).
 
 # Preliminary Findings (Static)
 These are based on repo/migrations review (not yet validated against a live DB).
 
 ## High / Critical
 - **Potential vault-wide secret disclosure via helper RPC**: `public.rt_vault_decrypt_secret_compat_v1(uuid)` is `SECURITY DEFINER`, granted to `authenticated`, and appears to attempt multiple Vault read APIs for an arbitrary secret UUID without enforcing ownership in the wrapper. If Vault ownership is enforced only by RLS/privileges that the definer bypasses, this could allow any authenticated user to decrypt secrets outside their account.
-- **Secret UUID capability risk**: `public.user_llm_keys` allows callers to `update` their row; if direct updates are permitted, a user could set `*_secret_id` columns to a UUID they control/obtained and then use `rt_get_user_llm_key_v1(...)` to decrypt it. Impact depends on whether secret UUIDs can be discovered and whether Vault enforces per-user ownership independent of RLS.
+- **Secret UUID capability risk (mitigated; pending verification)**: previously, if direct updates were permitted, a user could set `public.user_llm_keys.*_secret_id` to an arbitrary UUID and then use `rt_get_user_llm_key_v1(...)` to decrypt it. Direct table INSERT/UPDATE for `authenticated` is now removed via migration; remaining risk depends primarily on PF-1.
 
 ## Medium
-- **Waitlist auth gate fail-open**: `middleware.ts` allowlist check returns `true` on non-OK response (network/permission errors) which bypasses enforced waitlist gating.
+- **Waitlist auth gate fail-open (fixed in repo; pending deploy verification)**: `middleware.ts` allowlist check used to return `true` on non-OK response (network/permission errors), bypassing enforced waitlist gating.
 - **Cross-project artefact draft insertion**: `public.artefact_drafts` policies do not enforce project membership, allowing inserts for any existing `project_id` if known (integrity/DoS/side-channel risk).
 
 ## Low / Informational
 - **No persisted token ledger observed**: token budgeting appears computed in-app; confirm whether future requirements include persistent LLM usage accounting (and if so, ensure RLS is applied).
+
+## Finding Details (Static)
+### PF-1 — Vault decrypt helper RPC may be over-broad (Critical, if exploitable)
+What it is
+- `supabase/migrations/2025-12-21_0003_rt_user_llm_keys_v1_read_vault_compat.sql` adds `public.rt_vault_decrypt_secret_compat_v1(p_secret_id uuid) returns text` as `SECURITY DEFINER` and grants `execute` to `authenticated`.
+- The function takes an arbitrary UUID and attempts several Vault “read/decrypt” APIs until one works, then returns plaintext.
+
+Why it matters
+- A generic “decrypt-by-UUID” capability is extremely high risk if the underlying Vault API calls do not enforce caller ownership/authorization in a way that is not bypassed by `SECURITY DEFINER`.
+
+Exploit sketch (if Vault doesn’t enforce ownership independently)
+- Attacker (any authenticated user) obtains a victim’s secret UUID (from logs, error messages, accidental exposure, backups, etc.).
+- Attacker calls `rt_vault_decrypt_secret_compat_v1(<victim_uuid>)` and receives plaintext secret.
+
+What must be verified to confirm/refute
+- Whether each Vault access path used by the helper enforces per-secret authorization independently (not merely via table/view RLS that a definer might bypass).
+- Function owner/definer and privilege model in the actual Supabase project (who owns this function after migration apply).
+
+Recommended direction (even if “not exploitable”)
+- Remove/avoid granting a generic decrypt-by-UUID function to `authenticated`; keep decryption bound to the current user and to a secret reference that the caller cannot arbitrarily set.
+
+Status (confirmed)
+- Confirmed exploitable in live Supabase: `public.rt_vault_decrypt_secret_compat_v1(uuid)` is `SECURITY DEFINER`, owned by `postgres`, and executable by `anon`/`authenticated`; any authenticated user can decrypt arbitrary Vault secrets by UUID (plaintext returned).
+- Immediate mitigation added in repo: `supabase/migrations/2025-12-21_0006_rt_vault_decrypt_helper_lockdown.sql` revokes `EXECUTE` from `public/anon/authenticated` (keeps `service_role`).
+- Follow-up hardening added in repo: secrets are now “server arms-length” by revoking client `EXECUTE` on plaintext reader `rt_get_user_llm_key_v1(text)` and adding a service-role-only reader `rt_get_user_llm_key_server_v1(uuid,text)`; app server code uses the service role to fetch plaintext keys.
+- Mitigations applied to Supabase (operator-confirmed): `0006` + `0007` + `0008`.
+
+### PF-2 — `user_llm_keys` secret-id swapping (High, defense-in-depth)
+What it is
+- `public.user_llm_keys` has RLS that allows `update` where `user_id = auth.uid()`; RLS does not restrict which columns can be updated.
+- This means the caller may be able to set `openai_secret_id/gemini_secret_id/anthropic_secret_id` to an arbitrary UUID (depending on table/column privileges in the live DB).
+
+Why it matters
+- If a user can set their `*_secret_id` to some other user’s secret UUID, any “read my secret” function becomes a potential confused-deputy.
+- Risk amplifies if PF-1 is exploitable (or if any other decrypt-by-UUID path exists).
+
+Verification steps
+- Confirm actual table privileges for `authenticated` on `public.user_llm_keys` (especially UPDATE).
+- Attempt the swap+read scenario described in Step 6 test plan in a non-prod environment.
+
+Status
+- Mitigation added in repo: `supabase/migrations/2025-12-21_0005_rt_user_llm_keys_remove_direct_write_policies.sql` drops direct INSERT/UPDATE RLS policies and revokes table write privileges for `anon`/`authenticated` (forces writes through RPCs).
+- Migration applied to Supabase (operator-confirmed).
+
+Verification checklist (run in Supabase SQL editor)
+- Confirm policies no longer include direct insert/update policies:
+  - `select policyname, cmd, roles from pg_policies where schemaname = 'public' and tablename = 'user_llm_keys' order by policyname;`
+  - Expect only the `SELECT` policy (`user_llm_keys_select_self`).
+- Confirm table-level privileges are reduced:
+  - `select grantee, privilege_type from information_schema.role_table_grants where table_schema='public' and table_name='user_llm_keys' order by grantee, privilege_type;`
+  - Expect `authenticated` does not have INSERT/UPDATE/DELETE on `public.user_llm_keys`.
+
+### PF-3 — Waitlist allowlist check fails open (Medium)
+What it is
+- `middleware.ts` uses the service role to query `email_allowlist`, but returns allowlisted=true when the HTTP response is non-OK.
+
+Why it matters
+- A transient Supabase outage, misconfiguration, or permission issue can convert an “invite-only” gate into “open sign-in” (availability → authz bypass).
+
+Verification steps
+- Decide desired behavior (fail-closed for AppSec) and confirm deploy monitoring/alerts for this path.
+
+Status
+- Fixed in repo: `middleware.ts` now fails closed on allowlist lookup errors/timeouts and also fails closed when `RT_WAITLIST_ENFORCE=true` but `SUPABASE_SERVICE_ROLE_KEY`/`NEXT_PUBLIC_SUPABASE_URL` are missing (admins bypass via `RT_ADMIN_USER_IDS`).
+- Pending: verify in a live deploy (including behavior under transient Supabase failure).
+
+### PF-4 — `artefact_drafts` policies do not enforce project membership (Medium)
+What it is
+- `supabase/migrations/2025-12-19_0005_rt_artefact_drafts.sql` gates by `user_id = auth.uid()` only (no `rt_is_project_member(project_id)`).
+
+Why it matters
+- Enables writing draft rows into any existing project namespace if `project_id` is known (integrity/DoS/abuse). Likely not a confidentiality issue by itself.
+
+Status
+- Fixed in repo via `supabase/migrations/2025-12-21_0004_rt_artefact_drafts_require_membership.sql` (adds `public.rt_is_project_member(project_id)` to select/insert/update policies).
+- Migration applied to Supabase (operator-confirmed).
+- Pending: verify behavior in the live Supabase project (see verification checklist below).
+
+Verification checklist (run in Supabase SQL editor)
+- Confirm policies include membership:
+  - `select polname, qual, with_check from pg_policies where schemaname = 'public' and tablename = 'artefact_drafts' order by polname;`
+  - Expect `user_id = auth.uid()` AND `public.rt_is_project_member(project_id)` in `qual` / `with_check` for select/insert/update.
+- Negative test (user B, not a member of project A):
+  - `select set_config('request.jwt.claims', json_build_object('sub','<B_UUID>','role','authenticated')::text, true);`
+  - `set local role authenticated;`
+  - Attempt insert into A’s project: should be blocked by RLS.
+- Positive test (user A, member of project A): same insert should succeed.
+
+Verified (operator evidence)
+- `pg_policies` now shows `artefact_drafts_select_owner`, `artefact_drafts_write_owner`, and `artefact_drafts_update_owner` predicates include both `user_id = auth.uid()` and `rt_is_project_member(project_id)`.
+
+### PF-5 — No LLM token ledger tables found (Low/Info)
+What it is
+- No DB tables found for token usage/metering; token budgeting appears computed in-app.
+
+Why it matters
+- If you later add persistent token accounting, it becomes a new sensitive surface that must be RLS-protected.
 
 ## Remediation Recommendations
 - **Secrets: remove generic decrypt surface**
@@ -179,13 +280,14 @@ These are based on repo/migrations review (not yet validated against a live DB).
   - Add an automated cross-tenant regression test suite (staging-only) for `projects/nodes/artefacts/user_llm_keys` and for the Vault decryption path.
 
 # AUDIT TODO LIST
-- [ ] Identify auth provider, JWT claims, and tenant model (user/org/team).
-- [ ] Enumerate DB roles (anon/authenticated/service) and where each is used in code.
-- [ ] List all user-data tables/views/functions; tag message content, token ledgers, secrets.
-- [ ] For each user-data table: verify RLS enabled; flag any missing/disabled tables.
-- [ ] For each user-data table: enumerate policies for CRUD and validate tenant scoping.
-- [ ] Review views/functions/triggers for security-definer/RLS-bypass patterns.
-- [ ] Trace all app data access paths; confirm they don’t use service role unnecessarily.
-- [ ] Identify and audit any service-role usages; ensure explicit tenant checks + logging.
+- [x] Identify auth provider and tenant model (user/org/team).
+- [ ] Identify JWT claims used for authz/RLS decisions (e.g., `auth.jwt()` usage, role/tenant claims).
+- [x] Enumerate DB roles (anon/authenticated/service) and where each is used in code.
+- [x] List all user-data tables/views/functions; tag message content, token ledgers, secrets.
+- [x] For each user-data table: verify RLS enabled; flag any missing/disabled tables.
+- [x] For each user-data table: enumerate policies for CRUD and validate tenant scoping.
+- [x] Review views/functions/triggers for security-definer/RLS-bypass patterns.
+- [x] Trace all app data access paths; confirm they don’t use service role unnecessarily.
+- [x] Identify and audit any service-role usages; ensure explicit tenant checks + logging.
 - [ ] Run cross-tenant negative tests for messages, token/accounting, secrets, and attachments.
-- [ ] Document findings with severity + recommended fixes; prepare a re-test checklist.
+- [x] Document findings with severity + recommended fixes; prepare a re-test checklist.
