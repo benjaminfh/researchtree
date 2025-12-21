@@ -27,6 +27,10 @@ export default function CheckEmailPage({
   const email = (searchParams?.email ?? '').trim();
   const mode = searchParams?.mode === 'reset' ? 'reset' : 'confirm';
   const maskedEmail = email ? maskEmail(email) : null;
+  const loginParams = new URLSearchParams();
+  loginParams.set('redirectTo', redirectTo);
+  if (email) loginParams.set('email', email);
+  const loginHref = `/login?${loginParams.toString()}#existing-user`;
 
   return (
     <main className="min-h-screen bg-white px-6 py-12">
@@ -58,16 +62,10 @@ export default function CheckEmailPage({
 
           <div className="flex flex-wrap items-center gap-3">
             <Link
-              href={`/login?redirectTo=${encodeURIComponent(redirectTo)}#existing-user`}
+              href={loginHref}
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
               Back to sign in
-            </Link>
-            <Link
-              href={redirectTo}
-              className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
-            >
-              Continue browsing
             </Link>
           </div>
         </div>

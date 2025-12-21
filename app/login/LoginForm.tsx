@@ -20,10 +20,11 @@ function SubmitButton({ label }: { label: string }) {
 
 const initialState = { error: null as string | null };
 
-export function LoginForm({ redirectTo }: { redirectTo: string }) {
+export function LoginForm({ redirectTo, initialEmail }: { redirectTo: string; initialEmail?: string | null }) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
   const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
+  const [emailValue, setEmailValue] = useState(initialEmail ?? '');
 
   useEffect(() => {
     if (window.location.hash === '#existing-user') {
@@ -51,6 +52,8 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
               name="email"
               type="email"
               autoComplete="email"
+              value={emailValue}
+              onChange={(event) => setEmailValue(event.target.value)}
               required
             />
           </label>
@@ -94,6 +97,8 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
               name="email"
               type="email"
               autoComplete="email"
+              value={emailValue}
+              onChange={(event) => setEmailValue(event.target.value)}
               required
             />
           </label>
