@@ -1,7 +1,7 @@
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext } from '@/src/server/context';
-import { encodeChunk, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { encodeChunk, getDefaultModelForProvider, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
@@ -35,6 +35,21 @@ function labelForProvider(provider: LLMProvider): string {
   return 'Mock';
 }
 
+function assertThinkingSupported(provider: LLMProvider, thinking: ThinkingSetting | undefined) {
+  if (provider !== 'gemini') return;
+  if (!thinking || thinking === 'off') return;
+
+  const modelName = getDefaultModelForProvider('gemini');
+  const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
+  const isFlash = /flash/i.test(modelName);
+  if (isGemini3 && !isFlash && thinking === 'medium') {
+    throw badRequest(
+      `Gemini 3 Pro does not support Thinking: Medium (model=${modelName}). Choose Low or High and try again.`,
+      { provider, modelName, thinking, supportedThinking: ['off', 'low', 'high'] }
+    );
+  }
+}
+
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     const requestId = uuidv4();
@@ -50,6 +65,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const { message, intent, llmProvider, ref, thinking } = parsed.data as typeof parsed.data & { thinking?: ThinkingSetting };
     const provider = resolveLLMProvider(llmProvider);
+    assertThinkingSupported(provider, thinking);
     const tokenLimit = await getProviderTokenLimit(provider);
     const apiKey = await requireUserApiKeyForProvider(provider);
 

@@ -539,8 +539,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     [provider, providerOptions]
   );
 
+  const activeProviderModel = activeProvider?.defaultModel ?? '';
+  const isGemini3Pro =
+    provider === 'gemini' && /(^|\/)gemini-3/i.test(activeProviderModel) && !/flash/i.test(activeProviderModel);
+  const thinkingUnsupportedError =
+    isGemini3Pro && thinking === 'medium'
+      ? `Gemini 3 Pro does not support Thinking: Medium (model=${activeProviderModel}). Choose Low or High.`
+      : null;
+
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
+    if (thinkingUnsupportedError) {
+      setThinkingMenuOpen(true);
+      return;
+    }
     shouldScrollToBottomRef.current = true;
     const sent = draft;
     optimisticDraftRef.current = sent;
@@ -1732,18 +1744,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   </button>
                 ) : null}
 
-                {state.error ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {state.error}
-                    <button
-                      type="button"
-                      onClick={() => void sendDraft()}
-                      className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : null}
+	                {state.error || thinkingUnsupportedError ? (
+	                  <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+	                    {state.error ?? thinkingUnsupportedError}
+	                    {state.error ? (
+	                      <button
+	                        type="button"
+	                        onClick={() => void sendDraft()}
+	                        className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+	                      >
+	                        Retry
+	                      </button>
+	                    ) : null}
+	                  </div>
+	                ) : null}
               </section>
 
             <div className="hidden lg:flex h-full w-6 items-stretch">
@@ -2182,22 +2196,34 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         role="menu"
                         className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
                       >
-                        {THINKING_SETTINGS.map((setting) => {
-                          const active = thinking === setting;
-                          return (
-                            <button
-                              key={setting}
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={active}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
-                              }`}
-                              onClick={() => {
-                                setThinking(setting);
-                                setThinkingMenuOpen(false);
-                              }}
-                            >
+	                        {THINKING_SETTINGS.map((setting) => {
+	                          const active = thinking === setting;
+	                          const disabled = state.isStreaming || (isGemini3Pro && setting === 'medium');
+	                          return (
+	                            <button
+	                              key={setting}
+	                              type="button"
+	                              role="menuitemradio"
+	                              aria-checked={active}
+	                              disabled={disabled}
+	                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+	                                disabled
+	                                  ? 'cursor-not-allowed text-slate-400'
+	                                  : active
+	                                    ? 'bg-primary/10 text-primary'
+	                                    : 'text-slate-700 hover:bg-primary/10'
+	                              }`}
+	                              title={
+	                                disabled && isGemini3Pro && setting === 'medium'
+	                                  ? `Not supported for ${activeProviderModel}`
+	                                  : undefined
+	                              }
+	                              onClick={() => {
+	                                if (disabled) return;
+	                                setThinking(setting);
+	                                setThinkingMenuOpen(false);
+	                              }}
+	                            >
                               <span>{THINKING_SETTING_LABELS[setting]}</span>
                               {active ? <span aria-hidden="true">✓</span> : null}
                             </button>
@@ -2216,12 +2242,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       <XMarkIcon className="h-5 w-5" />
                     </button>
                   ) : null}
-                  <button
-                    type="submit"
-                    disabled={state.isStreaming || !draft.trim()}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Send message"
-                  >
+	                  <button
+	                    type="submit"
+	                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+	                    className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+	                    aria-label="Send message"
+	                  >
                     <ArrowUpIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -2467,38 +2493,44 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 required
               />
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                <span className="font-semibold text-slate-700">Provider</span>
-                <select
-                  value={editProvider}
-                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
-                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  disabled={isEditing}
-                >
-                  {providerOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                <span className="font-semibold text-slate-700">Thinking</span>
-                <select
-                  value={editThinking}
-                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
-                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  disabled={isEditing}
-                >
-                  {THINKING_SETTINGS.map((setting) => (
-                    <option key={setting} value={setting}>
-                      {THINKING_SETTING_LABELS[setting]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+	            <div className="mt-4 flex flex-wrap items-center gap-2">
+	              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+	                <span className="font-semibold text-slate-700">Provider</span>
+	                <select
+	                  value={editProvider}
+	                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
+	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+	                  disabled={isEditing}
+	                >
+	                  {providerOptions.map((option) => (
+	                    <option key={option.id} value={option.id}>
+	                      {option.label}
+	                    </option>
+	                  ))}
+	                </select>
+	              </div>
+	              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+	                <span className="font-semibold text-slate-700">Thinking</span>
+	                <select
+	                  value={editThinking}
+	                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
+	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+	                  disabled={isEditing}
+	                >
+	                  {THINKING_SETTINGS.map((setting) => {
+	                    const editModel = providerOptions.find((option) => option.id === editProvider)?.defaultModel ?? '';
+	                    const editIsGemini3Pro =
+	                      editProvider === 'gemini' && /(^|\/)gemini-3/i.test(editModel) && !/flash/i.test(editModel);
+	                    const disabled = editIsGemini3Pro && setting === 'medium';
+	                    return (
+	                      <option key={setting} value={setting} disabled={disabled}>
+	                        {THINKING_SETTING_LABELS[setting]}
+	                      </option>
+	                    );
+	                  })}
+	                </select>
+	              </div>
+	            </div>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800">Updated content</label>
               <textarea

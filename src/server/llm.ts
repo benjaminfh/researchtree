@@ -9,7 +9,6 @@ import type { ChatMessage } from './context';
 import {
   toAnthropicThinking,
   toGemini25ThinkingBudget,
-  toGemini3ThinkingLevel,
   toOpenAIReasoningEffort,
   type ThinkingSetting
 } from '@/src/shared/thinking';
@@ -186,20 +185,20 @@ async function* streamFromGemini(
 
   const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
   const isFlashModel = /flash/i.test(modelName);
-  const thinkingConfig =
-    typeof thinking === 'string'
-      ? isGemini3
-        ? thinking === 'off'
-          ? isFlashModel
-            ? { thinkingLevel: 'minimal' }
-            : null
-          : { thinkingLevel: toGemini3ThinkingLevel(thinking) ?? undefined }
-        : { thinkingBudget: toGemini25ThinkingBudget(thinking) }
-      : null;
-
   const request: any = { contents };
-  if (thinkingConfig) {
-    request.generationConfig = { thinkingConfig };
+
+  if (typeof thinking === 'string') {
+    if (isGemini3) {
+      if (!isFlashModel && thinking === 'medium') {
+        // Per Gemini docs: Gemini 3 Pro supports only "low" and "high".
+        throw new Error(`Gemini 3 Pro does not support thinking level "medium". Choose Low or High and try again.`);
+      }
+      if (thinking !== 'off') {
+        request.generationConfig = { thinkingConfig: { thinkingLevel: thinking } };
+      }
+    } else {
+      request.generationConfig = { thinkingConfig: { thinkingBudget: toGemini25ThinkingBudget(thinking) } };
+    }
   }
 
   function sanitizeGeminiErrorMessage(message: string): string {
@@ -212,11 +211,12 @@ async function* streamFromGemini(
     return typeof status === 'number' ? status : null;
   }
 
-  async function tryFallbackNonStreamingOn405(error: unknown): Promise<string | null> {
+  async function tryFallbackNonStreamingOn405(error: unknown, request: any): Promise<string | null> {
     const status = getGeminiHttpStatus(error);
     if (status !== 405) return null;
     // Some Gemini models/endpoints do not support streaming.
     try {
+      console.warn('[LLM] Gemini streaming not supported; falling back to non-streaming.', { modelName, status });
       const result = await model.generateContent(request);
       const text = result.response.text();
       if (text) {
@@ -255,7 +255,7 @@ async function* streamFromGemini(
   try {
     stream = await model.generateContentStream(request);
   } catch (error) {
-    const fallbackText = await tryFallbackNonStreamingOn405(error);
+    const fallbackText = await tryFallbackNonStreamingOn405(error, request);
     if (fallbackText != null) {
       yield { type: 'text', content: fallbackText } satisfies LLMStreamChunk;
       return;
@@ -290,7 +290,7 @@ async function* streamFromGemini(
       }
     }
   } catch (error) {
-    const fallbackText = await tryFallbackNonStreamingOn405(error);
+    const fallbackText = await tryFallbackNonStreamingOn405(error, request);
     if (fallbackText != null) {
       yieldedAny = true;
       yield { type: 'text', content: fallbackText } satisfies LLMStreamChunk;
