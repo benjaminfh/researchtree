@@ -1,4 +1,5 @@
-import type { LLMProvider } from '@/src/server/llm';
+import type { LLMProvider } from '@/src/shared/llmProvider';
+import { LLM_ENDPOINTS } from '@/src/shared/llmCapabilities';
 
 export interface ProviderEnvConfig {
   enabled: boolean;
@@ -69,8 +70,15 @@ export function getDefaultProvider(): LLMProvider {
 export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
   if (provider === 'openai') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_OPENAI, true);
-    const allowedModels = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_OPENAI);
-    const fallbackModel = 'gpt-5.2';
+    const supportedModels = LLM_ENDPOINTS.openai.models;
+    const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_OPENAI);
+    if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
+      throw new Error(
+        `LLM_ALLOWED_MODELS_OPENAI must be a subset of supported models (${supportedModels.join(', ')})`
+      );
+    }
+    const allowedModels = allowedFromEnv ?? supportedModels;
+    const fallbackModel = LLM_ENDPOINTS.openai.defaultModel;
     const envModel = (process.env.OPENAI_MODEL ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {
@@ -81,8 +89,15 @@ export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
 
   if (provider === 'gemini') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_GEMINI, true);
-    const allowedModels = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_GEMINI);
-    const fallbackModel = 'gemini-3-pro-preview';
+    const supportedModels = LLM_ENDPOINTS.gemini.models;
+    const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_GEMINI);
+    if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
+      throw new Error(
+        `LLM_ALLOWED_MODELS_GEMINI must be a subset of supported models (${supportedModels.join(', ')})`
+      );
+    }
+    const allowedModels = allowedFromEnv ?? supportedModels;
+    const fallbackModel = LLM_ENDPOINTS.gemini.defaultModel;
     const envModel = (process.env.GEMINI_MODEL ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {
@@ -93,8 +108,15 @@ export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
 
   if (provider === 'anthropic') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_ANTHROPIC, false);
-    const allowedModels = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_ANTHROPIC);
-    const fallbackModel = 'claude-3-5-sonnet-latest';
+    const supportedModels = LLM_ENDPOINTS.anthropic.models;
+    const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_ANTHROPIC);
+    if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
+      throw new Error(
+        `LLM_ALLOWED_MODELS_ANTHROPIC must be a subset of supported models (${supportedModels.join(', ')})`
+      );
+    }
+    const allowedModels = allowedFromEnv ?? supportedModels;
+    const fallbackModel = LLM_ENDPOINTS.anthropic.defaultModel;
     const envModel = (process.env.ANTHROPIC_MODEL ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {

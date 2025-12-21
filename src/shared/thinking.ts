@@ -1,4 +1,4 @@
-import type { LLMProvider } from '@/src/server/llm';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 
 export const THINKING_SETTINGS = ['off', 'low', 'medium', 'high'] as const;
 
@@ -11,7 +11,7 @@ export const THINKING_SETTING_LABELS: Record<ThinkingSetting, string> = {
   high: 'High'
 };
 
-export type ThinkingProvider = LLMProvider | 'anthropic';
+export type ThinkingProvider = LLMProvider;
 
 export type OpenAIReasoningEffort = 'low' | 'medium' | 'high';
 

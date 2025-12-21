@@ -8,14 +8,14 @@ import {
 import type { ChatMessage } from './context';
 import {
   toAnthropicThinking,
-  toGemini25ThinkingBudget,
-  toGemini3ThinkingLevel,
   toOpenAIReasoningEffort,
   type ThinkingSetting
 } from '@/src/shared/thinking';
+import { buildGeminiThinkingParams, buildOpenAIThinkingParams } from '@/src/shared/llmCapabilities';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
 
-export type LLMProvider = 'openai' | 'gemini' | 'anthropic' | 'mock';
+export type { LLMProvider } from '@/src/shared/llmProvider';
 
 export interface LLMStreamChunk {
   type: 'text';
@@ -32,7 +32,6 @@ export interface LLMStreamOptions {
 
 const encoder = new TextEncoder();
 
-const DEFAULT_GEMINI_MODEL = 'gemini-3-pro-preview';
 const DEFAULT_ANTHROPIC_MAX_TOKENS = 2048;
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
@@ -45,7 +44,6 @@ export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {
   const config = getProviderEnvConfig(provider);
-  if (provider === 'gemini') return config.defaultModel || DEFAULT_GEMINI_MODEL;
   return config.defaultModel;
 }
 
@@ -88,9 +86,7 @@ async function* streamFromOpenAI(
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing OpenAI API key, using mock provider instead.');
-    yield* streamFromMock(messages, signal);
-    return;
+    throw new Error('Missing OpenAI API key. Add one in Profile to use this provider.');
   }
 
   const openAIClient = new OpenAI({ apiKey });
@@ -100,7 +96,6 @@ async function* streamFromOpenAI(
     content: message.content
   })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
-  const reasoningEffort = thinking ? toOpenAIReasoningEffort(thinking) : null;
   const baseRequest = {
     model: getDefaultModelForProvider('openai'),
     messages: formattedMessages,
@@ -108,19 +103,10 @@ async function* streamFromOpenAI(
     stream: true
   } as const;
 
-  let stream: any;
-  try {
-    stream = await openAIClient.chat.completions.create({
-      ...baseRequest,
-      ...(reasoningEffort ? ({ reasoning_effort: reasoningEffort } as any) : null)
-    } as any);
-  } catch (error) {
-    if (reasoningEffort) {
-      stream = await openAIClient.chat.completions.create(baseRequest as any);
-    } else {
-      throw error;
-    }
-  }
+  const stream: any = await openAIClient.chat.completions.create({
+    ...baseRequest,
+    ...buildOpenAIThinkingParams(thinking)
+  } as any);
 
   if (signal) {
     signal.addEventListener('abort', () => {
@@ -158,9 +144,7 @@ async function* streamFromGemini(
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing Gemini API key, using mock provider instead.');
-    yield* streamFromMock(messages, signal);
-    return;
+    throw new Error('Missing Gemini API key. Add one in Profile to use this provider.');
   }
 
   const geminiClient = new GoogleGenerativeAI(apiKey);
@@ -184,22 +168,13 @@ async function* streamFromGemini(
   const model = pickModel(modelName);
   let stream: any;
 
-  const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
-  const isFlashModel = /flash/i.test(modelName);
-  const thinkingConfig =
-    typeof thinking === 'string'
-      ? isGemini3
-        ? thinking === 'off'
-          ? isFlashModel
-            ? { thinkingLevel: 'minimal' }
-            : null
-          : { thinkingLevel: toGemini3ThinkingLevel(thinking) ?? undefined }
-        : { thinkingBudget: toGemini25ThinkingBudget(thinking) }
-      : null;
-
   const request: any = { contents };
-  if (thinkingConfig) {
-    request.generationConfig = { thinkingConfig };
+
+  if (typeof thinking === 'string') {
+    const params = buildGeminiThinkingParams(modelName, thinking);
+    if (params.generationConfig) {
+      request.generationConfig = params.generationConfig;
+    }
   }
 
   function sanitizeGeminiErrorMessage(message: string): string {
@@ -212,26 +187,10 @@ async function* streamFromGemini(
     return typeof status === 'number' ? status : null;
   }
 
-  async function tryFallbackNonStreamingOn405(error: unknown): Promise<string | null> {
+  function throwIfStreamingNotSupported(error: unknown): void {
     const status = getGeminiHttpStatus(error);
-    if (status !== 405) return null;
-    // Some Gemini models/endpoints do not support streaming.
-    try {
-      const result = await model.generateContent(request);
-      const text = result.response.text();
-      if (text) {
-        return text;
-      }
-      throw new Error(`Gemini returned an empty response (model=${modelName}).`);
-    } catch (nested) {
-      const nestedStatus = getGeminiHttpStatus(nested);
-      const nestedMsg = nested instanceof Error ? nested.message : String(nested);
-      throw new Error(
-        sanitizeGeminiErrorMessage(
-          `Gemini request failed: [${nestedStatus ?? status ?? ''}] ${nestedMsg} (model=${modelName})`.trim()
-        )
-      );
-    }
+    if (status !== 405) return;
+    throw new Error(`Gemini model ${modelName} does not support streaming (HTTP 405).`);
   }
 
   function describeGeminiResponse(response: EnhancedGenerateContentResponse): Record<string, unknown> {
@@ -255,11 +214,7 @@ async function* streamFromGemini(
   try {
     stream = await model.generateContentStream(request);
   } catch (error) {
-    const fallbackText = await tryFallbackNonStreamingOn405(error);
-    if (fallbackText != null) {
-      yield { type: 'text', content: fallbackText } satisfies LLMStreamChunk;
-      return;
-    }
+    throwIfStreamingNotSupported(error);
     const status = getGeminiHttpStatus(error);
     if (error instanceof GoogleGenerativeAIFetchError || status != null) {
       throw new Error(
@@ -290,12 +245,7 @@ async function* streamFromGemini(
       }
     }
   } catch (error) {
-    const fallbackText = await tryFallbackNonStreamingOn405(error);
-    if (fallbackText != null) {
-      yieldedAny = true;
-      yield { type: 'text', content: fallbackText } satisfies LLMStreamChunk;
-      return;
-    }
+    throwIfStreamingNotSupported(error);
     const status = getGeminiHttpStatus(error);
     if (error instanceof GoogleGenerativeAIFetchError || status != null) {
       throw new Error(
@@ -374,9 +324,7 @@ async function* streamFromAnthropic(
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing Anthropic API key, using mock provider instead.');
-    yield* streamFromMock(messages, signal);
-    return;
+    throw new Error('Missing Anthropic API key. Add one in Profile to use this provider.');
   }
 
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
@@ -418,13 +366,7 @@ async function* streamFromAnthropic(
     return res;
   };
 
-  let response = await makeRequest(baseBody);
-  if (!response.ok && baseBody.thinking) {
-    // If thinking is rejected (model/flag/beta mismatch), retry without it.
-    const retryBody = { ...baseBody };
-    delete retryBody.thinking;
-    response = await makeRequest(retryBody);
-  }
+  const response = await makeRequest(baseBody);
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');

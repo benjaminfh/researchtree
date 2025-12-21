@@ -8,6 +8,7 @@ import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
+import { getAllowedThinkingSettings, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import ReactMarkdown from 'react-markdown';
@@ -539,8 +540,22 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     [provider, providerOptions]
   );
 
+  const activeProviderModel = activeProvider?.defaultModel ?? '';
+  const allowedThinking = useMemo(
+    () => getAllowedThinkingSettings(provider, activeProviderModel),
+    [provider, activeProviderModel]
+  );
+  const thinkingUnsupportedError =
+    !activeProviderModel || allowedThinking.includes(thinking)
+      ? null
+      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${provider} (model=${activeProviderModel}).`;
+
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
+    if (thinkingUnsupportedError) {
+      setThinkingMenuOpen(true);
+      return;
+    }
     shouldScrollToBottomRef.current = true;
     const sent = draft;
     optimisticDraftRef.current = sent;
@@ -638,10 +653,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (typeof window === 'undefined') return;
     setThinkingHydratedKey(null);
     const saved = window.localStorage.getItem(thinkingStorageKey) as ThinkingSetting | null;
+    const defaultThinking = getDefaultThinkingSetting(provider, activeProviderModel);
     const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved);
-    setThinking(isValid ? (saved as ThinkingSetting) : 'medium');
+    setThinking(isValid ? (saved as ThinkingSetting) : defaultThinking);
     setThinkingHydratedKey(thinkingStorageKey);
-  }, [thinkingStorageKey]);
+  }, [thinkingStorageKey, provider, activeProviderModel]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1732,18 +1748,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   </button>
                 ) : null}
 
-                {state.error ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {state.error}
-                    <button
-                      type="button"
-                      onClick={() => void sendDraft()}
-                      className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : null}
+	                {state.error || thinkingUnsupportedError ? (
+	                  <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+	                    {state.error ?? thinkingUnsupportedError}
+	                    {state.error ? (
+	                      <button
+	                        type="button"
+	                        onClick={() => void sendDraft()}
+	                        className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+	                      >
+	                        Retry
+	                      </button>
+	                    ) : null}
+	                  </div>
+	                ) : null}
               </section>
 
             <div className="hidden lg:flex h-full w-6 items-stretch">
@@ -2182,27 +2200,29 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         role="menu"
                         className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
                       >
-                        {THINKING_SETTINGS.map((setting) => {
-                          const active = thinking === setting;
-                          return (
-                            <button
-                              key={setting}
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={active}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
-                              }`}
-                              onClick={() => {
-                                setThinking(setting);
-                                setThinkingMenuOpen(false);
-                              }}
-                            >
-                              <span>{THINKING_SETTING_LABELS[setting]}</span>
-                              {active ? <span aria-hidden="true">✓</span> : null}
-                            </button>
-                          );
-                        })}
+	                        {allowedThinking.map((setting) => {
+	                          const active = thinking === setting;
+	                          return (
+	                            <button
+	                              key={setting}
+	                              type="button"
+	                              role="menuitemradio"
+	                              aria-checked={active}
+	                              disabled={state.isStreaming}
+	                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+	                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
+	                              }`}
+	                              onClick={() => {
+	                                if (state.isStreaming) return;
+	                                setThinking(setting);
+	                                setThinkingMenuOpen(false);
+	                              }}
+	                            >
+	                              <span>{THINKING_SETTING_LABELS[setting]}</span>
+	                              {active ? <span aria-hidden="true">✓</span> : null}
+	                            </button>
+	                          );
+	                        })}
                       </div>
                     ) : null}
                   </div>
@@ -2216,12 +2236,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       <XMarkIcon className="h-5 w-5" />
                     </button>
                   ) : null}
-                  <button
-                    type="submit"
-                    disabled={state.isStreaming || !draft.trim()}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Send message"
-                  >
+	                  <button
+	                    type="submit"
+	                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+	                    className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+	                    aria-label="Send message"
+	                  >
                     <ArrowUpIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -2467,38 +2487,42 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 required
               />
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                <span className="font-semibold text-slate-700">Provider</span>
-                <select
-                  value={editProvider}
-                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
-                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  disabled={isEditing}
-                >
-                  {providerOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                <span className="font-semibold text-slate-700">Thinking</span>
-                <select
-                  value={editThinking}
-                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
-                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  disabled={isEditing}
-                >
-                  {THINKING_SETTINGS.map((setting) => (
-                    <option key={setting} value={setting}>
-                      {THINKING_SETTING_LABELS[setting]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+	            <div className="mt-4 flex flex-wrap items-center gap-2">
+	              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+	                <span className="font-semibold text-slate-700">Provider</span>
+	                <select
+	                  value={editProvider}
+	                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
+	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+	                  disabled={isEditing}
+	                >
+	                  {providerOptions.map((option) => (
+	                    <option key={option.id} value={option.id}>
+	                      {option.label}
+	                    </option>
+	                  ))}
+	                </select>
+	              </div>
+	              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+	                <span className="font-semibold text-slate-700">Thinking</span>
+	                <select
+	                  value={editThinking}
+	                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
+	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+	                  disabled={isEditing}
+	                >
+	                  {(() => {
+	                    const editModel = providerOptions.find((option) => option.id === editProvider)?.defaultModel ?? '';
+	                    const allowed = editModel ? getAllowedThinkingSettings(editProvider, editModel) : THINKING_SETTINGS;
+	                    return allowed.map((setting) => (
+	                      <option key={setting} value={setting}>
+	                        {THINKING_SETTING_LABELS[setting]}
+	                      </option>
+	                    ));
+	                  })()}
+	                </select>
+	              </div>
+	            </div>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800">Updated content</label>
               <textarea

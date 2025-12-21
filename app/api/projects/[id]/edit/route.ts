@@ -4,7 +4,7 @@ import { editMessageSchema } from '@/src/server/schemas';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { getDefaultModelForProvider, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
+import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
 
 interface RouteContext {
   params: { id: string };
@@ -53,6 +54,17 @@ export async function POST(request: Request, { params }: RouteContext) {
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const sourceRef = fromRef?.trim() || currentBranch;
     const provider = resolveLLMProvider(llmProvider);
+    const modelName = getDefaultModelForProvider(provider);
+    const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
+    const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
+    if (!thinkingValidation.ok) {
+      throw badRequest(thinkingValidation.message ?? 'Invalid thinking setting', {
+        provider,
+        modelName,
+        thinking: effectiveThinking,
+        allowed: thinkingValidation.allowed
+      });
+    }
 
     return await withProjectLock(params.id, async () => {
       const releaseRefLock = await acquireProjectRefLock(params.id, sourceRef);
@@ -125,14 +137,14 @@ export async function POST(request: Request, { params }: RouteContext) {
               const messagesForCompletion = context.messages;
 
               let buffered = '';
-              for await (const chunk of streamAssistantCompletion({
-                messages: messagesForCompletion,
-                provider,
-                thinking,
-                apiKey
-              })) {
-                buffered += chunk.content;
-              }
+	              for await (const chunk of streamAssistantCompletion({
+	                messages: messagesForCompletion,
+	                provider,
+	                thinking: effectiveThinking,
+	                apiKey
+	              })) {
+	                buffered += chunk.content;
+	              }
 
               if (buffered.trim()) {
                 assistantNode = {
@@ -214,9 +226,9 @@ export async function POST(request: Request, { params }: RouteContext) {
           const messagesForCompletion = context.messages;
 
           let buffered = '';
-          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking, apiKey })) {
-            buffered += chunk.content;
-          }
+	          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking: effectiveThinking, apiKey })) {
+	            buffered += chunk.content;
+	          }
 
           if (buffered.trim()) {
             assistantNode = await appendNode(

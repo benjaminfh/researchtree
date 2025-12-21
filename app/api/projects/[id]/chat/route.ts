@@ -1,7 +1,7 @@
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext } from '@/src/server/context';
-import { encodeChunk, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { encodeChunk, getDefaultModelForProvider, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { requireProjectAccess } from '@/src/server/authz';
 import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
+import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
 
 interface RouteContext {
   params: { id: string };
@@ -50,6 +51,17 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const { message, intent, llmProvider, ref, thinking } = parsed.data as typeof parsed.data & { thinking?: ThinkingSetting };
     const provider = resolveLLMProvider(llmProvider);
+    const modelName = getDefaultModelForProvider(provider);
+    const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
+    const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
+    if (!thinkingValidation.ok) {
+      throw badRequest(thinkingValidation.message ?? 'Invalid thinking setting', {
+        provider,
+        modelName,
+        thinking: effectiveThinking,
+        allowed: thinkingValidation.allowed
+      });
+    }
     const tokenLimit = await getProviderTokenLimit(provider);
     const apiKey = await requireUserApiKeyForProvider(provider);
 
@@ -144,7 +156,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               messages: messagesForCompletion,
               signal: abortController.signal,
               provider,
-              thinking,
+              thinking: effectiveThinking,
               apiKey
             })) {
               const content = chunk.content;
