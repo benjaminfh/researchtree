@@ -46,29 +46,21 @@ describe('Gemini streaming compatibility', () => {
     delete process.env.GEMINI_MODEL;
   });
 
-  it('falls back to non-streaming when streaming returns 405', async () => {
+  it('throws when streaming returns 405', async () => {
     process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
 
     const { GoogleGenerativeAIFetchError } = await import('@google/generative-ai');
     generateContentStream.mockRejectedValueOnce(new GoogleGenerativeAIFetchError('Method Not Allowed', 405, 'Method Not Allowed'));
-    generateContent.mockResolvedValueOnce({
-      response: {
-        text: () => 'hello'
-      }
-    });
 
     const { streamAssistantCompletion } = await import('@/src/server/llm');
-    const chunks: string[] = [];
-    for await (const chunk of streamAssistantCompletion({
+    const iter = streamAssistantCompletion({
       provider: 'gemini',
       apiKey: 'user-key',
       messages: [{ role: 'user', content: 'hi' }]
-    })) {
-      chunks.push(chunk.content);
-    }
+    });
 
-    expect(chunks.join('')).toBe('hello');
-    expect(generateContent).toHaveBeenCalledTimes(1);
+    await expect(iter.next()).rejects.toThrow(/does not support streaming/i);
+    expect(generateContent).not.toHaveBeenCalled();
   });
 
   it('throws when gemini-3-pro-preview is asked for medium thinking', async () => {
