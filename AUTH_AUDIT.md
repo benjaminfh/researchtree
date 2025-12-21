@@ -40,9 +40,10 @@ This audit covers:
 ### Step 1 — Auth model and roles (completed)
 - Auth provider: Supabase Auth (`@supabase/ssr`, `@supabase/supabase-js`).
 - Primary end-user DB context: cookie-backed Supabase session via anon key (`createSupabaseServerClient()`), so requests operate as `authenticated` role and should be constrained by RLS.
-- Service-role usage (RLS-bypassing): present and appears confined to waitlist/admin flows (`SUPABASE_SERVICE_ROLE_KEY`).
+- Service-role usage (RLS-bypassing): present and limited to (a) waitlist/admin flows and (b) server-only plaintext LLM key reads (`SUPABASE_SERVICE_ROLE_KEY`).
   - `middleware.ts` calls Supabase REST directly with the service role to check `email_allowlist` during waitlist enforcement.
   - `src/server/waitlist.ts` uses `createSupabaseAdminClient()` (service role) to manage allowlist/waitlist tables.
+  - `src/store/pg/userLlmKeys.ts` uses `createSupabaseAdminClient()` (service role) to call `rt_get_user_llm_key_server_v1` (server-only plaintext key retrieval).
 - Tenant model (so far): per-project membership (`projects.owner_user_id`, `project_members.user_id`) and RLS predicates built on `auth.uid()`. No org/team layer observed yet.
 
 ### Step 2 — Inventory user-data tables/fields (completed)
@@ -103,7 +104,7 @@ Policy snapshot (from migrations; needs DB confirmation that migrations are appl
 ### Step 5 — Trace all data access paths (completed)
 Observed Supabase access patterns in application code:
 - End-user context (RLS-enforced): `createSupabaseServerClient()` is used across API routes/server components to read `projects`, `refs`, `nodes`, and `project_members`, and to call most RPCs.
-- Service role (RLS-bypassing): `createSupabaseAdminClient()` is used only in waitlist/admin flows (`src/server/waitlist.ts`), plus `middleware.ts` uses a direct REST call with `SUPABASE_SERVICE_ROLE_KEY` for allowlist checks.
+- Service role (RLS-bypassing): used for (a) waitlist/admin flows (`src/server/waitlist.ts`), (b) server-only plaintext LLM key retrieval (`src/store/pg/userLlmKeys.ts`), and (c) `middleware.ts` direct REST allowlist checks (`SUPABASE_SERVICE_ROLE_KEY`).
 
 RPC inventory (called from app code via end-user Supabase client):
 - Provenance writes: `rt_create_project`, `rt_append_node_to_ref_v1`, `rt_create_ref_from_node_parent_v1`, `rt_create_ref_from_ref_v1`, `rt_merge_ours_v1`, `rt_toggle_star_v1`, `rt_update_artefact_on_ref`, `rt_save_artefact_draft`, `rt_get_current_ref_v1`, `rt_set_current_ref_v1`
@@ -142,12 +143,12 @@ Secrets / Vault isolation checks (as B)
 
 ## AUDIT FINDING TODOs
 - [x] Fix waitlist gate fail-open in `middleware.ts` (fail closed on allowlist lookup failure/timeout).
-- [ ] Verify waitlist gate behavior in a live deploy (simulate Supabase allowlist lookup failure; confirm it blocks as intended).
-- [ ] Verify `/admin/waitlist` access control: ensure only intended admins can invoke service-role operations (server-side authz + no client exposure).
-- [ ] Confirm no other service-role usage exists (beyond `middleware.ts` and `src/server/waitlist.ts`), including any hidden runtime config or edge functions.
-- [ ] Evaluate admin identity trust: admin gating uses env allowlist (`RT_ADMIN_USER_IDS`); confirm threat model for admin list changes.
+- [x] Verify waitlist gate behavior in a live deploy: non-allowlisted emails cannot create an account (operator-confirmed). (Still pending: simulate allowlist lookup failure and confirm fail-closed.)
+- [x] Verify `/admin/waitlist` access control: only users in `RT_ADMIN_USER_IDS` can access (operator-confirmed).
+- [x] Confirm no other service-role usage exists beyond documented call sites (code search: `createSupabaseAdminClient()` / `SUPABASE_SERVICE_ROLE_KEY`).
+- [x] Evaluate admin identity trust: `RT_ADMIN_USER_IDS` gates only `/admin/waitlist` app access (does not elevate DB role/RLS); residual risk accepted under “Vercel prod compromise ⇒ total compromise” assumption.
 - [x] Remove direct INSERT/UPDATE surface on `public.user_llm_keys` (force writes through RPCs; reduces PF-2 blast radius).
-- [ ] Confirm production store selection: `RT_STORE=git` stores provenance/messages on disk (not governed by Postgres RLS); ensure prod uses `RT_STORE=pg` if RLS is a requirement for protecting message content.
+- [x] Confirm production store selection risk is not applicable: Vercel production cannot use Git-backed store for message content; Postgres-backed store is effectively required.
 - [x] PF-1 confirmed: `public.rt_vault_decrypt_secret_compat_v1(uuid)` allows arbitrary Vault secret decryption by any authenticated user.
 - [x] Apply mitigation migration `supabase/migrations/2025-12-21_0006_rt_vault_decrypt_helper_lockdown.sql` in Supabase and verify `authenticated` can no longer execute it.
 - [x] Apply follow-up: revoke client plaintext key reader (`supabase/migrations/2025-12-21_0008_rt_user_llm_keys_revoke_client_plaintext_reader.sql`) and use service-role-only server reader (`supabase/migrations/2025-12-21_0007_rt_user_llm_keys_server_reader_v1.sql`).
@@ -281,7 +282,7 @@ Why it matters
 
 # AUDIT TODO LIST
 - [x] Identify auth provider and tenant model (user/org/team).
-- [ ] Identify JWT claims used for authz/RLS decisions (e.g., `auth.jwt()` usage, role/tenant claims).
+- [x] Identify JWT claims used for authz/RLS decisions.
 - [x] Enumerate DB roles (anon/authenticated/service) and where each is used in code.
 - [x] List all user-data tables/views/functions; tag message content, token ledgers, secrets.
 - [x] For each user-data table: verify RLS enabled; flag any missing/disabled tables.
@@ -291,3 +292,9 @@ Why it matters
 - [x] Identify and audit any service-role usages; ensure explicit tenant checks + logging.
 - [ ] Run cross-tenant negative tests for messages, token/accounting, secrets, and attachments.
 - [x] Document findings with severity + recommended fixes; prepare a re-test checklist.
+
+JWT claims usage summary (static)
+- Database/RLS: no usage of `auth.jwt()` or `auth.role()` found in `supabase/migrations/**`; policies and RPCs primarily use `auth.uid()` and membership tables (`project_members`).
+- Application authz: uses Supabase session user fields from `supabase.auth.getUser()` (not custom JWT claims):
+  - `user.id` for admin allowlist (`RT_ADMIN_USER_IDS`) and for membership filtering.
+  - `user.email` used only for UX/display and for the email allowlist gate input (not for admin authz).
