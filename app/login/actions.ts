@@ -1,19 +1,11 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
+import { getRequestOrigin } from '@/src/server/requestOrigin';
 
 type AuthActionState = { error: string | null };
-
-function getRequestOrigin(): string | null {
-  const headerList = headers();
-  const proto = headerList.get('x-forwarded-proto') ?? 'http';
-  const host = headerList.get('x-forwarded-host') ?? headerList.get('host');
-  if (!host) return null;
-  return `${proto}://${host}`;
-}
 
 function sanitizeRedirectTo(input: string | null): string | null {
   if (!input) return null;
@@ -67,7 +59,10 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 
     const supabase = createSupabaseServerActionClient();
     const origin = getRequestOrigin();
-    const emailRedirectTo = origin ? `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}` : undefined;
+    const postConfirmRedirectTo = `/login?redirectTo=${encodeURIComponent(redirectTo)}#existing-user`;
+    const emailRedirectTo = origin
+      ? `${origin}/auth/callback?flow=signup-confirm&redirectTo=${encodeURIComponent(postConfirmRedirectTo)}`
+      : undefined;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

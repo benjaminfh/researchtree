@@ -18,9 +18,14 @@ function maskEmail(email: string): string {
   return `${visible}${'•'.repeat(Math.max(1, local.length - visible.length))}@${domain}`;
 }
 
-export default function CheckEmailPage({ searchParams }: { searchParams?: { redirectTo?: string; email?: string } }) {
+export default function CheckEmailPage({
+  searchParams
+}: {
+  searchParams?: { redirectTo?: string; email?: string; mode?: string };
+}) {
   const redirectTo = sanitizeRedirectTo(searchParams?.redirectTo ?? null);
   const email = (searchParams?.email ?? '').trim();
+  const mode = searchParams?.mode === 'reset' ? 'reset' : 'confirm';
   const maskedEmail = email ? maskEmail(email) : null;
 
   return (
@@ -30,11 +35,14 @@ export default function CheckEmailPage({ searchParams }: { searchParams?: { redi
           <p className="text-3xl font-semibold tracking-tight text-slate-900">{APP_NAME}</p>
           <h1 className="mt-2 text-lg font-medium text-slate-700">Check your email</h1>
           <p className="mt-3 text-sm text-slate-600">
-            We sent you a confirmation link{maskedEmail ? ` to ${maskedEmail}` : ''}. Click it to finish creating your
-            account.
+            {mode === 'reset'
+              ? `If an account exists${maskedEmail ? ` for ${maskedEmail}` : ''}, we sent a password reset link.`
+              : `We sent you a confirmation link${maskedEmail ? ` to ${maskedEmail}` : ''}. Click it to finish creating your account.`}
           </p>
           <p className="mt-3 text-sm text-slate-600">
-            After confirming, you’ll be redirected back here and signed in automatically.
+            {mode === 'reset'
+              ? 'After clicking the link, you’ll be able to set a new password.'
+              : 'After confirming, you’ll be redirected to sign in.'}
           </p>
         </div>
 
@@ -50,7 +58,7 @@ export default function CheckEmailPage({ searchParams }: { searchParams?: { redi
 
           <div className="flex flex-wrap items-center gap-3">
             <Link
-              href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`}
+              href={`/login?redirectTo=${encodeURIComponent(redirectTo)}#existing-user`}
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
               Back to sign in
@@ -67,4 +75,3 @@ export default function CheckEmailPage({ searchParams }: { searchParams?: { redi
     </main>
   );
 }
-

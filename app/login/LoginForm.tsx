@@ -1,7 +1,7 @@
 'use client';
 
 import { useFormState, useFormStatus } from 'react-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { signInWithPassword, signUpWithPassword } from './actions';
 import Link from 'next/link';
 
@@ -24,6 +24,12 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
   const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
+
+  useEffect(() => {
+    if (window.location.hash === '#existing-user') {
+      setMode('signIn');
+    }
+  }, []);
 
   const activeError = useMemo(() => {
     const signInError = signInState?.error ?? null;
@@ -61,7 +67,15 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
           {activeError ? <p className="text-sm text-red-700">{activeError}</p> : null}
 
-          <SubmitButton label="Sign in" />
+          <div className="flex items-center justify-between gap-3">
+            <SubmitButton label="Sign in" />
+            <Link
+              href={`/forgot-password?redirectTo=${encodeURIComponent(redirectTo)}`}
+              className="text-sm text-slate-900 underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
         </form>
       ) : (
         <form action={signUpAction} className="mt-6 space-y-3">
