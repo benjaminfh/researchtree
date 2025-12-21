@@ -11,7 +11,7 @@ import {
   toOpenAIReasoningEffort,
   type ThinkingSetting
 } from '@/src/shared/thinking';
-import { buildGeminiThinkingParams, buildOpenAIThinkingParams } from '@/src/shared/llmCapabilities';
+import { buildGeminiThinkingParams, buildOpenAIThinkingParams, getAnthropicMaxOutputTokens } from '@/src/shared/llmCapabilities';
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
 
@@ -31,8 +31,6 @@ export interface LLMStreamOptions {
 }
 
 const encoder = new TextEncoder();
-
-const DEFAULT_ANTHROPIC_MAX_TOKENS = 2048;
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
@@ -99,7 +97,6 @@ async function* streamFromOpenAI(
   const baseRequest = {
     model: getDefaultModelForProvider('openai'),
     messages: formattedMessages,
-    temperature: 0.2,
     stream: true
   } as const;
 
@@ -333,7 +330,13 @@ async function* streamFromAnthropic(
     .map((m) => ({ role: m.role, content: m.content })) as Array<{ role: 'user' | 'assistant'; content: string }>;
 
   const model = getDefaultModelForProvider('anthropic');
-  const maxTokens = Number.parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? '', 10) || DEFAULT_ANTHROPIC_MAX_TOKENS;
+  const maxOutputTokens = getAnthropicMaxOutputTokens(model);
+  const defaultMaxTokens = maxOutputTokens ?? 8192;
+  const rawMaxTokens = Number.parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? '', 10);
+  const maxTokens = Number.isFinite(rawMaxTokens) && rawMaxTokens > 0 ? rawMaxTokens : defaultMaxTokens;
+  if (maxOutputTokens != null && maxTokens > maxOutputTokens) {
+    throw new Error(`Anthropic request invalid: max_tokens (${maxTokens}) exceeds model max output (${maxOutputTokens}) for ${model}.`);
+  }
   const baseBody: any = {
     model,
     max_tokens: maxTokens,
@@ -344,6 +347,15 @@ async function* streamFromAnthropic(
 
   if (thinking && thinking !== 'off') {
     baseBody.thinking = toAnthropicThinking(thinking);
+    if (baseBody.thinking?.type === 'enabled') {
+      const budget = Number(baseBody.thinking.budget_tokens);
+      if (Number.isFinite(budget) && maxTokens <= budget) {
+        throw new Error(
+          `Anthropic request invalid: max_tokens (${maxTokens}) must be greater than thinking.budget_tokens (${budget}). ` +
+            `Choose a lower Thinking setting or increase ANTHROPIC_MAX_TOKENS.`
+        );
+      }
+    }
   }
 
   const makeRequest = async (body: any) => {

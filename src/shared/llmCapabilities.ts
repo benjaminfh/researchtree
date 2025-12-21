@@ -119,3 +119,11 @@ export function buildGeminiThinkingParams(
   // Gemini 2.5 and below: translate into thinkingBudget; off maps to 0.
   return { generationConfig: { thinkingConfig: { thinkingBudget: toGemini25ThinkingBudget(requested) } } };
 }
+
+export function getAnthropicMaxOutputTokens(modelName: string): number | null {
+  const normalized = modelName.trim().toLowerCase();
+  if (!normalized) return null;
+  // Confirmed: Claude v4.5 models support up to 64k output tokens.
+  if (normalized === 'claude-opus-4-5' || normalized === 'claude-sonnet-4-5') return 64_000;
+  return null;
+}

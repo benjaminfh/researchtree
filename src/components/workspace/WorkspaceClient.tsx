@@ -8,7 +8,7 @@ import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
-import { getAllowedThinkingSettings, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
+import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import ReactMarkdown from 'react-markdown';
@@ -540,7 +540,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     [provider, providerOptions]
   );
 
-  const activeProviderModel = activeProvider?.defaultModel ?? '';
+  const activeProviderModel = activeProvider?.defaultModel ?? getDefaultModelForProviderFromCapabilities(provider);
   const allowedThinking = useMemo(
     () => getAllowedThinkingSettings(provider, activeProviderModel),
     [provider, activeProviderModel]
@@ -654,16 +654,32 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     setThinkingHydratedKey(null);
     const saved = window.localStorage.getItem(thinkingStorageKey) as ThinkingSetting | null;
     const defaultThinking = getDefaultThinkingSetting(provider, activeProviderModel);
-    const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved);
+    const allowed = activeProviderModel ? getAllowedThinkingSettings(provider, activeProviderModel) : THINKING_SETTINGS;
+    const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved) && allowed.includes(saved as ThinkingSetting);
     setThinking(isValid ? (saved as ThinkingSetting) : defaultThinking);
     setThinkingHydratedKey(thinkingStorageKey);
   }, [thinkingStorageKey, provider, activeProviderModel]);
+
+  useEffect(() => {
+    if (!activeProviderModel) return;
+    if (allowedThinking.includes(thinking)) return;
+    setThinking(getDefaultThinkingSetting(provider, activeProviderModel));
+  }, [allowedThinking, thinking, provider, activeProviderModel]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (thinkingHydratedKey !== thinkingStorageKey) return;
     window.localStorage.setItem(thinkingStorageKey, thinking);
   }, [thinking, thinkingHydratedKey, thinkingStorageKey]);
+
+  useEffect(() => {
+    if (!showEditModal) return;
+    const editModel = providerOptions.find((option) => option.id === editProvider)?.defaultModel ?? '';
+    if (!editModel) return;
+    const allowed = getAllowedThinkingSettings(editProvider, editModel);
+    if (allowed.includes(editThinking)) return;
+    setEditThinking(getDefaultThinkingSetting(editProvider, editModel));
+  }, [showEditModal, editProvider, editThinking, providerOptions]);
 
   useEffect(() => {
     if (!thinkingMenuOpen) return;
@@ -2511,12 +2527,14 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
 	                  disabled={isEditing}
 	                >
-	                  {(() => {
-	                    const editModel = providerOptions.find((option) => option.id === editProvider)?.defaultModel ?? '';
-	                    const allowed = editModel ? getAllowedThinkingSettings(editProvider, editModel) : THINKING_SETTINGS;
-	                    return allowed.map((setting) => (
-	                      <option key={setting} value={setting}>
-	                        {THINKING_SETTING_LABELS[setting]}
+		                  {(() => {
+		                    const editModel =
+		                      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
+		                      getDefaultModelForProviderFromCapabilities(editProvider);
+		                    const allowed = editModel ? getAllowedThinkingSettings(editProvider, editModel) : THINKING_SETTINGS;
+		                    return allowed.map((setting) => (
+		                      <option key={setting} value={setting}>
+		                        {THINKING_SETTING_LABELS[setting]}
 	                      </option>
 	                    ));
 	                  })()}
