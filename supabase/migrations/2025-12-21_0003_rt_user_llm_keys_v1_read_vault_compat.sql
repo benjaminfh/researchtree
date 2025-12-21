@@ -35,6 +35,24 @@ begin
     null;
   end;
 
+  -- Some installs expose a read_secret() function.
+  begin
+    execute 'select vault.read_secret($1)' into v_secret using p_secret_id;
+    return v_secret;
+  exception when undefined_function then
+    null;
+  end;
+
+  -- Some installs expose a read_secret() function returning JSON.
+  begin
+    execute 'select (vault.read_secret($1))::jsonb ->> ''secret''' into v_secret using p_secret_id;
+    if v_secret is not null then
+      return v_secret;
+    end if;
+  exception when undefined_function or cannot_coerce or invalid_text_representation then
+    null;
+  end;
+
   -- Some installs expose a get_secret() function returning JSON.
   begin
     execute 'select (vault.get_secret($1))::jsonb ->> ''secret''' into v_secret using p_secret_id;
@@ -104,4 +122,3 @@ $$;
 
 revoke all on function public.rt_vault_decrypt_secret_compat_v1(uuid) from public;
 grant execute on function public.rt_vault_decrypt_secret_compat_v1(uuid) to authenticated;
-
