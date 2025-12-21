@@ -1,6 +1,7 @@
 import { requireAdminUser } from '@/src/server/admin';
 import { listAllowlistedEmails, listWaitlistRequests } from '@/src/server/waitlist';
-import { approveEmailAction, removeAllowlistEmailAction } from './actions';
+import { approveEmailAction, approveEmailWithFeedbackAction, removeAllowlistEmailAction } from './actions';
+import { ApproveEmailForm } from './ApproveEmailForm';
 
 export default async function AdminWaitlistPage() {
   await requireAdminUser();
@@ -17,24 +18,7 @@ export default async function AdminWaitlistPage() {
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Approve by email</h2>
-          <form action={approveEmailAction} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-            <label className="block flex-1">
-              <span className="text-sm font-medium text-slate-800">Email</span>
-              <input
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-              />
-            </label>
-            <button
-              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-              type="submit"
-            >
-              Approve
-            </button>
-          </form>
+          <ApproveEmailForm action={approveEmailWithFeedbackAction} />
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -99,4 +83,3 @@ export default async function AdminWaitlistPage() {
     </main>
   );
 }
-
