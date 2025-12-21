@@ -59,7 +59,10 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 
     const supabase = createSupabaseServerActionClient();
     const origin = getRequestOrigin();
-    const postConfirmRedirectTo = `/login?redirectTo=${encodeURIComponent(redirectTo)}#existing-user`;
+    const loginParams = new URLSearchParams();
+    loginParams.set('redirectTo', redirectTo);
+    loginParams.set('email', email);
+    const postConfirmRedirectTo = `/login?${loginParams.toString()}#existing-user`;
     const emailRedirectTo = origin
       ? `${origin}/auth/callback?flow=signup-confirm&redirectTo=${encodeURIComponent(postConfirmRedirectTo)}`
       : undefined;

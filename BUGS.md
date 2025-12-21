@@ -2,6 +2,8 @@
 
 # FRONT END
 ## HOME
+### RAIL
+[ ] (home) rail does not always pick up new workspaces on load
 
 ## WORKSPACE / PROJECT
 ### CHAT

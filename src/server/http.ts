@@ -29,8 +29,8 @@ export function notFound(message: string): ApiError {
   return new ApiError(404, 'NOT_FOUND', message);
 }
 
-export function internalError(message = 'Internal Server Error'): ApiError {
-  return new ApiError(500, 'INTERNAL_ERROR', message);
+export function internalError(message = 'Internal Server Error', details?: ErrorDetails): ApiError {
+  return new ApiError(500, 'INTERNAL_ERROR', message, details);
 }
 
 export function handleRouteError(error: unknown): Response {
