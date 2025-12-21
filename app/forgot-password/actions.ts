@@ -2,7 +2,6 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
-import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
 import { getRequestOrigin } from '@/src/server/requestOrigin';
 
 type PasswordResetActionState = { error: string | null };
@@ -28,12 +27,6 @@ export async function requestPasswordReset(
   const sentRedirect = `/check-email?mode=reset&redirectTo=${encodeURIComponent(redirectTo)}&email=${encodeURIComponent(email)}`;
 
   try {
-    const gate = await checkEmailAllowedForAuth(email);
-    if (!gate.allowed) {
-      redirect(sentRedirect);
-      return { error: null };
-    }
-
     const origin = getRequestOrigin();
     if (!origin) {
       return { error: 'Unable to determine request origin.' };

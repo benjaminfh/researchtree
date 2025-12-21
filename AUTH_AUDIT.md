@@ -41,7 +41,6 @@ This audit covers:
 - Auth provider: Supabase Auth (`@supabase/ssr`, `@supabase/supabase-js`).
 - Primary end-user DB context: cookie-backed Supabase session via anon key (`createSupabaseServerClient()`), so requests operate as `authenticated` role and should be constrained by RLS.
 - Service-role usage (RLS-bypassing): present and limited to (a) waitlist/admin flows and (b) server-only plaintext LLM key reads (`SUPABASE_SERVICE_ROLE_KEY`).
-  - `middleware.ts` calls Supabase REST directly with the service role to check `email_allowlist` during waitlist enforcement.
   - `src/server/waitlist.ts` uses `createSupabaseAdminClient()` (service role) to manage allowlist/waitlist tables.
   - `src/store/pg/userLlmKeys.ts` uses `createSupabaseAdminClient()` (service role) to call `rt_get_user_llm_key_server_v1` (server-only plaintext key retrieval).
 - Tenant model (so far): per-project membership (`projects.owner_user_id`, `project_members.user_id`) and RLS predicates built on `auth.uid()`. No org/team layer observed yet.
@@ -104,7 +103,7 @@ Policy snapshot (from migrations; needs DB confirmation that migrations are appl
 ### Step 5 — Trace all data access paths (completed)
 Observed Supabase access patterns in application code:
 - End-user context (RLS-enforced): `createSupabaseServerClient()` is used across API routes/server components to read `projects`, `refs`, `nodes`, and `project_members`, and to call most RPCs.
-- Service role (RLS-bypassing): used for (a) waitlist/admin flows (`src/server/waitlist.ts`), (b) server-only plaintext LLM key retrieval (`src/store/pg/userLlmKeys.ts`), and (c) `middleware.ts` direct REST allowlist checks (`SUPABASE_SERVICE_ROLE_KEY`).
+- Service role (RLS-bypassing): used for (a) waitlist/admin flows (`src/server/waitlist.ts`) and (b) server-only plaintext LLM key retrieval (`src/store/pg/userLlmKeys.ts`).
 
 RPC inventory (called from app code via end-user Supabase client):
 - Provenance writes: `rt_create_project`, `rt_append_node_to_ref_v1`, `rt_create_ref_from_node_parent_v1`, `rt_create_ref_from_ref_v1`, `rt_merge_ours_v1`, `rt_toggle_star_v1`, `rt_update_artefact_on_ref`, `rt_save_artefact_draft`, `rt_get_current_ref_v1`, `rt_set_current_ref_v1`
