@@ -1,5 +1,10 @@
 import OpenAI from 'openai';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  GoogleGenerativeAI,
+  GoogleGenerativeAIFetchError,
+  GoogleGenerativeAIResponseError,
+  type EnhancedGenerateContentResponse
+} from '@google/generative-ai';
 import type { ChatMessage } from './context';
 import {
   toAnthropicThinking,
@@ -197,15 +202,108 @@ async function* streamFromGemini(
     request.generationConfig = { thinkingConfig };
   }
 
-  stream = await model.generateContentStream(request);
+  function sanitizeGeminiErrorMessage(message: string): string {
+    // Prevent accidental leakage of the API key (it can appear in SDK error URLs).
+    return message.replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]');
+  }
 
-  for await (const chunk of stream.stream) {
-    if (signal?.aborted) {
-      break;
+  function describeGeminiResponse(response: EnhancedGenerateContentResponse): Record<string, unknown> {
+    const candidates = Array.isArray((response as any).candidates) ? (response as any).candidates : [];
+    const first = candidates[0] ?? null;
+    const parts = first?.content?.parts ?? null;
+    const partKeys = Array.isArray(parts)
+      ? parts
+          .map((part: any) => Object.keys(part ?? {}).sort().join('+'))
+          .filter(Boolean)
+      : [];
+    return {
+      hasPromptFeedback: Boolean((response as any).promptFeedback),
+      blockReason: (response as any).promptFeedback?.blockReason ?? null,
+      candidates: candidates.length,
+      finishReason: first?.finishReason ?? null,
+      partKeys
+    };
+  }
+
+  try {
+    stream = await model.generateContentStream(request);
+  } catch (error) {
+    if (error instanceof GoogleGenerativeAIFetchError) {
+      if (error.status === 405) {
+        // Some Gemini models/endpoints do not support streaming.
+        const result = await model.generateContent(request);
+        const text = result.response.text();
+        if (text) {
+          yield { type: 'text', content: text } satisfies LLMStreamChunk;
+          return;
+        }
+        throw new Error(`Gemini returned an empty response (model=${modelName}).`);
+      }
+      throw new Error(
+        sanitizeGeminiErrorMessage(
+          `Gemini request failed: [${error.status ?? ''} ${error.statusText ?? ''}] ${error.message}`.trim()
+        )
+      );
     }
-    const text = chunk.text();
-    if (text) {
-      yield { type: 'text', content: text } satisfies LLMStreamChunk;
+    throw error;
+  }
+
+  let yieldedAny = false;
+  try {
+    for await (const chunk of stream.stream) {
+      if (signal?.aborted) {
+        break;
+      }
+      let text = '';
+      try {
+        text = chunk.text();
+      } catch (error) {
+        if (error instanceof GoogleGenerativeAIResponseError) {
+          throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+        }
+        throw error;
+      }
+      if (text) {
+        yieldedAny = true;
+        yield { type: 'text', content: text } satisfies LLMStreamChunk;
+      }
+    }
+  } catch (error) {
+    if (error instanceof GoogleGenerativeAIFetchError) {
+      throw new Error(
+        sanitizeGeminiErrorMessage(
+          `Gemini request failed: [${error.status ?? ''} ${error.statusText ?? ''}] ${error.message}`.trim()
+        )
+      );
+    }
+    throw error;
+  }
+
+  if (!yieldedAny && !signal?.aborted) {
+    try {
+      const response = (await stream.response) as EnhancedGenerateContentResponse;
+      let text = '';
+      try {
+        text = response.text();
+      } catch (error) {
+        if (error instanceof GoogleGenerativeAIResponseError) {
+          throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+        }
+        throw error;
+      }
+      if (text) {
+        yield { type: 'text', content: text } satisfies LLMStreamChunk;
+        return;
+      }
+
+      const meta = describeGeminiResponse(response);
+      console.error('[LLM] Gemini returned empty response', { modelName, meta });
+      throw new Error(`Gemini returned an empty response (model=${modelName}).`);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(sanitizeGeminiErrorMessage(error.message));
+      }
+      throw error;
     }
   }
 }
