@@ -193,6 +193,49 @@ describe('/api/projects/[id]/chat', () => {
     expect(res.status).toBe(400);
   });
 
+  it('does not append empty assistant node and errors the stream', async () => {
+    const appended: any[] = [];
+    mocks.appendNodeToRefNoCheckout.mockImplementation(async (_projectId: string, _ref: string, node: any) => {
+      appended.push(node);
+      return node;
+    });
+
+    mocks.streamAssistantCompletion.mockImplementation(async function* () {
+      // yield nothing
+    });
+
+    const response = await POST(createRequest({ message: 'Hi there' }), { params: { id: 'project-1' } });
+    expect(response.status).toBe(200);
+    await expect(response.text()).rejects.toThrow(/empty response/i);
+
+    expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
+    expect(appended).toHaveLength(1);
+  });
+
+  it('skips empty assistant node in Postgres mode', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+      newCommitId: 'c1',
+      nodeId: 'user-1',
+      ordinal: 0,
+      artefactId: null,
+      artefactContentHash: null
+    });
+
+    mocks.streamAssistantCompletion.mockImplementation(async function* () {
+      // yield nothing
+    });
+
+    const res = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    await expect(res.text()).rejects.toThrow(/empty response/i);
+
+    // user write happens, assistant write should be skipped
+    const calls = mocks.rtAppendNodeToRefShadowV1.mock.calls.map((call) => call[0]);
+    expect(calls.some((c) => c?.role === 'user')).toBe(true);
+    expect(calls.some((c) => c?.role === 'assistant')).toBe(false);
+  });
+
   it('propagates errors from context builder', async () => {
     mocks.buildChatContext.mockRejectedValueOnce(new Error('boom'));
     const res = await POST(createRequest({ message: 'Hi' }), { params: { id: 'project-1' } });

@@ -119,6 +119,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         async start(controllerStream) {
           let buffered = '';
           let streamError: unknown = null;
+          let yieldedAny = false;
 
           try {
             for await (const chunk of streamAssistantCompletion({
@@ -129,35 +130,42 @@ export async function POST(request: Request, { params }: RouteContext) {
               apiKey
             })) {
               buffered += chunk.content;
+              yieldedAny = true;
               controllerStream.enqueue(encodeChunk(chunk.content));
             }
           } catch (error) {
             streamError = error;
           }
 
+          if (!yieldedAny && !abortController.signal.aborted && streamError == null) {
+            streamError = new Error('LLM returned empty response');
+          }
+
           try {
             if (store.mode === 'pg') {
               const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-              const assistantNode = {
-                id: uuidv4(),
-                type: 'message',
-                role: 'assistant',
-                content: buffered,
-                timestamp: Date.now(),
-                parent: userNode?.id ?? null,
-                createdOnBranch: targetRef,
-                interrupted: abortController.signal.aborted || streamError !== null
-              };
-              await rtAppendNodeToRefShadowV1({
-                projectId: params.id,
-                refName: targetRef,
-                kind: assistantNode.type,
-                role: assistantNode.role,
-                contentJson: assistantNode,
-                nodeId: assistantNode.id,
-                commitMessage: 'assistant_message',
-                attachDraft: false
-              });
+              if (buffered.trim()) {
+                const assistantNode = {
+                  id: uuidv4(),
+                  type: 'message',
+                  role: 'assistant',
+                  content: buffered,
+                  timestamp: Date.now(),
+                  parent: userNode?.id ?? null,
+                  createdOnBranch: targetRef,
+                  interrupted: abortController.signal.aborted || streamError !== null
+                };
+                await rtAppendNodeToRefShadowV1({
+                  projectId: params.id,
+                  refName: targetRef,
+                  kind: assistantNode.type,
+                  role: assistantNode.role,
+                  contentJson: assistantNode,
+                  nodeId: assistantNode.id,
+                  commitMessage: 'assistant_message',
+                  attachDraft: false
+                });
+              }
             } else {
               const { getProject } = await import('@git/projects');
               const { appendNodeToRefNoCheckout } = await import('@git/nodes');
@@ -165,12 +173,14 @@ export async function POST(request: Request, { params }: RouteContext) {
               if (!project) {
                 throw notFound('Project not found');
               }
-              const assistantNode = await appendNodeToRefNoCheckout(project.id, targetRef, {
-                type: 'message',
-                role: 'assistant',
-                content: buffered,
-                interrupted: abortController.signal.aborted || streamError !== null
-              });
+              if (buffered.trim()) {
+                await appendNodeToRefNoCheckout(project.id, targetRef, {
+                  type: 'message',
+                  role: 'assistant',
+                  content: buffered,
+                  interrupted: abortController.signal.aborted || streamError !== null
+                });
+              }
             }
           } catch (error) {
             streamError = streamError ?? error;
