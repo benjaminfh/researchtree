@@ -180,7 +180,7 @@ async function* streamFromGemini(
   const pickModel = (modelName: string) =>
     geminiClient.getGenerativeModel(systemInstruction ? { model: modelName, systemInstruction } : { model: modelName });
 
-  const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+  const modelName = getDefaultModelForProvider('gemini');
   const model = pickModel(modelName);
   let stream: any;
 
@@ -207,6 +207,33 @@ async function* streamFromGemini(
     return message.replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]');
   }
 
+  function getGeminiHttpStatus(error: unknown): number | null {
+    const status = (error as any)?.status;
+    return typeof status === 'number' ? status : null;
+  }
+
+  async function tryFallbackNonStreamingOn405(error: unknown): Promise<string | null> {
+    const status = getGeminiHttpStatus(error);
+    if (status !== 405) return null;
+    // Some Gemini models/endpoints do not support streaming.
+    try {
+      const result = await model.generateContent(request);
+      const text = result.response.text();
+      if (text) {
+        return text;
+      }
+      throw new Error(`Gemini returned an empty response (model=${modelName}).`);
+    } catch (nested) {
+      const nestedStatus = getGeminiHttpStatus(nested);
+      const nestedMsg = nested instanceof Error ? nested.message : String(nested);
+      throw new Error(
+        sanitizeGeminiErrorMessage(
+          `Gemini request failed: [${nestedStatus ?? status ?? ''}] ${nestedMsg} (model=${modelName})`.trim()
+        )
+      );
+    }
+  }
+
   function describeGeminiResponse(response: EnhancedGenerateContentResponse): Record<string, unknown> {
     const candidates = Array.isArray((response as any).candidates) ? (response as any).candidates : [];
     const first = candidates[0] ?? null;
@@ -228,21 +255,15 @@ async function* streamFromGemini(
   try {
     stream = await model.generateContentStream(request);
   } catch (error) {
-    if (error instanceof GoogleGenerativeAIFetchError) {
-      if (error.status === 405) {
-        // Some Gemini models/endpoints do not support streaming.
-        const result = await model.generateContent(request);
-        const text = result.response.text();
-        if (text) {
-          yield { type: 'text', content: text } satisfies LLMStreamChunk;
-          return;
-        }
-        throw new Error(`Gemini returned an empty response (model=${modelName}).`);
-      }
+    const fallbackText = await tryFallbackNonStreamingOn405(error);
+    if (fallbackText != null) {
+      yield { type: 'text', content: fallbackText } satisfies LLMStreamChunk;
+      return;
+    }
+    const status = getGeminiHttpStatus(error);
+    if (error instanceof GoogleGenerativeAIFetchError || status != null) {
       throw new Error(
-        sanitizeGeminiErrorMessage(
-          `Gemini request failed: [${error.status ?? ''} ${error.statusText ?? ''}] ${error.message}`.trim()
-        )
+        sanitizeGeminiErrorMessage(`Gemini request failed: [${status ?? ''}] ${(error as Error)?.message ?? String(error)}`)
       );
     }
     throw error;
@@ -269,11 +290,16 @@ async function* streamFromGemini(
       }
     }
   } catch (error) {
-    if (error instanceof GoogleGenerativeAIFetchError) {
+    const fallbackText = await tryFallbackNonStreamingOn405(error);
+    if (fallbackText != null) {
+      yieldedAny = true;
+      yield { type: 'text', content: fallbackText } satisfies LLMStreamChunk;
+      return;
+    }
+    const status = getGeminiHttpStatus(error);
+    if (error instanceof GoogleGenerativeAIFetchError || status != null) {
       throw new Error(
-        sanitizeGeminiErrorMessage(
-          `Gemini request failed: [${error.status ?? ''} ${error.statusText ?? ''}] ${error.message}`.trim()
-        )
+        sanitizeGeminiErrorMessage(`Gemini request failed: [${status ?? ''}] ${(error as Error)?.message ?? String(error)}`)
       );
     }
     throw error;
