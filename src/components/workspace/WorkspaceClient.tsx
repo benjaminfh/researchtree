@@ -1583,7 +1583,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           <div className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-36 pt-4 md:px-8 lg:px-12">
           <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
             <section
-              className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${chatPaneWidth ? 'flex-none' : 'flex-1'}`}
+              className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${
+                chatPaneWidth ? 'flex-none' : 'flex-1 lg:flex-[2]'
+              }`}
               style={chatPaneWidth ? { width: chatPaneWidth, maxWidth: '100%' } : undefined}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
