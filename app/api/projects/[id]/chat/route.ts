@@ -11,7 +11,7 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { v4 as uuidv4 } from 'uuid';
 import { requireProjectAccess } from '@/src/server/authz';
 import type { LLMProvider } from '@/src/server/llm';
-import { getDeployEnv } from '@/src/server/llmConfig';
+import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 
 interface RouteContext {
   params: { id: string };
@@ -26,32 +26,6 @@ async function getPreferredBranch(projectId: string): Promise<string> {
   }
   const { getCurrentBranchName } = await import('@git/utils');
   return getCurrentBranchName(projectId).catch(() => 'main');
-}
-
-async function resolveApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
-  if (provider === 'mock') return null;
-
-  if (getDeployEnv() === 'dev') {
-    if (provider === 'openai') {
-      const envKey = process.env.OPENAI_API_KEY?.trim();
-      if (envKey) return envKey;
-    }
-    if (provider === 'gemini') {
-      const envKey = process.env.GEMINI_API_KEY?.trim();
-      if (envKey) return envKey;
-    }
-    if (provider === 'anthropic') {
-      const envKey = process.env.ANTHROPIC_API_KEY?.trim();
-      if (envKey) return envKey;
-    }
-  }
-
-  try {
-    const { rtGetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
-    return await rtGetUserLlmKeyV1({ provider });
-  } catch {
-    return null;
-  }
 }
 
 function labelForProvider(provider: LLMProvider): string {
@@ -76,12 +50,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const { message, intent, llmProvider, ref, thinking } = parsed.data as typeof parsed.data & { thinking?: ThinkingSetting };
     const provider = resolveLLMProvider(llmProvider);
     const tokenLimit = await getProviderTokenLimit(provider);
-    const apiKey = await resolveApiKeyForProvider(provider);
-    if (provider !== 'mock' && !apiKey) {
-      throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
-        provider
-      });
-    }
+    const apiKey = await requireUserApiKeyForProvider(provider);
 
     const targetRef = ref ?? (await getPreferredBranch(params.id));
     const releaseLock = await acquireProjectRefLock(params.id, targetRef);
