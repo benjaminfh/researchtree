@@ -28,6 +28,13 @@ function extractErrorMessage(error: unknown): string {
   }
 }
 
+function isVaultReadCompatIssue(reason: string): boolean {
+  const normalized = reason.toLowerCase();
+  if (normalized.includes('vault.decrypt_secret') && normalized.includes('does not exist')) return true;
+  if (normalized.includes('vault secret read is not supported')) return true;
+  return false;
+}
+
 export async function requireUserApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
   if (provider === 'mock') return null;
   const keyed = provider as KeyedProvider;
@@ -56,10 +63,18 @@ export async function requireUserApiKeyForProvider(provider: LLMProvider): Promi
 
     const reason = extractErrorMessage(error);
     console.error('[llmUserKeys] Failed to read user API key', { provider: keyed, configured, reason });
-    throw internalError(
-      `Failed to read ${labelForProvider(keyed)} token from Profile. Please re-save it in Profile and try again.`,
-      { provider: keyed, configured, reason }
-    );
+    if (isVaultReadCompatIssue(reason)) {
+      throw internalError(
+        `Server is missing Supabase Vault secret decryption support. Apply the latest Supabase migrations and try again.`,
+        { provider: keyed, configured, reason }
+      );
+    }
+
+    throw internalError(`Failed to read ${labelForProvider(keyed)} token from Profile. Please re-save it and try again.`, {
+      provider: keyed,
+      configured,
+      reason
+    });
   }
 
   if (!key) {
@@ -88,4 +103,3 @@ export async function requireUserApiKeyForProvider(provider: LLMProvider): Promi
 
   return key;
 }
-

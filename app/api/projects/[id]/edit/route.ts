@@ -134,27 +134,31 @@ export async function POST(request: Request, { params }: RouteContext) {
                 buffered += chunk.content;
               }
 
-              assistantNode = {
-                id: uuidv4(),
-                type: 'message',
-                role: 'assistant',
-                content: buffered,
-                timestamp: Date.now(),
-                parent: editedNode.id,
-                createdOnBranch: targetBranch,
-                interrupted: false
-              };
+              if (buffered.trim()) {
+                assistantNode = {
+                  id: uuidv4(),
+                  type: 'message',
+                  role: 'assistant',
+                  content: buffered,
+                  timestamp: Date.now(),
+                  parent: editedNode.id,
+                  createdOnBranch: targetBranch,
+                  interrupted: false
+                };
 
-              await rtAppendNodeToRefShadowV1({
-                projectId: params.id,
-                refName: targetBranch,
-                kind: assistantNode.type,
-                role: assistantNode.role,
-                contentJson: assistantNode,
-                nodeId: assistantNode.id,
-                commitMessage: 'assistant_message',
-                attachDraft: false
-              });
+                await rtAppendNodeToRefShadowV1({
+                  projectId: params.id,
+                  refName: targetBranch,
+                  kind: assistantNode.type,
+                  role: assistantNode.role,
+                  contentJson: assistantNode,
+                  nodeId: assistantNode.id,
+                  commitMessage: 'assistant_message',
+                  attachDraft: false
+                });
+              } else {
+                console.warn('[edit] Skipping empty assistant response');
+              }
             } catch (error) {
               console.error('[edit] Failed to run LLM completion after edit', error);
             }
@@ -214,16 +218,20 @@ export async function POST(request: Request, { params }: RouteContext) {
             buffered += chunk.content;
           }
 
-          assistantNode = await appendNode(
-            project.id,
-            {
-              type: 'message',
-              role: 'assistant',
-              content: buffered,
-              interrupted: false
-            },
-            { ref: targetBranch }
-          );
+          if (buffered.trim()) {
+            assistantNode = await appendNode(
+              project.id,
+              {
+                type: 'message',
+                role: 'assistant',
+                content: buffered,
+                interrupted: false
+              },
+              { ref: targetBranch }
+            );
+          } else {
+            console.warn('[edit] Skipping empty assistant response');
+          }
         } catch (error) {
           console.error('[edit] Failed to run LLM completion after edit', error);
         }
