@@ -601,17 +601,21 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   useEffect(() => {
     if (!state.error || !optimisticDraftRef.current) return;
-    setDraft(optimisticDraftRef.current);
+    const sent = optimisticDraftRef.current;
     optimisticDraftRef.current = null;
+    void Promise.all([mutateHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
+    if (!hasReceivedAssistantChunkRef.current) {
+      setDraft(sent);
+    }
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
       assistantPendingTimerRef.current = null;
     }
     setAssistantPending(false);
-  }, [state.error]);
+  }, [state.error, mutateArtefact, mutateHistory]);
 
   useEffect(() => {
     return () => {
