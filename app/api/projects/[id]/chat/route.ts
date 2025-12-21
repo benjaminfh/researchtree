@@ -37,7 +37,8 @@ function labelForProvider(provider: LLMProvider): string {
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
+    const requestId = uuidv4();
+    const user = await requireUser();
     const store = getStoreConfig();
     await requireProjectAccess({ id: params.id });
 
@@ -53,6 +54,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const apiKey = await requireUserApiKeyForProvider(provider);
 
     const targetRef = ref ?? (await getPreferredBranch(params.id));
+    console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRef });
     const releaseLock = await acquireProjectRefLock(params.id, targetRef);
     const abortController = new AbortController();
 
@@ -189,9 +191,28 @@ export async function POST(request: Request, { params }: RouteContext) {
           }
 
           if (streamError) {
+            const message = streamError instanceof Error ? streamError.message : String(streamError);
+            console.error('[chat] stream error', {
+              requestId,
+              userId: user.id,
+              projectId: params.id,
+              provider,
+              ref: targetRef,
+              yieldedAny,
+              bufferedLength: buffered.length,
+              message
+            });
             controllerStream.error(streamError);
             return;
           }
+          console.info('[chat] complete', {
+            requestId,
+            userId: user.id,
+            projectId: params.id,
+            provider,
+            ref: targetRef,
+            bufferedLength: buffered.length
+          });
           controllerStream.close();
         },
         cancel() {
@@ -204,7 +225,8 @@ export async function POST(request: Request, { params }: RouteContext) {
         headers: {
           'Content-Type': 'text/plain; charset=utf-8',
           'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive'
+          Connection: 'keep-alive',
+          'x-rt-request-id': requestId
         }
       });
     } catch (error) {
