@@ -1,28 +1,24 @@
 import { forbidden } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-export function getAdminEmails(): Set<string> {
-  const raw = process.env.RT_ADMIN_EMAILS ?? '';
-  const emails = raw
+export function getAdminUserIds(): Set<string> {
+  const raw = process.env.RT_ADMIN_USER_IDS ?? '';
+  const ids = raw
     .split(',')
     .map((value) => value.trim())
-    .filter(Boolean)
-    .map(normalizeEmail);
-  return new Set(emails);
+    .filter(Boolean);
+  return new Set(ids);
 }
 
-export function isAdminEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return getAdminEmails().has(normalizeEmail(email));
+export function isAdminUserId(userId: string | null | undefined): boolean {
+  if (!userId) return false;
+  return getAdminUserIds().has(userId);
 }
 
 export async function requireAdminUser() {
   const user = await requireUser();
-  if (!isAdminEmail(user.email)) {
+  const adminIds = getAdminUserIds();
+  if (!adminIds.has(user.id)) {
     throw forbidden('Admin access required');
   }
   return user;

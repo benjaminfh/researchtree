@@ -331,9 +331,7 @@ async function* streamFromAnthropic(
 
   const model = getDefaultModelForProvider('anthropic');
   const maxOutputTokens = getAnthropicMaxOutputTokens(model);
-  const defaultMaxTokens = maxOutputTokens ?? 8192;
-  const rawMaxTokens = Number.parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? '', 10);
-  const maxTokens = Number.isFinite(rawMaxTokens) && rawMaxTokens > 0 ? rawMaxTokens : defaultMaxTokens;
+  const maxTokens = maxOutputTokens ?? 8192;
   if (maxOutputTokens != null && maxTokens > maxOutputTokens) {
     throw new Error(`Anthropic request invalid: max_tokens (${maxTokens}) exceeds model max output (${maxOutputTokens}) for ${model}.`);
   }
@@ -352,7 +350,7 @@ async function* streamFromAnthropic(
       if (Number.isFinite(budget) && maxTokens <= budget) {
         throw new Error(
           `Anthropic request invalid: max_tokens (${maxTokens}) must be greater than thinking.budget_tokens (${budget}). ` +
-            `Choose a lower Thinking setting or increase ANTHROPIC_MAX_TOKENS.`
+            `Choose a lower Thinking setting.`
         );
       }
     }
