@@ -12,15 +12,15 @@ export interface ProviderEndpointConfig {
 export const LLM_ENDPOINTS: Record<LLMProvider, ProviderEndpointConfig> = {
   openai: {
     defaultModel: 'gpt-5.2',
-    models: ['gpt-5.2', 'gpt-4.1', 'gpt-4o']
+    models: ['gpt-5.2', 'gpt-5.1']
   },
   gemini: {
     defaultModel: 'gemini-3-pro-preview',
-    models: ['gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash']
+    models: ['gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']
   },
   anthropic: {
-    defaultModel: 'claude-3-5-sonnet-latest',
-    models: ['claude-3-5-sonnet-latest']
+    defaultModel: 'claude-sonnet-4-5',
+    models: ['claude-opus-4-5', 'claude-sonnet-4-5']
   },
   mock: {
     defaultModel: 'mock',
