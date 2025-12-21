@@ -208,8 +208,7 @@ describe('/api/projects/[id]/chat', () => {
     expect(response.status).toBe(200);
     await expect(response.text()).rejects.toThrow(/empty response/i);
 
-    expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
-    expect(appended).toHaveLength(1);
+    expect(appended).toHaveLength(0);
   });
 
   it('skips empty assistant node in Postgres mode', async () => {
@@ -230,10 +229,7 @@ describe('/api/projects/[id]/chat', () => {
     expect(res.status).toBe(200);
     await expect(res.text()).rejects.toThrow(/empty response/i);
 
-    // user write happens, assistant write should be skipped
-    const calls = mocks.rtAppendNodeToRefShadowV1.mock.calls.map((call) => call[0]);
-    expect(calls.some((c) => c?.role === 'user')).toBe(true);
-    expect(calls.some((c) => c?.role === 'assistant')).toBe(false);
+    expect(mocks.rtAppendNodeToRefShadowV1).not.toHaveBeenCalled();
   });
 
   it('propagates errors from context builder', async () => {

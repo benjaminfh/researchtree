@@ -59,53 +59,8 @@ export async function POST(request: Request, { params }: RouteContext) {
     const abortController = new AbortController();
 
     try {
-      let userNode: any;
-      if (store.mode === 'pg') {
-        const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-        const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-        const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
-        const lastNode = (last[0]?.nodeJson as any) ?? null;
-        const parentId = lastNode?.id ? String(lastNode.id) : null;
-        const nodeId = uuidv4();
-        userNode = {
-          id: nodeId,
-          type: 'message',
-          role: 'user',
-          content: message,
-          timestamp: Date.now(),
-          parent: parentId,
-          createdOnBranch: targetRef,
-          contextWindow: [],
-          tokensUsed: undefined
-        };
-        await rtAppendNodeToRefShadowV1({
-          projectId: params.id,
-          refName: targetRef,
-          kind: userNode.type,
-          role: userNode.role,
-          contentJson: userNode,
-          nodeId: userNode.id,
-          commitMessage: 'user_message',
-          attachDraft: true
-        });
-      } else {
-        const { getProject } = await import('@git/projects');
-        const { appendNodeToRefNoCheckout } = await import('@git/nodes');
-        const project = await getProject(params.id);
-        if (!project) {
-          throw notFound('Project not found');
-        }
-        userNode = await appendNodeToRefNoCheckout(project.id, targetRef, {
-          type: 'message',
-          role: 'user',
-          content: message,
-          contextWindow: [],
-          tokensUsed: undefined
-        });
-      }
-
       const context = await buildChatContext(params.id, { tokenLimit, ref: targetRef });
-      const messagesForCompletion = context.messages;
+      const messagesForCompletion = [...context.messages, { role: 'user' as const, content: message }];
 
       registerStream(params.id, abortController, targetRef);
 
@@ -143,17 +98,47 @@ export async function POST(request: Request, { params }: RouteContext) {
             streamError = new Error('LLM returned empty response');
           }
 
+          const shouldPersist =
+            buffered.trim().length > 0 && (streamError == null || abortController.signal.aborted);
+
           try {
-            if (store.mode === 'pg') {
-              const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-              if (buffered.trim()) {
+            if (shouldPersist) {
+              if (store.mode === 'pg') {
+                const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
+                const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+                const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+                const lastNode = (last[0]?.nodeJson as any) ?? null;
+                const parentId = lastNode?.id ? String(lastNode.id) : null;
+
+                const userNode = {
+                  id: uuidv4(),
+                  type: 'message',
+                  role: 'user',
+                  content: message,
+                  timestamp: Date.now(),
+                  parent: parentId,
+                  createdOnBranch: targetRef,
+                  contextWindow: [],
+                  tokensUsed: undefined
+                };
+                await rtAppendNodeToRefShadowV1({
+                  projectId: params.id,
+                  refName: targetRef,
+                  kind: userNode.type,
+                  role: userNode.role,
+                  contentJson: userNode,
+                  nodeId: userNode.id,
+                  commitMessage: 'user_message',
+                  attachDraft: true
+                });
+
                 const assistantNode = {
                   id: uuidv4(),
                   type: 'message',
                   role: 'assistant',
                   content: buffered,
                   timestamp: Date.now(),
-                  parent: userNode?.id ?? null,
+                  parent: userNode.id,
                   createdOnBranch: targetRef,
                   interrupted: abortController.signal.aborted || streamError !== null
                 };
@@ -167,15 +152,20 @@ export async function POST(request: Request, { params }: RouteContext) {
                   commitMessage: 'assistant_message',
                   attachDraft: false
                 });
-              }
-            } else {
-              const { getProject } = await import('@git/projects');
-              const { appendNodeToRefNoCheckout } = await import('@git/nodes');
-              const project = await getProject(params.id);
-              if (!project) {
-                throw notFound('Project not found');
-              }
-              if (buffered.trim()) {
+              } else {
+                const { getProject } = await import('@git/projects');
+                const { appendNodeToRefNoCheckout } = await import('@git/nodes');
+                const project = await getProject(params.id);
+                if (!project) {
+                  throw notFound('Project not found');
+                }
+                await appendNodeToRefNoCheckout(project.id, targetRef, {
+                  type: 'message',
+                  role: 'user',
+                  content: message,
+                  contextWindow: [],
+                  tokensUsed: undefined
+                });
                 await appendNodeToRefNoCheckout(project.id, targetRef, {
                   type: 'message',
                   role: 'assistant',
