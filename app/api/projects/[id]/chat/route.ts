@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { requireProjectAccess } from '@/src/server/authz';
 import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
+import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
 
 interface RouteContext {
   params: { id: string };
@@ -35,21 +36,6 @@ function labelForProvider(provider: LLMProvider): string {
   return 'Mock';
 }
 
-function assertThinkingSupported(provider: LLMProvider, thinking: ThinkingSetting | undefined) {
-  if (provider !== 'gemini') return;
-  if (!thinking || thinking === 'off') return;
-
-  const modelName = getDefaultModelForProvider('gemini');
-  const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
-  const isFlash = /flash/i.test(modelName);
-  if (isGemini3 && !isFlash && thinking === 'medium') {
-    throw badRequest(
-      `Gemini 3 Pro does not support Thinking: Medium (model=${modelName}). Choose Low or High and try again.`,
-      { provider, modelName, thinking, supportedThinking: ['off', 'low', 'high'] }
-    );
-  }
-}
-
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     const requestId = uuidv4();
@@ -65,7 +51,17 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const { message, intent, llmProvider, ref, thinking } = parsed.data as typeof parsed.data & { thinking?: ThinkingSetting };
     const provider = resolveLLMProvider(llmProvider);
-    assertThinkingSupported(provider, thinking);
+    const modelName = getDefaultModelForProvider(provider);
+    const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
+    const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
+    if (!thinkingValidation.ok) {
+      throw badRequest(thinkingValidation.message ?? 'Invalid thinking setting', {
+        provider,
+        modelName,
+        thinking: effectiveThinking,
+        allowed: thinkingValidation.allowed
+      });
+    }
     const tokenLimit = await getProviderTokenLimit(provider);
     const apiKey = await requireUserApiKeyForProvider(provider);
 
@@ -160,7 +156,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               messages: messagesForCompletion,
               signal: abortController.signal,
               provider,
-              thinking,
+              thinking: effectiveThinking,
               apiKey
             })) {
               const content = chunk.content;

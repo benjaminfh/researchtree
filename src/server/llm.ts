@@ -8,13 +8,14 @@ import {
 import type { ChatMessage } from './context';
 import {
   toAnthropicThinking,
-  toGemini25ThinkingBudget,
   toOpenAIReasoningEffort,
   type ThinkingSetting
 } from '@/src/shared/thinking';
+import { buildGeminiThinkingParams, buildOpenAIThinkingParams } from '@/src/shared/llmCapabilities';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
 
-export type LLMProvider = 'openai' | 'gemini' | 'anthropic' | 'mock';
+export type { LLMProvider } from '@/src/shared/llmProvider';
 
 export interface LLMStreamChunk {
   type: 'text';
@@ -31,7 +32,6 @@ export interface LLMStreamOptions {
 
 const encoder = new TextEncoder();
 
-const DEFAULT_GEMINI_MODEL = 'gemini-3-pro-preview';
 const DEFAULT_ANTHROPIC_MAX_TOKENS = 2048;
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
@@ -44,7 +44,6 @@ export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {
   const config = getProviderEnvConfig(provider);
-  if (provider === 'gemini') return config.defaultModel || DEFAULT_GEMINI_MODEL;
   return config.defaultModel;
 }
 
@@ -111,7 +110,7 @@ async function* streamFromOpenAI(
   try {
     stream = await openAIClient.chat.completions.create({
       ...baseRequest,
-      ...(reasoningEffort ? ({ reasoning_effort: reasoningEffort } as any) : null)
+      ...buildOpenAIThinkingParams(thinking)
     } as any);
   } catch (error) {
     if (reasoningEffort) {
@@ -183,21 +182,12 @@ async function* streamFromGemini(
   const model = pickModel(modelName);
   let stream: any;
 
-  const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
-  const isFlashModel = /flash/i.test(modelName);
   const request: any = { contents };
 
   if (typeof thinking === 'string') {
-    if (isGemini3) {
-      if (!isFlashModel && thinking === 'medium') {
-        // Per Gemini docs: Gemini 3 Pro supports only "low" and "high".
-        throw new Error(`Gemini 3 Pro does not support thinking level "medium". Choose Low or High and try again.`);
-      }
-      if (thinking !== 'off') {
-        request.generationConfig = { thinkingConfig: { thinkingLevel: thinking } };
-      }
-    } else {
-      request.generationConfig = { thinkingConfig: { thinkingBudget: toGemini25ThinkingBudget(thinking) } };
+    const params = buildGeminiThinkingParams(modelName, thinking);
+    if (params.generationConfig) {
+      request.generationConfig = params.generationConfig;
     }
   }
 

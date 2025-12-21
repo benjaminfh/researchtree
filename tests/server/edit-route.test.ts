@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   buildChatContext: vi.fn(),
   streamAssistantCompletion: vi.fn(),
   resolveLLMProvider: vi.fn(),
+  getDefaultModelForProvider: vi.fn(),
   getProviderTokenLimit: vi.fn(),
   rtCreateRefFromNodeParentShadowV1: vi.fn(),
   rtAppendNodeToRefShadowV1: vi.fn(),
@@ -44,7 +45,8 @@ vi.mock('@/src/server/context', () => ({
 
 vi.mock('@/src/server/llm', () => ({
   streamAssistantCompletion: mocks.streamAssistantCompletion,
-  resolveLLMProvider: mocks.resolveLLMProvider
+  resolveLLMProvider: mocks.resolveLLMProvider,
+  getDefaultModelForProvider: mocks.getDefaultModelForProvider
 }));
 
 vi.mock('@/src/server/providerCapabilities', () => ({
@@ -105,6 +107,7 @@ describe('/api/projects/[id]/edit', () => {
       ]
     });
     mocks.resolveLLMProvider.mockReturnValue('mock');
+    mocks.getDefaultModelForProvider.mockReturnValue('mock');
     mocks.getProviderTokenLimit.mockResolvedValue(4000);
     mocks.streamAssistantCompletion.mockImplementation(async function* () {
       yield { type: 'text', content: 'foo' };

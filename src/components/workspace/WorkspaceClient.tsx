@@ -8,6 +8,7 @@ import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
+import { getAllowedThinkingSettings, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import ReactMarkdown from 'react-markdown';
@@ -540,12 +541,14 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   );
 
   const activeProviderModel = activeProvider?.defaultModel ?? '';
-  const isGemini3Pro =
-    provider === 'gemini' && /(^|\/)gemini-3/i.test(activeProviderModel) && !/flash/i.test(activeProviderModel);
+  const allowedThinking = useMemo(
+    () => getAllowedThinkingSettings(provider, activeProviderModel),
+    [provider, activeProviderModel]
+  );
   const thinkingUnsupportedError =
-    isGemini3Pro && thinking === 'medium'
-      ? `Gemini 3 Pro does not support Thinking: Medium (model=${activeProviderModel}). Choose Low or High.`
-      : null;
+    !activeProviderModel || allowedThinking.includes(thinking)
+      ? null
+      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${provider} (model=${activeProviderModel}).`;
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -650,10 +653,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (typeof window === 'undefined') return;
     setThinkingHydratedKey(null);
     const saved = window.localStorage.getItem(thinkingStorageKey) as ThinkingSetting | null;
+    const defaultThinking = getDefaultThinkingSetting(provider, activeProviderModel);
     const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved);
-    setThinking(isValid ? (saved as ThinkingSetting) : 'medium');
+    setThinking(isValid ? (saved as ThinkingSetting) : defaultThinking);
     setThinkingHydratedKey(thinkingStorageKey);
-  }, [thinkingStorageKey]);
+  }, [thinkingStorageKey, provider, activeProviderModel]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2196,39 +2200,29 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         role="menu"
                         className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
                       >
-	                        {THINKING_SETTINGS.map((setting) => {
+	                        {allowedThinking.map((setting) => {
 	                          const active = thinking === setting;
-	                          const disabled = state.isStreaming || (isGemini3Pro && setting === 'medium');
 	                          return (
 	                            <button
 	                              key={setting}
 	                              type="button"
 	                              role="menuitemradio"
 	                              aria-checked={active}
-	                              disabled={disabled}
+	                              disabled={state.isStreaming}
 	                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-	                                disabled
-	                                  ? 'cursor-not-allowed text-slate-400'
-	                                  : active
-	                                    ? 'bg-primary/10 text-primary'
-	                                    : 'text-slate-700 hover:bg-primary/10'
+	                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
 	                              }`}
-	                              title={
-	                                disabled && isGemini3Pro && setting === 'medium'
-	                                  ? `Not supported for ${activeProviderModel}`
-	                                  : undefined
-	                              }
 	                              onClick={() => {
-	                                if (disabled) return;
+	                                if (state.isStreaming) return;
 	                                setThinking(setting);
 	                                setThinkingMenuOpen(false);
 	                              }}
 	                            >
-                              <span>{THINKING_SETTING_LABELS[setting]}</span>
-                              {active ? <span aria-hidden="true">✓</span> : null}
-                            </button>
-                          );
-                        })}
+	                              <span>{THINKING_SETTING_LABELS[setting]}</span>
+	                              {active ? <span aria-hidden="true">✓</span> : null}
+	                            </button>
+	                          );
+	                        })}
                       </div>
                     ) : null}
                   </div>
@@ -2517,17 +2511,15 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
 	                  disabled={isEditing}
 	                >
-	                  {THINKING_SETTINGS.map((setting) => {
+	                  {(() => {
 	                    const editModel = providerOptions.find((option) => option.id === editProvider)?.defaultModel ?? '';
-	                    const editIsGemini3Pro =
-	                      editProvider === 'gemini' && /(^|\/)gemini-3/i.test(editModel) && !/flash/i.test(editModel);
-	                    const disabled = editIsGemini3Pro && setting === 'medium';
-	                    return (
-	                      <option key={setting} value={setting} disabled={disabled}>
+	                    const allowed = editModel ? getAllowedThinkingSettings(editProvider, editModel) : THINKING_SETTINGS;
+	                    return allowed.map((setting) => (
+	                      <option key={setting} value={setting}>
 	                        {THINKING_SETTING_LABELS[setting]}
 	                      </option>
-	                    );
-	                  })}
+	                    ));
+	                  })()}
 	                </select>
 	              </div>
 	            </div>

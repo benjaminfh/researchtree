@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
+import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
 
 interface RouteContext {
   params: { id: string };
@@ -34,21 +35,6 @@ function labelForProvider(provider: LLMProvider): string {
   return 'Mock';
 }
 
-function assertThinkingSupported(provider: LLMProvider, thinking: ThinkingSetting | undefined) {
-  if (provider !== 'gemini') return;
-  if (!thinking || thinking === 'off') return;
-
-  const modelName = getDefaultModelForProvider('gemini');
-  const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
-  const isFlash = /flash/i.test(modelName);
-  if (isGemini3 && !isFlash && thinking === 'medium') {
-    throw badRequest(
-      `Gemini 3 Pro does not support Thinking: Medium (model=${modelName}). Choose Low or High and try again.`,
-      { provider, modelName, thinking, supportedThinking: ['off', 'low', 'high'] }
-    );
-  }
-}
-
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -68,7 +54,17 @@ export async function POST(request: Request, { params }: RouteContext) {
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const sourceRef = fromRef?.trim() || currentBranch;
     const provider = resolveLLMProvider(llmProvider);
-    assertThinkingSupported(provider, thinking);
+    const modelName = getDefaultModelForProvider(provider);
+    const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
+    const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
+    if (!thinkingValidation.ok) {
+      throw badRequest(thinkingValidation.message ?? 'Invalid thinking setting', {
+        provider,
+        modelName,
+        thinking: effectiveThinking,
+        allowed: thinkingValidation.allowed
+      });
+    }
 
     return await withProjectLock(params.id, async () => {
       const releaseRefLock = await acquireProjectRefLock(params.id, sourceRef);
@@ -141,14 +137,14 @@ export async function POST(request: Request, { params }: RouteContext) {
               const messagesForCompletion = context.messages;
 
               let buffered = '';
-              for await (const chunk of streamAssistantCompletion({
-                messages: messagesForCompletion,
-                provider,
-                thinking,
-                apiKey
-              })) {
-                buffered += chunk.content;
-              }
+	              for await (const chunk of streamAssistantCompletion({
+	                messages: messagesForCompletion,
+	                provider,
+	                thinking: effectiveThinking,
+	                apiKey
+	              })) {
+	                buffered += chunk.content;
+	              }
 
               if (buffered.trim()) {
                 assistantNode = {
@@ -230,9 +226,9 @@ export async function POST(request: Request, { params }: RouteContext) {
           const messagesForCompletion = context.messages;
 
           let buffered = '';
-          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking, apiKey })) {
-            buffered += chunk.content;
-          }
+	          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking: effectiveThinking, apiKey })) {
+	            buffered += chunk.content;
+	          }
 
           if (buffered.trim()) {
             assistantNode = await appendNode(

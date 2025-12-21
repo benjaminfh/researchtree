@@ -47,7 +47,7 @@ describe('Gemini streaming compatibility', () => {
   });
 
   it('falls back to non-streaming when streaming returns 405', async () => {
-    process.env.GEMINI_MODEL = 'gemini-test';
+    process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
 
     const { GoogleGenerativeAIFetchError } = await import('@google/generative-ai');
     generateContentStream.mockRejectedValueOnce(new GoogleGenerativeAIFetchError('Method Not Allowed', 405, 'Method Not Allowed'));
@@ -82,7 +82,7 @@ describe('Gemini streaming compatibility', () => {
       messages: [{ role: 'user', content: 'hi' }]
     });
 
-    await expect(iter.next()).rejects.toThrow(/does not support thinking level "medium"/i);
+    await expect(iter.next()).rejects.toThrow(/does not support thinking:\s*medium/i);
     expect(generateContentStream).not.toHaveBeenCalled();
     expect(generateContent).not.toHaveBeenCalled();
   });

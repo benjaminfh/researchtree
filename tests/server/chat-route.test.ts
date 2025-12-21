@@ -30,7 +30,8 @@ vi.mock('@/src/server/llm', () => {
   return {
     streamAssistantCompletion: mocks.streamAssistantCompletion,
     encodeChunk: (content: string) => encoder.encode(content),
-    resolveLLMProvider: vi.fn(() => 'mock')
+    resolveLLMProvider: vi.fn(() => 'mock'),
+    getDefaultModelForProvider: vi.fn(() => 'mock')
   };
 });
 
