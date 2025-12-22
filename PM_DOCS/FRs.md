@@ -8,7 +8,7 @@
 # PROJECTS PAGE
 ## CHAT
 [x] [markdown rendering] assistant messages should render as markdown [Done - assistant bubble uses `ReactMarkdown` + `remark-gfm`]
-[ ] [web search mode] 
+[ ] [web search mode] Add a Search toggle near the chat input that routes requests through provider web search when enabled. Show a subtle note when OpenAI is selected to indicate the model is forced to the search-preview variant.
 
 ### Messages
 [x] when any message is added, the chat container should auto scroll to the bottom [Done - message list scrolls to bottom when `visibleNodes.length` increases]
