@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { APP_NAME, storageKey } from '@/src/config/app';
-import { ChevronLeftIcon, ChevronRightIcon } from '@/src/components/workspace/HeroIcons';
+import { MenuClosedIcon, MenuIcon } from '@/src/components/workspace/HeroIcons';
 
 const COLLAPSE_KEY = storageKey('rail-collapsed');
 
@@ -59,7 +59,7 @@ export function RailLayout({
             className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
             aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
           >
-            {railCollapsed ? <ChevronRightIcon className="h-5 w-5" /> : <ChevronLeftIcon className="h-5 w-5" />}
+            {railCollapsed ? <MenuIcon className="h-5 w-5" /> : <MenuClosedIcon className="h-5 w-5" />}
           </button>
           {!railCollapsed ? (
             pathname === '/' ? (
