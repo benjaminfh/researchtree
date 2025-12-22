@@ -11,8 +11,9 @@
 # PROJECTS PAGE
 ## CHAT
 [x] [markdown rendering] assistant messages should render as markdown [Done - assistant bubble uses `ReactMarkdown` + `remark-gfm`]
-[ ] [web search mode] 
-
+[ ] [web search mode]
+[ ] [Thinkin traces] currently we don't store thinking traces or bake them into the context. This pattern varies across all three providers - we need best efforts.
+ 
 ### Messages
 [x] when any message is added, the chat container should auto scroll to the bottom [Done - message list scrolls to bottom when `visibleNodes.length` increases]
 
