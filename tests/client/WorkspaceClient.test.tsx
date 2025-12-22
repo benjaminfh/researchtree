@@ -1,24 +1,29 @@
-import React from 'react';
+import React, { act } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { act } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ProjectMetadata, NodeRecord } from '@git/types';
+import type { BranchSummary, ProjectMetadata, NodeRecord } from '@git/types';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 
-let capturedWorkspaceGraphProps: any = null;
+type CapturedWorkspaceGraphProps = {
+  mode?: 'nodes' | 'collapsed' | 'starred';
+  branchHistories?: Record<string, NodeRecord[]>;
+  onSelectNode?: (nodeId: string | null) => void;
+};
+
+let capturedWorkspaceGraphProps: CapturedWorkspaceGraphProps | null = null;
 
 vi.mock('@/src/components/workspace/WorkspaceGraph', () => ({
-  WorkspaceGraph: (props: any) => {
+  WorkspaceGraph: (props: CapturedWorkspaceGraphProps) => {
     capturedWorkspaceGraphProps = props;
     return <div data-testid="workspace-graph" />;
   }
 }));
 
-vi.mock('reactflow', () => {
-  const React = require('react');
+vi.mock('reactflow', async () => {
+  const React = await import('react');
   return {
     __esModule: true,
     default: ({ children }: { children?: React.ReactNode }) => <div data-testid="react-flow">{children}</div>,
@@ -46,10 +51,15 @@ const baseProject: ProjectMetadata = {
   branchName: 'feature/phase-2'
 };
 
-const baseBranches = [
+const baseBranches: BranchSummary[] = [
   { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true },
   { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false }
-] as const;
+];
+
+type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
+type FetchMock = ReturnType<typeof vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>> & {
+  mock: { calls: FetchCall[] };
+};
 
 const providerOptions = [
   { id: 'openai', label: 'OpenAI', defaultModel: 'gpt-5.2' },
@@ -91,6 +101,7 @@ describe('WorkspaceClient', () => {
   let interruptMock: ReturnType<typeof vi.fn>;
   let chatState: { isStreaming: boolean; error: string | null };
   let capturedChatOptions: Parameters<typeof useChatStream>[0] | null;
+  let fetchMock: FetchMock;
 
   beforeEach(() => {
     mutateHistoryMock = vi.fn().mockResolvedValue(undefined);
@@ -122,7 +133,7 @@ describe('WorkspaceClient', () => {
       };
     });
 
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if (url.includes('/graph')) {
         return new Response(
@@ -157,7 +168,9 @@ describe('WorkspaceClient', () => {
         return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
-    }) as any;
+    }) as unknown as FetchMock;
+
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -166,7 +179,7 @@ describe('WorkspaceClient', () => {
 
   it('renders metadata, nodes, and artefact content', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
     expect(screen.getByText(/Branch\s+feature\/phase-2\s+·/)).toBeInTheDocument();
@@ -199,15 +212,15 @@ describe('WorkspaceClient', () => {
       error: undefined,
       mutateHistory: vi.fn(),
       mutateArtefact: vi.fn()
-    } as any);
+    } as unknown as ReturnType<typeof useProjectData>);
 
     mockUseChatStream.mockReturnValue({
       sendMessage: vi.fn(),
       interrupt: vi.fn(),
       state: { isStreaming: false, error: null }
-    } as any);
+    } as unknown as ReturnType<typeof useChatStream>);
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     const bold = await screen.findByText('world');
     expect(bold.tagName).toBe('STRONG');
@@ -215,7 +228,7 @@ describe('WorkspaceClient', () => {
 
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     const composer = screen.getByPlaceholderText('Ask anything');
     await user.type(composer, 'New investigation');
@@ -237,7 +250,7 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>);
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(capturedChatOptions).not.toBeNull();
 
@@ -249,7 +262,7 @@ describe('WorkspaceClient', () => {
   });
 
   it('refreshes history and artefact when the stream completes', async () => {
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(capturedChatOptions).not.toBeNull();
 
     await act(async () => {
@@ -289,7 +302,7 @@ describe('WorkspaceClient', () => {
     } as ReturnType<typeof useProjectData>);
 
     render(
-      <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />
     );
 
     expect(screen.getByRole('button', { name: 'Add canvas diff to context' })).toBeInTheDocument();
@@ -301,7 +314,7 @@ describe('WorkspaceClient', () => {
       expect(mutateHistoryMock).toHaveBeenCalled();
     });
 
-    const pinCall = (global.fetch as any).mock.calls.find(
+    const pinCall = fetchMock.mock.calls.find(
       ([input]: [RequestInfo | URL]) => input.toString().includes('/merge/pin-canvas-diff')
     );
     expect(pinCall).toBeTruthy();
@@ -335,7 +348,7 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>);
 
-    (global.fetch as any).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if (url.includes('/stars')) {
         return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
@@ -363,7 +376,7 @@ describe('WorkspaceClient', () => {
     render(
       <WorkspaceClient
         project={baseProject}
-        initialBranches={baseBranches as any}
+        initialBranches={baseBranches}
         defaultProvider="openai"
         providerOptions={providerOptions}
       />
@@ -382,7 +395,7 @@ describe('WorkspaceClient', () => {
     });
     await user.click(confirmButton);
 
-    const mergeCall = (global.fetch as any).mock.calls.find(
+    const mergeCall = fetchMock.mock.calls.find(
       ([input]: [RequestInfo | URL]) => input.toString().includes('/api/projects/proj-1/merge')
     );
     expect(mergeCall).toBeTruthy();
@@ -395,7 +408,7 @@ describe('WorkspaceClient', () => {
       sourceAssistantNodeId: 'node-assistant-branch'
     });
 
-    const branchSwitchCall = (global.fetch as any).mock.calls.find(
+    const branchSwitchCall = fetchMock.mock.calls.find(
       ([input, init]: [RequestInfo | URL, RequestInit]) => input.toString().includes('/branches') && init?.method === 'PATCH'
     );
     expect(branchSwitchCall).toBeTruthy();
@@ -404,7 +417,7 @@ describe('WorkspaceClient', () => {
   it('shows stop controls and error text while streaming', async () => {
     chatState.isStreaming = true;
     chatState.error = 'Network issue';
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     expect(screen.getByLabelText('Stop streaming')).toBeInTheDocument();
     expect(screen.getByText('Network issue')).toBeInTheDocument();
@@ -429,7 +442,7 @@ describe('WorkspaceClient', () => {
 
     mockUseProjectData.mockImplementation(() => currentProjectData);
 
-    const { rerender } = render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    const { rerender } = render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(screen.getByText('Loading history…')).toBeInTheDocument();
 
     currentProjectData = {
@@ -442,13 +455,13 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>;
 
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(screen.getByText('Failed to load history.')).toBeInTheDocument();
   });
 
   it('updates the chat stream provider when the selector changes', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(capturedChatOptions?.provider).toBe('openai');
 
     await user.click(screen.getByRole('button', { name: /provider:/i }));
@@ -462,7 +475,7 @@ describe('WorkspaceClient', () => {
     render(
       <WorkspaceClient
         project={{ ...baseProject, branchName: 'main' }}
-        initialBranches={baseBranches as any}
+        initialBranches={baseBranches}
         defaultProvider="openai"
         providerOptions={providerOptions}
       />
@@ -488,10 +501,10 @@ describe('WorkspaceClient', () => {
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
-    }) as any;
+    }) as unknown as typeof fetch;
 
     try {
-      render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+      render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /provider:/i })).toHaveTextContent('Gemini');
@@ -514,7 +527,7 @@ describe('WorkspaceClient', () => {
 
   it('updates and persists the thinking mode selection', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     const thinkingTrigger = screen.getByRole('button', { name: 'Thinking mode' });
     expect(thinkingTrigger).toHaveTextContent('Thinking: Medium');
@@ -547,7 +560,7 @@ describe('WorkspaceClient', () => {
     );
 
     const { rerender } = render(
-      <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />
     );
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
@@ -561,11 +574,8 @@ describe('WorkspaceClient', () => {
       expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(2);
     });
 
-    currentNodes = [
-      ...currentNodes,
-      { id: 'node-3', type: 'message', role: 'assistant', content: 'New node', timestamp: 1700000002000, parent: 'node-assistant' } as any
-    ];
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    currentNodes = [...currentNodes, { id: 'node-3', type: 'message', role: 'assistant', content: 'New node', timestamp: 1700000002000, parent: 'node-assistant' }];
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(4);
@@ -574,26 +584,27 @@ describe('WorkspaceClient', () => {
 
   it('scrolls to the bottom when switching branches', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     const list = await screen.findByTestId('chat-message-list');
+    const listEl = list as HTMLElement & { scrollTop: number };
     Object.defineProperty(list, 'scrollHeight', { value: 2000, configurable: true });
     Object.defineProperty(list, 'scrollTop', { value: 0, writable: true, configurable: true });
 
     // requestAnimationFrame is used for the scroll; make it immediate for the test.
     const raf = globalThis.requestAnimationFrame;
-    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(0);
-      return 0 as any;
-    };
+      return 0;
+    }) as unknown as typeof globalThis.requestAnimationFrame;
 
     await user.click(screen.getByRole('button', { name: 'trunk' }));
 
     await waitFor(() => {
-      expect((list as any).scrollTop).toBe(2000);
+      expect(listEl.scrollTop).toBe(2000);
     });
 
-    (globalThis as any).requestAnimationFrame = raf;
+    globalThis.requestAnimationFrame = raf;
   });
 
   it('keeps the chat pinned to bottom when new nodes arrive', async () => {
@@ -614,43 +625,44 @@ describe('WorkspaceClient', () => {
     );
 
     const { rerender } = render(
-      <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />
     );
 
     await user.click(await screen.findByRole('button', { name: /show shared/i }));
 
     const list = await screen.findByTestId('chat-message-list');
+    const listEl = list as HTMLElement & { scrollTop: number };
     Object.defineProperty(list, 'scrollHeight', { value: 2000, configurable: true });
     Object.defineProperty(list, 'scrollTop', { value: 2000, writable: true, configurable: true });
 
     const raf = globalThis.requestAnimationFrame;
-    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(0);
-      return 0 as any;
-    };
+      return 0;
+    }) as unknown as typeof globalThis.requestAnimationFrame;
 
     Object.defineProperty(list, 'scrollHeight', { value: 3000, configurable: true });
     currentNodes = [
       ...currentNodes,
-      { id: 'node-new', type: 'message', role: 'assistant', content: 'Newest node', timestamp: 1700000003000, parent: 'node-user-branch' } as any
+      { id: 'node-new', type: 'message', role: 'assistant', content: 'Newest node', timestamp: 1700000003000, parent: 'node-user-branch' }
     ];
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     await waitFor(() => {
-      expect((list as any).scrollTop).toBe(3000);
+      expect(listEl.scrollTop).toBe(3000);
     });
 
-    (globalThis as any).requestAnimationFrame = raf;
+    globalThis.requestAnimationFrame = raf;
   });
 
   it('renders a stripe for every visible node row (including user and assistant)', async () => {
     const user = userEvent.setup();
-    const branches = [
+    const branches: BranchSummary[] = [
       { name: 'main', headCommit: 'abc', nodeCount: 1, isTrunk: true },
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false }
-    ] as const;
+    ];
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     // Show shared so we deterministically render rows even when history is identical across refs.
     await user.click(await screen.findByRole('button', { name: /show shared/i }));
@@ -665,17 +677,17 @@ describe('WorkspaceClient', () => {
 
   it('jumps to a shared node by revealing shared history and scrolling it into view', async () => {
     const user = userEvent.setup();
-    const originalScrollIntoView = (HTMLElement.prototype as any).scrollIntoView;
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     const scrollIntoViewMock = vi.fn();
-    (HTMLElement.prototype as any).scrollIntoView = scrollIntoViewMock;
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 
     const raf = globalThis.requestAnimationFrame;
-    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(0);
-      return 0 as any;
-    };
+      return 0;
+    }) as unknown as typeof globalThis.requestAnimationFrame;
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     // Default on non-trunk branches is to hide shared history.
     expect(screen.queryByText('How is progress going?')).not.toBeInTheDocument();
@@ -705,27 +717,27 @@ describe('WorkspaceClient', () => {
       expect(scrollIntoViewMock).toHaveBeenCalled();
     });
 
-    (globalThis as any).requestAnimationFrame = raf;
-    (HTMLElement.prototype as any).scrollIntoView = originalScrollIntoView;
+    globalThis.requestAnimationFrame = raf;
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
   });
 
   it('jumps to a node on another branch by switching branches first', async () => {
     const user = userEvent.setup();
-    const originalScrollIntoView = (HTMLElement.prototype as any).scrollIntoView;
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     const scrollIntoViewMock = vi.fn();
-    (HTMLElement.prototype as any).scrollIntoView = scrollIntoViewMock;
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 
     const raf = globalThis.requestAnimationFrame;
-    (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(0);
-      return 0 as any;
-    };
+      return 0;
+    }) as unknown as typeof globalThis.requestAnimationFrame;
 
-    const branches = [
+    const branches: BranchSummary[] = [
       { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true },
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 3, isTrunk: false },
       { name: 'feature/other', headCommit: 'ghi', nodeCount: 2, isTrunk: false }
-    ] as const;
+    ];
 
     const otherNodes: NodeRecord[] = [
       {
@@ -769,7 +781,7 @@ describe('WorkspaceClient', () => {
       } as ReturnType<typeof useProjectData>;
     });
 
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if (url.includes('/graph')) {
         return new Response(
@@ -806,9 +818,9 @@ describe('WorkspaceClient', () => {
         return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
-    }) as any;
+    });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
@@ -827,12 +839,12 @@ describe('WorkspaceClient', () => {
       expect(within(list).getByText('Other branch node')).toBeInTheDocument();
     });
 
-    const branchPatchCall = (global.fetch as any).mock.calls.find((call: any[]) => String(call[0]).includes('/branches') && call[1]?.method === 'PATCH');
+    const branchPatchCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/branches') && call[1]?.method === 'PATCH');
     expect(branchPatchCall).toBeTruthy();
     expect(JSON.parse(branchPatchCall[1].body)).toMatchObject({ name: 'feature/other' });
 
-    (globalThis as any).requestAnimationFrame = raf;
-    (HTMLElement.prototype as any).scrollIntoView = originalScrollIntoView;
+    globalThis.requestAnimationFrame = raf;
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
   });
 
   it('can add canvas changes to chat from a merge node selected in the graph', async () => {
@@ -849,9 +861,9 @@ describe('WorkspaceClient', () => {
       mergedAssistantContent: 'Here are the takeaways',
       timestamp: 1700000003000,
       parent: 'node-assistant'
-    } as any;
+    };
 
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if (url.includes('/graph')) {
         return new Response(
@@ -894,9 +906,9 @@ describe('WorkspaceClient', () => {
         return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
-    }) as any;
+    });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
@@ -914,7 +926,7 @@ describe('WorkspaceClient', () => {
       expect(screen.getByText('Canvas changes added')).toBeInTheDocument();
     });
 
-    const pinCall = (global.fetch as any).mock.calls.find((call: any[]) => String(call[0]).includes('/merge/pin-canvas-diff'));
+    const pinCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/merge/pin-canvas-diff'));
     expect(pinCall).toBeTruthy();
     expect(JSON.parse(pinCall[1].body)).toMatchObject({ mergeNodeId: 'merge-1', targetBranch: 'main' });
   });
@@ -924,7 +936,7 @@ describe('WorkspaceClient', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
