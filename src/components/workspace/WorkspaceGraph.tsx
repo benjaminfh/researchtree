@@ -54,6 +54,8 @@ const DEFAULT_VIEWPORT = { x: 48, y: 88, zoom: 1 } as const;
 const BOTTOM_VIEWPORT_PADDING = 56;
 const LABEL_BASE_OFFSET = 24; // icon (16) + gap (8)
 const LABEL_ROW_GAP = 20; // gap after the right-most line when the node isn't on it
+const EDGE_ANGULAR_BEND = 0.32;
+const EDGE_CURVE_BEND = 0.7;
 
 const DotNode = ({ data }: NodeProps<DotNodeData>) => (
   <div className="relative flex items-center gap-2">
@@ -69,24 +71,40 @@ const DotNode = ({ data }: NodeProps<DotNodeData>) => (
       className="!h-2 !w-2 !border-0 !bg-transparent"
       style={{ left: 8, bottom: -2, opacity: 0 }}
     />
-    <span className={`inline-flex rounded-full ${data.isSelected ? 'ring-2 ring-primary/40 ring-offset-2' : ''}`}>
-      <span
-        className="inline-flex"
-        style={{
-          color: data.color,
-          filter: data.isActive ? `drop-shadow(0 0 0 ${data.color}66)` : 'none'
-        }}
-      >
+    <span className={`relative z-10 inline-flex rounded-full ${data.isSelected ? 'ring-2 ring-primary/40 ring-offset-2' : ''}`}>
       {data.icon === 'assistant' ? (
-        <CpuChipIcon className="h-4 w-4" />
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white"
+          style={{
+            color: data.color,
+            filter: data.isActive ? `drop-shadow(0 0 0 ${data.color}66)` : 'none'
+          }}
+        >
+          <CpuChipIcon className="h-4 w-4" />
+        </span>
       ) : data.icon === 'user' ? (
-        <UserIcon className="h-4 w-4" />
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white"
+          style={{
+            color: data.color,
+            filter: data.isActive ? `drop-shadow(0 0 0 ${data.color}66)` : 'none'
+          }}
+        >
+          <UserIcon className="h-4 w-4" />
+        </span>
       ) : data.icon === 'merge' ? (
-        <ArrowLeftCircleIcon className="h-4 w-4" />
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full"
+          style={{
+            backgroundColor: data.color,
+            filter: data.isActive ? `drop-shadow(0 0 0 ${data.color}66)` : 'none'
+          }}
+        >
+          <ArrowLeftCircleIcon className="h-[11px] w-[11px] transform -scale-y-100 text-white" />
+        </span>
       ) : (
         <span className="h-4 w-4 rounded-full" style={{ backgroundColor: data.color }} />
       )}
-      </span>
     </span>
     <span
       className="flex max-w-[360px] items-center gap-2 whitespace-nowrap text-sm font-medium text-slate-800"
@@ -128,7 +146,7 @@ function buildAngularPath(sx: number, sy: number, tx: number, ty: number, locked
   if (sx === tx) {
     return `M ${sx},${sy} L ${tx},${ty}`;
   }
-  const d = Math.abs(ty - sy) * 0.38;
+  const d = Math.abs(ty - sy) * EDGE_ANGULAR_BEND;
   if (lockedFirst) {
     return `M ${sx},${sy} L ${tx},${ty - d} L ${tx},${ty}`;
   }
@@ -136,7 +154,7 @@ function buildAngularPath(sx: number, sy: number, tx: number, ty: number, locked
 }
 
 function buildCurvePath(sx: number, sy: number, tx: number, ty: number) {
-  const d = Math.abs(ty - sy) * 0.8;
+  const d = Math.abs(ty - sy) * EDGE_CURVE_BEND;
   return `M ${sx},${sy} C ${sx},${sy + d} ${tx},${ty - d} ${tx},${ty}`;
 }
 

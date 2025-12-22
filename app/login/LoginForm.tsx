@@ -13,7 +13,7 @@ function SubmitButton({ label }: { label: string }) {
       type="submit"
       disabled={pending}
     >
-      {pending ? 'Working…' : label}
+      {pending ? (label === 'Sign in' ? 'Signing in…' : label === 'Create account' ? 'Creating account…' : 'Working…') : label}
     </button>
   );
 }

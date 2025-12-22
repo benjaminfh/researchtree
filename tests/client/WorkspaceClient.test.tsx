@@ -178,6 +178,8 @@ describe('WorkspaceClient', () => {
     expect(screen.getByText('How is progress going?')).toBeInTheDocument();
     expect(screen.getByText('All tasks queued.')).toBeInTheDocument();
     expect(screen.getByText('Branch-only follow-up.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^canvas$/i }));
     expect(screen.getByDisplayValue(/## Artefact state/)).toBeInTheDocument();
 
     // Copy is exposed for every message, while edit is only exposed for user messages by default.
@@ -449,7 +451,8 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(capturedChatOptions?.provider).toBe('openai');
 
-    await user.selectOptions(screen.getByLabelText(/Provider/i), 'gemini');
+    await user.click(screen.getByRole('button', { name: /provider:/i }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Gemini' }));
 
     expect(capturedChatOptions?.provider).toBe('gemini');
     expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
@@ -491,13 +494,13 @@ describe('WorkspaceClient', () => {
       render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
       await waitFor(() => {
-        expect((screen.getByLabelText(/Provider/i) as HTMLSelectElement).value).toBe('gemini');
+        expect(screen.getByRole('button', { name: /provider:/i })).toHaveTextContent('Gemini');
       });
 
       await user.click(screen.getByRole('button', { name: 'trunk' }));
 
       await waitFor(() => {
-        expect((screen.getByLabelText(/Provider/i) as HTMLSelectElement).value).toBe('openai');
+        expect(screen.getByRole('button', { name: /provider:/i })).toHaveTextContent('OpenAI');
       });
 
       expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
@@ -547,7 +550,7 @@ describe('WorkspaceClient', () => {
       <WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />
     );
 
-    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await user.click(screen.getByRole('button', { name: /thred graph/i }));
 
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
@@ -678,7 +681,7 @@ describe('WorkspaceClient', () => {
     expect(screen.queryByText('How is progress going?')).not.toBeInTheDocument();
     expect(screen.getByText('Branch-only follow-up.')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
     });
@@ -807,7 +810,7 @@ describe('WorkspaceClient', () => {
 
     render(<WorkspaceClient project={baseProject} initialBranches={branches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
-    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
     });
@@ -895,7 +898,7 @@ describe('WorkspaceClient', () => {
 
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
-    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
     });
@@ -923,7 +926,7 @@ describe('WorkspaceClient', () => {
 
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches as any} defaultProvider="openai" providerOptions={providerOptions} />);
 
-    await user.click(screen.getByRole('button', { name: /quest graph/i }));
+    await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
     });

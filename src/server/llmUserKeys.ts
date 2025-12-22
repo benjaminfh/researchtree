@@ -36,6 +36,11 @@ function isVaultReadCompatIssue(reason: string): boolean {
   return false;
 }
 
+function isMissingServiceRoleEnv(reason: string): boolean {
+  const normalized = reason.toLowerCase();
+  return normalized.includes('supabase admin env missing') || normalized.includes('supabase_service_role_key') || normalized.includes('service role');
+}
+
 export async function requireUserApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
   if (provider === 'mock') return null;
   const keyed = provider as KeyedProvider;
@@ -68,6 +73,12 @@ export async function requireUserApiKeyForProvider(provider: LLMProvider): Promi
     if (isVaultReadCompatIssue(reason)) {
       throw internalError(
         `Server is missing Supabase Vault secret decryption support. Apply the latest Supabase migrations and try again.`,
+        { provider: keyed, configured, reason }
+      );
+    }
+    if (isMissingServiceRoleEnv(reason)) {
+      throw internalError(
+        `Server is missing Supabase service-role credentials required to read Profile tokens. Set SUPABASE_SERVICE_ROLE_KEY (and redeploy) and try again.`,
         { provider: keyed, configured, reason }
       );
     }
