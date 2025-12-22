@@ -29,6 +29,14 @@ export function ChevronRightIcon({ className }: IconProps) {
   return <BlueprintIcon icon="chevron-right" className={className} />;
 }
 
+export function MenuIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="menu" className={className} />;
+}
+
+export function MenuClosedIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="menu-closed" className={className} />;
+}
+
 export function HomeIcon({ className }: IconProps) {
   return <BlueprintIcon icon="home" className={className} />;
 }
