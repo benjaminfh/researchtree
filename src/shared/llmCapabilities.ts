@@ -12,7 +12,7 @@ export interface ProviderEndpointConfig {
 export const LLM_ENDPOINTS: Record<LLMProvider, ProviderEndpointConfig> = {
   openai: {
     defaultModel: 'gpt-5.2',
-    models: ['gpt-5.2', 'gpt-5.1']
+    models: ['gpt-5.2', 'gpt-5.1', 'gpt-4o-mini-search-preview', 'gpt-4o-search-preview']
   },
   gemini: {
     defaultModel: 'gemini-3-pro-preview',

@@ -10,7 +10,8 @@ export const chatRequestSchema = z.object({
   intent: z.string().max(280).optional(),
   llmProvider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
   ref: z.string().min(1).max(120).optional(),
-  thinking: z.enum(['off', 'low', 'medium', 'high']).optional()
+  thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
+  webSearch: z.boolean().optional()
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;

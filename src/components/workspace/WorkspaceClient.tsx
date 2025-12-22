@@ -30,6 +30,7 @@ import {
   PaperClipIcon,
   PencilIcon,
   QuestionMarkCircleIcon,
+  SearchIcon,
   Square2StackIcon,
   XMarkIcon
 } from './HeroIcons';
@@ -500,12 +501,19 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
   const providerMenuRef = useRef<HTMLDivElement | null>(null);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const webSearchStorageKey = useMemo(
+    () => `researchtree:websearch:${project.id}:${branchName}`,
+    [project.id, branchName]
+  );
+  const [webSearchHydratedKey, setWebSearchHydratedKey] = useState<string | null>(null);
 
   const { sendMessage, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
     provider,
     thinking,
+    webSearch: webSearchEnabled,
     onChunk: (chunk) => {
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
@@ -546,6 +554,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${provider} (model=${activeProviderModel}).`;
+  const webSearchAvailable = provider !== 'mock';
+  const showOpenAISearchNote = webSearchEnabled && provider === 'openai';
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -668,6 +678,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (thinkingHydratedKey !== thinkingStorageKey) return;
     window.localStorage.setItem(thinkingStorageKey, thinking);
   }, [thinking, thinkingHydratedKey, thinkingStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setWebSearchHydratedKey(null);
+    const saved = window.localStorage.getItem(webSearchStorageKey);
+    setWebSearchEnabled(saved === 'true');
+    setWebSearchHydratedKey(webSearchStorageKey);
+  }, [webSearchStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (webSearchHydratedKey !== webSearchStorageKey) return;
+    window.localStorage.setItem(webSearchStorageKey, webSearchEnabled ? 'true' : 'false');
+  }, [webSearchEnabled, webSearchHydratedKey, webSearchStorageKey]);
 
   useEffect(() => {
     if (!showEditModal) return;
@@ -2268,18 +2292,38 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               style={{ paddingLeft: ctx.railCollapsed ? '96px' : '320px' }}
             >
               <div className="flex items-center gap-3 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
-                <div className="flex h-10 w-10 items-center justify-center">
-                  {features.uiAttachments ? (
-                    <button
-                      type="button"
-                      className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                      aria-label="Add attachment"
-                    >
-                      <PaperClipIcon className="h-5 w-5" />
-                    </button>
-                  ) : (
-                    <span aria-hidden="true" />
-                  )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!webSearchAvailable || state.isStreaming) return;
+                      setWebSearchEnabled((prev) => !prev);
+                    }}
+                    className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus:outline-none ${
+                      webSearchEnabled
+                        ? 'border-primary/30 bg-primary/10 text-primary'
+                        : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
+                    } ${!webSearchAvailable ? 'opacity-50' : ''}`}
+                    aria-label="Toggle web search"
+                    aria-pressed={webSearchEnabled}
+                    disabled={state.isStreaming || !webSearchAvailable}
+                  >
+                    <SearchIcon className="h-4 w-4" />
+                    <span>Search</span>
+                  </button>
+                  <div className="flex h-10 w-10 items-center justify-center">
+                    {features.uiAttachments ? (
+                      <button
+                        type="button"
+                        className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
+                        aria-label="Add attachment"
+                      >
+                        <PaperClipIcon className="h-5 w-5" />
+                      </button>
+                    ) : (
+                      <span aria-hidden="true" />
+                    )}
+                  </div>
                 </div>
                 <textarea
                   value={draft}
@@ -2368,6 +2412,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               </div>
               <div className="relative mt-2 flex items-center text-xs text-muted">
                 <span className="mx-auto">⌘ + Enter to send · Shift + Enter adds a newline.</span>
+                {showOpenAISearchNote ? (
+                  <span className="absolute left-0 text-[11px] text-slate-400">Search uses gpt-4o-mini-search-preview.</span>
+                ) : null}
                 {state.isStreaming ? <span className="absolute right-0 animate-pulse text-primary">Streaming…</span> : null}
               </div>
             </div>
