@@ -25,4 +25,5 @@
 [ ] LLM Agent has no way to edit the canvas currently - we need to give it tools [Open - system prompt includes canvas content, but no tool/function pathway for the model to write canvas updates]
 
 # USER PROFILE
-[ ] A user profile page. MVP shows registered email, ability to change password, plus 3 fields for LLM provider keys. We must store these keys securely using supabase vault!! [Partial - profile page + token storage via Supabase Vault exists; no change-password flow found]
+[x] [User profile] A user profile page. MVP shows registered email, plus 3 fields for LLM provider keys. We must store these keys securely using supabase vault!! [Partial - profile page + token storage via Supabase Vault exists; no change-password flow found]
+[x] [Password change] User profile - change password flow [Done - profile UI posts to `/api/profile/password` which calls `supabase.auth.updateUser({ password })`]

@@ -20,6 +20,11 @@ export function ProfilePageClient({ email }: { email: string | null }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [openaiKey, setOpenaiKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
@@ -102,6 +107,44 @@ export function ProfilePageClient({ email }: { email: string | null }) {
       setError((err as Error)?.message ?? 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const changePassword = async () => {
+    setChangingPassword(true);
+    setPasswordError(null);
+    setPasswordNotice(null);
+    try {
+      if (!newPassword.trim()) {
+        setPasswordError('New password is required.');
+        return;
+      }
+      if (newPassword.length < 8) {
+        setPasswordError('Password must be at least 8 characters.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setPasswordError('Passwords do not match.');
+        return;
+      }
+
+      const res = await fetch('/api/profile/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword, confirmPassword })
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || 'Failed to update password.');
+      }
+
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordNotice('Password updated.');
+    } catch (err) {
+      setPasswordError((err as Error)?.message ?? 'Failed to update password.');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -244,6 +287,63 @@ export function ProfilePageClient({ email }: { email: string | null }) {
           >
             {saving ? 'Saving…' : 'Save tokens'}
           </button>
+        </div>
+      </div>
+
+      <div className="mt-8 border-t border-divider/70 pt-6">
+        <div className="space-y-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Password</div>
+
+          <div className="grid gap-3">
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-slate-900">New password</span>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  setPasswordNotice(null);
+                }}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                disabled={changingPassword}
+                className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 disabled:opacity-60"
+              />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-slate-900">Confirm password</span>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setPasswordNotice(null);
+                }}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                disabled={changingPassword}
+                className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 disabled:opacity-60"
+              />
+              <span className="text-xs text-muted">Minimum 8 characters.</span>
+            </label>
+          </div>
+
+          {passwordError ? <p className="text-sm font-medium text-red-700">{passwordError}</p> : null}
+          {passwordNotice ? <p className="text-sm font-medium text-emerald-700">{passwordNotice}</p> : null}
+
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              disabled={changingPassword}
+              onClick={() => {
+                void changePassword();
+              }}
+              className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
+            >
+              {changingPassword ? 'Updating…' : 'Update password'}
+            </button>
+          </div>
         </div>
       </div>
     </section>
