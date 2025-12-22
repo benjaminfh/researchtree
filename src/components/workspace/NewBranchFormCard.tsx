@@ -5,6 +5,7 @@ export function NewBranchFormCard({
   value,
   onValueChange,
   onSubmit,
+  providerSelector,
   disabled = false,
   submitting = false,
   error,
@@ -16,6 +17,7 @@ export function NewBranchFormCard({
   value: string;
   onValueChange: (value: string) => void;
   onSubmit: () => void;
+  providerSelector?: React.ReactNode;
   disabled?: boolean;
   submitting?: boolean;
   error?: string | null;
@@ -59,6 +61,7 @@ export function NewBranchFormCard({
           {submitting ? 'Creating…' : 'Create'}
         </button>
       </div>
+      {providerSelector ? <div>{providerSelector}</div> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </form>
   );
