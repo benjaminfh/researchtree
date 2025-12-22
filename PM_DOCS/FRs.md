@@ -11,7 +11,7 @@
 # PROJECTS PAGE
 ## CHAT
 [x] [markdown rendering] assistant messages should render as markdown [Done - assistant bubble uses `ReactMarkdown` + `remark-gfm`]
-[ ] [web search mode]
+[ ] [web search mode] Add a Search toggle near the chat input that routes requests through provider web search when enabled. Show a subtle note when OpenAI is selected to indicate the model is forced to the search-preview variant.
 [ ] [Thinkin traces] currently we don't store thinking traces or bake them into the context. This pattern varies across all three providers - we need best efforts.
  
 ### Messages

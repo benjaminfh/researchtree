@@ -49,7 +49,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { message, intent, llmProvider, ref, thinking } = parsed.data as typeof parsed.data & { thinking?: ThinkingSetting };
+    const { message, intent, llmProvider, ref, thinking, webSearch } = parsed.data as typeof parsed.data & {
+      thinking?: ThinkingSetting;
+      webSearch?: boolean;
+    };
     const provider = resolveLLMProvider(llmProvider);
     const modelName = getDefaultModelForProvider(provider);
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
@@ -66,7 +69,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const apiKey = await requireUserApiKeyForProvider(provider);
 
     const targetRef = ref ?? (await getPreferredBranch(params.id));
-    console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRef });
+    console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRef, webSearch });
     const releaseLock = await acquireProjectRefLock(params.id, targetRef);
     const abortController = new AbortController();
 
@@ -157,6 +160,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               signal: abortController.signal,
               provider,
               thinking: effectiveThinking,
+              webSearch,
               apiKey
             })) {
               const content = chunk.content;

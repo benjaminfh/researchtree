@@ -76,3 +76,7 @@ export function Square2StackIcon({ className }: IconProps) {
 export function CheckIcon({ className }: IconProps) {
   return <BlueprintIcon icon="tick" className={className} />;
 }
+
+export function SearchIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="search" className={className} />;
+}

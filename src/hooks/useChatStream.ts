@@ -14,11 +14,12 @@ interface UseChatStreamOptions {
   ref?: string;
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
+  webSearch?: boolean;
   onChunk?: (chunk: string) => void;
   onComplete?: () => void;
 }
 
-export function useChatStream({ projectId, ref, provider, thinking, onChunk, onComplete }: UseChatStreamOptions) {
+export function useChatStream({ projectId, ref, provider, thinking, webSearch, onChunk, onComplete }: UseChatStreamOptions) {
   const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
   const activeRequest = useRef<AbortController | null>(null);
   const activeRequestId = useRef<string | null>(null);
@@ -35,7 +36,7 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
         const response = await fetch(`/api/projects/${projectId}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, llmProvider: provider, ref, thinking }),
+          body: JSON.stringify({ message, llmProvider: provider, ref, thinking, webSearch }),
           signal: activeRequest.current.signal
         });
 
@@ -80,7 +81,7 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
         activeRequestId.current = null;
       }
     },
-    [projectId, provider, ref, thinking, onChunk, onComplete]
+    [projectId, provider, ref, thinking, webSearch, onChunk, onComplete]
   );
 
   const interrupt = useCallback(async () => {

@@ -27,10 +27,25 @@ export interface LLMStreamOptions {
   signal?: AbortSignal;
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
+  webSearch?: boolean;
   apiKey?: string | null;
 }
 
 const encoder = new TextEncoder();
+// TODO: Remove OpenAI search-preview routing once we migrate to Responses API web search.
+const OPENAI_SEARCH_MODELS = new Set(['gpt-4o-search-preview', 'gpt-4o-mini-search-preview']);
+
+function isOpenAISearchModel(modelName: string): boolean {
+  return OPENAI_SEARCH_MODELS.has(modelName);
+}
+
+function getOpenAIModelForRequest(webSearch?: boolean): string {
+  if (webSearch) {
+    // Temporary: OpenAI web search only supported via chat completions + search preview models.
+    return 'gpt-4o-mini-search-preview';
+  }
+  return getDefaultModelForProvider('openai');
+}
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
@@ -50,22 +65,23 @@ export async function* streamAssistantCompletion({
   signal,
   provider,
   thinking,
+  webSearch,
   apiKey
 }: LLMStreamOptions): AsyncGenerator<LLMStreamChunk> {
   const resolvedProvider = resolveLLMProvider(provider);
 
   if (resolvedProvider === 'openai') {
-    yield* streamFromOpenAI(messages, signal, thinking, apiKey ?? undefined);
+    yield* streamFromOpenAI(messages, signal, thinking, webSearch, apiKey ?? undefined);
     return;
   }
 
   if (resolvedProvider === 'gemini') {
-    yield* streamFromGemini(messages, signal, thinking, apiKey ?? undefined);
+    yield* streamFromGemini(messages, signal, thinking, webSearch, apiKey ?? undefined);
     return;
   }
 
   if (resolvedProvider === 'anthropic') {
-    yield* streamFromAnthropic(messages, signal, thinking, apiKey ?? undefined);
+    yield* streamFromAnthropic(messages, signal, thinking, webSearch, apiKey ?? undefined);
     return;
   }
 
@@ -80,6 +96,7 @@ async function* streamFromOpenAI(
   messages: ChatMessage[],
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
+  webSearch?: boolean,
   apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.OPENAI_API_KEY;
@@ -94,15 +111,18 @@ async function* streamFromOpenAI(
     content: message.content
   })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
+  const model = getOpenAIModelForRequest(webSearch);
   const baseRequest = {
-    model: getDefaultModelForProvider('openai'),
+    model,
     messages: formattedMessages,
     stream: true
   } as const;
 
+  const thinkingParams = isOpenAISearchModel(model) ? {} : buildOpenAIThinkingParams(thinking);
   const stream: any = await openAIClient.chat.completions.create({
     ...baseRequest,
-    ...buildOpenAIThinkingParams(thinking)
+    ...thinkingParams,
+    ...(webSearch ? { web_search_options: {} } : {})
   } as any);
 
   if (signal) {
@@ -137,6 +157,7 @@ async function* streamFromGemini(
   messages: ChatMessage[],
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
+  webSearch?: boolean,
   apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.GEMINI_API_KEY;
@@ -172,6 +193,9 @@ async function* streamFromGemini(
     if (params.generationConfig) {
       request.generationConfig = params.generationConfig;
     }
+  }
+  if (webSearch) {
+    request.tools = [{ google_search: {} }];
   }
 
   function sanitizeGeminiErrorMessage(message: string): string {
@@ -317,6 +341,7 @@ async function* streamFromAnthropic(
   messages: ChatMessage[],
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
+  webSearch?: boolean,
   apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.ANTHROPIC_API_KEY;
@@ -354,6 +379,15 @@ async function* streamFromAnthropic(
         );
       }
     }
+  }
+  if (webSearch) {
+    baseBody.tools = [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 5
+      }
+    ];
   }
 
   const makeRequest = async (body: any) => {
