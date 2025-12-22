@@ -7,16 +7,14 @@
 
 # PROJECTS PAGE
 ## CHAT
-[x] assistant messages should render as markdown [Done - assistant bubble uses `ReactMarkdown` + `remark-gfm`]
+[x] [markdown rendering] assistant messages should render as markdown [Done - assistant bubble uses `ReactMarkdown` + `remark-gfm`]
+[ ] [web search mode] 
 
 ### Messages
-
 [x] when any message is added, the chat container should auto scroll to the bottom [Done - message list scrolls to bottom when `visibleNodes.length` increases]
 
 ### Branch
-
 ### Merge
-
 [ ] Merge modal includes **Provider** and **Thinking** selectors used for merge-assist actions (kept independent from the main chat composer settings). [Open - merge modal only has summary + payload picker; no independent provider/thinking inputs]
 [x] Merge summary remains **required** for completing a merge; user can always type/edit it manually. [Done - merge is blocked if `mergeSummary.trim()` is empty]
 [ ] Optional helper: “Generate summary” calls `POST /api/projects/[id]/merge/suggest-summary` with the selected assistant payload + source/target Canvas snapshots and fills the merge summary input with the generated text. [Open - no `merge/suggest-summary` route exists]
