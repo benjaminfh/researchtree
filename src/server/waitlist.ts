@@ -125,3 +125,21 @@ export async function removeAllowlistEmail(email: string) {
   const { error } = await supabase.from('email_allowlist').delete().eq('email', normalized);
   if (error) throw new Error(error.message);
 }
+
+export async function redeemAccessCode(email: string, code: string, approvedBy: string | null = null): Promise<boolean> {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedCode = code.trim().toLowerCase();
+  if (!normalizedCode) {
+    throw new Error('Access code is required.');
+  }
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.rpc('rt_redeem_access_code_v1', {
+    p_code: normalizedCode,
+    p_email: normalizedEmail,
+    p_approved_by: approvedBy ? normalizeEmail(approvedBy) : null
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  return Boolean(data);
+}

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { APP_NAME } from '@/src/config/app';
-import { submitWaitlistRequest } from './actions';
+import { submitAccessCode, submitWaitlistRequest } from './actions';
 
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/waitlist';
@@ -12,9 +12,17 @@ function sanitizeRedirectTo(input: string | null): string {
 export default function WaitlistPage({
   searchParams
 }: {
-  searchParams?: { requested?: string; email?: string; redirectTo?: string; error?: string; blocked?: string };
+  searchParams?: {
+    requested?: string;
+    codeApplied?: string;
+    email?: string;
+    redirectTo?: string;
+    error?: string;
+    blocked?: string;
+  };
 }) {
   const requested = (searchParams?.requested ?? '').trim() === '1';
+  const codeApplied = (searchParams?.codeApplied ?? '').trim() === '1';
   const email = (searchParams?.email ?? '').trim();
   const error = (searchParams?.error ?? '').trim();
   const blocked = (searchParams?.blocked ?? '').trim() === '1';
@@ -41,6 +49,11 @@ export default function WaitlistPage({
               Request received{email ? ` for ${email}` : ''}. You’ll be able to sign up after you’re whitelisted.
             </div>
           ) : null}
+          {codeApplied ? (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              Access code applied{email ? ` for ${email}` : ''}. You can sign up now.
+            </div>
+          ) : null}
 
           <form action={submitWaitlistRequest} className="space-y-3">
             <input type="hidden" name="redirectTo" value={redirectTo} />
@@ -63,6 +76,41 @@ export default function WaitlistPage({
               Request access
             </button>
           </form>
+
+          <div className="border-t border-slate-200 pt-4">
+            <p className="text-sm font-medium text-slate-800">Have an access code?</p>
+            <form action={submitAccessCode} className="mt-3 space-y-3">
+              <input type="hidden" name="redirectTo" value={redirectTo} />
+              <label className="block">
+                <span className="text-sm font-medium text-slate-800">Email</span>
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  defaultValue={email}
+                  required
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-800">Access code</span>
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
+                  name="code"
+                  type="text"
+                  autoComplete="one-time-code"
+                  required
+                />
+              </label>
+
+              <button
+                className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                type="submit"
+              >
+                Apply access code
+              </button>
+            </form>
+          </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Link
