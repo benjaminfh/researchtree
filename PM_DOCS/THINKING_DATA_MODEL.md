@@ -232,3 +232,85 @@ Where to integrate:
 - `src/server/llmConfig.ts` (env config)
 - `src/server/context.ts` (provider-specific context rules, if required)
 
+## Q&A (Design Decisions and Open Questions)
+
+### Schema & Storage
+
+Q: Is `public.nodes.raw_response` staying in the schema (re-apply the rolled-back migration), or should we gate raw storage behind feature flags until prod is ready?  
+A: The intended state is **yes, keep `raw_response`** and re-apply the migration. If rollout risk is a concern, we can gate **writes** behind a feature flag while keeping the column available. Reads should tolerate `null`.
+
+Q: What is the expected JSON shape/versioning for `rawResponse`, and do we need a formal schema to avoid drift?  
+A: **No formal schema today.** `rawResponse` is stored as **provider-native, opaque JSON**. We rely on provider-specific handlers to interpret it. If drift becomes painful, we can add a lightweight envelope later (e.g. `{ provider, capturedAt, version, payload }`).
+
+Q: For git mode, is `rt-branch-config.json` already present in prod repos, or do we need a backfill step?  
+A: It is created for **new projects and new branches** only. Existing repos without the file will **fallback to defaults** via `resolveBranchConfig()`. A backfill is optional, not required for correctness.
+
+Q: Do we also want `contentBlocks` persisted in PG as a first-class column?  
+A: **No.** `contentBlocks` live inside `nodes.content_json`. That is the canonical store. A separate column would be pure duplication without clear payoff.
+
+### Branch Locking & Migration
+
+Q: How should existing branches be initialized with provider/model?  
+A: If `refs.provider/model` are empty, `resolveBranchConfig()` uses defaults (env-configured provider + default model). There is **no inference from nodes** today.
+
+Q: If a branch has no assistant messages yet, what should its lock be?  
+A: It should still be locked at creation time to **provider + model**, using defaults or explicit input.
+
+Q: When creating a branch from `fromRef`, should provider/model always inherit from the source branch unless explicitly overridden?  
+A: **Yes.** That is how `resolveBranchConfig()` is used in `createBranch` and PG RPCs.
+
+Q: If the client sends `llmProvider` without `llmModel`, should the server fill model from branch lock or default config?  
+A: **Default config** for the chosen provider, unless it matches the source branch provider, in which case we **inherit the branch model**. This matches `resolveBranchConfig()` behavior.
+
+### Streaming & UI Contract
+
+Q: Is NDJSON “content block” streaming already in place on main, or is that an intended future change?  
+A: It is **implemented in this branch** (`app/api/projects/[id]/chat/route.ts` + `useChatStream`). It emits NDJSON lines of content blocks. It is not on `main` unless merged.
+
+Q: For streaming: should we emit canonical blocks only, or also a raw event stream for debugging?  
+A: We **only emit canonical blocks** (thinking/text/signature). Raw streams are stored server-side (`rawResponse`) and **not** streamed to the client.
+
+Q: What is the exact wire format for streaming chunks?  
+A: NDJSON lines with:
+```
+{ "type": "text" | "thinking" | "thinking_signature", "content": string, "append"?: boolean }
+```
+`append` is used for thinking deltas; text deltas are appended implicitly client-side.
+
+Q: If a stream is interrupted, do we persist partial `rawResponse` + partial `contentBlocks`, or drop raw and only keep accumulated text?  
+A: We **persist partial contentBlocks and any captured rawResponse**. If raw capture is incomplete, it is still stored as-is and treated as opaque.
+
+### OpenAI Responses Mapping
+
+Q: Which Responses event types should be mapped into canonical blocks and stored?  
+A: **At minimum:** text deltas → `text` blocks. If Responses exposes reasoning/thinking, map to `thinking`/`thinking_signature` blocks. Tool calls/results should be stored as **custom block types** (or left in raw only), depending on UI needs.
+
+Q: For “store them but render only a whitelist”: what is the whitelist of block types to render?  
+A: **Render:** `text` and `thinking` (thinking collapsed by default).  
+**Never render:** `thinking_signature`.  
+**Custom blocks:** do not render unless the UI explicitly supports them.
+
+Q: If Responses emits reasoning or “thinking” content, should we store it as thinking blocks but exclude it from context assembly (like Gemini)?  
+A: **Yes, by default.** Store full thinking for UI, but **strip** from context if signatures exist or if provider policy requires it. This mirrors Gemini/Anthropic behavior today.
+
+Q: How should tool call outputs be represented canonically?  
+A: Prefer **custom block types** (e.g. `tool_call`, `tool_result`) to preserve structure, but keep them **UI-hidden** unless explicitly handled. Raw payload remains the source of truth.
+
+### Context Assembly & Statefulness
+
+Q: For same-model context with Responses: do we plan to feed raw Responses output items back into input, or synthesize input from canonical blocks?  
+A: **Raw payloads** should be used for same-model context to preserve structure. Canonical blocks are only used **after a model break**.
+
+Q: Does `previous_response_id` live on assistant nodes, on branch config, or in a separate per-branch store?  
+A: **Not implemented yet.** Preferred: store per-branch state (PG + git) or on the latest assistant node for that branch. Either is acceptable, but it must be branch-scoped.
+
+Q: When a branch forks via edit, should `previous_response_id` reset to null even if provider/model stays the same?  
+A: **Yes.** A fork is a new lineage; treat it as a fresh Responses chain unless we explicitly decide to clone that state.
+
+Q: If Responses is enabled but `previous_response_id` is missing, do we always fall back to full context?  
+A: **Yes.** Use full context assembly from history; do not attempt partial incremental with missing state.
+
+### Provider Identity
+
+Q: Should Responses be a new provider id (`openai_responses`) or remain under `openai` with feature flags?  
+A: **Recommend a new provider id** (`openai_responses`) to keep payload handling and context rules explicit. Feature flags can still gate availability without conflating request/response shapes.
