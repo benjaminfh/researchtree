@@ -1,3 +1,6 @@
+import type { ThinkingContentBlock, ThinkingTrace } from '@/src/shared/thinkingTraces';
+import type { LLMProvider } from '@/src/shared/llmProvider';
+
 export type NodeType = 'message' | 'state' | 'merge';
 
 export interface BaseNode {
@@ -17,6 +20,9 @@ export interface MessageNode extends BaseNode {
   content: string;
   interrupted?: boolean;
   pinnedFromMergeId?: string;
+  thinking?: ThinkingTrace;
+  rawResponse?: unknown;
+  contentBlocks?: ThinkingContentBlock[];
 }
 
 export interface StateNode extends BaseNode {
@@ -40,7 +46,17 @@ export type NodeRecord = MessageNode | StateNode | MergeNode;
 
 export type MessageNodeInput = Pick<
   MessageNode,
-  'type' | 'role' | 'content' | 'interrupted' | 'pinnedFromMergeId' | 'contextWindow' | 'modelUsed' | 'tokensUsed'
+  | 'type'
+  | 'role'
+  | 'content'
+  | 'interrupted'
+  | 'pinnedFromMergeId'
+  | 'contextWindow'
+  | 'modelUsed'
+  | 'tokensUsed'
+  | 'thinking'
+  | 'rawResponse'
+  | 'contentBlocks'
 >;
 
 export type StateNodeInput = Pick<StateNode, 'type' | 'artefactSnapshot' | 'contextWindow' | 'modelUsed' | 'tokensUsed'>;
@@ -76,4 +92,6 @@ export interface BranchSummary {
   headCommit: string;
   nodeCount: number;
   isTrunk: boolean;
+  provider?: LLMProvider;
+  model?: string;
 }
