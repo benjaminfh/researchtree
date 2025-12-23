@@ -11,6 +11,7 @@ import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
 import { APP_NAME, storageKey } from '@/src/config/app';
+import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
@@ -92,7 +93,20 @@ const NodeBubble: FC<{
   const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
   const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
+  const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
+  const thinkingText =
+    node.type === 'message' && node.thinking?.content
+      ? node.thinking.content
+          .map((block) => {
+            if (block.type === 'thinking') return block.thinking ?? '';
+            if (block.type === 'text') return block.text ?? '';
+            return '';
+          })
+          .filter((part) => part.length > 0)
+          .join('')
+      : '';
+  const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const width = isUser ? 'min-w-[14rem] max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
   const palette = muted
@@ -139,6 +153,26 @@ const NodeBubble: FC<{
   return (
     <article className={`flex flex-col gap-1 ${align}`}>
       <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
+        {hasThinking ? (
+          <div className="mb-3 rounded-xl border border-slate-200/70 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <span className="font-semibold text-slate-700">Thinking</span>
+              <button
+                type="button"
+                onClick={() => setShowThinking((prev) => !prev)}
+                className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                aria-label={showThinking ? 'Hide thinking' : 'Show thinking'}
+              >
+                {showThinking ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {showThinking ? (
+              <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">{thinkingText}</p>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">Hidden</p>
+            )}
+          </div>
+        ) : null}
         {node.type === 'message' && node.content ? (
           isAssistant ? (
             <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
@@ -486,6 +520,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const optimisticDraftRef = useRef<string | null>(null);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [streamThinkingBlocks, setStreamThinkingBlocks] = useState<ThinkingContentBlock[]>([]);
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
   const [provider, setProvider] = useState<LLMProvider>(defaultProvider);
@@ -526,11 +561,32 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         setAssistantPending(false);
         shouldScrollToBottomRef.current = true;
       }
-      setStreamPreview((prev) => prev + chunk);
+      if (chunk.type === 'thinking') {
+        setStreamThinkingBlocks((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.type === 'thinking' && last.signature === chunk.signature) {
+            last.thinking += chunk.content;
+            return next;
+          }
+          const block: ThinkingContentBlock = {
+            type: 'thinking',
+            thinking: chunk.content
+          };
+          if (chunk.signature) {
+            block.signature = chunk.signature;
+          }
+          next.push(block);
+          return next;
+        });
+        return;
+      }
+      setStreamPreview((prev) => prev + chunk.content);
     },
     onComplete: async () => {
       await Promise.all([mutateHistory(), mutateArtefact()]);
       setStreamPreview('');
+      setStreamThinkingBlocks([]);
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
       hasReceivedAssistantChunkRef.current = false;
@@ -569,6 +625,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
+    setStreamThinkingBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -611,7 +668,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       : null;
 
   const streamingNode: NodeRecord | null =
-    streamPreview.length > 0
+    streamPreview.length > 0 || streamThinkingBlocks.length > 0
       ? {
           id: 'streaming',
           type: 'message',
@@ -619,7 +676,15 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           content: streamPreview,
           timestamp: Date.now(),
           parent: optimisticUserNode?.id ?? null,
-          interrupted: state.error !== null
+          interrupted: state.error !== null,
+          thinking:
+            streamThinkingBlocks.length > 0
+              ? {
+                  provider,
+                  availability: 'partial',
+                  content: streamThinkingBlocks
+                }
+              : undefined
         }
       : null;
 
@@ -630,6 +695,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     void Promise.all([mutateHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
+    setStreamThinkingBlocks([]);
     if (!hasReceivedAssistantChunkRef.current) {
       setDraft(sent);
     }
@@ -2383,7 +2449,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
               style={{ paddingLeft: ctx.railCollapsed ? '96px' : '320px' }}
             >
-              <div className="flex items-center gap-3 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
+              <div className="flex items-center gap-[0.27rem] rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2401,7 +2467,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     disabled={state.isStreaming || !webSearchAvailable}
                   >
                     <SearchIcon className="h-4 w-4" />
-                    <span>Search</span>
+                    <span>Web search</span>
                   </button>
                   <div className="flex h-10 w-10 items-center justify-center">
                     {features.uiAttachments ? (
