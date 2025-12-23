@@ -15,6 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { NodeRecord } from '@git/types';
+import { deriveTextFromBlocks, getContentBlocksWithLegacyFallback } from '@/src/shared/thinkingTraces';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { ArrowLeftCircleIcon, CpuChipIcon, UserIcon } from './HeroIcons';
@@ -1256,7 +1257,9 @@ function formatLabel(node: NodeRecord) {
     return 'Canvas snapshot';
   }
   if (node.type === 'message') {
-    return `${node.content.slice(0, 42)}${node.content.length > 42 ? '…' : ''}`;
+    const blocks = getContentBlocksWithLegacyFallback(node);
+    const text = deriveTextFromBlocks(blocks) || node.content;
+    return `${text.slice(0, 42)}${text.length > 42 ? '…' : ''}`;
   }
   throw new Error('Unhandled node type');
 }

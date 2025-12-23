@@ -9,6 +9,7 @@ export async function rtAppendNodeToRefShadowV1(input: {
   nodeId: string;
   commitMessage?: string;
   attachDraft?: boolean;
+  rawResponse?: unknown;
 }): Promise<{ newCommitId: string; nodeId: string; ordinal: number; artefactId: string | null; artefactContentHash: string | null }> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.rpc('rt_append_node_to_ref_v1', {
@@ -19,7 +20,8 @@ export async function rtAppendNodeToRefShadowV1(input: {
     p_content_json: input.contentJson,
     p_node_id: input.nodeId,
     p_commit_message: input.commitMessage ?? null,
-    p_attach_draft: input.attachDraft ?? false
+    p_attach_draft: input.attachDraft ?? false,
+    p_raw_response: input.rawResponse ?? null
   });
 
   if (error) {
@@ -39,4 +41,3 @@ export async function rtAppendNodeToRefShadowV1(input: {
     artefactContentHash: row.artefact_content_hash ? String(row.artefact_content_hash) : null
   };
 }
-

@@ -1,7 +1,7 @@
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext } from '@/src/server/context';
-import { encodeChunk, getDefaultModelForProvider, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { encodeChunk, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
@@ -13,6 +13,10 @@ import { requireProjectAccess } from '@/src/server/authz';
 import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
+import { deriveTextFromBlocks } from '@/src/shared/thinkingTraces';
+import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
+import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
+import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 
 interface RouteContext {
   params: { id: string };
@@ -53,8 +57,14 @@ export async function POST(request: Request, { params }: RouteContext) {
       thinking?: ThinkingSetting;
       webSearch?: boolean;
     };
-    const provider = resolveLLMProvider(llmProvider);
-    const modelName = getDefaultModelForProvider(provider);
+    const targetRef = ref ?? (await getPreferredBranch(params.id));
+    const branchConfigMap = await getBranchConfigMap(params.id);
+    const activeConfig = branchConfigMap[targetRef] ?? resolveBranchConfig();
+    const provider = activeConfig.provider;
+    const modelName = activeConfig.model;
+    if (llmProvider && llmProvider !== provider) {
+      throw badRequest(`Branch ${targetRef} is locked to ${labelForProvider(provider)} (${modelName}). Create a new branch to switch.`);
+    }
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
     if (!thinkingValidation.ok) {
@@ -65,10 +75,9 @@ export async function POST(request: Request, { params }: RouteContext) {
         allowed: thinkingValidation.allowed
       });
     }
-    const tokenLimit = await getProviderTokenLimit(provider);
+    const tokenLimit = await getProviderTokenLimit(provider, modelName);
     const apiKey = await requireUserApiKeyForProvider(provider);
 
-    const targetRef = ref ?? (await getPreferredBranch(params.id));
     console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRef, webSearch });
     const releaseLock = await acquireProjectRefLock(params.id, targetRef);
     const abortController = new AbortController();
@@ -92,9 +101,12 @@ export async function POST(request: Request, { params }: RouteContext) {
           let buffered = '';
           let streamError: unknown = null;
           let yieldedAny = false;
+          let yieldedText = false;
           let persistedUser = false;
           let persistedUserNodeId: string | null = null;
           let gitProjectId: string | null = null;
+          const streamBlocks: ThinkingContentBlock[] = [];
+          let rawResponse: unknown = null;
 
           const ensureUserPersisted = async () => {
             if (persistedUser) return;
@@ -114,6 +126,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 type: 'message',
                 role: 'user',
                 content: message,
+                contentBlocks: buildTextBlock(message),
                 timestamp: Date.now(),
                 parent: parentId,
                 createdOnBranch: targetRef,
@@ -148,6 +161,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               type: 'message',
               role: 'user',
               content: message,
+              contentBlocks: buildTextBlock(message),
               contextWindow: [],
               tokensUsed: undefined
             });
@@ -159,6 +173,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               messages: messagesForCompletion,
               signal: abortController.signal,
               provider,
+              model: modelName,
               thinking: effectiveThinking,
               webSearch,
               apiKey
@@ -169,31 +184,73 @@ export async function POST(request: Request, { params }: RouteContext) {
               if (!persistedUser) {
                 await ensureUserPersisted();
               }
-              buffered += content;
               yieldedAny = true;
-              controllerStream.enqueue(encodeChunk(content));
+              if (chunk.type === 'thinking') {
+                const last = streamBlocks[streamBlocks.length - 1];
+                if (chunk.append && last?.type === 'thinking') {
+                  last.thinking += content;
+                } else {
+                  streamBlocks.push({
+                    type: 'thinking',
+                    thinking: content
+                  });
+                }
+                controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'thinking', content, append: chunk.append })}\n`));
+                continue;
+              }
+              if (chunk.type === 'thinking_signature') {
+                streamBlocks.push({
+                  type: 'thinking_signature',
+                  signature: content
+                });
+                controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'thinking_signature', content, append: chunk.append })}\n`));
+                continue;
+              }
+              if (chunk.type === 'raw_response') {
+                rawResponse = chunk.payload ?? null;
+                continue;
+              }
+              const lastText = streamBlocks[streamBlocks.length - 1];
+              if (lastText?.type === 'text') {
+                lastText.text += content;
+              } else {
+                streamBlocks.push({ type: 'text', text: content });
+              }
+              buffered += content;
+              yieldedText = true;
+              controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'text', content })}\n`));
             }
           } catch (error) {
             streamError = error;
           }
 
-          if (!yieldedAny && !abortController.signal.aborted && streamError == null) {
+          if (!yieldedText && !abortController.signal.aborted && streamError == null) {
             streamError = new Error('LLM returned empty response');
           }
 
           try {
             if (persistedUser && buffered.trim().length > 0) {
+              const contentBlocks = buildContentBlocksForProvider({
+                provider,
+                rawResponse,
+                fallbackText: buffered,
+                fallbackBlocks: streamBlocks
+              });
+              const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
               if (store.mode === 'pg') {
                 const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
                 const assistantNode = {
                   id: uuidv4(),
                   type: 'message',
                   role: 'assistant',
-                  content: buffered,
+                  content: contentText,
+                  contentBlocks,
                   timestamp: Date.now(),
                   parent: persistedUserNodeId,
                   createdOnBranch: targetRef,
-                  interrupted: abortController.signal.aborted || streamError !== null
+                  modelUsed: modelName,
+                  interrupted: abortController.signal.aborted || streamError !== null,
+                  rawResponse
                 };
                 await rtAppendNodeToRefShadowV1({
                   projectId: params.id,
@@ -203,15 +260,19 @@ export async function POST(request: Request, { params }: RouteContext) {
                   contentJson: assistantNode,
                   nodeId: assistantNode.id,
                   commitMessage: 'assistant_message',
-                  attachDraft: false
+                  attachDraft: false,
+                  rawResponse
                 });
               } else if (gitProjectId) {
                 const { appendNodeToRefNoCheckout } = await import('@git/nodes');
                 await appendNodeToRefNoCheckout(gitProjectId, targetRef, {
                   type: 'message',
                   role: 'assistant',
-                  content: buffered,
-                  interrupted: abortController.signal.aborted || streamError !== null
+                  content: contentText,
+                  contentBlocks,
+                  modelUsed: modelName,
+                  interrupted: abortController.signal.aborted || streamError !== null,
+                  rawResponse
                 });
               }
             }
@@ -254,7 +315,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
       return new Response(stream, {
         headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive',
           'x-rt-request-id': requestId
