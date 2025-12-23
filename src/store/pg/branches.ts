@@ -5,13 +5,17 @@ export async function rtCreateRefFromNodeParentShadowV1(input: {
   sourceRefName: string;
   newRefName: string;
   nodeId: string;
+  provider?: string | null;
+  model?: string | null;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.rpc('rt_create_ref_from_node_parent_v1', {
     p_project_id: input.projectId,
     p_source_ref_name: input.sourceRefName,
     p_new_ref_name: input.newRefName,
-    p_node_id: input.nodeId
+    p_node_id: input.nodeId,
+    p_provider: input.provider ?? null,
+    p_model: input.model ?? null
   });
 
   if (error) {
@@ -33,12 +37,16 @@ export async function rtCreateRefFromRefShadowV1(input: {
   projectId: string;
   fromRefName: string;
   newRefName: string;
+  provider?: string | null;
+  model?: string | null;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.rpc('rt_create_ref_from_ref_v1', {
     p_project_id: input.projectId,
     p_from_ref_name: input.fromRefName,
-    p_new_ref_name: input.newRefName
+    p_new_ref_name: input.newRefName,
+    p_provider: input.provider ?? null,
+    p_model: input.model ?? null
   });
 
   if (error) {

@@ -9,13 +9,19 @@ export interface ChatStreamState {
   error: string | null;
 }
 
+export interface ChatStreamChunk {
+  type: 'text' | 'thinking' | 'thinking_signature';
+  content: string;
+  append?: boolean;
+}
+
 interface UseChatStreamOptions {
   projectId: string;
   ref?: string;
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
   webSearch?: boolean;
-  onChunk?: (chunk: string) => void;
+  onChunk?: (chunk: ChatStreamChunk) => void;
   onComplete?: () => void;
 }
 
@@ -58,11 +64,38 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
         }
 
         const reader = response.body.getReader();
+        let buffer = '';
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          onChunk?.(chunk);
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex = buffer.indexOf('\n');
+          while (newlineIndex !== -1) {
+            const line = buffer.slice(0, newlineIndex).trim();
+            buffer = buffer.slice(newlineIndex + 1);
+            if (line) {
+              try {
+                const parsed = JSON.parse(line) as ChatStreamChunk;
+                if (parsed && typeof parsed.content === 'string') {
+                  onChunk?.(parsed);
+                }
+              } catch {
+                // ignore malformed lines
+              }
+            }
+          newlineIndex = buffer.indexOf('\n');
+          }
+        }
+        const remaining = buffer.trim();
+        if (remaining) {
+          try {
+            const parsed = JSON.parse(remaining) as ChatStreamChunk;
+            if (parsed && typeof parsed.content === 'string') {
+              onChunk?.(parsed);
+            }
+          } catch {
+            // ignore trailing data
+          }
         }
 
         onComplete?.();

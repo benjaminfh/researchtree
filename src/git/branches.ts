@@ -1,7 +1,10 @@
 import { simpleGit } from 'simple-git';
-import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
+import { INITIAL_BRANCH } from './constants';
 import { createNodeRecord, writeNodeRecord } from './nodes';
 import type { BranchSummary, NodeRecord } from './types';
+import type { LLMProvider } from '@/src/shared/llmProvider';
+import { isSupportedModelForProvider } from '@/src/shared/llmCapabilities';
+import { getDefaultModelForProvider, resolveLLMProvider } from '@/src/server/llm';
 import {
   assertProjectExists,
   buildCommitMessage,
@@ -12,6 +15,7 @@ import {
   readNodesFromRef
 } from './utils';
 import { getArtefactFromRef } from './artefact';
+import { readBranchConfigMap, setBranchConfig } from './branchConfig';
 
 function buildLineDiff(base: string, incoming: string): string {
   const baseLines = base.length > 0 ? base.split(/\r?\n/) : [];
@@ -62,7 +66,12 @@ export async function getCurrentBranch(projectId: string): Promise<string> {
   return getCurrentBranchName(projectId);
 }
 
-export async function createBranch(projectId: string, branchName: string, fromRef?: string): Promise<void> {
+export async function createBranch(
+  projectId: string,
+  branchName: string,
+  fromRef?: string,
+  options?: { provider?: LLMProvider; model?: string }
+): Promise<void> {
   await assertProjectExists(projectId);
   const git = simpleGit(getProjectPath(projectId));
   const branches = await git.branchLocal();
@@ -74,6 +83,17 @@ export async function createBranch(projectId: string, branchName: string, fromRe
   const sourceRef = fromRef ?? currentBranch;
   await forceCheckoutRef(projectId, sourceRef);
   await git.checkoutLocalBranch(branchName);
+
+  const configMap = await readBranchConfigMap(projectId);
+  const fallbackProvider = resolveLLMProvider();
+  const sourceConfig = configMap[sourceRef];
+  const provider = options?.provider ?? sourceConfig?.provider ?? fallbackProvider;
+  const modelCandidate =
+    options?.model ?? (provider === sourceConfig?.provider ? sourceConfig?.model ?? '' : '');
+  const model = isSupportedModelForProvider(provider, modelCandidate)
+    ? modelCandidate
+    : getDefaultModelForProvider(provider);
+  await setBranchConfig(projectId, branchName, { provider, model });
 }
 
 export async function switchBranch(projectId: string, branchName: string): Promise<void> {
@@ -90,6 +110,8 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   await assertProjectExists(projectId);
   const git = simpleGit(getProjectPath(projectId));
   const branches = await git.branchLocal();
+  const configMap = await readBranchConfigMap(projectId);
+  const fallbackProvider = resolveLLMProvider();
 
   const summaries: (BranchSummary & { _lastModifiedAt: number; _createdAt: number })[] = [];
   for (const name of branches.all) {
@@ -97,11 +119,19 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
     const nodes = await readNodesFromRef(projectId, name);
     const lastModifiedAt = await getRefCommitTimestamp(git, headCommit);
     const createdAt = await getBranchCreatedTimestamp(git, name);
+    const config = configMap[name];
+    const provider = config?.provider ?? fallbackProvider;
+    const modelCandidate = config?.model ?? '';
+    const model = isSupportedModelForProvider(provider, modelCandidate)
+      ? modelCandidate
+      : getDefaultModelForProvider(provider);
     summaries.push({
       name,
       headCommit,
       nodeCount: nodes.length,
       isTrunk: name === INITIAL_BRANCH,
+      provider,
+      model,
       _lastModifiedAt: lastModifiedAt,
       _createdAt: createdAt
     });

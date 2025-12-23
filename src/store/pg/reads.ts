@@ -5,6 +5,8 @@ export interface PgBranchSummary {
   headCommit: string;
   nodeCount: number;
   isTrunk: boolean;
+  provider?: string;
+  model?: string;
 }
 
 export async function rtGetHistoryShadowV1(input: {
@@ -65,7 +67,9 @@ export async function rtListRefsShadowV1(input: { projectId: string }): Promise<
     name: String(row.name),
     headCommit: String(row.head_commit ?? ''),
     nodeCount: Number(row.node_count ?? 0),
-    isTrunk: Boolean(row.is_trunk)
+    isTrunk: Boolean(row.is_trunk),
+    provider: row.provider ? String(row.provider) : undefined,
+    model: row.model ? String(row.model) : undefined
   }));
 }
 

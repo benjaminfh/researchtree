@@ -19,7 +19,9 @@ export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
 
 export const createBranchSchema = z.object({
   name: z.string().min(1).max(120),
-  fromRef: z.string().max(120).optional()
+  fromRef: z.string().max(120).optional(),
+  provider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
+  model: z.string().max(200).optional()
 });
 
 export const switchBranchSchema = z.object({
@@ -47,6 +49,7 @@ export const editMessageSchema = z.object({
   fromRef: z.string().min(1).max(120).optional(),
   label: z.string().max(120).optional(),
   llmProvider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
+  llmModel: z.string().max(200).optional(),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   nodeId: z.string().min(1),
   replaceNode: z.boolean().optional()

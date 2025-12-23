@@ -78,5 +78,5 @@ export function CheckIcon({ className }: IconProps) {
 }
 
 export function SearchIcon({ className }: IconProps) {
-  return <BlueprintIcon icon="search" className={className} />;
+  return <BlueprintIcon icon="globe-network" className={className} />;
 }
