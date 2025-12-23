@@ -2449,7 +2449,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
               style={{ paddingLeft: ctx.railCollapsed ? '96px' : '320px' }}
             >
-              <div className="flex items-center gap-[0.27rem] rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
+              <div className="flex items-center gap-2 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2469,7 +2469,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <SearchIcon className="h-4 w-4" />
                     <span>Web search</span>
                   </button>
-                  <div className="flex h-10 w-10 items-center justify-center">
+                  {/* <div className="flex h-10 w-10 items-center justify-center">
                     {features.uiAttachments ? (
                       <button
                         type="button"
@@ -2481,7 +2481,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     ) : (
                       <span aria-hidden="true" />
                     )}
-                  </div>
+                  </div> */}
                 </div>
                 <textarea
                   value={draft}
