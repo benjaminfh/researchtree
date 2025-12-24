@@ -439,9 +439,13 @@ async function* streamFromGemini(
             : responseBlocks;
         for (const block of deltaBlocks) {
           if (block.type === 'thinking') {
-            yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+            if (typeof block.thinking === 'string') {
+              yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+            }
           } else if (block.type === 'thinking_signature') {
-            yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+            if (typeof block.signature === 'string') {
+              yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+            }
           }
         }
         lastThinkingBlocks = responseBlocks;
