@@ -13,8 +13,11 @@ export function RailShell({
 }) {
   return (
     <RailLayout
+      outerClassName="h-screen bg-[rgba(238,243,255,0.4)]"
+      asideClassName="relative z-40 flex h-screen flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur"
+      mainClassName="h-screen min-w-0 overflow-y-auto"
       renderRail={({ railCollapsed, toggleRail }) => (
-        <div className="mt-6 flex h-full flex-col gap-6">
+        <div className="mt-6 flex flex-1 flex-col gap-6">
           {railCollapsed ? (
             <div className="mt-auto flex flex-col items-start gap-3 pb-2">
               <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
