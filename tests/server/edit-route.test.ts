@@ -18,7 +18,9 @@ const mocks = vi.hoisted(() => ({
   rtSetCurrentRefShadowV1: vi.fn(),
   rtGetHistoryShadowV1: vi.fn(),
   rtGetCurrentRefShadowV1: vi.fn(),
-  createSupabaseServerClient: vi.fn()
+  createSupabaseServerClient: vi.fn(),
+  getBranchConfigMap: vi.fn(),
+  resolveBranchConfig: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -51,6 +53,11 @@ vi.mock('@/src/server/llm', () => ({
 
 vi.mock('@/src/server/providerCapabilities', () => ({
   getProviderTokenLimit: mocks.getProviderTokenLimit
+}));
+
+vi.mock('@/src/server/branchConfig', () => ({
+  getBranchConfigMap: mocks.getBranchConfigMap,
+  resolveBranchConfig: mocks.resolveBranchConfig
 }));
 
 vi.mock('@/src/store/pg/branches', () => ({
@@ -109,6 +116,8 @@ describe('/api/projects/[id]/edit', () => {
     mocks.resolveLLMProvider.mockReturnValue('mock');
     mocks.getDefaultModelForProvider.mockReturnValue('mock');
     mocks.getProviderTokenLimit.mockResolvedValue(4000);
+    mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'mock', model: 'mock' } });
+    mocks.resolveBranchConfig.mockImplementation(() => ({ provider: 'mock', model: 'mock' }));
     mocks.streamAssistantCompletion.mockImplementation(async function* () {
       yield { type: 'text', content: 'foo' };
       yield { type: 'text', content: 'bar' };
@@ -124,7 +133,7 @@ describe('/api/projects/[id]/edit', () => {
     });
     expect(res.status).toBe(201);
     expect(mocks.getCommitHashForNode).toHaveBeenCalledWith('project-1', 'main', 'node-5', { parent: true });
-    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash');
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash', { provider: 'mock', model: 'mock' });
     expect(mocks.appendNode).toHaveBeenCalledWith(
       'project-1',
       expect.objectContaining({ role: 'user', content: 'Edited message' }),
@@ -170,7 +179,10 @@ describe('/api/projects/[id]/edit', () => {
     ]);
     const res = await POST(createRequest({ content: 'Default branch', nodeId: 'node-1' }), { params: { id: 'project-1' } });
     expect(res.status).toBe(201);
-    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', expect.stringMatching(/^edit-/), 'commit-hash');
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', expect.stringMatching(/^edit-/), 'commit-hash', {
+      provider: 'mock',
+      model: 'mock'
+    });
   });
 
   it('validates body', async () => {
@@ -224,7 +236,14 @@ describe('/api/projects/[id]/edit', () => {
     expect(res.status).toBe(201);
     expect(mocks.createSupabaseServerClient).toHaveBeenCalled();
     expect(mocks.rtCreateRefFromNodeParentShadowV1).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'project-1', sourceRefName: 'main', newRefName: 'edit-123', nodeId: 'node-5' })
+      expect.objectContaining({
+        projectId: 'project-1',
+        sourceRefName: 'main',
+        newRefName: 'edit-123',
+        nodeId: 'node-5',
+        provider: 'mock',
+        model: 'mock'
+      })
     );
     expect(mocks.rtSetCurrentRefShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'edit-123' });
     expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
