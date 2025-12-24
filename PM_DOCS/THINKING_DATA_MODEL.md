@@ -314,3 +314,9 @@ A: **Yes.** Use full context assembly from history; do not attempt partial incre
 
 Q: Should Responses be a new provider id (`openai_responses`) or remain under `openai` with feature flags?  
 A: **Recommend a new provider id** (`openai_responses`) to keep payload handling and context rules explicit. Feature flags can still gate availability without conflating request/response shapes.
+
+## Repo Notes: DB Migrations
+
+- Migrations live in `supabase/migrations/` and are applied via GitHub Actions on **push to `master`** only.
+- The workflow is `.github/workflows/supabase-migrations.yml` and uses `supabase db push`.
+- PRs do **not** run migrations (no required status check). Migrations are applied **post-merge**.
