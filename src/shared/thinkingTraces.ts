@@ -77,27 +77,27 @@ export function flattenMessageContent(content: MessageContent): string {
   if (typeof content === 'string') return content;
   return content
     .map((block) => {
-      if (block.type === 'thinking') return block.thinking ?? '';
-      if (block.type === 'thinking_signature') return block.signature ?? '';
-      if (block.type === 'text') return block.text ?? '';
+      if (block.type === 'thinking') return typeof block.thinking === 'string' ? block.thinking : '';
+      if (block.type === 'thinking_signature') return typeof block.signature === 'string' ? block.signature : '';
+      if (block.type === 'text') return typeof block.text === 'string' ? block.text : '';
       return '';
     })
-    .filter((part) => part.length > 0)
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
     .join('\n\n');
 }
 
 export function deriveTextFromBlocks(blocks: ThinkingContentBlock[]): string {
   return blocks
     .filter((block) => block.type === 'text')
-    .map((block) => (block.type === 'text' ? block.text ?? '' : ''))
-    .filter((part) => part.length > 0)
+    .map((block) => (block.type === 'text' && typeof block.text === 'string' ? block.text : ''))
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
     .join('');
 }
 
 export function deriveThinkingFromBlocks(blocks: ThinkingContentBlock[]): string {
   return blocks
     .filter((block) => block.type === 'thinking')
-    .map((block) => (block.type === 'thinking' ? block.thinking ?? '' : ''))
-    .filter((part) => part.length > 0)
+    .map((block) => (block.type === 'thinking' && typeof block.thinking === 'string' ? block.thinking : ''))
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
     .join('');
 }
