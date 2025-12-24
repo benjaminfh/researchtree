@@ -7,6 +7,7 @@ export async function rtCreateRefFromNodeParentShadowV1(input: {
   nodeId: string;
   provider?: string | null;
   model?: string | null;
+  previousResponseId?: string | null;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.rpc('rt_create_ref_from_node_parent_v1', {
@@ -15,7 +16,8 @@ export async function rtCreateRefFromNodeParentShadowV1(input: {
     p_new_ref_name: input.newRefName,
     p_node_id: input.nodeId,
     p_provider: input.provider ?? null,
-    p_model: input.model ?? null
+    p_model: input.model ?? null,
+    p_previous_response_id: input.previousResponseId ?? null
   });
 
   if (error) {
@@ -39,6 +41,7 @@ export async function rtCreateRefFromRefShadowV1(input: {
   newRefName: string;
   provider?: string | null;
   model?: string | null;
+  previousResponseId?: string | null;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.rpc('rt_create_ref_from_ref_v1', {
@@ -46,7 +49,8 @@ export async function rtCreateRefFromRefShadowV1(input: {
     p_from_ref_name: input.fromRefName,
     p_new_ref_name: input.newRefName,
     p_provider: input.provider ?? null,
-    p_model: input.model ?? null
+    p_model: input.model ?? null,
+    p_previous_response_id: input.previousResponseId ?? null
   });
 
   if (error) {

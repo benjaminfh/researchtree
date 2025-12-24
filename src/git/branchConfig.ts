@@ -6,6 +6,7 @@ import { getProjectPath, pathExists, readJsonFile } from './utils';
 export interface BranchConfigRecord {
   provider: LLMProvider;
   model: string;
+  previousResponseId?: string | null;
 }
 
 interface BranchConfigFile {

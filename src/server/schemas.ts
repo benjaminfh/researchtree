@@ -8,7 +8,7 @@ export const createProjectSchema = z.object({
 export const chatRequestSchema = z.object({
   message: z.string().min(1).max(6000),
   intent: z.string().max(280).optional(),
-  llmProvider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
+  llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
   ref: z.string().min(1).max(120).optional(),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   webSearch: z.boolean().optional()
@@ -20,7 +20,7 @@ export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
 export const createBranchSchema = z.object({
   name: z.string().min(1).max(120),
   fromRef: z.string().max(120).optional(),
-  provider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
+  provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
   model: z.string().max(200).optional()
 });
 
@@ -48,7 +48,7 @@ export const editMessageSchema = z.object({
   branchName: z.string().min(1).max(120).optional(),
   fromRef: z.string().min(1).max(120).optional(),
   label: z.string().max(120).optional(),
-  llmProvider: z.enum(['openai', 'gemini', 'anthropic', 'mock']).optional(),
+  llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
   llmModel: z.string().max(200).optional(),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   nodeId: z.string().min(1),

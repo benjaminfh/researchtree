@@ -84,7 +84,8 @@ export async function POST(request: Request, { params }: RouteContext) {
           newRefName: parsed.data.name,
           fromRefName: baseRef,
           provider: resolvedConfig.provider,
-          model: resolvedConfig.model
+          model: resolvedConfig.model,
+          previousResponseId: null
         });
         await rtSetCurrentRefShadowV1({ projectId: params.id, refName: parsed.data.name });
         const branches = await rtListRefsShadowV1({ projectId: params.id });
@@ -114,7 +115,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       });
       await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
         provider: resolvedConfig.provider,
-        model: resolvedConfig.model
+        model: resolvedConfig.model,
+        previousResponseId: null
       });
       const branches = await listBranches(project.id);
       return Response.json({ branchName: parsed.data.name, branches }, { status: 201 });

@@ -1,7 +1,7 @@
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext } from '@/src/server/context';
-import { encodeChunk, streamAssistantCompletion } from '@/src/server/llm';
+import { encodeChunk, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
@@ -17,6 +17,7 @@ import { deriveTextFromBlocks } from '@/src/shared/thinkingTraces';
 import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
+import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 
 interface RouteContext {
   params: { id: string };
@@ -34,7 +35,7 @@ async function getPreferredBranch(projectId: string): Promise<string> {
 }
 
 function labelForProvider(provider: LLMProvider): string {
-  if (provider === 'openai') return 'OpenAI';
+  if (provider === 'openai' || provider === 'openai_responses') return 'OpenAI';
   if (provider === 'gemini') return 'Gemini';
   if (provider === 'anthropic') return 'Anthropic';
   return 'Mock';
@@ -62,8 +63,14 @@ export async function POST(request: Request, { params }: RouteContext) {
     const activeConfig = branchConfigMap[targetRef] ?? resolveBranchConfig();
     const provider = activeConfig.provider;
     const modelName = activeConfig.model;
-    if (llmProvider && llmProvider !== provider) {
-      throw badRequest(`Branch ${targetRef} is locked to ${labelForProvider(provider)} (${modelName}). Create a new branch to switch.`);
+    if (llmProvider) {
+      const normalizedRequested = llmProvider === 'openai_responses' ? 'openai' : llmProvider;
+      const normalizedProvider = provider === 'openai_responses' ? 'openai' : provider;
+      if (normalizedRequested !== normalizedProvider) {
+        throw badRequest(
+          `Branch ${targetRef} is locked to ${labelForProvider(provider)} (${modelName}). Create a new branch to switch.`
+        );
+      }
     }
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
@@ -77,6 +84,9 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
     const tokenLimit = await getProviderTokenLimit(provider, modelName);
     const apiKey = await requireUserApiKeyForProvider(provider);
+    const resolvedProvider = resolveLLMProvider(provider);
+    const previousResponseId =
+      resolvedProvider === 'openai_responses' ? await getPreviousResponseId(params.id, targetRef).catch(() => null) : null;
 
     console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRef, webSearch });
     const releaseLock = await acquireProjectRefLock(params.id, targetRef);
@@ -107,6 +117,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           let gitProjectId: string | null = null;
           const streamBlocks: ThinkingContentBlock[] = [];
           let rawResponse: unknown = null;
+          let responseId: string | null = null;
 
           const ensureUserPersisted = async () => {
             if (persistedUser) return;
@@ -172,11 +183,12 @@ export async function POST(request: Request, { params }: RouteContext) {
             for await (const chunk of streamAssistantCompletion({
               messages: messagesForCompletion,
               signal: abortController.signal,
-              provider,
+              provider: resolvedProvider,
               model: modelName,
               thinking: effectiveThinking,
               webSearch,
-              apiKey
+              apiKey,
+              previousResponseId
             })) {
               const content = chunk.content;
               if (!content) continue;
@@ -208,6 +220,9 @@ export async function POST(request: Request, { params }: RouteContext) {
               }
               if (chunk.type === 'raw_response') {
                 rawResponse = chunk.payload ?? null;
+                if (rawResponse && typeof rawResponse === 'object' && (rawResponse as any).responseId) {
+                  responseId = String((rawResponse as any).responseId);
+                }
                 continue;
               }
               const lastText = streamBlocks[streamBlocks.length - 1];
@@ -249,6 +264,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   parent: persistedUserNodeId,
                   createdOnBranch: targetRef,
                   modelUsed: modelName,
+                  responseId: responseId ?? undefined,
                   interrupted: abortController.signal.aborted || streamError !== null,
                   rawResponse
                 };
@@ -271,9 +287,13 @@ export async function POST(request: Request, { params }: RouteContext) {
                   content: contentText,
                   contentBlocks,
                   modelUsed: modelName,
+                  responseId: responseId ?? undefined,
                   interrupted: abortController.signal.aborted || streamError !== null,
                   rawResponse
                 });
+              }
+              if (resolvedProvider === 'openai_responses' && responseId) {
+                await setPreviousResponseId(params.id, targetRef, responseId);
               }
             }
           } catch (error) {

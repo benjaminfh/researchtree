@@ -4,7 +4,7 @@ import { editMessageSchema } from '@/src/server/schemas';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { streamAssistantCompletion } from '@/src/server/llm';
+import { resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
@@ -16,6 +16,7 @@ import { deriveTextFromBlocks } from '@/src/shared/thinkingTraces';
 import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
+import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 
 interface RouteContext {
   params: { id: string };
@@ -58,6 +59,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     });
     const provider = requestedConfig.provider;
     const modelName = requestedConfig.model;
+    const resolvedProvider = resolveLLMProvider(provider);
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
     if (!thinkingValidation.ok) {
@@ -103,7 +105,8 @@ export async function POST(request: Request, { params }: RouteContext) {
             newRefName: targetBranch,
             nodeId,
             provider,
-            model: modelName
+            model: modelName,
+            previousResponseId: null
           });
 
           await rtSetCurrentRefShadowV1({ projectId: params.id, refName: targetBranch });
@@ -145,12 +148,18 @@ export async function POST(request: Request, { params }: RouteContext) {
               let buffered = '';
               const streamBlocks: ThinkingContentBlock[] = [];
               let rawResponse: unknown = null;
+              let responseId: string | null = null;
+              const previousResponseId =
+                resolvedProvider === 'openai_responses'
+                  ? await getPreviousResponseId(params.id, targetBranch).catch(() => null)
+                  : null;
               for await (const chunk of streamAssistantCompletion({
                 messages: messagesForCompletion,
-                provider,
+                provider: resolvedProvider,
                 model: modelName,
                 thinking: effectiveThinking,
-                apiKey
+                apiKey,
+                previousResponseId
               })) {
                 if (chunk.type === 'thinking') {
                   const last = streamBlocks[streamBlocks.length - 1];
@@ -173,6 +182,9 @@ export async function POST(request: Request, { params }: RouteContext) {
                 }
                 if (chunk.type === 'raw_response') {
                   rawResponse = chunk.payload ?? null;
+                  if (rawResponse && typeof rawResponse === 'object' && (rawResponse as any).responseId) {
+                    responseId = String((rawResponse as any).responseId);
+                  }
                   continue;
                 }
                 const lastText = streamBlocks[streamBlocks.length - 1];
@@ -202,6 +214,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   parent: editedNode.id,
                   createdOnBranch: targetBranch,
                   modelUsed: modelName,
+                  responseId: responseId ?? undefined,
                   interrupted: false,
                   rawResponse
                 };
@@ -217,6 +230,9 @@ export async function POST(request: Request, { params }: RouteContext) {
                   attachDraft: false,
                   rawResponse
                 });
+                if (resolvedProvider === 'openai_responses' && responseId) {
+                  await setPreviousResponseId(params.id, targetBranch, responseId);
+                }
               } else {
                 console.warn('[edit] Skipping empty assistant response');
               }
@@ -251,7 +267,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
         try {
           const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
-          await createBranch(project.id, targetBranch, commitHash, { provider, model: modelName });
+          await createBranch(project.id, targetBranch, commitHash, { provider, model: modelName, previousResponseId: null });
         } catch (err) {
           const message = (err as Error)?.message ?? 'Failed to create edit branch';
           throw badRequest(message);
@@ -275,69 +291,82 @@ export async function POST(request: Request, { params }: RouteContext) {
             const context = await buildChatContext(project.id, { tokenLimit, ref: targetBranch });
             const messagesForCompletion = context.messages;
 
-          let buffered = '';
-          const streamBlocks: ThinkingContentBlock[] = [];
-          let rawResponse: unknown = null;
-          for await (const chunk of streamAssistantCompletion({
-            messages: messagesForCompletion,
-            provider,
-            model: modelName,
-            thinking: effectiveThinking,
-            apiKey
-          })) {
-            if (chunk.type === 'thinking') {
-              const last = streamBlocks[streamBlocks.length - 1];
-              if (chunk.append && last?.type === 'thinking') {
-                last.thinking += chunk.content;
-              } else {
-                streamBlocks.push({
-                  type: 'thinking',
-                  thinking: chunk.content
-                });
+            let buffered = '';
+            const streamBlocks: ThinkingContentBlock[] = [];
+            let rawResponse: unknown = null;
+            let responseId: string | null = null;
+            const previousResponseId =
+              resolvedProvider === 'openai_responses'
+                ? await getPreviousResponseId(params.id, targetBranch).catch(() => null)
+                : null;
+            for await (const chunk of streamAssistantCompletion({
+              messages: messagesForCompletion,
+              provider: resolvedProvider,
+              model: modelName,
+              thinking: effectiveThinking,
+              apiKey,
+              previousResponseId
+            })) {
+              if (chunk.type === 'thinking') {
+                const last = streamBlocks[streamBlocks.length - 1];
+                if (chunk.append && last?.type === 'thinking') {
+                  last.thinking += chunk.content;
+                } else {
+                  streamBlocks.push({
+                    type: 'thinking',
+                    thinking: chunk.content
+                  });
+                }
+                continue;
               }
-              continue;
+              if (chunk.type === 'thinking_signature') {
+                streamBlocks.push({
+                  type: 'thinking_signature',
+                  signature: chunk.content
+                });
+                continue;
+              }
+              if (chunk.type === 'raw_response') {
+                rawResponse = chunk.payload ?? null;
+                if (rawResponse && typeof rawResponse === 'object' && (rawResponse as any).responseId) {
+                  responseId = String((rawResponse as any).responseId);
+                }
+                continue;
+              }
+              const lastText = streamBlocks[streamBlocks.length - 1];
+              if (lastText?.type === 'text') {
+                lastText.text += chunk.content;
+              } else {
+                streamBlocks.push({ type: 'text', text: chunk.content });
+              }
+              buffered += chunk.content;
             }
-            if (chunk.type === 'thinking_signature') {
-              streamBlocks.push({
-                type: 'thinking_signature',
-                signature: chunk.content
-              });
-              continue;
-            }
-            if (chunk.type === 'raw_response') {
-              rawResponse = chunk.payload ?? null;
-              continue;
-            }
-            const lastText = streamBlocks[streamBlocks.length - 1];
-            if (lastText?.type === 'text') {
-              lastText.text += chunk.content;
-            } else {
-              streamBlocks.push({ type: 'text', text: chunk.content });
-            }
-            buffered += chunk.content;
-          }
 
-          if (buffered.trim()) {
-            const contentBlocks = buildContentBlocksForProvider({
-              provider,
-              rawResponse,
-              fallbackText: buffered,
-              fallbackBlocks: streamBlocks
-            });
-            const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
-            assistantNode = await appendNode(
-              project.id,
-              {
-                type: 'message',
-                role: 'assistant',
-                content: contentText,
-                contentBlocks,
-                modelUsed: modelName,
-                interrupted: false,
-                rawResponse
-              },
-              { ref: targetBranch }
-            );
+            if (buffered.trim()) {
+              const contentBlocks = buildContentBlocksForProvider({
+                provider,
+                rawResponse,
+                fallbackText: buffered,
+                fallbackBlocks: streamBlocks
+              });
+              const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
+              assistantNode = await appendNode(
+                project.id,
+                {
+                  type: 'message',
+                  role: 'assistant',
+                  content: contentText,
+                  contentBlocks,
+                  modelUsed: modelName,
+                  responseId: responseId ?? undefined,
+                  interrupted: false,
+                  rawResponse
+                },
+                { ref: targetBranch }
+              );
+              if (resolvedProvider === 'openai_responses' && responseId) {
+                await setPreviousResponseId(params.id, targetBranch, responseId);
+              }
             } else {
               console.warn('[edit] Skipping empty assistant response');
             }

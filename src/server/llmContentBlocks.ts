@@ -7,9 +7,34 @@ function toTextBlock(text: string): ThinkingContentBlock[] {
   return text ? [{ type: 'text', text }] : [];
 }
 
+function extractOpenAIResponsesDelta(event: any): string | null {
+  if (!event || typeof event !== 'object') return null;
+  if (event.type !== 'response.output_text.delta') return null;
+  if (typeof event.delta === 'string') return event.delta;
+  if (typeof event.text === 'string') return event.text;
+  if (typeof event.delta?.text === 'string') return event.delta.text;
+  return null;
+}
+
 function buildOpenAIBlocksFromRaw(rawResponse: unknown): ThinkingContentBlock[] {
-  const parts = Array.isArray(rawResponse) ? rawResponse : [];
+  const parts = Array.isArray(rawResponse)
+    ? rawResponse
+    : Array.isArray((rawResponse as any)?.events)
+      ? (rawResponse as any).events
+      : [];
   let text = '';
+
+  const hasResponsesEvents = parts.some((part) => typeof (part as any)?.type === 'string' && String((part as any).type).startsWith('response.'));
+  if (hasResponsesEvents) {
+    for (const event of parts) {
+      const delta = extractOpenAIResponsesDelta(event);
+      if (delta) {
+        text += delta;
+      }
+    }
+    return toTextBlock(text);
+  }
+
   for (const part of parts) {
     const delta = (part as any)?.choices?.[0]?.delta;
     const content = delta?.content;
@@ -135,7 +160,7 @@ export function buildRawContentBlocksForProvider(options: {
     blocks = buildGeminiBlocks(rawResponse);
   } else if (provider === 'anthropic') {
     blocks = buildAnthropicBlocks(Array.isArray(rawResponse) ? (rawResponse as AnthropicEvent[]) : []);
-  } else if (provider === 'openai') {
+  } else if (provider === 'openai' || provider === 'openai_responses') {
     blocks = buildOpenAIBlocksFromRaw(rawResponse);
   } else {
     blocks = buildOpenAIBlocksFromRaw(rawResponse);

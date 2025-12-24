@@ -14,6 +14,10 @@ export const LLM_ENDPOINTS: Record<LLMProvider, ProviderEndpointConfig> = {
     defaultModel: 'gpt-5.2',
     models: ['gpt-5.2', 'gpt-5.1', 'gpt-4o-mini-search-preview', 'gpt-4o-search-preview']
   },
+  openai_responses: {
+    defaultModel: 'gpt-5.2',
+    models: ['gpt-5.2', 'gpt-5.1']
+  },
   gemini: {
     defaultModel: 'gemini-3-pro-preview',
     models: ['gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']
@@ -47,7 +51,7 @@ export interface ThinkingValidationResult {
 export function getAllowedThinkingSettings(provider: LLMProvider, modelName: string): ThinkingSetting[] {
   if (provider === 'mock') return ['off', 'low', 'medium', 'high'];
 
-  if (provider === 'openai') return ['off', 'low', 'medium', 'high'];
+  if (provider === 'openai' || provider === 'openai_responses') return ['off', 'low', 'medium', 'high'];
   if (provider === 'anthropic') return ['off', 'low', 'medium', 'high'];
 
   if (provider === 'gemini') {
@@ -77,7 +81,14 @@ export function validateThinkingSetting(
     return { ok: true, allowed };
   }
 
-  const providerLabel = provider === 'openai' ? 'OpenAI' : provider === 'gemini' ? 'Gemini' : provider === 'anthropic' ? 'Anthropic' : 'Mock';
+  const providerLabel =
+    provider === 'openai' || provider === 'openai_responses'
+      ? 'OpenAI'
+      : provider === 'gemini'
+        ? 'Gemini'
+        : provider === 'anthropic'
+          ? 'Anthropic'
+          : 'Mock';
   return {
     ok: false,
     allowed,
@@ -97,6 +108,13 @@ export function getDefaultThinkingSetting(provider: LLMProvider, modelName: stri
 export function buildOpenAIThinkingParams(thinking: ThinkingSetting | undefined): { reasoning_effort?: string } {
   const effort = thinking ? toOpenAIReasoningEffort(thinking) : null;
   return effort ? ({ reasoning_effort: effort } as any) : {};
+}
+
+export function buildOpenAIResponsesThinkingParams(
+  thinking: ThinkingSetting | undefined
+): { reasoning?: { effort: string } } {
+  const effort = thinking ? toOpenAIReasoningEffort(thinking) : null;
+  return effort ? ({ reasoning: { effort } } as any) : {};
 }
 
 export function buildGeminiThinkingParams(

@@ -4,6 +4,7 @@ import { type LLMProvider, resolveLLMProvider, getDefaultModelForProvider } from
 
 const DEFAULT_LIMITS: Record<LLMProvider, number> = {
   openai: 128_000,
+  openai_responses: 128_000,
   gemini: 200_000,
   anthropic: 200_000,
   mock: 8_000
@@ -29,7 +30,7 @@ export async function getProviderTokenLimit(provider?: LLMProvider, modelOverrid
 
   let limit = DEFAULT_LIMITS[resolved] ?? DEFAULT_LIMITS.mock;
 
-  if (resolved === 'openai') {
+  if (resolved === 'openai' || resolved === 'openai_responses') {
     const fetched = await fetchOpenAIContextLimit(model);
     if (typeof fetched === 'number') {
       limit = fetched;
@@ -130,6 +131,10 @@ export function warmProviderCapabilities(): Promise<void> {
           const limit = await fetchOpenAIContextLimit(getDefaultModelForProvider('openai'));
           if (limit) {
             cache.set(`openai:${getDefaultModelForProvider('openai')}`, Math.max(Math.floor(limit * SAFETY_RATIO), MIN_LIMIT));
+            cache.set(
+              `openai_responses:${getDefaultModelForProvider('openai_responses')}`,
+              Math.max(Math.floor(limit * SAFETY_RATIO), MIN_LIMIT)
+            );
           }
         })()
       );
