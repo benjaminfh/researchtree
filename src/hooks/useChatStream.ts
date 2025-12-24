@@ -14,13 +14,15 @@ interface UseChatStreamOptions {
   ref?: string;
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
+  webSearch?: boolean;
   onChunk?: (chunk: string) => void;
   onComplete?: () => void;
 }
 
-export function useChatStream({ projectId, ref, provider, thinking, onChunk, onComplete }: UseChatStreamOptions) {
+export function useChatStream({ projectId, ref, provider, thinking, webSearch, onChunk, onComplete }: UseChatStreamOptions) {
   const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
   const activeRequest = useRef<AbortController | null>(null);
+  const activeRequestId = useRef<string | null>(null);
 
   const sendMessage = useCallback(
     async (message: string) => {
@@ -29,13 +31,16 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
       }
       setState({ isStreaming: true, error: null });
       activeRequest.current = new AbortController();
+      activeRequestId.current = null;
       try {
         const response = await fetch(`/api/projects/${projectId}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, llmProvider: provider, ref, thinking }),
+          body: JSON.stringify({ message, llmProvider: provider, ref, thinking, webSearch }),
           signal: activeRequest.current.signal
         });
+
+        activeRequestId.current = (response as any)?.headers?.get?.('x-rt-request-id') ?? null;
 
         if (!response.ok || !response.body) {
           let message = 'Chat request failed';
@@ -48,7 +53,8 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
           } catch {
             // ignore
           }
-          throw new Error(message);
+          const reqId = activeRequestId.current;
+          throw new Error(reqId ? `${message} (requestId=${reqId})` : message);
         }
 
         const reader = response.body.getReader();
@@ -65,14 +71,17 @@ export function useChatStream({ projectId, ref, provider, thinking, onChunk, onC
         if ((error as DOMException).name === 'AbortError') {
           setState({ isStreaming: false, error: null });
         } else {
+          const reqId = activeRequestId.current;
           console.error('[useChatStream] error', error);
-          setState({ isStreaming: false, error: (error as Error)?.message ?? 'Unable to send message' });
+          const base = (error as Error)?.message ?? 'Unable to send message';
+          setState({ isStreaming: false, error: reqId && !base.includes(`requestId=${reqId}`) ? `${base} (requestId=${reqId})` : base });
         }
       } finally {
         activeRequest.current = null;
+        activeRequestId.current = null;
       }
     },
-    [projectId, provider, ref, thinking, onChunk, onComplete]
+    [projectId, provider, ref, thinking, webSearch, onChunk, onComplete]
   );
 
   const interrupt = useCallback(async () => {

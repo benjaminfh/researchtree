@@ -25,8 +25,8 @@ describe('provider capabilities', () => {
     __resetProviderCapabilitiesCache();
     delete process.env.OPENAI_API_KEY;
     delete process.env.GEMINI_API_KEY;
-    process.env.OPENAI_MODEL = 'gpt-test';
-    process.env.GEMINI_MODEL = 'gemini-test';
+    process.env.OPENAI_MODEL = 'gpt-5.2';
+    process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
   });
 
   it('uses OpenAI metadata when API key present', async () => {

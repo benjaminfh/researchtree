@@ -2,32 +2,35 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { ChangeEvent, FormEvent } from 'react';
+import type { FormEvent } from 'react';
 import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@git/types';
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
+import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
 import type { FC } from 'react';
+import { RailLayout } from '@/src/components/layout/RailLayout';
+import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { WorkspaceGraph } from './WorkspaceGraph';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
+import { RailPopover } from '@/src/components/layout/RailPopover';
+import { NewBranchFormCard } from '@/src/components/workspace/NewBranchFormCard';
 import {
-  ArrowUpRightIcon,
   ArrowUpIcon,
   CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   HomeIcon,
   PaperClipIcon,
   PencilIcon,
   QuestionMarkCircleIcon,
+  SearchIcon,
   Square2StackIcon,
   XMarkIcon
 } from './HeroIcons';
@@ -90,7 +93,7 @@ const NodeBubble: FC<{
   const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
-  const width = isUser ? 'max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
+  const width = isUser ? 'min-w-[14rem] max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
   const palette = muted
     ? isUser
@@ -268,11 +271,7 @@ const NodeBubble: FC<{
         ) : null}
         {subtitle ? <div className="mt-2 text-xs text-slate-500">{subtitle}</div> : null}
 
-        <div
-          className={`mt-3 flex flex-wrap items-center gap-2 text-xs text-muted ${
-            isUser ? 'justify-end' : 'justify-start'
-          }`}
-        >
+        <div className={`mt-3 flex flex-nowrap items-center gap-2 text-xs text-muted ${isUser ? 'justify-end' : 'justify-start'}`}>
           {isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
           {onToggleStar ? (
             <button
@@ -369,7 +368,6 @@ const ChatNodeRow: FC<{
 };
 
 export function WorkspaceClient({ project, initialBranches, defaultProvider, providerOptions }: WorkspaceClientProps) {
-  const COLLAPSE_KEY = storageKey('rail-collapsed');
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
@@ -398,12 +396,14 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
+  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(defaultProvider);
+  const [newBranchThinking, setNewBranchThinking] = useState<ThinkingSetting>('medium');
   const autosaveControllerRef = useRef<AbortController | null>(null);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveSavingTokenRef = useRef(0);
   const autosaveSpinnerUntilRef = useRef<number | null>(null);
   const autosaveSpinnerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [insightTab, setInsightTab] = useState<'graph' | 'canvas'>('canvas');
+  const [insightTab, setInsightTab] = useState<'graph' | 'canvas'>('graph');
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [graphDetailError, setGraphDetailError] = useState<string | null>(null);
   const [isGraphDetailBusy, setIsGraphDetailBusy] = useState(false);
@@ -500,13 +500,22 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   );
   const [thinkingHydratedKey, setThinkingHydratedKey] = useState<string | null>(null);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
+  const providerMenuRef = useRef<HTMLDivElement | null>(null);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const webSearchStorageKey = useMemo(
+    () => `researchtree:websearch:${project.id}:${branchName}`,
+    [project.id, branchName]
+  );
+  const [webSearchHydratedKey, setWebSearchHydratedKey] = useState<string | null>(null);
 
   const { sendMessage, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
     provider,
     thinking,
+    webSearch: webSearchEnabled,
     onChunk: (chunk) => {
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
@@ -538,8 +547,24 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     [provider, providerOptions]
   );
 
+  const activeProviderModel = activeProvider?.defaultModel ?? getDefaultModelForProviderFromCapabilities(provider);
+  const allowedThinking = useMemo(
+    () => getAllowedThinkingSettings(provider, activeProviderModel),
+    [provider, activeProviderModel]
+  );
+  const thinkingUnsupportedError =
+    !activeProviderModel || allowedThinking.includes(thinking)
+      ? null
+      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${provider} (model=${activeProviderModel}).`;
+  const webSearchAvailable = provider !== 'mock';
+  const showOpenAISearchNote = webSearchEnabled && provider === 'openai';
+
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
+    if (thinkingUnsupportedError) {
+      setThinkingMenuOpen(true);
+      return;
+    }
     shouldScrollToBottomRef.current = true;
     const sent = draft;
     optimisticDraftRef.current = sent;
@@ -600,17 +625,21 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   useEffect(() => {
     if (!state.error || !optimisticDraftRef.current) return;
-    setDraft(optimisticDraftRef.current);
+    const sent = optimisticDraftRef.current;
     optimisticDraftRef.current = null;
+    void Promise.all([mutateHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
+    if (!hasReceivedAssistantChunkRef.current) {
+      setDraft(sent);
+    }
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
       assistantPendingTimerRef.current = null;
     }
     setAssistantPending(false);
-  }, [state.error]);
+  }, [state.error, mutateArtefact, mutateHistory]);
 
   useEffect(() => {
     return () => {
@@ -633,16 +662,47 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (typeof window === 'undefined') return;
     setThinkingHydratedKey(null);
     const saved = window.localStorage.getItem(thinkingStorageKey) as ThinkingSetting | null;
-    const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved);
-    setThinking(isValid ? (saved as ThinkingSetting) : 'medium');
+    const defaultThinking = getDefaultThinkingSetting(provider, activeProviderModel);
+    const allowed = activeProviderModel ? getAllowedThinkingSettings(provider, activeProviderModel) : THINKING_SETTINGS;
+    const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved) && allowed.includes(saved as ThinkingSetting);
+    setThinking(isValid ? (saved as ThinkingSetting) : defaultThinking);
     setThinkingHydratedKey(thinkingStorageKey);
-  }, [thinkingStorageKey]);
+  }, [thinkingStorageKey, provider, activeProviderModel]);
+
+  useEffect(() => {
+    if (!activeProviderModel) return;
+    if (allowedThinking.includes(thinking)) return;
+    setThinking(getDefaultThinkingSetting(provider, activeProviderModel));
+  }, [allowedThinking, thinking, provider, activeProviderModel]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (thinkingHydratedKey !== thinkingStorageKey) return;
     window.localStorage.setItem(thinkingStorageKey, thinking);
   }, [thinking, thinkingHydratedKey, thinkingStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setWebSearchHydratedKey(null);
+    const saved = window.localStorage.getItem(webSearchStorageKey);
+    setWebSearchEnabled(saved === 'true');
+    setWebSearchHydratedKey(webSearchStorageKey);
+  }, [webSearchStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (webSearchHydratedKey !== webSearchStorageKey) return;
+    window.localStorage.setItem(webSearchStorageKey, webSearchEnabled ? 'true' : 'false');
+  }, [webSearchEnabled, webSearchHydratedKey, webSearchStorageKey]);
+
+  useEffect(() => {
+    if (!showEditModal) return;
+    const editModel = providerOptions.find((option) => option.id === editProvider)?.defaultModel ?? '';
+    if (!editModel) return;
+    const allowed = getAllowedThinkingSettings(editProvider, editModel);
+    if (allowed.includes(editThinking)) return;
+    setEditThinking(getDefaultThinkingSetting(editProvider, editModel));
+  }, [showEditModal, editProvider, editThinking, providerOptions]);
 
   useEffect(() => {
     if (!thinkingMenuOpen) return;
@@ -671,6 +731,34 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [thinkingMenuOpen]);
+
+  useEffect(() => {
+    if (!providerMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const container = providerMenuRef.current;
+      const target = event.target;
+      if (!container || !(target instanceof Node)) return;
+      if (!container.contains(target)) {
+        setProviderMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setProviderMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [providerMenuOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -779,8 +867,15 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     window.localStorage.setItem(providerStorageKey, provider);
   }, [provider, providerStorageKey]);
 
-  const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setProvider(event.target.value as LLMProvider);
+  useEffect(() => {
+    if (newBranchName.trim()) return;
+    setNewBranchProvider(provider);
+    setNewBranchThinking(thinking);
+  }, [provider, thinking, newBranchName]);
+
+  const selectProvider = (next: LLMProvider) => {
+    setProvider(next);
+    setProviderMenuOpen(false);
   };
 
   useEffect(() => {
@@ -857,15 +952,30 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (insightTab !== 'graph') return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft') {
+        const target = event.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        setInsightTab('graph');
+        return;
+      }
+      if (event.key === 'ArrowRight') {
+        const target = event.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        setInsightTab('canvas');
+        return;
+      }
       if (event.key === 'Escape') {
         setSelectedGraphNodeId(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [insightTab]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1002,27 +1112,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     };
   }, [showMergeModal, branchName, mergeTargetBranch, project.id]);
 
-  const [railCollapsed, setRailCollapsed] = useState(false);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(COLLAPSE_KEY);
-    if (stored) {
-      setRailCollapsed(stored === 'true');
-    }
-  }, []);
-
-  const toggleRail = () => {
-    setRailCollapsed((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(COLLAPSE_KEY, String(next));
-      }
-      return next;
-    });
-  };
-
   const [showHints, setShowHints] = useState(false);
   const hintsRef = useRef<HTMLDivElement | null>(null);
+  const hintsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [showNewBranchPopover, setShowNewBranchPopover] = useState(false);
+  const newBranchPopoverRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!showHints) return;
@@ -1050,6 +1144,32 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     };
   }, [showHints]);
 
+  useEffect(() => {
+    if (!showNewBranchPopover) return;
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (newBranchPopoverRef.current?.contains(target)) return;
+      setShowNewBranchPopover(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setShowNewBranchPopover(false);
+      }
+    }
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showNewBranchPopover]);
+
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
   const scrollFollowThreshold = 72;
@@ -1073,6 +1193,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return out;
   }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
+  const stableVisibleNodes = useMemo(
+    () => visibleNodes.filter((node) => node.id !== 'streaming' && node.id !== 'assistant-pending'),
+    [visibleNodes]
+  );
 
   useEffect(() => {
     if (previousVisibleBranchRef.current !== branchName) {
@@ -1134,7 +1258,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
     const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
     const trunkPrefix =
-      trunkNodes.length > 0 ? prefixLength(trunkNodes, visibleNodes) : Math.min(trunkNodeCount, visibleNodes.length);
+      trunkNodes.length > 0
+        ? prefixLength(trunkNodes, stableVisibleNodes)
+        : Math.min(trunkNodeCount, stableVisibleNodes.length);
     setSharedCount(trunkPrefix);
 
     const aborted = { current: false };
@@ -1145,7 +1271,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         others.map(async (b) => {
           try {
             const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${visibleNodes.length}`
+              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${stableVisibleNodes.length}`
             );
             if (!res.ok) return null;
             const data = (await res.json()) as { nodes: NodeRecord[] };
@@ -1157,9 +1283,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       );
       const longest = histories.reduce((max, entry) => {
         if (!entry) return max;
-        const min = Math.min(entry.nodes.length, visibleNodes.length);
+        const min = Math.min(entry.nodes.length, stableVisibleNodes.length);
         let idx = 0;
-        while (idx < min && entry.nodes[idx]?.id === visibleNodes[idx]?.id) {
+        while (idx < min && entry.nodes[idx]?.id === stableVisibleNodes[idx]?.id) {
           idx += 1;
         }
         return Math.max(max, idx);
@@ -1172,7 +1298,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return () => {
       aborted.current = true;
     };
-  }, [branchName, trunkName, trunkHistory, trunkNodeCount, visibleNodes, branches, project.id]);
+  }, [branchName, trunkName, trunkHistory, trunkNodeCount, stableVisibleNodes, branches, project.id]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
@@ -1356,7 +1482,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   };
 
   const createBranch = async () => {
-    if (!newBranchName.trim()) return;
+    if (!newBranchName.trim()) return false;
     setIsCreating(true);
     setBranchActionError(null);
     try {
@@ -1374,41 +1500,35 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setBranches(data.branches);
       setNewBranchName('');
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, provider);
-        window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, thinking);
+        window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, newBranchProvider);
+        window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, newBranchThinking);
       }
       await Promise.all([mutateHistory(), mutateArtefact()]);
+      return true;
     } catch (err) {
       setBranchActionError((err as Error).message);
+      return false;
     } finally {
       setIsCreating(false);
     }
   };
 
+  const closeMergeModal = () => {
+    if (isMerging) return;
+    setShowMergeModal(false);
+    setMergeSummary('');
+    setMergeError(null);
+  };
+
   return (
     <div className="h-screen overflow-hidden bg-white text-slate-800">
-      <div
-        className="grid h-full"
-        style={{ gridTemplateColumns: railCollapsed ? '72px minmax(0, 1fr)' : '270px minmax(0, 1fr)' }}
-      >
-        <aside className="relative z-40 flex h-full flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleRail}
-              className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
-              aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-            >
-              {railCollapsed ? <ChevronRightIcon className="h-5 w-5" /> : <ChevronLeftIcon className="h-5 w-5" />}
-            </button>
-            {!railCollapsed ? (
-              <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
-                <span>{APP_NAME}</span>
-              </div>
-            ) : null}
-          </div>
+      <RailLayout
+        outerClassName="h-full"
+        asideClassName="relative z-40 flex h-full flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur"
+        mainClassName="h-full min-h-0 min-w-0 overflow-hidden"
+        renderRail={(ctx) => (
           <div className="mt-6 flex h-full flex-col gap-6">
-            {!railCollapsed ? (
+            {!ctx.railCollapsed ? (
               <>
                 <div className="space-y-3 overflow-hidden">
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
@@ -1449,69 +1569,92 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   {branchActionError ? <p className="text-sm text-red-600">{branchActionError}</p> : null}
                 </div>
 
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void createBranch();
-                  }}
-                  className="space-y-3 rounded-2xl border border-divider/80 bg-white/80 p-4 shadow-sm"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-900">New branch</span>
-                    <span className="text-xs text-muted">{displayBranchName(branchName)} →</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={newBranchName}
-                      onChange={(event) => setNewBranchName(event.target.value)}
-                      placeholder="feature/idea"
-                      className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
-                      disabled={isCreating || isSwitching}
-                    />
-                    <button
-                      type="submit"
-                      disabled={isCreating || isSwitching}
-                      className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {isCreating ? 'Creating…' : 'Create'}
-                    </button>
-                  </div>
-                </form>
+                <NewBranchFormCard
+                  fromLabel={displayBranchName(branchName)}
+                  value={newBranchName}
+                  onValueChange={setNewBranchName}
+                  onSubmit={() => void createBranch()}
+                  disabled={isSwitching}
+                  submitting={isCreating}
+                  error={branchActionError}
+                  providerSelector={
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                        <span className="font-semibold text-slate-700">Provider</span>
+                        <select
+                          value={newBranchProvider}
+                          onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                          disabled={isSwitching || isCreating}
+                        >
+                          {providerOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                        <span className="font-semibold text-slate-700">Thinking</span>
+                        <select
+                          value={newBranchThinking}
+                          onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                          disabled={isSwitching || isCreating}
+                        >
+                          {(() => {
+                            const branchModel =
+                              providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                              getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                            const allowed = branchModel
+                              ? getAllowedThinkingSettings(newBranchProvider, branchModel)
+                              : THINKING_SETTINGS;
+                            return allowed.map((setting) => (
+                              <option key={setting} value={setting}>
+                                {THINKING_SETTING_LABELS[setting]}
+                              </option>
+                            ));
+                          })()}
+                        </select>
+                      </div>
+                    </div>
+                  }
+                />
 
               </>
             ) : null}
 
-            {railCollapsed ? (
+            {ctx.railCollapsed ? (
               <div className="mt-auto flex flex-col items-start gap-3 pb-2">
                 <div ref={hintsRef} className="relative">
                   <button
                     type="button"
                     onClick={() => setShowHints((prev) => !prev)}
+                    ref={hintsButtonRef}
                     className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                     aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
                     aria-expanded={showHints}
                   >
                     <QuestionMarkCircleIcon className="h-5 w-5" />
                   </button>
-                  {showHints ? (
-                    <div
-                      className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
-                      role="dialog"
-                      aria-label="Session tips"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-semibold text-slate-900">Session tips</p>
-                      </div>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                        <li>Branch to try edits without losing the trunk.</li>
-                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                      </ul>
+                  <RailPopover
+                    open={showHints}
+                    anchorRef={hintsButtonRef}
+                    ariaLabel="Session tips"
+                    className="w-[320px] p-4 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-slate-900">Session tips</p>
                     </div>
-                  ) : null}
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                      <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                      <li>← Thred graph · → Canvas.</li>
+                      <li>Branch to try edits without losing the trunk.</li>
+                      <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                    </ul>
+                  </RailPopover>
                 </div>
-                <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
+                <AuthRailStatus railCollapsed={ctx.railCollapsed} onRequestExpandRail={ctx.toggleRail} />
                 <Link
                   href="/"
                   className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
@@ -1527,31 +1670,32 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <button
                       type="button"
                       onClick={() => setShowHints((prev) => !prev)}
+                      ref={hintsButtonRef}
                       className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                       aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
                       aria-expanded={showHints}
                     >
                       <QuestionMarkCircleIcon className="h-5 w-5" />
                     </button>
-                    {showHints ? (
-                      <div
-                        className="absolute left-full top-1/2 z-50 ml-3 w-[320px] -translate-y-1/2 rounded-2xl border border-divider/80 bg-white/95 p-4 text-sm shadow-lg backdrop-blur"
-                        role="dialog"
-                        aria-label="Session tips"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-semibold text-slate-900">Session tips</p>
-                        </div>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                          <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                          <li>Branch to try edits without losing the trunk.</li>
-                          <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                        </ul>
+                    <RailPopover
+                      open={showHints}
+                      anchorRef={hintsButtonRef}
+                      ariaLabel="Session tips"
+                      className="w-[320px] p-4 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-slate-900">Session tips</p>
                       </div>
-                    ) : null}
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                        <li>← Thred graph · → Canvas.</li>
+                        <li>Branch to try edits without losing the trunk.</li>
+                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                      </ul>
+                    </RailPopover>
                   </div>
 
-                  <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
+                  <AuthRailStatus railCollapsed={ctx.railCollapsed} onRequestExpandRail={ctx.toggleRail} />
 
                   <Link
                     href="/"
@@ -1564,8 +1708,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               </div>
             )}
           </div>
-        </aside>
-
+        )}
+        renderMain={(ctx) => (
         <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
           <div className="px-6 pt-6 md:px-8 lg:px-12">
             <div className="flex flex-wrap items-center gap-3">
@@ -1581,7 +1725,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           <div className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-36 pt-4 md:px-8 lg:px-12">
           <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
             <section
-              className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${chatPaneWidth ? 'flex-none' : 'flex-1'}`}
+              className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${
+                chatPaneWidth ? 'flex-none' : 'flex-1 lg:flex-[2]'
+              }`}
               style={chatPaneWidth ? { width: chatPaneWidth, maxWidth: '100%' } : undefined}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1593,22 +1739,43 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <span className="text-sm text-muted">{activeProvider?.defaultModel ?? 'mock'}</span>
-                  <div className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-sm shadow-sm">
-                    <label className="font-medium text-slate-700" htmlFor="provider-select">
-                      Provider
-                    </label>
-                    <select
-                      id="provider-select"
-                      value={provider}
-                      onChange={handleProviderChange}
+                  <div ref={providerMenuRef} className="relative flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-sm shadow-sm">
+                    <span className="font-medium text-slate-700">Provider</span>
+                    <button
+                      type="button"
+                      onClick={() => setProviderMenuOpen((prev) => !prev)}
                       className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-sm text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                      aria-label={`Provider: ${activeProvider?.label ?? provider}`}
+                      aria-haspopup="menu"
+                      aria-expanded={providerMenuOpen}
                     >
-                      {providerOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      {activeProvider?.label ?? provider}
+                    </button>
+                    {providerMenuOpen ? (
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                      >
+                        {providerOptions.map((option) => {
+                          const active = provider === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={active}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
+                              }`}
+                              onClick={() => selectProvider(option.id)}
+                            >
+                              <span>{option.label}</span>
+                              {active ? <span aria-hidden="true">✓</span> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1705,35 +1872,136 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   <p className="text-sm italic text-muted">No new messages on this branch yet.</p>
                 ) : null}
 
-                {sortedBranches.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMergeError(null);
-                      setMergeSummary('');
-                      setMergeTargetBranch(trunkName);
-                      setShowMergeModal(true);
-                    }}
-                    disabled={isMerging}
-                    className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
-                  >
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <ArrowUpRightIcon className="h-4 w-4" />
-                    </span>
-                    Merge…
-                  </button>
-                ) : null}
+                {sortedBranches.length > 1 || state.error || thinkingUnsupportedError ? (
+                  <div className="absolute bottom-4 left-4 right-10 flex items-center gap-3">
+                    {state.error || thinkingUnsupportedError ? (
+                      <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full border border-red-200 bg-red-50 px-4 text-sm text-red-700">
+                        <span className="min-w-0 flex-1 truncate">{state.error ?? thinkingUnsupportedError}</span>
+                        {state.error ? (
+                          <button
+                            type="button"
+                            onClick={() => void sendDraft()}
+                            className="shrink-0 rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                          >
+                            Retry
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="flex-1" />
+                    )}
 
-                {state.error ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {state.error}
-                    <button
-                      type="button"
-                      onClick={() => void sendDraft()}
-                      className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                    >
-                      Retry
-                    </button>
+                    {sortedBranches.length > 1 ? (
+                      <div className="flex items-center gap-2">
+                        <div ref={newBranchPopoverRef} className="relative h-11">
+                          {showNewBranchPopover ? (
+                            <div className="absolute bottom-0 right-0 z-30 w-[420px] overflow-hidden rounded-2xl border border-divider/80 bg-white shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => setShowNewBranchPopover(false)}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-primary/10"
+                                aria-label="Hide branch creator"
+                              >
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                                  <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+                                </span>
+                                New branch
+                              </button>
+                              <div className="border-t border-divider/80 bg-white/80 p-4">
+                                <NewBranchFormCard
+                                  fromLabel={displayBranchName(branchName)}
+                                  value={newBranchName}
+                                  onValueChange={setNewBranchName}
+                                  onSubmit={async () => {
+                                    const ok = await createBranch();
+                                    if (ok) {
+                                      setShowNewBranchPopover(false);
+                                    }
+                                  }}
+                                  disabled={isSwitching}
+                                  submitting={isCreating}
+                                  error={branchActionError}
+                                  providerSelector={
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                                        <span className="font-semibold text-slate-700">Provider</span>
+                                        <select
+                                          value={newBranchProvider}
+                                          onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                          disabled={isSwitching || isCreating}
+                                        >
+                                          {providerOptions.map((option) => (
+                                            <option key={option.id} value={option.id}>
+                                              {option.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                                        <span className="font-semibold text-slate-700">Thinking</span>
+                                        <select
+                                          value={newBranchThinking}
+                                          onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                          disabled={isSwitching || isCreating}
+                                        >
+                                          {(() => {
+                                            const branchModel =
+                                              providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                                              getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                                            const allowed = branchModel
+                                              ? getAllowedThinkingSettings(newBranchProvider, branchModel)
+                                              : THINKING_SETTINGS;
+                                            return allowed.map((setting) => (
+                                              <option key={setting} value={setting}>
+                                                {THINKING_SETTING_LABELS[setting]}
+                                              </option>
+                                            ));
+                                          })()}
+                                        </select>
+                                      </div>
+                                    </div>
+                                  }
+                                  autoFocus
+                                  variant="plain"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setShowNewBranchPopover(true)}
+                              disabled={isCreating || isSwitching}
+                              className="inline-flex h-full items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                              aria-label="Show branch creator"
+                            >
+                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                                <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+                              </span>
+                              New branch
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMergeError(null);
+                            setMergeSummary('');
+                            setMergeTargetBranch(trunkName);
+                            setShowMergeModal(true);
+                          }}
+                          disabled={isMerging}
+                          className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                        >
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <BlueprintIcon icon="git-merge" className="h-4 w-4" />
+                          </span>
+                          Merge…
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </section>
@@ -1777,7 +2045,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   className="card-surface flex h-full w-full items-start justify-center rounded-2xl border border-dashed border-divider/70 bg-white/80 px-2 py-6 text-sm font-semibold text-primary shadow-sm hover:bg-primary/5"
                 >
                   <span className="whitespace-nowrap text-xs font-semibold tracking-wide text-slate-700 [writing-mode:vertical-rl] [text-orientation:mixed]">
-                    Canvas | Graph
+                    Graph | Canvas
                   </span>
                 </button>
               ) : (
@@ -1786,21 +2054,21 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <div className="flex flex-1 items-center gap-1 rounded-full bg-slate-100/80 p-1 text-xs font-semibold text-slate-700">
                       <button
                         type="button"
+                        onClick={() => setInsightTab('graph')}
+                        className={`flex-1 rounded-full px-3 py-1 transition ${
+                          insightTab === 'graph' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
+                        }`}
+                      >
+                        Thred graph
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setInsightTab('canvas')}
                         className={`flex-1 rounded-full px-3 py-1 transition ${
                           insightTab === 'canvas' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                         }`}
                       >
                         Canvas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInsightTab('graph')}
-                        className={`flex-1 rounded-full px-3 py-1 transition ${
-                          insightTab === 'graph' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
-                        }`}
-                      >
-                        Quest graph
                       </button>
                     </div>
                     <button
@@ -2119,21 +2387,41 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           >
             <div
               className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
-              style={{ paddingLeft: railCollapsed ? '96px' : '320px' }}
+              style={{ paddingLeft: ctx.railCollapsed ? '96px' : '320px' }}
             >
               <div className="flex items-center gap-3 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
-                <div className="flex h-10 w-10 items-center justify-center">
-                  {features.uiAttachments ? (
-                    <button
-                      type="button"
-                      className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                      aria-label="Add attachment"
-                    >
-                      <PaperClipIcon className="h-5 w-5" />
-                    </button>
-                  ) : (
-                    <span aria-hidden="true" />
-                  )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!webSearchAvailable || state.isStreaming) return;
+                      setWebSearchEnabled((prev) => !prev);
+                    }}
+                    className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus:outline-none ${
+                      webSearchEnabled
+                        ? 'border-primary/30 bg-primary/10 text-primary'
+                        : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
+                    } ${!webSearchAvailable ? 'opacity-50' : ''}`}
+                    aria-label="Toggle web search"
+                    aria-pressed={webSearchEnabled}
+                    disabled={state.isStreaming || !webSearchAvailable}
+                  >
+                    <SearchIcon className="h-4 w-4" />
+                    <span>Search</span>
+                  </button>
+                  <div className="flex h-10 w-10 items-center justify-center">
+                    {features.uiAttachments ? (
+                      <button
+                        type="button"
+                        className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
+                        aria-label="Add attachment"
+                      >
+                        <PaperClipIcon className="h-5 w-5" />
+                      </button>
+                    ) : (
+                      <span aria-hidden="true" />
+                    )}
+                  </div>
                 </div>
                 <textarea
                   value={draft}
@@ -2172,29 +2460,31 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     {thinkingMenuOpen ? (
                       <div
                         role="menu"
-                        className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                        className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
                       >
-                        {THINKING_SETTINGS.map((setting) => {
-                          const active = thinking === setting;
-                          return (
-                            <button
-                              key={setting}
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={active}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
-                              }`}
-                              onClick={() => {
-                                setThinking(setting);
-                                setThinkingMenuOpen(false);
-                              }}
-                            >
-                              <span>{THINKING_SETTING_LABELS[setting]}</span>
-                              {active ? <span aria-hidden="true">✓</span> : null}
-                            </button>
-                          );
-                        })}
+	                        {allowedThinking.map((setting) => {
+	                          const active = thinking === setting;
+	                          return (
+	                            <button
+	                              key={setting}
+	                              type="button"
+	                              role="menuitemradio"
+	                              aria-checked={active}
+	                              disabled={state.isStreaming}
+	                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+	                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
+	                              }`}
+	                              onClick={() => {
+	                                if (state.isStreaming) return;
+	                                setThinking(setting);
+	                                setThinkingMenuOpen(false);
+	                              }}
+	                            >
+	                              <span>{THINKING_SETTING_LABELS[setting]}</span>
+	                              {active ? <span aria-hidden="true">✓</span> : null}
+	                            </button>
+	                          );
+	                        })}
                       </div>
                     ) : null}
                   </div>
@@ -2208,27 +2498,39 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       <XMarkIcon className="h-5 w-5" />
                     </button>
                   ) : null}
-                  <button
-                    type="submit"
-                    disabled={state.isStreaming || !draft.trim()}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Send message"
-                  >
+	                  <button
+	                    type="submit"
+	                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+	                    className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+	                    aria-label="Send message"
+	                  >
                     <ArrowUpIcon className="h-5 w-5" />
                   </button>
                 </div>
               </div>
               <div className="relative mt-2 flex items-center text-xs text-muted">
                 <span className="mx-auto">⌘ + Enter to send · Shift + Enter adds a newline.</span>
+                {showOpenAISearchNote ? (
+                  <span className="absolute left-0 text-[11px] text-slate-400">Search uses gpt-4o-mini-search-preview.</span>
+                ) : null}
                 {state.isStreaming ? <span className="absolute right-0 animate-pulse text-primary">Streaming…</span> : null}
               </div>
             </div>
           </form>
         </div>
-      </div>
+        )}
+      />
 
       {showMergeModal ? (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeMergeModal();
+          }}
+          onTouchStart={(event) => {
+            if (event.target === event.currentTarget) closeMergeModal();
+          }}
+        >
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-900">
               Merge {displayBranchName(branchName)} into {displayBranchName(mergeTargetBranch)}
@@ -2370,12 +2672,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (isMerging) return;
-                  setShowMergeModal(false);
-                  setMergeSummary('');
-                  setMergeError(null);
-                }}
+                onClick={closeMergeModal}
                 className="rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
                 disabled={isMerging}
               >
@@ -2422,8 +2719,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     // Switch to the target so the user immediately sees the merge node created there.
                     await switchBranch(mergeTargetBranch);
 
-                    setShowMergeModal(false);
-                    setMergeSummary('');
+                    closeMergeModal();
                   } catch (err) {
                     setMergeError((err as Error).message);
                   } finally {
@@ -2459,38 +2755,44 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 required
               />
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                <span className="font-semibold text-slate-700">Provider</span>
-                <select
-                  value={editProvider}
-                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
-                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  disabled={isEditing}
-                >
-                  {providerOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                <span className="font-semibold text-slate-700">Thinking</span>
-                <select
-                  value={editThinking}
-                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
-                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  disabled={isEditing}
-                >
-                  {THINKING_SETTINGS.map((setting) => (
-                    <option key={setting} value={setting}>
-                      {THINKING_SETTING_LABELS[setting]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+	            <div className="mt-4 flex flex-wrap items-center gap-2">
+	              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+	                <span className="font-semibold text-slate-700">Provider</span>
+	                <select
+	                  value={editProvider}
+	                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
+	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+	                  disabled={isEditing}
+	                >
+	                  {providerOptions.map((option) => (
+	                    <option key={option.id} value={option.id}>
+	                      {option.label}
+	                    </option>
+	                  ))}
+	                </select>
+	              </div>
+	              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+	                <span className="font-semibold text-slate-700">Thinking</span>
+	                <select
+	                  value={editThinking}
+	                  onChange={(event) => setEditThinking(event.target.value as ThinkingSetting)}
+	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+	                  disabled={isEditing}
+	                >
+		                  {(() => {
+		                    const editModel =
+		                      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
+		                      getDefaultModelForProviderFromCapabilities(editProvider);
+		                    const allowed = editModel ? getAllowedThinkingSettings(editProvider, editModel) : THINKING_SETTINGS;
+		                    return allowed.map((setting) => (
+		                      <option key={setting} value={setting}>
+		                        {THINKING_SETTING_LABELS[setting]}
+	                      </option>
+	                    ));
+	                  })()}
+	                </select>
+	              </div>
+	            </div>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800">Updated content</label>
               <textarea

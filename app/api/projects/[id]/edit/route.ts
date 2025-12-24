@@ -4,14 +4,15 @@ import { editMessageSchema } from '@/src/server/schemas';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { getDefaultModelForProvider, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import type { LLMProvider } from '@/src/server/llm';
-import { getDeployEnv } from '@/src/server/llmConfig';
+import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
+import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
 
 interface RouteContext {
   params: { id: string };
@@ -25,32 +26,6 @@ async function getPreferredBranch(projectId: string): Promise<string> {
   }
   const { getCurrentBranchName } = await import('@git/utils');
   return getCurrentBranchName(projectId).catch(() => 'main');
-}
-
-async function resolveApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
-  if (provider === 'mock') return null;
-
-  if (getDeployEnv() === 'dev') {
-    if (provider === 'openai') {
-      const envKey = process.env.OPENAI_API_KEY?.trim();
-      if (envKey) return envKey;
-    }
-    if (provider === 'gemini') {
-      const envKey = process.env.GEMINI_API_KEY?.trim();
-      if (envKey) return envKey;
-    }
-    if (provider === 'anthropic') {
-      const envKey = process.env.ANTHROPIC_API_KEY?.trim();
-      if (envKey) return envKey;
-    }
-  }
-
-  try {
-    const { rtGetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
-    return await rtGetUserLlmKeyV1({ provider });
-  } catch {
-    return null;
-  }
 }
 
 function labelForProvider(provider: LLMProvider): string {
@@ -79,6 +54,17 @@ export async function POST(request: Request, { params }: RouteContext) {
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const sourceRef = fromRef?.trim() || currentBranch;
     const provider = resolveLLMProvider(llmProvider);
+    const modelName = getDefaultModelForProvider(provider);
+    const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
+    const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
+    if (!thinkingValidation.ok) {
+      throw badRequest(thinkingValidation.message ?? 'Invalid thinking setting', {
+        provider,
+        modelName,
+        thinking: effectiveThinking,
+        allowed: thinkingValidation.allowed
+      });
+    }
 
     return await withProjectLock(params.id, async () => {
       const releaseRefLock = await acquireProjectRefLock(params.id, sourceRef);
@@ -106,12 +92,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest('Only message nodes can be edited');
           }
 
-          const apiKey = targetNode.role === 'user' ? await resolveApiKeyForProvider(provider) : null;
-          if (targetNode.role === 'user' && provider !== 'mock' && !apiKey) {
-            throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
-              provider
-            });
-          }
+          const apiKey = targetNode.role === 'user' ? await requireUserApiKeyForProvider(provider) : null;
 
           await rtCreateRefFromNodeParentShadowV1({
             projectId: params.id,
@@ -156,36 +137,40 @@ export async function POST(request: Request, { params }: RouteContext) {
               const messagesForCompletion = context.messages;
 
               let buffered = '';
-              for await (const chunk of streamAssistantCompletion({
-                messages: messagesForCompletion,
-                provider,
-                thinking,
-                apiKey
-              })) {
-                buffered += chunk.content;
+	              for await (const chunk of streamAssistantCompletion({
+	                messages: messagesForCompletion,
+	                provider,
+	                thinking: effectiveThinking,
+	                apiKey
+	              })) {
+	                buffered += chunk.content;
+	              }
+
+              if (buffered.trim()) {
+                assistantNode = {
+                  id: uuidv4(),
+                  type: 'message',
+                  role: 'assistant',
+                  content: buffered,
+                  timestamp: Date.now(),
+                  parent: editedNode.id,
+                  createdOnBranch: targetBranch,
+                  interrupted: false
+                };
+
+                await rtAppendNodeToRefShadowV1({
+                  projectId: params.id,
+                  refName: targetBranch,
+                  kind: assistantNode.type,
+                  role: assistantNode.role,
+                  contentJson: assistantNode,
+                  nodeId: assistantNode.id,
+                  commitMessage: 'assistant_message',
+                  attachDraft: false
+                });
+              } else {
+                console.warn('[edit] Skipping empty assistant response');
               }
-
-              assistantNode = {
-                id: uuidv4(),
-                type: 'message',
-                role: 'assistant',
-                content: buffered,
-                timestamp: Date.now(),
-                parent: editedNode.id,
-                createdOnBranch: targetBranch,
-                interrupted: false
-              };
-
-              await rtAppendNodeToRefShadowV1({
-                projectId: params.id,
-                refName: targetBranch,
-                kind: assistantNode.type,
-                role: assistantNode.role,
-                contentJson: assistantNode,
-                nodeId: assistantNode.id,
-                commitMessage: 'assistant_message',
-                attachDraft: false
-              });
             } catch (error) {
               console.error('[edit] Failed to run LLM completion after edit', error);
             }
@@ -213,12 +198,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           throw badRequest('Only message nodes can be edited');
         }
 
-        const apiKey = targetNode.role === 'user' ? await resolveApiKeyForProvider(provider) : null;
-        if (targetNode.role === 'user' && provider !== 'mock' && !apiKey) {
-          throw badRequest(`No ${labelForProvider(provider)} API key configured. Add one in Profile to use this provider.`, {
-            provider
-          });
-        }
+        const apiKey = targetNode.role === 'user' ? await requireUserApiKeyForProvider(provider) : null;
 
         try {
           const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
@@ -246,20 +226,24 @@ export async function POST(request: Request, { params }: RouteContext) {
           const messagesForCompletion = context.messages;
 
           let buffered = '';
-          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking, apiKey })) {
-            buffered += chunk.content;
-          }
+	          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking: effectiveThinking, apiKey })) {
+	            buffered += chunk.content;
+	          }
 
-          assistantNode = await appendNode(
-            project.id,
-            {
-              type: 'message',
-              role: 'assistant',
-              content: buffered,
-              interrupted: false
-            },
-            { ref: targetBranch }
-          );
+          if (buffered.trim()) {
+            assistantNode = await appendNode(
+              project.id,
+              {
+                type: 'message',
+                role: 'assistant',
+                content: buffered,
+                interrupted: false
+              },
+              { ref: targetBranch }
+            );
+          } else {
+            console.warn('[edit] Skipping empty assistant response');
+          }
         } catch (error) {
           console.error('[edit] Failed to run LLM completion after edit', error);
         }

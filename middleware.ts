@@ -5,6 +5,18 @@ import { getStoreConfig } from './src/server/storeConfig';
 // Fail fast if the deployment hasn't selected a provenance store.
 getStoreConfig();
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function stripTrailingSlashes(value: string): string {
+  let result = value;
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+  return result;
+}
+
 function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
@@ -14,6 +26,10 @@ function getSupabaseEnv() {
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
+  if (pathname === '/check-email') return true;
+  if (pathname === '/forgot-password') return true;
+  if (pathname === '/reset-password') return true;
+  if (pathname === '/waitlist') return true;
   if (pathname.startsWith('/auth/')) return true;
   return false;
 }

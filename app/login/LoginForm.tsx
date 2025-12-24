@@ -1,8 +1,9 @@
 'use client';
 
 import { useFormState, useFormStatus } from 'react-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { signInWithPassword, signUpWithPassword } from './actions';
+import Link from 'next/link';
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -12,21 +13,30 @@ function SubmitButton({ label }: { label: string }) {
       type="submit"
       disabled={pending}
     >
-      {pending ? 'Working…' : label}
+      {pending ? (label === 'Sign in' ? 'Signing in…' : label === 'Create account' ? 'Creating account…' : 'Working…') : label}
     </button>
   );
 }
 
 const initialState = { error: null as string | null };
 
-export function LoginForm({ redirectTo }: { redirectTo: string }) {
+export function LoginForm({ redirectTo, initialEmail }: { redirectTo: string; initialEmail?: string | null }) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
   const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
+  const [emailValue, setEmailValue] = useState(initialEmail ?? '');
+
+  useEffect(() => {
+    if (window.location.hash === '#existing-user') {
+      setMode('signIn');
+    }
+  }, []);
 
   const activeError = useMemo(() => {
-    return mode === 'signIn' ? signInState.error : signUpState.error;
-  }, [mode, signInState.error, signUpState.error]);
+    const signInError = signInState?.error ?? null;
+    const signUpError = signUpState?.error ?? null;
+    return mode === 'signIn' ? signInError : signUpError;
+  }, [mode, signInState, signUpState]);
 
   return (
     <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -42,6 +52,8 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
               name="email"
               type="email"
               autoComplete="email"
+              value={emailValue}
+              onChange={(event) => setEmailValue(event.target.value)}
               required
             />
           </label>
@@ -58,11 +70,26 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
           {activeError ? <p className="text-sm text-red-700">{activeError}</p> : null}
 
-          <SubmitButton label="Sign in" />
+          <div className="flex items-center justify-between gap-3">
+            <SubmitButton label="Sign in" />
+            <Link
+              href={`/forgot-password?redirectTo=${encodeURIComponent(redirectTo)}`}
+              className="text-sm text-slate-900 underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
         </form>
       ) : (
         <form action={signUpAction} className="mt-6 space-y-3">
           <input type="hidden" name="redirectTo" value={redirectTo} />
+          <p className="text-sm text-slate-600">
+            Invite-only for now.{' '}
+            <Link href="/waitlist" className="text-slate-900 underline">
+              Request access
+            </Link>
+            .
+          </p>
           <label className="block">
             <span className="text-sm font-medium text-slate-800">Email</span>
             <input
@@ -70,6 +97,8 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
               name="email"
               type="email"
               autoComplete="email"
+              value={emailValue}
+              onChange={(event) => setEmailValue(event.target.value)}
               required
             />
           </label>

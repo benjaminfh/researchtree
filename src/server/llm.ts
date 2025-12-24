@@ -1,16 +1,21 @@
 import OpenAI from 'openai';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  GoogleGenerativeAI,
+  GoogleGenerativeAIFetchError,
+  GoogleGenerativeAIResponseError,
+  type EnhancedGenerateContentResponse
+} from '@google/generative-ai';
 import type { ChatMessage } from './context';
 import {
   toAnthropicThinking,
-  toGemini25ThinkingBudget,
-  toGemini3ThinkingLevel,
   toOpenAIReasoningEffort,
   type ThinkingSetting
 } from '@/src/shared/thinking';
+import { buildGeminiThinkingParams, buildOpenAIThinkingParams, getAnthropicMaxOutputTokens } from '@/src/shared/llmCapabilities';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
 
-export type LLMProvider = 'openai' | 'gemini' | 'anthropic' | 'mock';
+export type { LLMProvider } from '@/src/shared/llmProvider';
 
 export interface LLMStreamChunk {
   type: 'text';
@@ -22,13 +27,25 @@ export interface LLMStreamOptions {
   signal?: AbortSignal;
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
+  webSearch?: boolean;
   apiKey?: string | null;
 }
 
 const encoder = new TextEncoder();
+// TODO: Remove OpenAI search-preview routing once we migrate to Responses API web search.
+const OPENAI_SEARCH_MODELS = new Set(['gpt-4o-search-preview', 'gpt-4o-mini-search-preview']);
 
-const DEFAULT_GEMINI_MODEL = 'gemini-3-pro-preview';
-const DEFAULT_ANTHROPIC_MAX_TOKENS = 2048;
+function isOpenAISearchModel(modelName: string): boolean {
+  return OPENAI_SEARCH_MODELS.has(modelName);
+}
+
+function getOpenAIModelForRequest(webSearch?: boolean): string {
+  if (webSearch) {
+    // Temporary: OpenAI web search only supported via chat completions + search preview models.
+    return 'gpt-4o-mini-search-preview';
+  }
+  return getDefaultModelForProvider('openai');
+}
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
@@ -40,7 +57,6 @@ export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {
   const config = getProviderEnvConfig(provider);
-  if (provider === 'gemini') return config.defaultModel || DEFAULT_GEMINI_MODEL;
   return config.defaultModel;
 }
 
@@ -49,22 +65,23 @@ export async function* streamAssistantCompletion({
   signal,
   provider,
   thinking,
+  webSearch,
   apiKey
 }: LLMStreamOptions): AsyncGenerator<LLMStreamChunk> {
   const resolvedProvider = resolveLLMProvider(provider);
 
   if (resolvedProvider === 'openai') {
-    yield* streamFromOpenAI(messages, signal, thinking, apiKey ?? undefined);
+    yield* streamFromOpenAI(messages, signal, thinking, webSearch, apiKey ?? undefined);
     return;
   }
 
   if (resolvedProvider === 'gemini') {
-    yield* streamFromGemini(messages, signal, thinking, apiKey ?? undefined);
+    yield* streamFromGemini(messages, signal, thinking, webSearch, apiKey ?? undefined);
     return;
   }
 
   if (resolvedProvider === 'anthropic') {
-    yield* streamFromAnthropic(messages, signal, thinking, apiKey ?? undefined);
+    yield* streamFromAnthropic(messages, signal, thinking, webSearch, apiKey ?? undefined);
     return;
   }
 
@@ -79,13 +96,12 @@ async function* streamFromOpenAI(
   messages: ChatMessage[],
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
+  webSearch?: boolean,
   apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing OpenAI API key, using mock provider instead.');
-    yield* streamFromMock(messages, signal);
-    return;
+    throw new Error('Missing OpenAI API key. Add one in Profile to use this provider.');
   }
 
   const openAIClient = new OpenAI({ apiKey });
@@ -95,27 +111,19 @@ async function* streamFromOpenAI(
     content: message.content
   })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
-  const reasoningEffort = thinking ? toOpenAIReasoningEffort(thinking) : null;
+  const model = getOpenAIModelForRequest(webSearch);
   const baseRequest = {
-    model: getDefaultModelForProvider('openai'),
+    model,
     messages: formattedMessages,
-    temperature: 0.2,
     stream: true
   } as const;
 
-  let stream: any;
-  try {
-    stream = await openAIClient.chat.completions.create({
-      ...baseRequest,
-      ...(reasoningEffort ? ({ reasoning_effort: reasoningEffort } as any) : null)
-    } as any);
-  } catch (error) {
-    if (reasoningEffort) {
-      stream = await openAIClient.chat.completions.create(baseRequest as any);
-    } else {
-      throw error;
-    }
-  }
+  const thinkingParams = isOpenAISearchModel(model) ? {} : buildOpenAIThinkingParams(thinking);
+  const stream: any = await openAIClient.chat.completions.create({
+    ...baseRequest,
+    ...thinkingParams,
+    ...(webSearch ? { web_search_options: {} } : {})
+  } as any);
 
   if (signal) {
     signal.addEventListener('abort', () => {
@@ -149,13 +157,12 @@ async function* streamFromGemini(
   messages: ChatMessage[],
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
+  webSearch?: boolean,
   apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing Gemini API key, using mock provider instead.');
-    yield* streamFromMock(messages, signal);
-    return;
+    throw new Error('Missing Gemini API key. Add one in Profile to use this provider.');
   }
 
   const geminiClient = new GoogleGenerativeAI(apiKey);
@@ -175,37 +182,125 @@ async function* streamFromGemini(
   const pickModel = (modelName: string) =>
     geminiClient.getGenerativeModel(systemInstruction ? { model: modelName, systemInstruction } : { model: modelName });
 
-  const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+  const modelName = getDefaultModelForProvider('gemini');
   const model = pickModel(modelName);
   let stream: any;
 
-  const isGemini3 = /(^|\/)gemini-3/i.test(modelName);
-  const isFlashModel = /flash/i.test(modelName);
-  const thinkingConfig =
-    typeof thinking === 'string'
-      ? isGemini3
-        ? thinking === 'off'
-          ? isFlashModel
-            ? { thinkingLevel: 'minimal' }
-            : null
-          : { thinkingLevel: toGemini3ThinkingLevel(thinking) ?? undefined }
-        : { thinkingBudget: toGemini25ThinkingBudget(thinking) }
-      : null;
-
   const request: any = { contents };
-  if (thinkingConfig) {
-    request.generationConfig = { thinkingConfig };
+
+  if (typeof thinking === 'string') {
+    const params = buildGeminiThinkingParams(modelName, thinking);
+    if (params.generationConfig) {
+      request.generationConfig = params.generationConfig;
+    }
+  }
+  if (webSearch) {
+    request.tools = [{ google_search: {} }];
   }
 
-  stream = await model.generateContentStream(request);
+  function sanitizeGeminiErrorMessage(message: string): string {
+    // Prevent accidental leakage of the API key (it can appear in SDK error URLs).
+    return message.replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]');
+  }
 
-  for await (const chunk of stream.stream) {
-    if (signal?.aborted) {
-      break;
+  function getGeminiHttpStatus(error: unknown): number | null {
+    const status = (error as any)?.status;
+    return typeof status === 'number' ? status : null;
+  }
+
+  function throwIfStreamingNotSupported(error: unknown): void {
+    const status = getGeminiHttpStatus(error);
+    if (status !== 405) return;
+    throw new Error(`Gemini model ${modelName} does not support streaming (HTTP 405).`);
+  }
+
+  function describeGeminiResponse(response: EnhancedGenerateContentResponse): Record<string, unknown> {
+    const candidates = Array.isArray((response as any).candidates) ? (response as any).candidates : [];
+    const first = candidates[0] ?? null;
+    const parts = first?.content?.parts ?? null;
+    const partKeys = Array.isArray(parts)
+      ? parts
+          .map((part: any) => Object.keys(part ?? {}).sort().join('+'))
+          .filter(Boolean)
+      : [];
+    return {
+      hasPromptFeedback: Boolean((response as any).promptFeedback),
+      blockReason: (response as any).promptFeedback?.blockReason ?? null,
+      candidates: candidates.length,
+      finishReason: first?.finishReason ?? null,
+      partKeys
+    };
+  }
+
+  try {
+    stream = await model.generateContentStream(request);
+  } catch (error) {
+    throwIfStreamingNotSupported(error);
+    const status = getGeminiHttpStatus(error);
+    if (error instanceof GoogleGenerativeAIFetchError || status != null) {
+      throw new Error(
+        sanitizeGeminiErrorMessage(`Gemini request failed: [${status ?? ''}] ${(error as Error)?.message ?? String(error)}`)
+      );
     }
-    const text = chunk.text();
-    if (text) {
-      yield { type: 'text', content: text } satisfies LLMStreamChunk;
+    throw error;
+  }
+
+  let yieldedAny = false;
+  try {
+    for await (const chunk of stream.stream) {
+      if (signal?.aborted) {
+        break;
+      }
+      let text = '';
+      try {
+        text = chunk.text();
+      } catch (error) {
+        if (error instanceof GoogleGenerativeAIResponseError) {
+          throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+        }
+        throw error;
+      }
+      if (text) {
+        yieldedAny = true;
+        yield { type: 'text', content: text } satisfies LLMStreamChunk;
+      }
+    }
+  } catch (error) {
+    throwIfStreamingNotSupported(error);
+    const status = getGeminiHttpStatus(error);
+    if (error instanceof GoogleGenerativeAIFetchError || status != null) {
+      throw new Error(
+        sanitizeGeminiErrorMessage(`Gemini request failed: [${status ?? ''}] ${(error as Error)?.message ?? String(error)}`)
+      );
+    }
+    throw error;
+  }
+
+  if (!yieldedAny && !signal?.aborted) {
+    try {
+      const response = (await stream.response) as EnhancedGenerateContentResponse;
+      let text = '';
+      try {
+        text = response.text();
+      } catch (error) {
+        if (error instanceof GoogleGenerativeAIResponseError) {
+          throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+        }
+        throw error;
+      }
+      if (text) {
+        yield { type: 'text', content: text } satisfies LLMStreamChunk;
+        return;
+      }
+
+      const meta = describeGeminiResponse(response);
+      console.error('[LLM] Gemini returned empty response', { modelName, meta });
+      throw new Error(`Gemini returned an empty response (model=${modelName}).`);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(sanitizeGeminiErrorMessage(error.message));
+      }
+      throw error;
     }
   }
 }
@@ -246,13 +341,12 @@ async function* streamFromAnthropic(
   messages: ChatMessage[],
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
+  webSearch?: boolean,
   apiKeyOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.warn('[LLM] Missing Anthropic API key, using mock provider instead.');
-    yield* streamFromMock(messages, signal);
-    return;
+    throw new Error('Missing Anthropic API key. Add one in Profile to use this provider.');
   }
 
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
@@ -261,7 +355,11 @@ async function* streamFromAnthropic(
     .map((m) => ({ role: m.role, content: m.content })) as Array<{ role: 'user' | 'assistant'; content: string }>;
 
   const model = getDefaultModelForProvider('anthropic');
-  const maxTokens = Number.parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? '', 10) || DEFAULT_ANTHROPIC_MAX_TOKENS;
+  const maxOutputTokens = getAnthropicMaxOutputTokens(model);
+  const maxTokens = maxOutputTokens ?? 8192;
+  if (maxOutputTokens != null && maxTokens > maxOutputTokens) {
+    throw new Error(`Anthropic request invalid: max_tokens (${maxTokens}) exceeds model max output (${maxOutputTokens}) for ${model}.`);
+  }
   const baseBody: any = {
     model,
     max_tokens: maxTokens,
@@ -272,6 +370,24 @@ async function* streamFromAnthropic(
 
   if (thinking && thinking !== 'off') {
     baseBody.thinking = toAnthropicThinking(thinking);
+    if (baseBody.thinking?.type === 'enabled') {
+      const budget = Number(baseBody.thinking.budget_tokens);
+      if (Number.isFinite(budget) && maxTokens <= budget) {
+        throw new Error(
+          `Anthropic request invalid: max_tokens (${maxTokens}) must be greater than thinking.budget_tokens (${budget}). ` +
+            `Choose a lower Thinking setting.`
+        );
+      }
+    }
+  }
+  if (webSearch) {
+    baseBody.tools = [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 5
+      }
+    ];
   }
 
   const makeRequest = async (body: any) => {
@@ -294,13 +410,7 @@ async function* streamFromAnthropic(
     return res;
   };
 
-  let response = await makeRequest(baseBody);
-  if (!response.ok && baseBody.thinking) {
-    // If thinking is rejected (model/flag/beta mismatch), retry without it.
-    const retryBody = { ...baseBody };
-    delete retryBody.thinking;
-    response = await makeRequest(retryBody);
-  }
+  const response = await makeRequest(baseBody);
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');

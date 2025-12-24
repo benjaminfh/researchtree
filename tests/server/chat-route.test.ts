@@ -30,7 +30,8 @@ vi.mock('@/src/server/llm', () => {
   return {
     streamAssistantCompletion: mocks.streamAssistantCompletion,
     encodeChunk: (content: string) => encoder.encode(content),
-    resolveLLMProvider: vi.fn(() => 'mock')
+    resolveLLMProvider: vi.fn(() => 'mock'),
+    getDefaultModelForProvider: vi.fn(() => 'mock')
   };
 });
 
@@ -191,6 +192,45 @@ describe('/api/projects/[id]/chat', () => {
   it('returns 400 for invalid body', async () => {
     const res = await POST(createRequest({ message: '' }), { params: { id: 'project-1' } });
     expect(res.status).toBe(400);
+  });
+
+  it('does not append empty assistant node and errors the stream', async () => {
+    const appended: any[] = [];
+    mocks.appendNodeToRefNoCheckout.mockImplementation(async (_projectId: string, _ref: string, node: any) => {
+      appended.push(node);
+      return node;
+    });
+
+    mocks.streamAssistantCompletion.mockImplementation(async function* () {
+      // yield nothing
+    });
+
+    const response = await POST(createRequest({ message: 'Hi there' }), { params: { id: 'project-1' } });
+    expect(response.status).toBe(200);
+    await expect(response.text()).rejects.toThrow(/empty response/i);
+
+    expect(appended).toHaveLength(0);
+  });
+
+  it('skips empty assistant node in Postgres mode', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+      newCommitId: 'c1',
+      nodeId: 'user-1',
+      ordinal: 0,
+      artefactId: null,
+      artefactContentHash: null
+    });
+
+    mocks.streamAssistantCompletion.mockImplementation(async function* () {
+      // yield nothing
+    });
+
+    const res = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    await expect(res.text()).rejects.toThrow(/empty response/i);
+
+    expect(mocks.rtAppendNodeToRefShadowV1).not.toHaveBeenCalled();
   });
 
   it('propagates errors from context builder', async () => {

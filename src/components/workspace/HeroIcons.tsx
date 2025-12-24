@@ -1,190 +1,82 @@
 'use client';
 
 import React from 'react';
+import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 
 type IconProps = { className?: string };
 
-const defaultSvgProps = {
-  width: '1em',
-  height: '1em',
-  'aria-hidden': true
-} as const;
-
 export function CpuChipIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path d="M16.5 7.5h-9v9h9v-9Z" />
-      <path
-        fillRule="evenodd"
-        d="M8.25 2.25A.75.75 0 0 1 9 3v.75h2.25V3a.75.75 0 0 1 1.5 0v.75H15V3a.75.75 0 0 1 1.5 0v.75h.75a3 3 0 0 1 3 3v.75H21A.75.75 0 0 1 21 9h-.75v2.25H21a.75.75 0 0 1 0 1.5h-.75V15H21a.75.75 0 0 1 0 1.5h-.75v.75a3 3 0 0 1-3 3h-.75V21a.75.75 0 0 1-1.5 0v-.75h-2.25V21a.75.75 0 0 1-1.5 0v-.75H9V21a.75.75 0 0 1-1.5 0v-.75h-.75a3 3 0 0 1-3-3v-.75H3A.75.75 0 0 1 3 15h.75v-2.25H3a.75.75 0 0 1 0-1.5h.75V9H3a.75.75 0 0 1 0-1.5h.75v-.75a3 3 0 0 1 3-3h.75V3a.75.75 0 0 1 .75-.75ZM6 6.75A.75.75 0 0 1 6.75 6h10.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75H6.75a.75.75 0 0 1-.75-.75V6.75Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="hexagon" className={className} />;
 }
 
 export function UserIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="user" className={className} />;
 }
 
 export function ArrowDownLeftIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M20.25 6.75a.75.75 0 0 1-.75.75H6.56l4.72 4.72a.75.75 0 1 1-1.06 1.06l-6-6a.75.75 0 0 1 0-1.06l6-6a.75.75 0 0 1 1.06 1.06L6.56 6.75H19.5a.75.75 0 0 1 .75.75Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="arrow-bottom-left" className={className} />;
 }
 
 export function ArrowLeftCircleIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm10.28-3.28a.75.75 0 0 1 0 1.06L10.81 11.5H16.5a.75.75 0 0 1 0 1.5h-5.69l1.72 1.72a.75.75 0 1 1-1.06 1.06l-3-3a.75.75 0 0 1 0-1.06l3-3a.75.75 0 0 1 1.06 0Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="git-merge" className={className} />;
 }
 
 export function ChevronLeftIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path fillRule="evenodd" d="M15.75 19.5 8.25 12l7.5-7.5" clipRule="evenodd" />
-    </svg>
-  );
+  return <BlueprintIcon icon="chevron-left" className={className} />;
 }
 
 export function ChevronRightIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path fillRule="evenodd" d="M8.25 4.5 15.75 12l-7.5 7.5" clipRule="evenodd" />
-    </svg>
-  );
+  return <BlueprintIcon icon="chevron-right" className={className} />;
+}
+
+export function MenuIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="menu" className={className} />;
+}
+
+export function MenuClosedIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="menu-closed" className={className} />;
 }
 
 export function HomeIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M11.03 2.47a.75.75 0 0 1 .94 0l7.5 6.5a.75.75 0 1 1-.98 1.14l-.49-.42v9.56a3 3 0 0 1-3 3h-2.25a.75.75 0 0 1-.75-.75V15a.75.75 0 0 0-.75-.75h-1.5A.75.75 0 0 0 9 15v6a.75.75 0 0 1-.75.75H6a3 3 0 0 1-3-3V9.69l-.49.42a.75.75 0 0 1-.98-1.14l7.5-6.5Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="home" className={className} />;
 }
 
 export function QuestionMarkCircleIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm8.03-1.03a1.5 1.5 0 1 1 2.44 1.66c-.6.88-1.04 1.18-1.04 2.12a.75.75 0 0 0 1.5 0c0-.42.14-.6.78-1.46a3 3 0 1 0-5.46-1.69.75.75 0 0 0 1.5 0c0-.23.08-.45.28-.63Zm1.72 6.28a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="help" className={className} />;
 }
 
 export function ArrowUpIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M12 2.25a.75.75 0 0 1 .53.22l6 6a.75.75 0 0 1-1.06 1.06l-4.72-4.72V21a.75.75 0 0 1-1.5 0V4.81L6.53 9.53A.75.75 0 0 1 5.47 8.47l6-6A.75.75 0 0 1 12 2.25Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="arrow-up" className={className} />;
 }
 
 export function ArrowUpRightIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M20.03 3.97a.75.75 0 0 1 0 1.06L6.31 18.75h9.44a.75.75 0 0 1 0 1.5H4.5a.75.75 0 0 1-.75-.75V8.25a.75.75 0 0 1 1.5 0v9.44L18.97 3.97a.75.75 0 0 1 1.06 0Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="arrow-top-right" className={className} />;
 }
 
 export function XMarkIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 1 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="cross" className={className} />;
 }
 
 export function PaperClipIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M15.75 4.5a4.5 4.5 0 0 0-4.5 4.5v7.5a3 3 0 1 0 6 0V9a1.5 1.5 0 0 0-3 0v7.5a.75.75 0 0 1-1.5 0V9a3 3 0 1 1 6 0v7.5a4.5 4.5 0 1 1-9 0V9a6 6 0 1 1 12 0v7.5a.75.75 0 0 1-1.5 0V9a4.5 4.5 0 0 0-4.5-4.5Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="paperclip" className={className} />;
 }
 
 export function ArchiveBoxArrowDownIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M3.375 3.75A.75.75 0 0 1 4.125 3h15.75a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75H4.125a.75.75 0 0 1-.75-.75v-4.5Zm2.625 7.5A.75.75 0 0 1 6.75 10.5h10.5a.75.75 0 0 1 .75.75v8.25A2.25 2.25 0 0 1 15.75 21H8.25A2.25 2.25 0 0 1 6 19.5v-8.25Zm5.25 1.5a.75.75 0 0 1 1.5 0v3.19l1.22-1.22a.75.75 0 1 1 1.06 1.06l-2.5 2.5a.75.75 0 0 1-1.06 0l-2.5-2.5a.75.75 0 0 1 1.06-1.06l1.22 1.22v-3.19Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="archive" className={className} />;
 }
 
 export function PencilIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path d="M21.99 7.24a2.25 2.25 0 0 0 0-3.18l-2.05-2.05a2.25 2.25 0 0 0-3.18 0L3.75 15.02a2.25 2.25 0 0 0-.61 1.13l-.85 3.95a.75.75 0 0 0 .9.9l3.95-.85a2.25 2.25 0 0 0 1.13-.61L21.99 7.24Z" />
-      <path d="M18.75 3.75 20.25 5.25 18.75 6.75 17.25 5.25 18.75 3.75Z" />
-    </svg>
-  );
+  return <BlueprintIcon icon="edit" className={className} />;
 }
 
 export function Square2StackIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path d="M6.75 3A2.25 2.25 0 0 0 4.5 5.25v10.5A2.25 2.25 0 0 0 6.75 18h1.5a.75.75 0 0 0 0-1.5h-1.5a.75.75 0 0 1-.75-.75V5.25c0-.414.336-.75.75-.75h10.5c.414 0 .75.336.75.75v1.5a.75.75 0 0 0 1.5 0v-1.5A2.25 2.25 0 0 0 17.25 3H6.75Z" />
-      <path d="M9.75 7.5A2.25 2.25 0 0 0 7.5 9.75v9A2.25 2.25 0 0 0 9.75 21h9A2.25 2.25 0 0 0 21 18.75v-9A2.25 2.25 0 0 0 18.75 7.5h-9Z" />
-    </svg>
-  );
+  return <BlueprintIcon icon="duplicate" className={className} />;
 }
 
 export function CheckIcon({ className }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...defaultSvgProps}>
-      <path
-        fillRule="evenodd"
-        d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 1 1 1.06-1.06l5.35 5.349 8.47-12.706a.75.75 0 0 1 1.066-.177Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
+  return <BlueprintIcon icon="tick" className={className} />;
+}
+
+export function SearchIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="search" className={className} />;
 }

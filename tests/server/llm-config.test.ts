@@ -41,12 +41,12 @@ describe('llmConfig', () => {
 
   it('validates OPENAI_MODEL against allowlist when provided', () => {
     process.env.OPENAI_MODEL = 'gpt-5.2';
-    process.env.LLM_ALLOWED_MODELS_OPENAI = 'gpt-4.1,gpt-4o';
+    process.env.LLM_ALLOWED_MODELS_OPENAI = 'gpt-5.1';
     expect(() => getProviderEnvConfig('openai')).toThrow(/OPENAI_MODEL must be one of/i);
   });
 
   it('uses first allowed model when model env is unset', () => {
-    process.env.LLM_ALLOWED_MODELS_OPENAI = 'gpt-4.1,gpt-5.2';
-    expect(getProviderEnvConfig('openai')).toMatchObject({ defaultModel: 'gpt-4.1' });
+    process.env.LLM_ALLOWED_MODELS_OPENAI = 'gpt-5.1,gpt-5.2';
+    expect(getProviderEnvConfig('openai')).toMatchObject({ defaultModel: 'gpt-5.1' });
   });
 });

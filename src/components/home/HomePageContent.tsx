@@ -7,12 +7,12 @@ import { ArchiveBoxArrowDownIcon } from '@/src/components/workspace/HeroIcons';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import type { ProjectMetadata } from '@git/types';
+import { RailLayout } from '@/src/components/layout/RailLayout';
 
 interface HomePageContentProps {
   projects: Array<ProjectMetadata & { nodeCount: number; lastModified: number }>;
 }
 
-const COLLAPSE_KEY = storageKey('rail-collapsed');
 const ARCHIVE_KEY = storageKey('archived-projects');
 const dateFormatter = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
@@ -22,16 +22,11 @@ const dateFormatter = new Intl.DateTimeFormat('en-GB', {
 });
 
 export function HomePageContent({ projects }: HomePageContentProps) {
-  const [railCollapsed, setRailCollapsed] = useState(false);
   const [archived, setArchived] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const storedCollapse = window.localStorage.getItem(COLLAPSE_KEY);
-    if (storedCollapse) {
-      setRailCollapsed(storedCollapse === 'true');
-    }
     const storedArchive = window.localStorage.getItem(ARCHIVE_KEY);
     if (storedArchive) {
       try {
@@ -48,16 +43,6 @@ export function HomePageContent({ projects }: HomePageContentProps) {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(ARCHIVE_KEY, JSON.stringify([...next]));
     }
-  };
-
-  const toggleRail = () => {
-    setRailCollapsed((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(COLLAPSE_KEY, String(next));
-      }
-      return next;
-    });
   };
 
   const recentProjects = useMemo(() => projects.filter((p) => !archived.has(p.id)).slice(0, 12), [projects, archived]);
@@ -86,28 +71,10 @@ export function HomePageContent({ projects }: HomePageContentProps) {
   };
 
   return (
-    <div
-      className="grid min-h-screen bg-[rgba(238,243,255,0.4)]"
-      style={{ gridTemplateColumns: railCollapsed ? '72px minmax(0, 1fr)' : '270px minmax(0, 1fr)' }}
-    >
-      <aside className="relative z-40 flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleRail}
-            className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
-            aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-          >
-            {railCollapsed ? '›' : '‹'}
-          </button>
-          {!railCollapsed ? (
-            <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
-              <span>{APP_NAME}</span>
-            </div>
-          ) : null}
-        </div>
-
-        {!railCollapsed ? (
+    <RailLayout
+      asideClassName="relative z-40 flex min-h-screen flex-col border-r border-divider/70 bg-[rgba(238,243,255,0.85)] px-3 py-4"
+      renderRail={({ railCollapsed, toggleRail }) =>
+        !railCollapsed ? (
           <div className="mt-6 flex flex-1 flex-col gap-3">
             <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
               Workspaces
@@ -187,7 +154,7 @@ export function HomePageContent({ projects }: HomePageContentProps) {
                         </div>
                       </li>
                     );
-                    })}
+                  })}
                 </ul>
               </div>
             ) : null}
@@ -200,10 +167,9 @@ export function HomePageContent({ projects }: HomePageContentProps) {
           <div className="mt-auto flex items-start pb-2">
             <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
           </div>
-        )}
-      </aside>
-
-      <section className="flex min-h-screen min-w-0 flex-col overflow-hidden">
+        )
+      }
+      renderMain={() => (
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl px-6 py-12 space-y-8">
             <header className="space-y-3">
@@ -221,7 +187,7 @@ export function HomePageContent({ projects }: HomePageContentProps) {
             <CreateProjectForm />
           </div>
         </div>
-      </section>
-    </div>
+      )}
+    />
   );
 }
