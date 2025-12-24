@@ -14,18 +14,22 @@ import {
 import { buildGeminiThinkingParams, buildOpenAIThinkingParams, getAnthropicMaxOutputTokens } from '@/src/shared/llmCapabilities';
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
+import { flattenMessageContent, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 
 export type { LLMProvider } from '@/src/shared/llmProvider';
 
 export interface LLMStreamChunk {
-  type: 'text';
+  type: 'text' | 'thinking' | 'thinking_signature' | 'raw_response';
   content: string;
+  append?: boolean;
+  payload?: unknown;
 }
 
 export interface LLMStreamOptions {
   messages: ChatMessage[];
   signal?: AbortSignal;
   provider?: LLMProvider;
+  model?: string;
   thinking?: ThinkingSetting;
   webSearch?: boolean;
   apiKey?: string | null;
@@ -64,6 +68,7 @@ export async function* streamAssistantCompletion({
   messages,
   signal,
   provider,
+  model,
   thinking,
   webSearch,
   apiKey
@@ -71,17 +76,17 @@ export async function* streamAssistantCompletion({
   const resolvedProvider = resolveLLMProvider(provider);
 
   if (resolvedProvider === 'openai') {
-    yield* streamFromOpenAI(messages, signal, thinking, webSearch, apiKey ?? undefined);
+    yield* streamFromOpenAI(messages, signal, thinking, webSearch, apiKey ?? undefined, model);
     return;
   }
 
   if (resolvedProvider === 'gemini') {
-    yield* streamFromGemini(messages, signal, thinking, webSearch, apiKey ?? undefined);
+    yield* streamFromGemini(messages, signal, thinking, webSearch, apiKey ?? undefined, model);
     return;
   }
 
   if (resolvedProvider === 'anthropic') {
-    yield* streamFromAnthropic(messages, signal, thinking, webSearch, apiKey ?? undefined);
+    yield* streamFromAnthropic(messages, signal, thinking, webSearch, apiKey ?? undefined, model);
     return;
   }
 
@@ -97,7 +102,8 @@ async function* streamFromOpenAI(
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
   webSearch?: boolean,
-  apiKeyOverride?: string
+  apiKeyOverride?: string,
+  modelOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -108,10 +114,14 @@ async function* streamFromOpenAI(
 
   const formattedMessages = messages.map((message) => ({
     role: message.role,
-    content: message.content
+    content: flattenMessageContent(message.content)
   })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
-  const model = getOpenAIModelForRequest(webSearch);
+  const model = webSearch
+    ? modelOverride && isOpenAISearchModel(modelOverride)
+      ? modelOverride
+      : getOpenAIModelForRequest(true)
+    : modelOverride ?? getDefaultModelForProvider('openai');
   const baseRequest = {
     model,
     messages: formattedMessages,
@@ -133,7 +143,9 @@ async function* streamFromOpenAI(
     });
   }
 
+  const rawParts: unknown[] = [];
   for await (const part of stream) {
+    rawParts.push(part);
     const delta = part.choices[0]?.delta;
     if (!delta?.content) {
       continue;
@@ -151,6 +163,33 @@ async function* streamFromOpenAI(
       }
     }
   }
+  yield { type: 'raw_response', content: '', payload: rawParts } satisfies LLMStreamChunk;
+}
+
+function extractGeminiThinkingBlocks(source: any): ThinkingContentBlock[] {
+  const blocks: ThinkingContentBlock[] = [];
+  const candidates = Array.isArray(source?.candidates) ? source.candidates : [];
+
+  for (const candidate of candidates) {
+    const parts = candidate?.content?.parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if ((part as any)?.thought === true && typeof (part as any)?.text === 'string') {
+        const text = String((part as any).text).trim();
+        if (text) {
+          blocks.push({ type: 'thinking', thinking: text });
+        }
+      }
+      if (typeof (part as any)?.thoughtSignature === 'string') {
+        const signature = String((part as any).thoughtSignature).trim();
+        if (signature) {
+          blocks.push({ type: 'thinking_signature', signature });
+        }
+      }
+    }
+  }
+
+  return blocks;
 }
 
 async function* streamFromGemini(
@@ -158,7 +197,8 @@ async function* streamFromGemini(
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
   webSearch?: boolean,
-  apiKeyOverride?: string
+  apiKeyOverride?: string,
+  modelOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -169,30 +209,55 @@ async function* streamFromGemini(
 
   const systemInstruction = messages
     .filter((message) => message.role === 'system')
-    .map((message) => message.content)
+    .map((message) => flattenMessageContent(message.content))
     .join('\n\n')
     .trim();
   const contents = messages
     .filter((message) => message.role !== 'system')
-    .map((message) => ({
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: message.content }]
-    }));
+    .map((message) => {
+      if (Array.isArray(message.content)) {
+        const parts = message.content.flatMap((block) => {
+          if (block.type === 'text' && typeof block.text === 'string') {
+            return [{ text: block.text }];
+          }
+          if (block.type === 'thinking_signature' && typeof block.signature === 'string') {
+            return [{ text: '', thoughtSignature: block.signature }];
+          }
+          return [];
+        });
+        return {
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: parts.length > 0 ? parts : [{ text: '' }]
+        };
+      }
+      return {
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: flattenMessageContent(message.content) }]
+      };
+    });
 
   const pickModel = (modelName: string) =>
     geminiClient.getGenerativeModel(systemInstruction ? { model: modelName, systemInstruction } : { model: modelName });
 
-  const modelName = getDefaultModelForProvider('gemini');
+  const modelName = modelOverride ?? getDefaultModelForProvider('gemini');
   const model = pickModel(modelName);
   let stream: any;
 
   const request: any = { contents };
+  const debugThoughts = process.env.RT_GEMINI_DEBUG_THOUGHTS === 'true';
 
   if (typeof thinking === 'string') {
     const params = buildGeminiThinkingParams(modelName, thinking);
     if (params.generationConfig) {
       request.generationConfig = params.generationConfig;
     }
+  }
+  if (thinking && thinking !== 'off') {
+    request.generationConfig = request.generationConfig ?? {};
+    request.generationConfig.thinkingConfig = {
+      ...(request.generationConfig.thinkingConfig ?? {}),
+      includeThoughts: true
+    };
   }
   if (webSearch) {
     request.tools = [{ google_search: {} }];
@@ -246,10 +311,70 @@ async function* streamFromGemini(
   }
 
   let yieldedAny = false;
+  let lastThinkingBlocks: ThinkingContentBlock[] = [];
+  const rawChunks: unknown[] = [];
   try {
     for await (const chunk of stream.stream) {
       if (signal?.aborted) {
         break;
+      }
+      rawChunks.push(chunk);
+      if (debugThoughts) {
+        const candidates = Array.isArray((chunk as any)?.candidates) ? (chunk as any).candidates : [];
+        for (const candidate of candidates) {
+          const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+          const thoughtParts = parts
+            .map((part: any, idx: number) => ({
+              idx,
+              thought: Boolean(part?.thought),
+              text: typeof part?.text === 'string' ? part.text.trim() : ''
+            }))
+            .filter((part: { thought: boolean; text: string }) => part.thought || part.text.length > 0);
+          if (thoughtParts.length > 0) {
+            const preview = thoughtParts
+              .map((part: { idx: number; thought: boolean; text: string }) => {
+                const snippet = part.text.length > 120 ? `${part.text.slice(0, 120)}…` : part.text;
+                return `#${part.idx} thought=${part.thought} "${snippet}"`;
+              })
+              .join(' | ');
+            console.info('[LLM][Gemini] stream parts', { modelName, preview });
+          }
+        }
+      }
+      const nextBlocks = extractGeminiThinkingBlocks(chunk);
+      if (nextBlocks.length > 0) {
+        if (
+          lastThinkingBlocks.length > 0 &&
+          nextBlocks.length >= lastThinkingBlocks.length &&
+          nextBlocks.slice(0, lastThinkingBlocks.length).every((block, idx) => JSON.stringify(block) === JSON.stringify(lastThinkingBlocks[idx]))
+        ) {
+          const deltaBlocks = nextBlocks.slice(lastThinkingBlocks.length);
+          for (const block of deltaBlocks) {
+            if (block.type === 'thinking') {
+              if (typeof block.thinking === 'string') {
+                yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+              }
+            } else if (block.type === 'thinking_signature') {
+              if (typeof block.signature === 'string') {
+                yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+              }
+            }
+          }
+          lastThinkingBlocks = nextBlocks;
+        } else if (lastThinkingBlocks.length === 0) {
+          for (const block of nextBlocks) {
+            if (block.type === 'thinking') {
+              if (typeof block.thinking === 'string') {
+                yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+              }
+            } else if (block.type === 'thinking_signature') {
+              if (typeof block.signature === 'string') {
+                yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+              }
+            }
+          }
+          lastThinkingBlocks = nextBlocks;
+        }
       }
       let text = '';
       try {
@@ -276,9 +401,59 @@ async function* streamFromGemini(
     throw error;
   }
 
-  if (!yieldedAny && !signal?.aborted) {
+  if (!signal?.aborted) {
     try {
       const response = (await stream.response) as EnhancedGenerateContentResponse;
+      const rawResponse = {
+        stream: rawChunks,
+        response
+      };
+      if (debugThoughts) {
+        const candidates = Array.isArray((response as any)?.candidates) ? (response as any).candidates : [];
+        for (const candidate of candidates) {
+          const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+          const thoughtParts = parts
+            .map((part: any, idx: number) => ({
+              idx,
+              thought: Boolean(part?.thought),
+              text: typeof part?.text === 'string' ? part.text.trim() : ''
+            }))
+            .filter((part: { thought: boolean; text: string }) => part.thought || part.text.length > 0);
+          if (thoughtParts.length > 0) {
+            const preview = thoughtParts
+              .map((part: { idx: number; thought: boolean; text: string }) => {
+                const snippet = part.text.length > 120 ? `${part.text.slice(0, 120)}…` : part.text;
+                return `#${part.idx} thought=${part.thought} "${snippet}"`;
+              })
+              .join(' | ');
+            console.info('[LLM][Gemini] response parts', { modelName, preview });
+          }
+        }
+      }
+      const responseBlocks = extractGeminiThinkingBlocks(response);
+      if (responseBlocks.length > lastThinkingBlocks.length) {
+        const deltaBlocks =
+          lastThinkingBlocks.length > 0 &&
+          responseBlocks.slice(0, lastThinkingBlocks.length).every((block, idx) => JSON.stringify(block) === JSON.stringify(lastThinkingBlocks[idx]))
+            ? responseBlocks.slice(lastThinkingBlocks.length)
+            : responseBlocks;
+        for (const block of deltaBlocks) {
+          if (block.type === 'thinking') {
+            if (typeof block.thinking === 'string') {
+              yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+            }
+          } else if (block.type === 'thinking_signature') {
+            if (typeof block.signature === 'string') {
+              yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+            }
+          }
+        }
+        lastThinkingBlocks = responseBlocks;
+      }
+      if (yieldedAny) {
+        yield { type: 'raw_response', content: '', payload: rawResponse } satisfies LLMStreamChunk;
+        return;
+      }
       let text = '';
       try {
         text = response.text();
@@ -290,6 +465,7 @@ async function* streamFromGemini(
       }
       if (text) {
         yield { type: 'text', content: text } satisfies LLMStreamChunk;
+        yield { type: 'raw_response', content: '', payload: rawResponse } satisfies LLMStreamChunk;
         return;
       }
 
@@ -342,19 +518,52 @@ async function* streamFromAnthropic(
   signal?: AbortSignal,
   thinking?: ThinkingSetting,
   webSearch?: boolean,
-  apiKeyOverride?: string
+  apiKeyOverride?: string,
+  modelOverride?: string
 ): AsyncGenerator<LLMStreamChunk> {
   const apiKey = apiKeyOverride ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error('Missing Anthropic API key. Add one in Profile to use this provider.');
   }
 
-  const system = messages.find((m) => m.role === 'system')?.content ?? '';
+  const systemText = flattenMessageContent(messages.find((m) => m.role === 'system')?.content ?? '');
   const anthropicMessages = messages
     .filter((m) => m.role !== 'system')
-    .map((m) => ({ role: m.role, content: m.content })) as Array<{ role: 'user' | 'assistant'; content: string }>;
+    .map((m) => {
+      if (Array.isArray(m.content)) {
+        const blocks: ThinkingContentBlock[] = [];
+        for (const block of m.content) {
+          if (block.type === 'thinking') {
+            const next: { type: 'thinking'; thinking: string; signature?: string } = {
+              type: 'thinking',
+              thinking: String(block.thinking ?? '')
+            };
+            if (block.signature) {
+              next.signature = String(block.signature);
+            }
+            blocks.push(next);
+            continue;
+          }
+          if (block.type === 'text') {
+            blocks.push({ type: 'text', text: String(block.text ?? '') });
+            continue;
+          }
+          if (block.type === 'thinking_signature') {
+            blocks.push({
+              type: 'thinking',
+              thinking: '',
+              signature: String(block.signature ?? '')
+            });
+            continue;
+          }
+          blocks.push(block);
+        }
+        return { role: m.role, content: blocks };
+      }
+      return { role: m.role, content: m.content };
+    }) as Array<{ role: 'user' | 'assistant'; content: string | ThinkingContentBlock[] }>;
 
-  const model = getDefaultModelForProvider('anthropic');
+  const model = modelOverride ?? getDefaultModelForProvider('anthropic');
   const maxOutputTokens = getAnthropicMaxOutputTokens(model);
   const maxTokens = maxOutputTokens ?? 8192;
   if (maxOutputTokens != null && maxTokens > maxOutputTokens) {
@@ -363,7 +572,7 @@ async function* streamFromAnthropic(
   const baseBody: any = {
     model,
     max_tokens: maxTokens,
-    system,
+    system: systemText,
     messages: anthropicMessages,
     stream: true
   };
@@ -425,6 +634,8 @@ async function* streamFromAnthropic(
   const decoder = new TextDecoder();
   let buffer = '';
 
+  const contentBlocks = new Map<number, { type: string; signature?: string }>();
+  const rawEvents: Array<{ event: string | null; data: string }> = [];
   while (true) {
     if (signal?.aborted) break;
     const { value, done } = await reader.read();
@@ -435,20 +646,48 @@ async function* streamFromAnthropic(
     buffer = rest;
 
     for (const evt of events) {
+      rawEvents.push(evt);
+      if (evt.event === 'content_block_start') {
+        const parsed = JSON.parse(evt.data);
+        const index = Number(parsed?.index ?? -1);
+        const block = parsed?.content_block;
+        if (Number.isFinite(index) && block?.type) {
+          const signature = typeof block.signature === 'string' ? block.signature : undefined;
+          contentBlocks.set(index, { type: block.type, signature });
+        }
+        continue;
+      }
+      if (evt.event === 'content_block_stop') {
+        const parsed = JSON.parse(evt.data);
+        const index = Number(parsed?.index ?? -1);
+        const cached = Number.isFinite(index) ? contentBlocks.get(index) : null;
+        if (cached?.type === 'thinking' && cached.signature) {
+          yield { type: 'thinking_signature', content: cached.signature, append: false } satisfies LLMStreamChunk;
+        }
+        continue;
+      }
       if (evt.event === 'content_block_delta') {
         const parsed = JSON.parse(evt.data);
+        const index = Number(parsed?.index ?? -1);
         const delta = parsed?.delta;
+        if (delta?.type === 'thinking_delta' && typeof delta?.thinking === 'string') {
+          yield { type: 'thinking', content: delta.thinking, append: true } satisfies LLMStreamChunk;
+          continue;
+        }
         if (delta?.type === 'text_delta' && typeof delta?.text === 'string') {
           yield { type: 'text', content: delta.text } satisfies LLMStreamChunk;
         }
       }
     }
   }
+  if (rawEvents.length > 0) {
+    yield { type: 'raw_response', content: '', payload: rawEvents } satisfies LLMStreamChunk;
+  }
 }
 
 async function* streamFromMock(messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<LLMStreamChunk> {
   const lastUser = [...messages].reverse().find((msg) => msg.role === 'user');
-  const reply = lastUser ? `Echo: ${lastUser.content}` : 'Ready for instructions.';
+  const reply = lastUser ? `Echo: ${flattenMessageContent(lastUser.content)}` : 'Ready for instructions.';
   for (const token of reply.match(/.{1,80}/g) ?? []) {
     if (signal?.aborted) {
       break;

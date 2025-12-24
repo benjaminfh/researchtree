@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { buildChatContext } from '@/src/server/context';
+import { flattenMessageContent } from '@/src/shared/thinkingTraces';
 
 const mocks = vi.hoisted(() => {
   return {
@@ -8,7 +9,11 @@ const mocks = vi.hoisted(() => {
     getArtefactFromRef: vi.fn(),
     readNodesFromRef: vi.fn(),
     rtGetHistoryShadowV1: vi.fn(),
-    rtGetCanvasShadowV1: vi.fn()
+    rtGetCanvasShadowV1: vi.fn(),
+    rtListRefsShadowV1: vi.fn(),
+    getProjectPath: vi.fn(),
+    pathExists: vi.fn(),
+    readJsonFile: vi.fn()
   };
 });
 
@@ -22,12 +27,16 @@ vi.mock('@git/artefact', () => ({
 }));
 
 vi.mock('@git/utils', () => ({
-  readNodesFromRef: mocks.readNodesFromRef
+  readNodesFromRef: mocks.readNodesFromRef,
+  getProjectPath: mocks.getProjectPath,
+  pathExists: mocks.pathExists,
+  readJsonFile: mocks.readJsonFile
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
   rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
-  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1
+  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1,
+  rtListRefsShadowV1: mocks.rtListRefsShadowV1
 }));
 
 describe('buildChatContext', () => {
@@ -38,8 +47,15 @@ describe('buildChatContext', () => {
     mocks.readNodesFromRef.mockReset();
     mocks.rtGetHistoryShadowV1.mockReset();
     mocks.rtGetCanvasShadowV1.mockReset();
+    mocks.rtListRefsShadowV1.mockReset();
+    mocks.getProjectPath.mockReset();
+    mocks.pathExists.mockReset();
+    mocks.readJsonFile.mockReset();
     process.env.RT_STORE = 'git';
     process.env.MERGE_USER = 'assistant';
+    mocks.getProjectPath.mockReturnValue('/tmp/project-1');
+    mocks.pathExists.mockResolvedValue(false);
+    mocks.rtListRefsShadowV1.mockResolvedValue([{ name: 'main', provider: 'openai', model: 'gpt-5.2' }]);
   });
 
   it('includes artefact snapshot and recent messages', async () => {
@@ -59,7 +75,7 @@ describe('buildChatContext', () => {
 
     expect(context.messages[0].role).toBe('system');
     expect(context.messages[0].content).toContain('Artefact v1');
-    expect(context.messages.some((msg) => msg.content.includes('Hello'))).toBe(true);
+    expect(context.messages.some((msg) => flattenMessageContent(msg.content).includes('Hello'))).toBe(true);
   });
 
   it('respects provided token limit', async () => {
@@ -109,9 +125,9 @@ describe('buildChatContext', () => {
 
     const context = await buildChatContext('project-1');
 
-    expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('Merge summary from feature'))).toBe(true);
-    expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('Final payload text'))).toBe(true);
-    expect(context.messages.some((msg) => msg.content.includes('+diff text'))).toBe(false);
+    expect(context.messages.some((msg) => msg.role === 'assistant' && flattenMessageContent(msg.content).includes('Merge summary from feature'))).toBe(true);
+    expect(context.messages.some((msg) => msg.role === 'assistant' && flattenMessageContent(msg.content).includes('Final payload text'))).toBe(true);
+    expect(context.messages.some((msg) => flattenMessageContent(msg.content).includes('+diff text'))).toBe(false);
   });
 
   it('can attribute merge summary as user message via MERGE_USER', async () => {
@@ -134,7 +150,7 @@ describe('buildChatContext', () => {
     mocks.getArtefact.mockResolvedValue('Artefact');
 
     const context = await buildChatContext('project-1');
-    expect(context.messages.some((msg) => msg.role === 'user' && msg.content.includes('Merge summary from feature'))).toBe(true);
+    expect(context.messages.some((msg) => msg.role === 'user' && flattenMessageContent(msg.content).includes('Merge summary from feature'))).toBe(true);
   });
 
   it('includes pinned canvas diffs only when they are persisted as assistant messages', async () => {
@@ -160,7 +176,7 @@ describe('buildChatContext', () => {
     mocks.getArtefact.mockResolvedValue('Artefact');
 
     const context = await buildChatContext('project-1');
-    expect(context.messages.some((msg) => msg.role === 'assistant' && msg.content.includes('+diff text'))).toBe(true);
+    expect(context.messages.some((msg) => msg.role === 'assistant' && flattenMessageContent(msg.content).includes('+diff text'))).toBe(true);
   });
 
   it('reads nodes + canvas from Postgres when RT_STORE=pg and ref is provided', async () => {
@@ -174,7 +190,7 @@ describe('buildChatContext', () => {
     expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
     expect(mocks.rtGetCanvasShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'main' });
     expect(context.messages[0].content).toContain('Canvas PG');
-    expect(context.messages.some((m) => m.role === 'user' && m.content === 'Hello')).toBe(true);
+    expect(context.messages.some((m) => m.role === 'user' && flattenMessageContent(m.content) === 'Hello')).toBe(true);
   });
 
   it('throws when Postgres context read fails in RT_STORE=pg mode', async () => {

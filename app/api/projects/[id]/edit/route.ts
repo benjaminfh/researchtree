@@ -4,15 +4,18 @@ import { editMessageSchema } from '@/src/server/schemas';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { getDefaultModelForProvider, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
-import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
+import { deriveTextFromBlocks } from '@/src/shared/thinkingTraces';
+import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
+import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
+import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 
 interface RouteContext {
   params: { id: string };
@@ -28,13 +31,6 @@ async function getPreferredBranch(projectId: string): Promise<string> {
   return getCurrentBranchName(projectId).catch(() => 'main');
 }
 
-function labelForProvider(provider: LLMProvider): string {
-  if (provider === 'openai') return 'OpenAI';
-  if (provider === 'gemini') return 'Gemini';
-  if (provider === 'anthropic') return 'Anthropic';
-  return 'Mock';
-}
-
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -47,14 +43,21 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { content, branchName, fromRef, nodeId, llmProvider, thinking } = parsed.data as typeof parsed.data & {
+    const { content, branchName, fromRef, nodeId, llmProvider, llmModel, thinking } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
     };
     const currentBranch = await getPreferredBranch(params.id);
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const sourceRef = fromRef?.trim() || currentBranch;
-    const provider = resolveLLMProvider(llmProvider);
-    const modelName = getDefaultModelForProvider(provider);
+    const branchConfigMap = await getBranchConfigMap(params.id);
+    const baseConfig = branchConfigMap[sourceRef] ?? resolveBranchConfig();
+    const requestedConfig = resolveBranchConfig({
+      provider: llmProvider ?? baseConfig.provider,
+      model: llmModel ?? (llmProvider ? null : baseConfig.model),
+      fallback: baseConfig
+    });
+    const provider = requestedConfig.provider;
+    const modelName = requestedConfig.model;
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
     if (!thinkingValidation.ok) {
@@ -98,7 +101,9 @@ export async function POST(request: Request, { params }: RouteContext) {
             projectId: params.id,
             sourceRefName: sourceRef,
             newRefName: targetBranch,
-            nodeId
+            nodeId,
+            provider,
+            model: modelName
           });
 
           await rtSetCurrentRefShadowV1({ projectId: params.id, refName: targetBranch });
@@ -113,6 +118,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             type: 'message',
             role: targetNode.role,
             content,
+            contentBlocks: buildTextBlock(content),
             timestamp: Date.now(),
             parent: parentId,
             createdOnBranch: targetBranch
@@ -132,30 +138,72 @@ export async function POST(request: Request, { params }: RouteContext) {
           let assistantNode: any = null;
           if (editedNode.role === 'user') {
             try {
-              const tokenLimit = await getProviderTokenLimit(provider);
+              const tokenLimit = await getProviderTokenLimit(provider, modelName);
               const context = await buildChatContext(params.id, { tokenLimit, ref: targetBranch });
               const messagesForCompletion = context.messages;
 
               let buffered = '';
-	              for await (const chunk of streamAssistantCompletion({
-	                messages: messagesForCompletion,
-	                provider,
-	                thinking: effectiveThinking,
-	                apiKey
-	              })) {
-	                buffered += chunk.content;
-	              }
+              const streamBlocks: ThinkingContentBlock[] = [];
+              let rawResponse: unknown = null;
+              for await (const chunk of streamAssistantCompletion({
+                messages: messagesForCompletion,
+                provider,
+                model: modelName,
+                thinking: effectiveThinking,
+                apiKey
+              })) {
+                if (chunk.type === 'thinking') {
+                  const last = streamBlocks[streamBlocks.length - 1];
+                  if (chunk.append && last?.type === 'thinking') {
+                    last.thinking += chunk.content;
+                  } else {
+                    streamBlocks.push({
+                      type: 'thinking',
+                      thinking: chunk.content
+                    });
+                  }
+                  continue;
+                }
+                if (chunk.type === 'thinking_signature') {
+                  streamBlocks.push({
+                    type: 'thinking_signature',
+                    signature: chunk.content
+                  });
+                  continue;
+                }
+                if (chunk.type === 'raw_response') {
+                  rawResponse = chunk.payload ?? null;
+                  continue;
+                }
+                const lastText = streamBlocks[streamBlocks.length - 1];
+                if (lastText?.type === 'text') {
+                  lastText.text += chunk.content;
+                } else {
+                  streamBlocks.push({ type: 'text', text: chunk.content });
+                }
+                buffered += chunk.content;
+              }
 
               if (buffered.trim()) {
+                const contentBlocks = buildContentBlocksForProvider({
+                  provider,
+                  rawResponse,
+                  fallbackText: buffered,
+                  fallbackBlocks: streamBlocks
+                });
+                const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
                 assistantNode = {
                   id: uuidv4(),
                   type: 'message',
                   role: 'assistant',
-                  content: buffered,
+                  content: contentText,
+                  contentBlocks,
                   timestamp: Date.now(),
                   parent: editedNode.id,
                   createdOnBranch: targetBranch,
-                  interrupted: false
+                  modelUsed: modelName,
+                  interrupted: false,
+                  rawResponse
                 };
 
                 await rtAppendNodeToRefShadowV1({
@@ -166,7 +214,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                   contentJson: assistantNode,
                   nodeId: assistantNode.id,
                   commitMessage: 'assistant_message',
-                  attachDraft: false
+                  attachDraft: false,
+                  rawResponse
                 });
               } else {
                 console.warn('[edit] Skipping empty assistant response');
@@ -202,7 +251,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
         try {
           const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
-          await createBranch(project.id, targetBranch, commitHash);
+          await createBranch(project.id, targetBranch, commitHash, { provider, model: modelName });
         } catch (err) {
           const message = (err as Error)?.message ?? 'Failed to create edit branch';
           throw badRequest(message);
@@ -213,43 +262,91 @@ export async function POST(request: Request, { params }: RouteContext) {
           {
             type: 'message',
             role: targetNode.role,
-            content
+            content,
+            contentBlocks: buildTextBlock(content)
           },
           { ref: targetBranch }
         );
 
-      let assistantNode: any = null;
-      if (node.type === 'message' && node.role === 'user') {
-        try {
-          const tokenLimit = await getProviderTokenLimit(provider);
-          const context = await buildChatContext(project.id, { tokenLimit, ref: targetBranch });
-          const messagesForCompletion = context.messages;
+        let assistantNode: any = null;
+        if (node.type === 'message' && node.role === 'user') {
+          try {
+            const tokenLimit = await getProviderTokenLimit(provider, modelName);
+            const context = await buildChatContext(project.id, { tokenLimit, ref: targetBranch });
+            const messagesForCompletion = context.messages;
 
           let buffered = '';
-	          for await (const chunk of streamAssistantCompletion({ messages: messagesForCompletion, provider, thinking: effectiveThinking, apiKey })) {
-	            buffered += chunk.content;
-	          }
+          const streamBlocks: ThinkingContentBlock[] = [];
+          let rawResponse: unknown = null;
+          for await (const chunk of streamAssistantCompletion({
+            messages: messagesForCompletion,
+            provider,
+            model: modelName,
+            thinking: effectiveThinking,
+            apiKey
+          })) {
+            if (chunk.type === 'thinking') {
+              const last = streamBlocks[streamBlocks.length - 1];
+              if (chunk.append && last?.type === 'thinking') {
+                last.thinking += chunk.content;
+              } else {
+                streamBlocks.push({
+                  type: 'thinking',
+                  thinking: chunk.content
+                });
+              }
+              continue;
+            }
+            if (chunk.type === 'thinking_signature') {
+              streamBlocks.push({
+                type: 'thinking_signature',
+                signature: chunk.content
+              });
+              continue;
+            }
+            if (chunk.type === 'raw_response') {
+              rawResponse = chunk.payload ?? null;
+              continue;
+            }
+            const lastText = streamBlocks[streamBlocks.length - 1];
+            if (lastText?.type === 'text') {
+              lastText.text += chunk.content;
+            } else {
+              streamBlocks.push({ type: 'text', text: chunk.content });
+            }
+            buffered += chunk.content;
+          }
 
           if (buffered.trim()) {
+            const contentBlocks = buildContentBlocksForProvider({
+              provider,
+              rawResponse,
+              fallbackText: buffered,
+              fallbackBlocks: streamBlocks
+            });
+            const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
             assistantNode = await appendNode(
               project.id,
               {
                 type: 'message',
                 role: 'assistant',
-                content: buffered,
-                interrupted: false
+                content: contentText,
+                contentBlocks,
+                modelUsed: modelName,
+                interrupted: false,
+                rawResponse
               },
               { ref: targetBranch }
             );
-          } else {
-            console.warn('[edit] Skipping empty assistant response');
+            } else {
+              console.warn('[edit] Skipping empty assistant response');
+            }
+          } catch (error) {
+            console.error('[edit] Failed to run LLM completion after edit', error);
           }
-        } catch (error) {
-          console.error('[edit] Failed to run LLM completion after edit', error);
         }
-      }
 
-      return Response.json({ branchName: targetBranch, node, assistantNode }, { status: 201 });
+        return Response.json({ branchName: targetBranch, node, assistantNode }, { status: 201 });
       } finally {
         releaseRefLock();
       }

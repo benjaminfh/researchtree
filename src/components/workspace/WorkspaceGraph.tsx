@@ -15,6 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { NodeRecord } from '@git/types';
+import { deriveTextFromBlocks, getContentBlocksWithLegacyFallback } from '@/src/shared/thinkingTraces';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { ArrowLeftCircleIcon, CpuChipIcon, UserIcon } from './HeroIcons';
@@ -52,6 +53,7 @@ const laneSpacing = 18;
 const NULL_VERTEX_ID = -1;
 const DEFAULT_VIEWPORT = { x: 48, y: 88, zoom: 1 } as const;
 const BOTTOM_VIEWPORT_PADDING = 56;
+const CENTER_VIEWPORT_THRESHOLD = 0.75;
 const LABEL_BASE_OFFSET = 24; // icon (16) + gap (8)
 const LABEL_ROW_GAP = 20; // gap after the right-most line when the node isn't on it
 const EDGE_ANGULAR_BEND = 0.32;
@@ -559,6 +561,7 @@ function buildCollapsedGraphNodes(
 
   const trunkHistory = branchHistories[trunkName] ?? [];
   const trunkIds = trunkHistory.map((n) => n.id);
+  const activeHeadId = branchHistories[activeBranchName]?.[branchHistories[activeBranchName].length - 1]?.id ?? null;
 
   const important = new Set<string>();
   for (const [branchName, nodes] of Object.entries(branchHistories)) {
@@ -578,6 +581,9 @@ function buildCollapsedGraphNodes(
   // Add trunk root if present, to anchor the timeline.
   if (trunkIds.length > 0) {
     important.add(trunkIds[0]);
+  }
+  if (activeHeadId) {
+    important.add(activeHeadId);
   }
 
   // Map parent references to the nearest included ancestor (so edges can "jump" over hidden nodes).
@@ -677,12 +683,14 @@ function buildStarredGraphNodes(
 
   const trunkHistory = branchHistories[trunkName] ?? [];
   const trunkRootId = trunkHistory[0]?.id ?? null;
+  const activeHeadId = branchHistories[activeBranchName]?.[branchHistories[activeBranchName].length - 1]?.id ?? null;
 
   const important = new Set<string>();
   for (const id of starredNodeIds) {
     if (nodeById.has(id)) important.add(id);
   }
   if (trunkRootId) important.add(trunkRootId);
+  if (activeHeadId && nodeById.has(activeHeadId)) important.add(activeHeadId);
 
   const primaryParentById = new Map<string, string | null>();
   const mergeParentsById = new Map<string, string[]>();
@@ -1025,6 +1033,7 @@ export function WorkspaceGraph({
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
   const viewportByModeRef = useRef<Record<string, Viewport>>({});
   const followBottomByModeRef = useRef<Record<string, boolean>>({});
+  const prevNodeCountRef = useRef<number | null>(null);
 
   const contentBounds = useMemo(() => {
     if (nodes.length === 0) return { minY: 0, maxY: 0, height: 0 };
@@ -1043,17 +1052,47 @@ export function WorkspaceGraph({
     if (nodes.length === 0) return undefined;
     // Clamp vertical panning to content, but allow generous horizontal room so labels don't feel cropped.
     return [
-      [-100000, contentBounds.minY - rowSpacing * 2],
-      [100000, contentBounds.maxY + rowSpacing * 2]
+      [-100000, contentBounds.minY - DEFAULT_VIEWPORT.y],
+      [100000, contentBounds.maxY + BOTTOM_VIEWPORT_PADDING]
     ] as [[number, number], [number, number]];
   }, [nodes.length, contentBounds.minY, contentBounds.maxY]);
 
-  const computeBottomViewport = () => {
+  const viewportYBounds = useMemo(() => {
+    if (viewportHeight <= 0 || nodes.length === 0) return null;
+    if (contentBounds.height < viewportHeight * CENTER_VIEWPORT_THRESHOLD) {
+      const centerY = viewportHeight / 2 - (contentBounds.minY + contentBounds.maxY) / 2;
+      return { min: centerY, max: centerY };
+    }
+    const min = viewportHeight - BOTTOM_VIEWPORT_PADDING - contentBounds.maxY;
+    const max = DEFAULT_VIEWPORT.y - contentBounds.minY;
+    if (min > max) {
+      return { min, max: min };
+    }
+    return { min, max };
+  }, [viewportHeight, nodes.length, contentBounds.maxY, contentBounds.minY]);
+
+  const computePreferredViewport = () => {
+    if (viewportHeight > 0 && contentBounds.height < viewportHeight * CENTER_VIEWPORT_THRESHOLD) {
+      const centerY = viewportHeight / 2 - (contentBounds.minY + contentBounds.maxY) / 2;
+      return {
+        x: DEFAULT_VIEWPORT.x,
+        y: centerY,
+        zoom: 1
+      } satisfies Viewport;
+    }
     return {
       x: DEFAULT_VIEWPORT.x,
       y: viewportHeight - BOTTOM_VIEWPORT_PADDING - contentBounds.maxY,
       zoom: 1
     } satisfies Viewport;
+  };
+
+  const clampViewport = (viewport: Viewport) => {
+    if (!viewportYBounds) return viewport;
+    return {
+      ...viewport,
+      y: Math.min(Math.max(viewport.y, viewportYBounds.min), viewportYBounds.max)
+    };
   };
 
   useEffect(() => {
@@ -1072,21 +1111,32 @@ export function WorkspaceGraph({
     const instance = flowInstance;
     if (!instance) return;
     if (viewportHeight <= 0) return;
-    // If the view isn't scrollable, always reset to a sensible default so toggling
-    // from a scrolled mode doesn't leave the graph "above" the visible area.
+    const nodeCountChanged = prevNodeCountRef.current !== nodes.length;
+    prevNodeCountRef.current = nodes.length;
+    // If the view isn't scrollable, still align to the bottom so the newest node stays visible,
+    // and mark follow-bottom so growth later keeps auto-scrolling.
     if (!shouldPanOnScroll) {
-      instance.setViewport(DEFAULT_VIEWPORT, { duration: 0 });
-      followBottomByModeRef.current[mode] = false;
+      const next = clampViewport(computePreferredViewport());
+      instance.setViewport(next, { duration: 0 });
+      viewportByModeRef.current[mode] = next;
+      followBottomByModeRef.current[mode] = true;
+      return;
+    }
+    if (nodeCountChanged) {
+      const next = clampViewport(computePreferredViewport());
+      instance.setViewport(next, { duration: 0 });
+      viewportByModeRef.current[mode] = next;
+      followBottomByModeRef.current[mode] = true;
       return;
     }
     const saved = viewportByModeRef.current[mode];
     if (saved) {
-      const next = { ...saved, zoom: 1 };
+      const next = clampViewport({ ...saved, zoom: 1 });
       if (next.x > 0 && next.x < DEFAULT_VIEWPORT.x) next.x = DEFAULT_VIEWPORT.x;
       if (next.y > 0 && next.y < DEFAULT_VIEWPORT.y) next.y = DEFAULT_VIEWPORT.y;
       instance.setViewport(next, { duration: 0 });
     } else {
-      const next = computeBottomViewport();
+      const next = clampViewport(computePreferredViewport());
       instance.setViewport(next, { duration: 0 });
       viewportByModeRef.current[mode] = next;
       followBottomByModeRef.current[mode] = true;
@@ -1099,10 +1149,10 @@ export function WorkspaceGraph({
     if (viewportHeight <= 0) return;
     if (!shouldPanOnScroll) return;
     if (!followBottomByModeRef.current[mode]) return;
-    const next = computeBottomViewport();
+    const next = clampViewport(computePreferredViewport());
     instance.setViewport(next, { duration: 0 });
     viewportByModeRef.current[mode] = next;
-  }, [flowInstance, mode, shouldPanOnScroll, nodes.length, viewportHeight]);
+  }, [flowInstance, mode, shouldPanOnScroll, nodes.length, viewportHeight, viewportYBounds]);
 
   return (
     <div className="flex h-full min-h-[360px] flex-col">
@@ -1167,13 +1217,17 @@ export function WorkspaceGraph({
                 setFlowInstance(instance);
               }}
               onMoveEnd={(_event, viewport) => {
-                viewportByModeRef.current[mode] = { ...viewport, zoom: 1 };
+                const next = clampViewport({ ...viewport, zoom: 1 });
+                viewportByModeRef.current[mode] = next;
                 if (!shouldPanOnScroll) {
                   followBottomByModeRef.current[mode] = false;
                   return;
                 }
-                const bottom = computeBottomViewport();
-                followBottomByModeRef.current[mode] = Math.abs(viewport.y - bottom.y) < 24;
+                const target = clampViewport(computePreferredViewport());
+                followBottomByModeRef.current[mode] = Math.abs(next.y - target.y) < 24;
+                if (next.y !== viewport.y) {
+                  flowInstance?.setViewport(next, { duration: 0 });
+                }
 	              }}
 	              panOnScroll={shouldPanOnScroll}
 	              panOnScrollMode={PanOnScrollMode.Vertical}
@@ -1203,7 +1257,9 @@ function formatLabel(node: NodeRecord) {
     return 'Canvas snapshot';
   }
   if (node.type === 'message') {
-    return `${node.content.slice(0, 42)}${node.content.length > 42 ? '…' : ''}`;
+    const blocks = getContentBlocksWithLegacyFallback(node);
+    const text = deriveTextFromBlocks(blocks) || node.content;
+    return `${text.slice(0, 42)}${text.length > 42 ? '…' : ''}`;
   }
   throw new Error('Unhandled node type');
 }

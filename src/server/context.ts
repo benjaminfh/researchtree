@@ -1,9 +1,18 @@
 import type { NodeRecord } from '@git/types';
+import {
+  deriveTextFromBlocks,
+  flattenMessageContent,
+  getContentBlocksWithLegacyFallback,
+  type MessageContent,
+  type ThinkingContentBlock
+} from '@/src/shared/thinkingTraces';
 import { getStoreConfig } from './storeConfig';
+import { buildContextBlocksFromRaw } from '@/src/server/llmContentBlocks';
+import { getBranchConfigMap, resolveBranchConfig, type BranchConfig } from '@/src/server/branchConfig';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: MessageContent;
 }
 
 export interface ChatContext {
@@ -51,6 +60,13 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   }
 
   const trimmed = nodes.slice(-limit);
+  const refName = resolvedRef ?? 'main';
+  const branchConfigMap = await getBranchConfigMap(projectId);
+  const currentConfig = branchConfigMap[refName] ?? resolveBranchConfig();
+  if (!branchConfigMap[refName]) {
+    branchConfigMap[refName] = currentConfig;
+  }
+  const useCanonicalByIndex = buildCanonicalMask(trimmed, branchConfigMap, currentConfig);
   const systemPrompt = buildSystemPrompt(artefact);
   const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
   const mergeUserRole = getMergeUserRole();
@@ -58,19 +74,34 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   const tokenLimit = options?.tokenLimit ?? DEFAULT_TOKEN_LIMIT;
   let tokenBudget = tokenLimit - estimateTokens(systemPrompt);
 
-  for (const node of trimmed) {
+  for (let i = 0; i < trimmed.length; i += 1) {
+    const node = trimmed[i]!;
     if (node.type === 'message' && node.role && node.content) {
       if (node.role !== 'user' && node.role !== 'assistant') {
         continue;
       }
-      const cost = estimateTokens(node.content);
+      let content: MessageContent;
+      if (node.role === 'assistant') {
+        content = useCanonicalByIndex[i]
+          ? buildLegacyContextContent(node)
+          : buildRawContextContent(node, currentConfig);
+      } else {
+        content = node.content;
+      }
+      const cost = estimateTokens(content);
       if (tokenBudget - cost < 0) {
         continue;
       }
       tokenBudget -= cost;
+      const payload =
+        typeof content === 'string'
+          ? content
+          : content.length > 0
+            ? content
+            : node.content;
       messages.push({
         role: node.role,
-        content: node.content
+        content: payload
       });
     } else if (node.type === 'merge') {
       const summary = `Merge summary from ${node.mergeFrom}: ${node.mergeSummary ?? ''}`.trim();
@@ -120,6 +151,51 @@ function buildSystemPrompt(artefact: string): string {
   ].join('\n');
 }
 
-function estimateTokens(content: string): number {
-  return Math.ceil(content.length / 4);
+function estimateTokens(content: MessageContent): number {
+  const flattened = flattenMessageContent(content);
+  return Math.ceil(flattened.length / 4);
+}
+
+function buildCanonicalMask(
+  nodes: NodeRecord[],
+  branchConfigMap: Record<string, BranchConfig>,
+  currentConfig: BranchConfig
+): boolean[] {
+  const mask = new Array(nodes.length).fill(false);
+  let breakFound = false;
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    if (!breakFound) {
+      const createdOn = nodes[i]?.createdOnBranch;
+      const nodeConfig = createdOn ? branchConfigMap[createdOn] : undefined;
+      const sameModel =
+        nodeConfig &&
+        nodeConfig.provider === currentConfig.provider &&
+        nodeConfig.model === currentConfig.model;
+      if (!sameModel) {
+        breakFound = true;
+      }
+    }
+    mask[i] = breakFound;
+  }
+  return mask;
+}
+
+function buildLegacyContextContent(node: NodeRecord): MessageContent {
+  if (node.type !== 'message') return '';
+  const blocks = getContentBlocksWithLegacyFallback(node);
+  const text = deriveTextFromBlocks(blocks);
+  return text || node.content || '';
+}
+
+function buildRawContextContent(node: NodeRecord, config: BranchConfig): MessageContent {
+  if (node.type !== 'message') return '';
+  const fallbackBlocks: ThinkingContentBlock[] = getContentBlocksWithLegacyFallback(node);
+  const fallbackText = node.content ?? '';
+  const blocks = buildContextBlocksFromRaw({
+    provider: config.provider,
+    rawResponse: node.rawResponse ?? null,
+    fallbackText,
+    fallbackBlocks
+  });
+  return blocks.length > 0 ? blocks : fallbackText;
 }

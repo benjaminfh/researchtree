@@ -146,6 +146,7 @@ describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
       type: 'message',
       role: 'assistant',
       content: '+added',
+      contentBlocks: [{ type: 'text', text: '+added' }],
       pinnedFromMergeId: 'merge-1'
     });
     const json = await res.json();

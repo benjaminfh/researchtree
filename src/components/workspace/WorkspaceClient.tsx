@@ -11,6 +11,12 @@ import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
 import { APP_NAME, storageKey } from '@/src/config/app';
+import {
+  deriveTextFromBlocks,
+  deriveThinkingFromBlocks,
+  getContentBlocksWithLegacyFallback,
+  type ThinkingContentBlock
+} from '@/src/shared/thinkingTraces';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
@@ -41,6 +47,22 @@ const fetchJson = async <T,>(url: string): Promise<T> => {
     throw new Error(`Failed to fetch ${url}`);
   }
   return res.json();
+};
+
+const getNodeBlocks = (node: NodeRecord): ThinkingContentBlock[] => {
+  return getContentBlocksWithLegacyFallback(node);
+};
+
+const getNodeText = (node: NodeRecord): string => {
+  if (node.type !== 'message') return '';
+  const blocks = getNodeBlocks(node);
+  return deriveTextFromBlocks(blocks) || node.content;
+};
+
+const getNodeThinkingText = (node: NodeRecord): string => {
+  if (node.type !== 'message') return '';
+  const blocks = getNodeBlocks(node);
+  return deriveThinkingFromBlocks(blocks);
 };
 
 type DiffLine = {
@@ -84,7 +106,9 @@ const NodeBubble: FC<{
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const isAssistantPending = node.type === 'message' && node.role === 'assistant' && node.id === 'assistant-pending';
-  const canCopy = node.type === 'message' && node.content.length > 0;
+  const messageText = getNodeText(node);
+  const thinkingText = getNodeThinkingText(node);
+  const canCopy = node.type === 'message' && messageText.length > 0;
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showCanvasDiff, setShowCanvasDiff] = useState(false);
@@ -92,7 +116,9 @@ const NodeBubble: FC<{
   const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
   const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
+  const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
+  const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const width = isUser ? 'min-w-[14rem] max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
   const palette = muted
@@ -139,13 +165,33 @@ const NodeBubble: FC<{
   return (
     <article className={`flex flex-col gap-1 ${align}`}>
       <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
-        {node.type === 'message' && node.content ? (
+        {hasThinking ? (
+          <div className="mb-3 rounded-xl border border-slate-200/70 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <span className="font-semibold text-slate-700">Thinking</span>
+              <button
+                type="button"
+                onClick={() => setShowThinking((prev) => !prev)}
+                className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                aria-label={showThinking ? 'Hide thinking' : 'Show thinking'}
+              >
+                {showThinking ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {showThinking ? (
+              <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">{thinkingText}</p>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">Hidden</p>
+            )}
+          </div>
+        ) : null}
+        {node.type === 'message' && messageText ? (
           isAssistant ? (
             <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageText}</ReactMarkdown>
             </div>
           ) : (
-            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{node.content}</p>
+            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{messageText}</p>
           )
         ) : null}
         {isAssistantPending ? (
@@ -288,7 +334,7 @@ const NodeBubble: FC<{
               type="button"
               onClick={() => {
                 void (async () => {
-                  await copyToClipboard(node.content);
+                  await copyToClipboard(messageText);
                   setCopyFeedback(true);
                   if (copyFeedbackTimeoutRef.current) {
                     clearTimeout(copyFeedbackTimeoutRef.current);
@@ -486,13 +532,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const optimisticDraftRef = useRef<string | null>(null);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
-  const [provider, setProvider] = useState<LLMProvider>(defaultProvider);
-  const providerStorageKey = useMemo(
-    () => `researchtree:provider:${project.id}:${branchName}`,
-    [project.id, branchName]
+  const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
+  const branchProvider = useMemo(
+    () => activeBranch?.provider ?? defaultProvider,
+    [activeBranch?.provider, defaultProvider]
   );
+  const branchModel = useMemo(() => {
+    const option = providerOptions.find((entry) => entry.id === branchProvider);
+    return activeBranch?.model ?? option?.defaultModel ?? getDefaultModelForProviderFromCapabilities(branchProvider);
+  }, [activeBranch?.model, branchProvider, providerOptions]);
   const [thinking, setThinking] = useState<ThinkingSetting>('medium');
   const thinkingStorageKey = useMemo(
     () => `researchtree:thinking:${project.id}:${branchName}`,
@@ -500,9 +551,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   );
   const [thinkingHydratedKey, setThinkingHydratedKey] = useState<string | null>(null);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
-  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
-  const providerMenuRef = useRef<HTMLDivElement | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const webSearchStorageKey = useMemo(
     () => `researchtree:websearch:${project.id}:${branchName}`,
@@ -513,7 +562,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const { sendMessage, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
-    provider,
+    provider: branchProvider,
     thinking,
     webSearch: webSearchEnabled,
     onChunk: (chunk) => {
@@ -526,11 +575,48 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         setAssistantPending(false);
         shouldScrollToBottomRef.current = true;
       }
-      setStreamPreview((prev) => prev + chunk);
+      if (chunk.type === 'thinking') {
+        setStreamBlocks((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (chunk.append && last?.type === 'thinking') {
+            last.thinking += chunk.content;
+            return next;
+          }
+          next.push({
+            type: 'thinking',
+            thinking: chunk.content
+          });
+          return next;
+        });
+        return;
+      }
+      if (chunk.type === 'thinking_signature') {
+        setStreamBlocks((prev) => [
+          ...prev,
+          {
+            type: 'thinking_signature',
+            signature: chunk.content
+          }
+        ]);
+        return;
+      }
+      setStreamBlocks((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.type === 'text') {
+          last.text += chunk.content;
+          return next;
+        }
+        next.push({ type: 'text', text: chunk.content });
+        return next;
+      });
+      setStreamPreview((prev) => prev + chunk.content);
     },
     onComplete: async () => {
       await Promise.all([mutateHistory(), mutateArtefact()]);
       setStreamPreview('');
+      setStreamBlocks([]);
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
       hasReceivedAssistantChunkRef.current = false;
@@ -543,21 +629,21 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   });
 
   const activeProvider = useMemo(
-    () => providerOptions.find((option) => option.id === provider),
-    [provider, providerOptions]
+    () => providerOptions.find((option) => option.id === branchProvider),
+    [branchProvider, providerOptions]
   );
 
-  const activeProviderModel = activeProvider?.defaultModel ?? getDefaultModelForProviderFromCapabilities(provider);
+  const activeProviderModel = branchModel;
   const allowedThinking = useMemo(
-    () => getAllowedThinkingSettings(provider, activeProviderModel),
-    [provider, activeProviderModel]
+    () => getAllowedThinkingSettings(branchProvider, activeProviderModel),
+    [branchProvider, activeProviderModel]
   );
   const thinkingUnsupportedError =
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
-      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${provider} (model=${activeProviderModel}).`;
-  const webSearchAvailable = provider !== 'mock';
-  const showOpenAISearchNote = webSearchEnabled && provider === 'openai';
+      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProvider} (model=${activeProviderModel}).`;
+  const webSearchAvailable = branchProvider !== 'mock';
+  const showOpenAISearchNote = webSearchEnabled && branchProvider === 'openai';
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -569,6 +655,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
+    setStreamBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -580,6 +667,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       type: 'message',
       role: 'user',
       content: sent,
+      contentBlocks: [{ type: 'text', text: sent }],
       timestamp: Date.now(),
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
       createdOnBranch: branchName
@@ -603,6 +691,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           type: 'message',
           role: 'assistant',
           content: '',
+          contentBlocks: [],
           timestamp: Date.now(),
           parent: optimisticUserNode.id,
           interrupted: false,
@@ -611,12 +700,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       : null;
 
   const streamingNode: NodeRecord | null =
-    streamPreview.length > 0
+    streamPreview.length > 0 || streamBlocks.length > 0
       ? {
           id: 'streaming',
           type: 'message',
           role: 'assistant',
           content: streamPreview,
+          contentBlocks: streamBlocks,
           timestamp: Date.now(),
           parent: optimisticUserNode?.id ?? null,
           interrupted: state.error !== null
@@ -630,6 +720,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     void Promise.all([mutateHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
+    setStreamBlocks([]);
     if (!hasReceivedAssistantChunkRef.current) {
       setDraft(sent);
     }
@@ -662,18 +753,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (typeof window === 'undefined') return;
     setThinkingHydratedKey(null);
     const saved = window.localStorage.getItem(thinkingStorageKey) as ThinkingSetting | null;
-    const defaultThinking = getDefaultThinkingSetting(provider, activeProviderModel);
-    const allowed = activeProviderModel ? getAllowedThinkingSettings(provider, activeProviderModel) : THINKING_SETTINGS;
+    const defaultThinking = getDefaultThinkingSetting(branchProvider, activeProviderModel);
+    const allowed = activeProviderModel
+      ? getAllowedThinkingSettings(branchProvider, activeProviderModel)
+      : THINKING_SETTINGS;
     const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved) && allowed.includes(saved as ThinkingSetting);
     setThinking(isValid ? (saved as ThinkingSetting) : defaultThinking);
     setThinkingHydratedKey(thinkingStorageKey);
-  }, [thinkingStorageKey, provider, activeProviderModel]);
+  }, [thinkingStorageKey, branchProvider, activeProviderModel]);
 
   useEffect(() => {
     if (!activeProviderModel) return;
     if (allowedThinking.includes(thinking)) return;
-    setThinking(getDefaultThinkingSetting(provider, activeProviderModel));
-  }, [allowedThinking, thinking, provider, activeProviderModel]);
+    setThinking(getDefaultThinkingSetting(branchProvider, activeProviderModel));
+  }, [allowedThinking, thinking, branchProvider, activeProviderModel]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -731,34 +824,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [thinkingMenuOpen]);
-
-  useEffect(() => {
-    if (!providerMenuOpen) return;
-
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const container = providerMenuRef.current;
-      const target = event.target;
-      if (!container || !(target instanceof Node)) return;
-      if (!container.contains(target)) {
-        setProviderMenuOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setProviderMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [providerMenuOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -855,28 +920,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   }, [draft, draftStorageKey]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const savedProvider = window.localStorage.getItem(providerStorageKey) as LLMProvider | null;
-    const isValid = savedProvider && providerOptions.some((option) => option.id === savedProvider);
-    const nextProvider = (isValid ? savedProvider : defaultProvider) as LLMProvider;
-    setProvider((prev) => (prev === nextProvider ? prev : nextProvider));
-  }, [providerStorageKey, providerOptions, defaultProvider]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(providerStorageKey, provider);
-  }, [provider, providerStorageKey]);
-
-  useEffect(() => {
     if (newBranchName.trim()) return;
-    setNewBranchProvider(provider);
+    setNewBranchProvider(branchProvider);
     setNewBranchThinking(thinking);
-  }, [provider, thinking, newBranchName]);
-
-  const selectProvider = (next: LLMProvider) => {
-    setProvider(next);
-    setProviderMenuOpen(false);
-  };
+  }, [branchProvider, thinking, newBranchName]);
 
   useEffect(() => {
     setArtefactDraft(artefact);
@@ -1317,7 +1364,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         node.type === 'message' &&
         node.role === 'assistant' &&
         node.id !== 'streaming' &&
-        node.content.trim().length > 0 &&
+        getNodeText(node).trim().length > 0 &&
         (node.createdOnBranch ? node.createdOnBranch === branchName : true)
     ) as MessageNode[];
   }, [branchNodes, branchName]);
@@ -1486,10 +1533,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     setIsCreating(true);
     setBranchActionError(null);
     try {
+      const branchModel =
+        providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+        getDefaultModelForProviderFromCapabilities(newBranchProvider);
       const res = await fetch(`/api/projects/${project.id}/branches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newBranchName.trim(), fromRef: branchName })
+        body: JSON.stringify({
+          name: newBranchName.trim(),
+          fromRef: branchName,
+          provider: newBranchProvider,
+          model: branchModel
+        })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -1500,7 +1555,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setBranches(data.branches);
       setNewBranchName('');
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, newBranchProvider);
         window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, newBranchThinking);
       }
       await Promise.all([mutateHistory(), mutateArtefact()]);
@@ -1738,44 +1792,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <span className="text-sm text-muted">{activeProvider?.defaultModel ?? 'mock'}</span>
-                  <div ref={providerMenuRef} className="relative flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-sm shadow-sm">
+                  <span className="text-sm text-muted">{branchModel}</span>
+                  <div className="relative flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-sm shadow-sm">
                     <span className="font-medium text-slate-700">Provider</span>
-                    <button
-                      type="button"
-                      onClick={() => setProviderMenuOpen((prev) => !prev)}
-                      className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-sm text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                      aria-label={`Provider: ${activeProvider?.label ?? provider}`}
-                      aria-haspopup="menu"
-                      aria-expanded={providerMenuOpen}
-                    >
-                      {activeProvider?.label ?? provider}
-                    </button>
-                    {providerMenuOpen ? (
-                      <div
-                        role="menu"
-                        className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
-                      >
-                        {providerOptions.map((option) => {
-                          const active = provider === option.id;
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={active}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
-                              }`}
-                              onClick={() => selectProvider(option.id)}
-                            >
-                              <span>{option.label}</span>
-                              {active ? <span aria-hidden="true">✓</span> : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
+                    <span className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-sm text-slate-800">
+                      {activeProvider?.label ?? branchProvider}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1853,7 +1875,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                   setEditDraft(n.content);
                                   setEditBranchName('');
                                   setEditError(null);
-                                  setEditProvider(provider);
+                                  setEditProvider(branchProvider);
                                   setEditThinking(thinking);
                                   setShowEditModal(true);
                                 }
@@ -2389,7 +2411,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
               style={{ paddingLeft: ctx.railCollapsed ? '96px' : '320px' }}
             >
-              <div className="flex items-center gap-3 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
+              <div className="flex items-center gap-2 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2407,9 +2429,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     disabled={state.isStreaming || !webSearchAvailable}
                   >
                     <SearchIcon className="h-4 w-4" />
-                    <span>Search</span>
+                    <span>Web search</span>
                   </button>
-                  <div className="flex h-10 w-10 items-center justify-center">
+                  {/* <div className="flex h-10 w-10 items-center justify-center">
                     {features.uiAttachments ? (
                       <button
                         type="button"
@@ -2421,7 +2443,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     ) : (
                       <span aria-hidden="true" />
                     )}
-                  </div>
+                  </div> */}
                 </div>
                 <textarea
                   value={draft}
@@ -2615,7 +2637,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     disabled={isMerging}
                   >
                     {mergePayloadCandidates.map((node) => {
-                      const firstLine = node.content.split(/\r?\n/)[0] ?? '';
+                      const firstLine = getNodeText(node).split(/\r?\n/)[0] ?? '';
                       const label = `${new Date(node.timestamp).toLocaleTimeString()} · ${firstLine}`.slice(0, 120);
                       return (
                         <option key={node.id} value={node.id}>
@@ -2834,6 +2856,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   setIsEditing(true);
                   setEditError(null);
                   try {
+                    const editModel =
+                      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
+                      getDefaultModelForProviderFromCapabilities(editProvider);
                     const res = await fetch(`/api/projects/${project.id}/edit`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -2842,6 +2867,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         branchName: editBranchName.trim(),
                         fromRef: branchName,
                         llmProvider: editProvider,
+                        llmModel: editModel,
                         thinking: editThinking,
                         nodeId: editingNode?.id
                       })
@@ -2858,7 +2884,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       setBranches(branchesData.branches);
                     }
                     if (typeof window !== 'undefined') {
-                      window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, editProvider);
                       window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, editThinking);
                     }
                     await Promise.all([mutateHistory(), mutateArtefact()]);
