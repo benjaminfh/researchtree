@@ -32,3 +32,6 @@
 # USER PROFILE
 [x] [User profile] A user profile page. MVP shows registered email, plus 3 fields for LLM provider keys. We must store these keys securely using supabase vault!! [Partial - profile page + token storage via Supabase Vault exists; no change-password flow found]
 [x] [Password change] User profile - change password flow [Done - profile UI posts to `/api/profile/password` which calls `supabase.auth.updateUser({ password })`]
+
+# DB
+[ ] need to setup the dev db branch (no-op)

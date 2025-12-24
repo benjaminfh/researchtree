@@ -1240,6 +1240,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return out;
   }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
+  const stableVisibleNodes = useMemo(
+    () => visibleNodes.filter((node) => node.id !== 'streaming' && node.id !== 'assistant-pending'),
+    [visibleNodes]
+  );
 
   useEffect(() => {
     if (previousVisibleBranchRef.current !== branchName) {
@@ -1301,7 +1305,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
     const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
     const trunkPrefix =
-      trunkNodes.length > 0 ? prefixLength(trunkNodes, visibleNodes) : Math.min(trunkNodeCount, visibleNodes.length);
+      trunkNodes.length > 0
+        ? prefixLength(trunkNodes, stableVisibleNodes)
+        : Math.min(trunkNodeCount, stableVisibleNodes.length);
     setSharedCount(trunkPrefix);
 
     const aborted = { current: false };
@@ -1312,7 +1318,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         others.map(async (b) => {
           try {
             const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${visibleNodes.length}`
+              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${stableVisibleNodes.length}`
             );
             if (!res.ok) return null;
             const data = (await res.json()) as { nodes: NodeRecord[] };
@@ -1324,9 +1330,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       );
       const longest = histories.reduce((max, entry) => {
         if (!entry) return max;
-        const min = Math.min(entry.nodes.length, visibleNodes.length);
+        const min = Math.min(entry.nodes.length, stableVisibleNodes.length);
         let idx = 0;
-        while (idx < min && entry.nodes[idx]?.id === visibleNodes[idx]?.id) {
+        while (idx < min && entry.nodes[idx]?.id === stableVisibleNodes[idx]?.id) {
           idx += 1;
         }
         return Math.max(max, idx);
@@ -1339,7 +1345,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     return () => {
       aborted.current = true;
     };
-  }, [branchName, trunkName, trunkHistory, trunkNodeCount, visibleNodes, branches, project.id]);
+  }, [branchName, trunkName, trunkHistory, trunkNodeCount, stableVisibleNodes, branches, project.id]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
