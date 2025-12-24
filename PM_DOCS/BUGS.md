@@ -11,6 +11,8 @@
 [x] chat window inherited messages appears to be incomplete in general [Fixed (pg) - `rt_rebuild_commit_order_v1` migration added for corrupted histories + reads join through `commit_order`]
 [x] when the user sends a message, the UI waits until the assistant message is received in full before rendering both. Correct behaviour: we have user message on send, so render immediately (expected behaviour for a chat app) and then once stream first arrices, render assistat box and stream the assistant message in. [Fixed - optimistic user node + streaming preview in `WorkspaceClient`]
 [x] assistant messages are not taking up full (or most of / 85% w) the chat container width - they should  [Fixed - assistant bubbles use `w-full max-w-[85%]`]
+[ ] after sending a new message, the 'scroll to bottom' initially updates to include the optimistic user message + pending assistant stream, but then blinks and scrolls back up. 
+[ ] after sending a mesage, the assistant message's coloured branch indicator stripe initially adopts the master branch colour (black)
 
 ### Branches
 [x] LLM config should be pinned to branch [Fixed - provider/thinking persisted per `projectId + branchName` storage keys]
