@@ -247,6 +247,8 @@ $$;
 revoke all on function public.rt_create_ref_from_node_parent_v1(uuid, text, text, uuid, text, text, integer) from public;
 grant execute on function public.rt_create_ref_from_node_parent_v1(uuid, text, text, uuid, text, text, integer) to authenticated;
 
+drop function if exists public.rt_list_refs_v1(uuid);
+
 create or replace function public.rt_list_refs_v1(
   p_project_id uuid
 )
