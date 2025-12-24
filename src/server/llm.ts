@@ -351,18 +351,26 @@ async function* streamFromGemini(
           const deltaBlocks = nextBlocks.slice(lastThinkingBlocks.length);
           for (const block of deltaBlocks) {
             if (block.type === 'thinking') {
-              yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+              if (typeof block.thinking === 'string') {
+                yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+              }
             } else if (block.type === 'thinking_signature') {
-              yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+              if (typeof block.signature === 'string') {
+                yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+              }
             }
           }
           lastThinkingBlocks = nextBlocks;
         } else if (lastThinkingBlocks.length === 0) {
           for (const block of nextBlocks) {
             if (block.type === 'thinking') {
-              yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+              if (typeof block.thinking === 'string') {
+                yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
+              }
             } else if (block.type === 'thinking_signature') {
-              yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+              if (typeof block.signature === 'string') {
+                yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
+              }
             }
           }
           lastThinkingBlocks = nextBlocks;
