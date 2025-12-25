@@ -190,6 +190,13 @@ export async function POST(request: Request, { params }: RouteContext) {
               apiKey,
               previousResponseId
             })) {
+              if (chunk.type === 'raw_response') {
+                rawResponse = chunk.payload ?? null;
+                if (rawResponse && typeof rawResponse === 'object' && (rawResponse as any).responseId) {
+                  responseId = String((rawResponse as any).responseId);
+                }
+                continue;
+              }
               const content = chunk.content;
               if (!content) continue;
 
@@ -216,13 +223,6 @@ export async function POST(request: Request, { params }: RouteContext) {
                   signature: content
                 });
                 controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'thinking_signature', content, append: chunk.append })}\n`));
-                continue;
-              }
-              if (chunk.type === 'raw_response') {
-                rawResponse = chunk.payload ?? null;
-                if (rawResponse && typeof rawResponse === 'object' && (rawResponse as any).responseId) {
-                  responseId = String((rawResponse as any).responseId);
-                }
                 continue;
               }
               const lastText = streamBlocks[streamBlocks.length - 1];

@@ -790,6 +790,18 @@ async function* streamFromAnthropic(
           yield { type: 'thinking', content: delta.thinking, append: true } satisfies LLMStreamChunk;
           continue;
         }
+        if (delta?.type === 'signature_delta' && typeof delta?.signature === 'string') {
+          if (Number.isFinite(index)) {
+            const cached = contentBlocks.get(index);
+            if (cached) {
+              cached.signature = `${cached.signature ?? ''}${delta.signature}`;
+              contentBlocks.set(index, cached);
+            } else {
+              contentBlocks.set(index, { type: 'thinking', signature: delta.signature });
+            }
+          }
+          continue;
+        }
         if (delta?.type === 'text_delta' && typeof delta?.text === 'string') {
           yield { type: 'text', content: delta.text } satisfies LLMStreamChunk;
         }

@@ -80,7 +80,7 @@ function buildAnthropicBlocks(rawEvents: AnthropicEvent[]): ThinkingContentBlock
   const blocks: ThinkingContentBlock[] = [];
   const inFlight = new Map<
     number,
-    { type: string; thinking: string; text: string; signature?: string; raw?: Record<string, unknown> }
+    { type: string; thinking: string; text: string; signature?: string; inputJson?: string; raw?: Record<string, unknown> }
   >();
 
   for (const evt of rawEvents) {
@@ -120,6 +120,8 @@ function buildAnthropicBlocks(rawEvents: AnthropicEvent[]): ThinkingContentBlock
         state.text += delta.text;
       } else if (delta.type === 'signature_delta' && typeof delta.signature === 'string') {
         state.signature = `${state.signature ?? ''}${delta.signature}`;
+      } else if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
+        state.inputJson = `${state.inputJson ?? ''}${delta.partial_json}`;
       }
       continue;
     }
@@ -137,6 +139,16 @@ function buildAnthropicBlocks(rawEvents: AnthropicEvent[]): ThinkingContentBlock
         blocks.push(block);
       } else if (state.type === 'text') {
         blocks.push({ type: 'text', text: state.text });
+      } else if (state.type === 'tool_use') {
+        const raw = { ...(state.raw ?? {}) } as Record<string, unknown>;
+        if (state.inputJson) {
+          try {
+            raw.input = JSON.parse(state.inputJson);
+          } catch {
+            raw.input = state.inputJson;
+          }
+        }
+        blocks.push({ type: state.type, ...raw });
       } else {
         blocks.push({ type: state.type, ...(state.raw ?? {}) });
       }

@@ -170,7 +170,11 @@ const NodeBubble: FC<{
     <article className={`flex flex-col gap-1 ${align}`}>
       <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
         {hasThinking ? (
-          <div className="mb-3 rounded-xl border border-slate-200/70 bg-slate-50 p-3">
+          <div
+            className={`mb-3 rounded-xl border border-slate-200/70 bg-slate-50 ${
+              showThinking ? 'p-3' : 'px-3 py-2'
+            }`}
+          >
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
               <span className="font-semibold text-slate-700">Thinking</span>
               <button
@@ -184,9 +188,7 @@ const NodeBubble: FC<{
             </div>
             {showThinking ? (
               <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">{thinkingText}</p>
-            ) : (
-              <p className="mt-2 text-xs text-slate-500">Hidden</p>
-            )}
+            ) : null}
           </div>
         ) : null}
         {node.type === 'message' && messageText ? (
