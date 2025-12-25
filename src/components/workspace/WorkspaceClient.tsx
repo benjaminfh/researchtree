@@ -24,7 +24,7 @@ import type { FC } from 'react';
 import { RailLayout } from '@/src/components/layout/RailLayout';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { WorkspaceGraph } from './WorkspaceGraph';
-import { getBranchColor } from './branchColors';
+import { buildBranchColorMap, getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { RailPopover } from '@/src/components/layout/RailPopover';
@@ -378,6 +378,7 @@ const NodeBubble: FC<{
 const ChatNodeRow: FC<{
   node: NodeRecord;
   trunkName: string;
+  branchColors?: Record<string, string>;
   muted?: boolean;
   subtitle?: string;
   messageInsetClassName?: string;
@@ -387,9 +388,22 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
-}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff, highlighted }) => {
+}> = ({
+  node,
+  trunkName,
+  branchColors,
+  muted,
+  subtitle,
+  messageInsetClassName,
+  isStarred,
+  onToggleStar,
+  onEdit,
+  isCanvasDiffPinned,
+  onPinCanvasDiff,
+  highlighted
+}) => {
   const isUser = node.type === 'message' && node.role === 'user';
-  const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName);
+  const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
 
   return (
     <div className="grid min-w-0 grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
@@ -954,6 +968,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
   const displayBranchName = (name: string) => (name === trunkName ? 'trunk' : name);
   const sortedBranches = branches;
+  const branchColorMap = useMemo(
+    () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
+    [sortedBranches, trunkName]
+  );
   const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
   const lastGraphRequestKeyRef = useRef<string | null>(null);
 
@@ -1872,6 +1890,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 key={node.id}
                                 node={node}
                                 trunkName={trunkName}
+                                branchColors={branchColorMap}
                                 muted
                                 messageInsetClassName="pr-3"
                                 subtitle={node.createdOnBranch ? `from ${node.createdOnBranch}` : undefined}
@@ -1900,6 +1919,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           key={node.id}
                           node={node}
                           trunkName={trunkName}
+                          branchColors={branchColorMap}
                           messageInsetClassName="pr-3"
                           isStarred={starredSet.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
@@ -2150,6 +2170,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                               }
                               activeBranchName={branchName}
                               trunkName={trunkName}
+                              branchColors={branchColorMap}
                               mode={graphMode}
                               onModeChange={setGraphMode}
                               starredNodeIds={stableStarredNodeIds}

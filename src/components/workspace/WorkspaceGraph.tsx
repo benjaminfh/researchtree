@@ -24,6 +24,7 @@ interface WorkspaceGraphProps {
   branchHistories: Record<string, NodeRecord[]>;
   activeBranchName: string;
   trunkName: string;
+  branchColors?: Record<string, string>;
   mode?: 'nodes' | 'collapsed' | 'starred';
   starredNodeIds?: string[];
   onModeChange?: (mode: 'nodes' | 'collapsed' | 'starred') => void;
@@ -781,7 +782,12 @@ interface LayoutOptions {
   maxIterations?: number;
 }
 
-function buildSimpleLayout(graphNodes: GraphNode[], branchName: string, trunkName: string): LayoutResult {
+function buildSimpleLayout(
+  graphNodes: GraphNode[],
+  branchName: string,
+  trunkName: string,
+  branchColors?: Record<string, string>
+): LayoutResult {
   const laneByBranch = new Map<string, number>([
     [trunkName, 0],
     [branchName, 1]
@@ -803,7 +809,7 @@ function buildSimpleLayout(graphNodes: GraphNode[], branchName: string, trunkNam
     const lane = lanes[index];
     const x = lane * laneSpacing;
     const y = index * rowSpacing;
-    const color = getBranchColor(node.originBranchId, trunkName);
+    const color = getBranchColor(node.originBranchId, trunkName, branchColors);
     return {
       id: node.id,
       type: 'dot',
@@ -833,7 +839,7 @@ function buildSimpleLayout(graphNodes: GraphNode[], branchName: string, trunkNam
       if (typeof parentIndex !== 'number') return;
       const parentLane = laneFor(graphNodes[parentIndex].laneBranchId);
       const sameLane = parentLane === targetLane;
-      const color = getBranchColor(graphNodes[parentIndex].originBranchId, trunkName);
+      const color = getBranchColor(graphNodes[parentIndex].originBranchId, trunkName, branchColors);
       edges.push({
         id: `${parentId}-${node.id}`,
         source: parentId,
@@ -855,12 +861,13 @@ export function layoutGraph(
   graphNodes: GraphNode[],
   branchName: string,
   trunkName: string,
+  branchColors?: Record<string, string>,
   options?: LayoutOptions
 ): LayoutResult {
   if (graphNodes.length === 0) {
     return { nodes: [], edges: [], usedFallback: false };
   }
-  const simple = buildSimpleLayout(graphNodes, branchName, trunkName);
+  const simple = buildSimpleLayout(graphNodes, branchName, trunkName, branchColors);
 
   const graphNodesOldestFirst = graphNodes;
   const idToOldIndex = new Map(graphNodesOldestFirst.map((node, idx) => [node.id, idx]));
@@ -910,7 +917,7 @@ export function layoutGraph(
     const rightMostAtRow = vertices[newIndex].getMaxReservedX();
     const x = lane * laneSpacing;
     const y = oldIndex * rowSpacing;
-    const color = getBranchColor(node.originBranchId, trunkName);
+    const color = getBranchColor(node.originBranchId, trunkName, branchColors);
     const labelTranslateX =
       lane === rightMostAtRow ? 0 : (rightMostAtRow - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET;
     return {
@@ -941,7 +948,7 @@ export function layoutGraph(
       const parentNew = totalRows - 1 - parentOld;
       const parentLane = vertices[parentNew].getLane();
       const sameLane = parentLane === childLane;
-      const color = getBranchColor(graphNodesOldestFirst[parentOld].originBranchId, trunkName);
+      const color = getBranchColor(graphNodesOldestFirst[parentOld].originBranchId, trunkName, branchColors);
       flowEdges.push({
         id: `${parentId}-${node.id}`,
         source: parentId,
@@ -964,6 +971,7 @@ export function WorkspaceGraph({
   branchHistories,
   activeBranchName,
   trunkName,
+  branchColors,
   mode = 'nodes',
   starredNodeIds = [],
   onModeChange,
@@ -981,8 +989,8 @@ export function WorkspaceGraph({
   );
 
   const { nodes, edges } = useMemo(
-    () => layoutGraph(graphNodes, activeBranchName, trunkName),
-    [graphNodes, activeBranchName, trunkName]
+    () => layoutGraph(graphNodes, activeBranchName, trunkName, branchColors),
+    [graphNodes, activeBranchName, trunkName, branchColors]
   );
 
   const activeHeadId = useMemo(() => {
@@ -1008,7 +1016,7 @@ export function WorkspaceGraph({
 
     const edgeColorFor = (parentId: string, childId: string) => {
       const child = byId.get(childId);
-      const childColor = getBranchColor(child?.originBranchId ?? trunkName, trunkName);
+      const childColor = getBranchColor(child?.originBranchId ?? trunkName, trunkName, branchColors);
       return childColor;
     };
 
