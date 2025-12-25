@@ -1,0 +1,35 @@
+name: Supabase migration filename check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  check-migration-filenames:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Supabase migration filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='^[0-9]{14}_.+\.sql$'
+          invalid=0
+          if [ -d supabase/migrations ]; then
+            while IFS= read -r -d '' file; do
+              base=$(basename "$file")
+              if [[ ! $base =~ $pattern ]]; then
+                echo "::error file=$file::Invalid migration filename '$base'. Expected YYYYMMDDHHmmss_short_description.sql (UTC)."
+                invalid=1
+              fi
+            done < <(find supabase/migrations -maxdepth 1 -type f -name "*.sql" -print0)
+          fi
+          if [ $invalid -ne 0 ]; then
+            echo "One or more migration files do not match the required naming pattern."
+            exit 1
+          fi
