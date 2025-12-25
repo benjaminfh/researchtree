@@ -19,6 +19,7 @@ import {
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getOpenAIUseResponses, getProviderEnvConfig } from '@/src/server/llmConfig';
 import { flattenMessageContent, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
+import { extractGeminiTextData, extractGeminiThoughtData, getGeminiDelta } from '@/src/server/geminiThought';
 
 export type { LLMProvider } from '@/src/shared/llmProvider';
 
@@ -280,48 +281,6 @@ async function* streamFromOpenAIResponses(
     content: '',
     payload: responseId ? { events: rawEvents, responseId } : rawEvents
   } satisfies LLMStreamChunk;
-}
-
-function extractGeminiTextData(source: any): { text: string; hasParts: boolean } {
-  const candidates = Array.isArray(source?.candidates) ? source.candidates : [];
-  const parts = Array.isArray(candidates[0]?.content?.parts) ? candidates[0].content.parts : null;
-  if (!parts) {
-    return { text: '', hasParts: false };
-  }
-  let text = '';
-  for (const part of parts) {
-    if (typeof part?.text === 'string' && part?.thought !== true) {
-      text += part.text;
-    }
-  }
-  return { text, hasParts: true };
-}
-
-function extractGeminiThoughtData(source: any): { thoughtText: string; signature: string; hasParts: boolean } {
-  const candidates = Array.isArray(source?.candidates) ? source.candidates : [];
-  const parts = Array.isArray(candidates[0]?.content?.parts) ? candidates[0].content.parts : null;
-  if (!parts) {
-    return { thoughtText: '', signature: '', hasParts: false };
-  }
-  let thoughtText = '';
-  let signature = '';
-  for (const part of parts) {
-    if (typeof part?.text === 'string' && part?.thought === true) {
-      thoughtText += part.text;
-    }
-    if (typeof part?.thoughtSignature === 'string') {
-      signature = String(part.thoughtSignature);
-    }
-  }
-  return { thoughtText, signature, hasParts: true };
-}
-
-function getGeminiDelta(next: string, previous: string): { delta: string; updated: string } {
-  if (!next) return { delta: '', updated: previous };
-  if (next.startsWith(previous)) {
-    return { delta: next.slice(previous.length), updated: next };
-  }
-  return { delta: next, updated: previous + next };
 }
 
 async function* streamFromGemini(

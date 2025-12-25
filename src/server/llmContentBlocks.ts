@@ -1,5 +1,6 @@
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { stripThinkingTextIfSignature, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
+import { extractGeminiTextData, extractGeminiThoughtData, getGeminiDelta, getGeminiPartText, isGeminiThoughtPart } from './geminiThought';
 
 type AnthropicEvent = { event: string | null; data: string };
 
@@ -55,16 +56,61 @@ function buildOpenAIBlocksFromRaw(rawResponse: unknown): ThinkingContentBlock[] 
   return toTextBlock(text);
 }
 
+function hasGeminiThoughtMarkers(parts: unknown[]): boolean {
+  return parts.some(
+    (part) => isGeminiThoughtPart(part) || typeof (part as any)?.thoughtSignature === 'string'
+  );
+}
+
 function buildGeminiBlocks(rawResponse: unknown): ThinkingContentBlock[] {
   const response = (rawResponse as any)?.response ?? rawResponse;
-  const parts = response?.candidates?.[0]?.content?.parts;
-  if (!Array.isArray(parts)) return [];
+  const responseParts = response?.candidates?.[0]?.content?.parts;
+  const stream = Array.isArray((rawResponse as any)?.stream) ? (rawResponse as any).stream : null;
+  const responseHasThoughtMarkers = Array.isArray(responseParts) && hasGeminiThoughtMarkers(responseParts);
+
+  if (!responseHasThoughtMarkers && Array.isArray(stream)) {
+    const streamHasThoughtMarkers = stream.some((chunk) => {
+      const parts = chunk?.candidates?.[0]?.content?.parts;
+      return Array.isArray(parts) && hasGeminiThoughtMarkers(parts);
+    });
+    if (streamHasThoughtMarkers) {
+      const blocks: ThinkingContentBlock[] = [];
+      let lastThinkingText = '';
+      let lastTextSnapshot = '';
+      let lastSignature = '';
+      for (const chunk of stream) {
+        const thoughtData = extractGeminiThoughtData(chunk);
+        if (thoughtData.hasParts) {
+          const { delta, updated } = getGeminiDelta(thoughtData.thoughtText, lastThinkingText);
+          if (delta) {
+            blocks.push({ type: 'thinking', thinking: delta });
+          }
+          lastThinkingText = updated;
+          if (thoughtData.signature && thoughtData.signature !== lastSignature) {
+            blocks.push({ type: 'thinking_signature', signature: thoughtData.signature });
+            lastSignature = thoughtData.signature;
+          }
+        }
+        const textData = extractGeminiTextData(chunk);
+        if (textData.hasParts) {
+          const { delta, updated } = getGeminiDelta(textData.text, lastTextSnapshot);
+          if (delta) {
+            blocks.push({ type: 'text', text: delta });
+          }
+          lastTextSnapshot = updated;
+        }
+      }
+      return blocks;
+    }
+  }
+
+  if (!Array.isArray(responseParts)) return [];
 
   const blocks: ThinkingContentBlock[] = [];
-  for (const part of parts) {
-    const text = typeof part?.text === 'string' ? String(part.text) : '';
+  for (const part of responseParts) {
+    const text = getGeminiPartText(part);
     if (text) {
-      if (part?.thought === true) {
+      if (isGeminiThoughtPart(part)) {
         blocks.push({ type: 'thinking', thinking: text });
       } else {
         blocks.push({ type: 'text', text });
