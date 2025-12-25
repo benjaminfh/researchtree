@@ -3,6 +3,9 @@ import { requireUser } from '@/src/server/auth';
 
 type ProviderKey = 'openai' | 'gemini' | 'anthropic';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET() {
   try {
     const user = await requireUser();
