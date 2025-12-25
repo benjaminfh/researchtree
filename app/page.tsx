@@ -2,9 +2,29 @@ import { HomePageContent } from '@/src/components/home/HomePageContent';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { resolveLLMProvider, type LLMProvider } from '@/src/server/llm';
+import { getEnabledProviders } from '@/src/server/llmConfig';
 
 export default async function HomePage() {
   const store = getStoreConfig();
+  const normalizeProviderForUi = (provider: LLMProvider) => (provider === 'openai_responses' ? 'openai' : provider);
+  const labelForProvider = (id: LLMProvider) => {
+    if (id === 'openai' || id === 'openai_responses') return 'OpenAI';
+    if (id === 'gemini') return 'Gemini';
+    if (id === 'anthropic') return 'Anthropic';
+    return 'Mock';
+  };
+  const providerOptions = (() => {
+    const entries = new Map<LLMProvider, { id: LLMProvider; label: string }>();
+    for (const provider of getEnabledProviders()) {
+      const normalized = normalizeProviderForUi(provider);
+      if (!entries.has(normalized)) {
+        entries.set(normalized, { id: normalized, label: labelForProvider(normalized) });
+      }
+    }
+    return Array.from(entries.values());
+  })();
+  const defaultProvider = normalizeProviderForUi(resolveLLMProvider());
 
   if (store.mode === 'pg') {
     await requireUser();
@@ -66,7 +86,13 @@ export default async function HomePage() {
     );
 
     projectsWithCounts.sort((a, b) => b.lastModified - a.lastModified);
-    return <HomePageContent projects={projectsWithCounts} />;
+    return (
+      <HomePageContent
+        projects={projectsWithCounts}
+        providerOptions={providerOptions}
+        defaultProvider={defaultProvider}
+      />
+    );
   }
 
   const { listProjects } = await import('@git/projects');
@@ -82,5 +108,7 @@ export default async function HomePage() {
   );
   projectsWithCounts.sort((a, b) => b.lastModified - a.lastModified);
 
-  return <HomePageContent projects={projectsWithCounts} />;
+  return (
+    <HomePageContent projects={projectsWithCounts} providerOptions={providerOptions} defaultProvider={defaultProvider} />
+  );
 }

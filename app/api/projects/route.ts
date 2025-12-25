@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const defaultProvider = resolveLLMProvider();
+    const defaultProvider = resolveLLMProvider(parsed.data.provider);
     const defaultModel = getDefaultModelForProvider(defaultProvider);
 
     if (store.mode === 'pg') {
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     }
 
     const { initProject, deleteProject } = await import('@git/projects');
-    const project = await initProject(parsed.data.name, parsed.data.description);
+    const project = await initProject(parsed.data.name, parsed.data.description, defaultProvider);
 
     try {
       const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');

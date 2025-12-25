@@ -5,6 +5,8 @@
 ### RAIL
 [ ] (home) rail does not always pick up new workspaces on load [Open - home rail is server-rendered from `app/page.tsx`; likely Next router cache on back nav without a refresh]
 
+[ ] models are now pinned immutably to branches - this means that a user now has no opportunity to choose provider for the main/trunk branch when creating a new project. 
+
 ## WORKSPACE / PROJECT
 ### CHAT
 [x] when creating a branch via the rail, inherited messages are incomplete [Fixed (pg) - branch creation uses `rtCreateRefFromRefShadowV1`, which copies `commit_order` ancestry]

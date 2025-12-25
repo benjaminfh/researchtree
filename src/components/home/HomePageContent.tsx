@@ -7,10 +7,13 @@ import { ArchiveBoxArrowDownIcon } from '@/src/components/workspace/HeroIcons';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import type { ProjectMetadata } from '@git/types';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 import { RailLayout } from '@/src/components/layout/RailLayout';
 
 interface HomePageContentProps {
   projects: Array<ProjectMetadata & { nodeCount: number; lastModified: number }>;
+  providerOptions: Array<{ id: LLMProvider; label: string }>;
+  defaultProvider: LLMProvider;
 }
 
 const ARCHIVE_KEY = storageKey('archived-projects');
@@ -21,7 +24,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'UTC'
 });
 
-export function HomePageContent({ projects }: HomePageContentProps) {
+export function HomePageContent({ projects, providerOptions, defaultProvider }: HomePageContentProps) {
   const [archived, setArchived] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState<Set<string>>(new Set());
 
@@ -99,7 +102,9 @@ export function HomePageContent({ projects }: HomePageContentProps) {
                           >
                             <div className="flex min-w-0 items-center justify-between gap-3">
                               <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 truncate" title={project.name}>
-                                <div className="truncate text-sm font-semibold text-slate-900">{project.name}</div>
+                                <div className="truncate text-sm font-semibold text-slate-900" title={project.name}>
+                                  {project.name}
+                                </div>
                                 <div className="text-xs text-muted">{dateFormatter.format(new Date(project.lastModified))}</div>
                               </Link>
                               <button
@@ -136,7 +141,12 @@ export function HomePageContent({ projects }: HomePageContentProps) {
                         return (
                           <li key={project.id} className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm">
                             <div className="flex min-w-0 items-center gap-2">
-                              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">{project.name}</span>
+                              <span
+                                className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
+                                title={project.name}
+                              >
+                                {project.name}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -189,7 +199,7 @@ export function HomePageContent({ projects }: HomePageContentProps) {
               </div>
             </header>
 
-            <CreateProjectForm />
+            <CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />
           </div>
         </div>
       )}

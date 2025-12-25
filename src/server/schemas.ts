@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const createProjectSchema = z.object({
   name: z.string().min(1).max(120),
-  description: z.string().max(1000).optional()
+  description: z.string().max(1000).optional(),
+  provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional()
 });
 
 export const chatRequestSchema = z.object({
