@@ -133,7 +133,11 @@ describe('/api/projects/[id]/edit', () => {
     });
     expect(res.status).toBe(201);
     expect(mocks.getCommitHashForNode).toHaveBeenCalledWith('project-1', 'main', 'node-5', { parent: true });
-    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash', { provider: 'mock', model: 'mock' });
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash', {
+      provider: 'mock',
+      model: 'mock',
+      previousResponseId: null
+    });
     expect(mocks.appendNode).toHaveBeenCalledWith(
       'project-1',
       expect.objectContaining({ role: 'user', content: 'Edited message' }),
@@ -181,7 +185,8 @@ describe('/api/projects/[id]/edit', () => {
     expect(res.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', expect.stringMatching(/^edit-/), 'commit-hash', {
       provider: 'mock',
-      model: 'mock'
+      model: 'mock',
+      previousResponseId: null
     });
   });
 

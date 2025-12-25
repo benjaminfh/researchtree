@@ -20,6 +20,7 @@ export interface MessageNode extends BaseNode {
   content: string;
   interrupted?: boolean;
   pinnedFromMergeId?: string;
+  responseId?: string;
   thinking?: ThinkingTrace;
   rawResponse?: unknown;
   contentBlocks?: ThinkingContentBlock[];
@@ -51,6 +52,7 @@ export type MessageNodeInput = Pick<
   | 'content'
   | 'interrupted'
   | 'pinnedFromMergeId'
+  | 'responseId'
   | 'contextWindow'
   | 'modelUsed'
   | 'tokensUsed'

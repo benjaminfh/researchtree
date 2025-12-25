@@ -8,12 +8,16 @@ import {
 import type { ChatMessage } from './context';
 import {
   toAnthropicThinking,
-  toOpenAIReasoningEffort,
   type ThinkingSetting
 } from '@/src/shared/thinking';
-import { buildGeminiThinkingParams, buildOpenAIThinkingParams, getAnthropicMaxOutputTokens } from '@/src/shared/llmCapabilities';
+import {
+  buildGeminiThinkingParams,
+  buildOpenAIResponsesThinkingParams,
+  buildOpenAIThinkingParams,
+  getAnthropicMaxOutputTokens
+} from '@/src/shared/llmCapabilities';
 import type { LLMProvider } from '@/src/shared/llmProvider';
-import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
+import { getDefaultProvider, getEnabledProviders, getOpenAIUseResponses, getProviderEnvConfig } from '@/src/server/llmConfig';
 import { flattenMessageContent, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 
 export type { LLMProvider } from '@/src/shared/llmProvider';
@@ -33,6 +37,7 @@ export interface LLMStreamOptions {
   thinking?: ThinkingSetting;
   webSearch?: boolean;
   apiKey?: string | null;
+  previousResponseId?: string | null;
 }
 
 const encoder = new TextEncoder();
@@ -51,12 +56,19 @@ function getOpenAIModelForRequest(webSearch?: boolean): string {
   return getDefaultModelForProvider('openai');
 }
 
+function mapOpenAIProvider(provider: LLMProvider): LLMProvider {
+  if (provider === 'openai' && getOpenAIUseResponses()) return 'openai_responses';
+  if (provider === 'openai_responses' && !getOpenAIUseResponses()) return 'openai';
+  return provider;
+}
+
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
     const enabled = new Set(getEnabledProviders());
-    return enabled.has(requested) ? requested : getDefaultProvider();
+    const resolved = enabled.has(requested) ? requested : getDefaultProvider();
+    return mapOpenAIProvider(resolved);
   }
-  return getDefaultProvider();
+  return mapOpenAIProvider(getDefaultProvider());
 }
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {
@@ -71,12 +83,18 @@ export async function* streamAssistantCompletion({
   model,
   thinking,
   webSearch,
-  apiKey
+  apiKey,
+  previousResponseId
 }: LLMStreamOptions): AsyncGenerator<LLMStreamChunk> {
   const resolvedProvider = resolveLLMProvider(provider);
 
   if (resolvedProvider === 'openai') {
     yield* streamFromOpenAI(messages, signal, thinking, webSearch, apiKey ?? undefined, model);
+    return;
+  }
+
+  if (resolvedProvider === 'openai_responses') {
+    yield* streamFromOpenAIResponses(messages, signal, thinking, webSearch, apiKey ?? undefined, model, previousResponseId);
     return;
   }
 
@@ -164,6 +182,104 @@ async function* streamFromOpenAI(
     }
   }
   yield { type: 'raw_response', content: '', payload: rawParts } satisfies LLMStreamChunk;
+}
+
+function toOpenAIResponsesInput(messages: ChatMessage[]): {
+  instructions?: string;
+  input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'text'; text: string }> }>;
+} {
+  const instructions = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => flattenMessageContent(message.content))
+    .join('\n\n')
+    .trim();
+
+  const input = messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => ({
+      role: message.role as 'user' | 'assistant',
+      content: [{ type: 'text' as const, text: flattenMessageContent(message.content) }]
+    }))
+    .filter((item) => item.content[0]?.text?.trim());
+
+  return {
+    ...(instructions ? { instructions } : {}),
+    input
+  };
+}
+
+function extractOpenAIResponsesTextDelta(event: any): string | null {
+  if (!event || typeof event !== 'object') return null;
+  if (event.type !== 'response.output_text.delta') return null;
+  if (typeof event.delta === 'string') return event.delta;
+  if (typeof event.text === 'string') return event.text;
+  if (typeof event.delta?.text === 'string') return event.delta.text;
+  return null;
+}
+
+async function* streamFromOpenAIResponses(
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  thinking?: ThinkingSetting,
+  webSearch?: boolean,
+  apiKeyOverride?: string,
+  modelOverride?: string,
+  previousResponseId?: string | null
+): AsyncGenerator<LLMStreamChunk> {
+  const apiKey = apiKeyOverride ?? process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing OpenAI API key. Add one in Profile to use this provider.');
+  }
+
+  const openAIClient = new OpenAI({ apiKey });
+  const model = modelOverride ?? getDefaultModelForProvider('openai_responses');
+  const { instructions, input } = toOpenAIResponsesInput(messages);
+  const thinkingParams = buildOpenAIResponsesThinkingParams(thinking);
+
+  const stream: any = await openAIClient.responses.create({
+    model,
+    input,
+    stream: true,
+    ...(instructions ? { instructions } : {}),
+    ...thinkingParams,
+    ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+    ...(webSearch ? { tools: [{ type: 'web_search_preview' }] } : {})
+  } as any);
+
+  if (signal) {
+    signal.addEventListener('abort', () => {
+      if (typeof (stream as any).controller?.abort === 'function') {
+        (stream as any).controller.abort();
+      }
+    });
+  }
+
+  const rawEvents: unknown[] = [];
+  let responseId: string | null = null;
+  for await (const event of stream) {
+    rawEvents.push(event);
+    const delta = extractOpenAIResponsesTextDelta(event);
+    if (typeof delta === 'string' && delta.length > 0) {
+      yield { type: 'text', content: delta } satisfies LLMStreamChunk;
+    }
+    const candidate =
+      typeof (event as any)?.response?.id === 'string'
+        ? String((event as any).response.id)
+        : typeof (event as any)?.response_id === 'string'
+          ? String((event as any).response_id)
+          : event?.type === 'response.completed' && typeof (event as any)?.id === 'string'
+            ? String((event as any).id)
+            : null;
+    if (candidate) {
+      responseId = candidate;
+    }
+  }
+
+  yield {
+    type: 'raw_response',
+    content: '',
+    payload: responseId ? { events: rawEvents, responseId } : rawEvents
+  } satisfies LLMStreamChunk;
 }
 
 function extractGeminiTextData(source: any): { text: string; hasParts: boolean } {

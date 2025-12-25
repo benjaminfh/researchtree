@@ -49,6 +49,10 @@ const fetchJson = async <T,>(url: string): Promise<T> => {
   return res.json();
 };
 
+const normalizeProviderForUi = (provider: LLMProvider): LLMProvider => {
+  return provider === 'openai_responses' ? 'openai' : provider;
+};
+
 const getNodeBlocks = (node: NodeRecord): ThinkingContentBlock[] => {
   return getContentBlocksWithLegacyFallback(node);
 };
@@ -439,12 +443,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [editBranchName, setEditBranchName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editProvider, setEditProvider] = useState<LLMProvider>('mock');
+  const [editProvider, setEditProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
   const [editThinking, setEditThinking] = useState<ThinkingSetting>('medium');
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
-  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(defaultProvider);
+  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
   const [newBranchThinking, setNewBranchThinking] = useState<ThinkingSetting>('medium');
   const autosaveControllerRef = useRef<AbortController | null>(null);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -634,6 +638,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     () => providerOptions.find((option) => option.id === branchProvider),
     [branchProvider, providerOptions]
   );
+  const selectableProviderOptions = useMemo(
+    () => providerOptions.filter((option) => option.id !== 'openai_responses'),
+    [providerOptions]
+  );
+  const branchProviderLabel = activeProvider?.label ?? (branchProvider === 'openai_responses' ? 'OpenAI' : branchProvider);
 
   const activeProviderModel = branchModel;
   const allowedThinking = useMemo(
@@ -643,9 +652,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const thinkingUnsupportedError =
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
-      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProvider} (model=${activeProviderModel}).`;
+      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
   const webSearchAvailable = branchProvider !== 'mock';
-  const showOpenAISearchNote = webSearchEnabled && branchProvider === 'openai';
+  const showOpenAISearchNote = webSearchEnabled && (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -923,7 +932,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
   useEffect(() => {
     if (newBranchName.trim()) return;
-    setNewBranchProvider(branchProvider);
+    setNewBranchProvider(normalizeProviderForUi(branchProvider));
     setNewBranchThinking(thinking);
   }, [branchProvider, thinking, newBranchName]);
 
@@ -1647,7 +1656,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
                           disabled={isSwitching || isCreating}
                         >
-                          {providerOptions.map((option) => (
+                          {selectableProviderOptions.map((option) => (
                             <option key={option.id} value={option.id}>
                               {option.label}
                             </option>
@@ -1802,7 +1811,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       <div className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs shadow-sm">
                         <span className="font-medium text-slate-700">Provider</span>
                         <span className="rounded-lg border border-divider/60 bg-white px-2 py-2 text-xs text-slate-800">
-                          {activeProvider?.label ?? branchProvider}
+                          {branchProviderLabel}
                         </span>
                       </div>
                     </div>
@@ -1865,7 +1874,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                   setEditDraft(n.content);
                                   setEditBranchName('');
                                   setEditError(null);
-                                  setEditProvider(branchProvider);
+                                  setEditProvider(normalizeProviderForUi(branchProvider));
                                   setEditThinking(thinking);
                                   setShowEditModal(true);
                                 }
@@ -1943,7 +1952,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
                                           disabled={isSwitching || isCreating}
                                         >
-                                          {providerOptions.map((option) => (
+                                          {selectableProviderOptions.map((option) => (
                                             <option key={option.id} value={option.id}>
                                               {option.label}
                                             </option>
@@ -2782,7 +2791,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
 	                  disabled={isEditing}
 	                >
-	                  {providerOptions.map((option) => (
+	                  {selectableProviderOptions.map((option) => (
 	                    <option key={option.id} value={option.id}>
 	                      {option.label}
 	                    </option>

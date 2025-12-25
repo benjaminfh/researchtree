@@ -70,7 +70,7 @@ export async function createBranch(
   projectId: string,
   branchName: string,
   fromRef?: string,
-  options?: { provider?: LLMProvider; model?: string }
+  options?: { provider?: LLMProvider; model?: string; previousResponseId?: string | null }
 ): Promise<void> {
   await assertProjectExists(projectId);
   const git = simpleGit(getProjectPath(projectId));
@@ -93,7 +93,9 @@ export async function createBranch(
   const model = isSupportedModelForProvider(provider, modelCandidate)
     ? modelCandidate
     : getDefaultModelForProvider(provider);
-  await setBranchConfig(projectId, branchName, { provider, model });
+  const previousResponseId =
+    options?.previousResponseId !== undefined ? options.previousResponseId : sourceConfig?.previousResponseId ?? null;
+  await setBranchConfig(projectId, branchName, { provider, model, previousResponseId });
 }
 
 export async function switchBranch(projectId: string, branchName: string): Promise<void> {

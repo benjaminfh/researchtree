@@ -60,7 +60,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
   }
 
   const labelForProvider = (id: LLMProvider) => {
-    if (id === 'openai') return 'OpenAI';
+    if (id === 'openai' || id === 'openai_responses') return 'OpenAI';
     if (id === 'gemini') return 'Gemini';
     if (id === 'anthropic') return 'Anthropic';
     return 'Mock';

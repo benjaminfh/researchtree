@@ -6,17 +6,21 @@ import { requireUser } from '@/src/server/auth';
 type KeyedProvider = Exclude<LLMProvider, 'mock'>;
 
 function labelForProvider(provider: LLMProvider): string {
-  if (provider === 'openai') return 'OpenAI';
+  if (provider === 'openai' || provider === 'openai_responses') return 'OpenAI';
   if (provider === 'gemini') return 'Gemini';
   if (provider === 'anthropic') return 'Anthropic';
   return 'Mock';
 }
 
 function envVarForProvider(provider: LLMProvider): string | null {
-  if (provider === 'openai') return 'OPENAI_API_KEY';
+  if (provider === 'openai' || provider === 'openai_responses') return 'OPENAI_API_KEY';
   if (provider === 'gemini') return 'GEMINI_API_KEY';
   if (provider === 'anthropic') return 'ANTHROPIC_API_KEY';
   return null;
+}
+
+function normalizeKeyedProvider(provider: LLMProvider): KeyedProvider {
+  return provider === 'openai_responses' ? 'openai' : (provider as KeyedProvider);
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -43,7 +47,7 @@ function isMissingServiceRoleEnv(reason: string): boolean {
 
 export async function requireUserApiKeyForProvider(provider: LLMProvider): Promise<string | null> {
   if (provider === 'mock') return null;
-  const keyed = provider as KeyedProvider;
+  const keyed = normalizeKeyedProvider(provider);
   const user = await requireUser();
 
   const envVar = envVarForProvider(provider);
