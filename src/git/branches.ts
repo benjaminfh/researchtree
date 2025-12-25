@@ -1,5 +1,5 @@
 import { simpleGit } from 'simple-git';
-import { INITIAL_BRANCH } from './constants';
+import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
 import { createNodeRecord, writeNodeRecord } from './nodes';
 import type { BranchSummary, NodeRecord } from './types';
 import type { LLMProvider } from '@/src/shared/llmProvider';

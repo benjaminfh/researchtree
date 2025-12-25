@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   releaseStream: vi.fn(),
   rtAppendNodeToRefShadowV1: vi.fn(),
   rtGetHistoryShadowV1: vi.fn(),
-  rtGetCurrentRefShadowV1: vi.fn()
+  rtGetCurrentRefShadowV1: vi.fn(),
+  getBranchConfigMap: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -35,6 +36,11 @@ vi.mock('@/src/server/llm', () => {
   };
 });
 
+vi.mock('@/src/server/branchConfig', () => ({
+  getBranchConfigMap: mocks.getBranchConfigMap,
+  resolveBranchConfig: () => ({ provider: 'openai', model: 'gpt-5.2' })
+}));
+
 vi.mock('@/src/server/stream-registry', () => ({
   registerStream: mocks.registerStream,
   releaseStream: mocks.releaseStream
@@ -54,6 +60,10 @@ vi.mock('@/src/store/pg/prefs', () => ({
 
 vi.mock('@/src/server/providerCapabilities', () => ({
   getProviderTokenLimit: vi.fn(async () => 4000)
+}));
+
+vi.mock('@/src/server/llmUserKeys', () => ({
+  requireUserApiKeyForProvider: vi.fn(async () => null)
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/chat';
@@ -86,6 +96,7 @@ describe('/api/projects/[id]/chat', () => {
     mocks.releaseStream.mockImplementation(() => undefined);
     mocks.rtGetHistoryShadowV1.mockResolvedValue([]);
     mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+    mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
     process.env.RT_STORE = 'git';
   });
 
@@ -99,7 +110,12 @@ describe('/api/projects/[id]/chat', () => {
     const response = await POST(createRequest({ message: 'Hi there' }), { params: { id: 'project-1' } });
     expect(response.status).toBe(200);
     const text = await response.text();
-    expect(text).toBe('foobar');
+    const lines = text.trim().split('\n').filter(Boolean);
+    const chunks = lines.map((line) => JSON.parse(line));
+    expect(chunks).toEqual([
+      { type: 'text', content: 'foo' },
+      { type: 'text', content: 'bar' }
+    ]);
 
     expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foobar', interrupted: false });
@@ -183,7 +199,9 @@ describe('/api/projects/[id]/chat', () => {
     const response = await POST(createRequest({ message: 'Hi there' }), { params: { id: 'project-1' } });
     expect(response.status).toBe(200);
     const text = await response.text();
-    expect(text).toBe('foo');
+    const lines = text.trim().split('\n').filter(Boolean);
+    const chunks = lines.map((line) => JSON.parse(line));
+    expect(chunks).toEqual([{ type: 'text', content: 'foo' }]);
 
     expect(appended[0]).toMatchObject({ role: 'user', content: 'Hi there' });
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foo', interrupted: true });
