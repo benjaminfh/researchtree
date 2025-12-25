@@ -1792,25 +1792,32 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     {branchName !== trunkName && sharedCount > 0 ? (
                       <div className="pointer-events-auto w-full md:w-3/5 md:ml-4">
                         <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[rgba(238,243,255,0.95)] px-4 py-3 text-sm text-slate-700 shadow-sm">
-                          <div className="flex items-center gap-2">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-primary/80" />
-                            Shared {sharedCount} {sharedCount === 1 ? 'message' : 'messages'} from upstream
+                            <span
+                              className="min-w-0 flex-1 whitespace-normal"
+                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                            >
+                              Shared {sharedCount} {sharedCount === 1 ? 'message' : 'messages'} from upstream
+                            </span>
                           </div>
                           <button
                             type="button"
                             onClick={() => setHideShared((prev) => !prev)}
                             className="ml-auto rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
                           >
-                            {hideShared ? 'Show shared' : 'Hide shared'}
+                            {hideShared ? 'Show' : 'Hide'}
                           </button>
                         </div>
                       </div>
                     ) : null}
                     <div className="pointer-events-auto ml-auto flex flex-wrap items-center justify-end gap-2 md:mr-4">
-                      <span className="text-xs text-muted">{branchModel}</span>
                       <div className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs shadow-sm">
                         <span className="font-medium text-slate-700">Provider</span>
-                        <span className="rounded-lg border border-divider/60 bg-white px-2 py-2 text-xs text-slate-800">
+                        <span
+                          className="rounded-lg border border-divider/60 bg-white px-2 py-2 text-xs text-slate-800"
+                          title={branchModel}
+                        >
                           {branchProviderLabel}
                         </span>
                       </div>
