@@ -471,7 +471,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
+  const [composerPadding, setComposerPadding] = useState(128);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+  const composerRef = useRef<HTMLDivElement | null>(null);
 
   const {
     data: starsData,
@@ -973,6 +975,17 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     void load();
     return () => controller.abort();
   }, [insightCollapsed, insightTab, graphRequestKey, project.id, graphHistories, graphHistoryError]);
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const next = Math.max(96, Math.ceil(composer.offsetHeight + 16));
+      setComposerPadding(next);
+    });
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -1780,7 +1793,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         )}
         renderMain={(ctx) => (
           <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
-            <div className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-32 pt-3 md:px-8 lg:px-12">
+            <div
+              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-12"
+              style={{ paddingBottom: composerPadding }}
+            >
               <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
                 <section
                   className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${
@@ -2417,7 +2433,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
               style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
             >
-              <div className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer">
+              <div
+                ref={composerRef}
+                className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+              >
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
