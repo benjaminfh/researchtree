@@ -1,9 +1,6 @@
 import { handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
-
 export async function GET() {
   try {
     const user = await requireUser();
@@ -12,3 +9,4 @@ export async function GET() {
     return handleRouteError(error);
   }
 }
+
