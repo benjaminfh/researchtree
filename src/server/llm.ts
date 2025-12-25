@@ -282,30 +282,46 @@ async function* streamFromOpenAIResponses(
   } satisfies LLMStreamChunk;
 }
 
-function extractGeminiThinkingBlocks(source: any): ThinkingContentBlock[] {
-  const blocks: ThinkingContentBlock[] = [];
+function extractGeminiTextData(source: any): { text: string; hasParts: boolean } {
   const candidates = Array.isArray(source?.candidates) ? source.candidates : [];
-
-  for (const candidate of candidates) {
-    const parts = candidate?.content?.parts;
-    if (!Array.isArray(parts)) continue;
-    for (const part of parts) {
-      if ((part as any)?.thought === true && typeof (part as any)?.text === 'string') {
-        const text = String((part as any).text).trim();
-        if (text) {
-          blocks.push({ type: 'thinking', thinking: text });
-        }
-      }
-      if (typeof (part as any)?.thoughtSignature === 'string') {
-        const signature = String((part as any).thoughtSignature).trim();
-        if (signature) {
-          blocks.push({ type: 'thinking_signature', signature });
-        }
-      }
+  const parts = Array.isArray(candidates[0]?.content?.parts) ? candidates[0].content.parts : null;
+  if (!parts) {
+    return { text: '', hasParts: false };
+  }
+  let text = '';
+  for (const part of parts) {
+    if (typeof part?.text === 'string' && part?.thought !== true) {
+      text += part.text;
     }
   }
+  return { text, hasParts: true };
+}
 
-  return blocks;
+function extractGeminiThoughtData(source: any): { thoughtText: string; signature: string; hasParts: boolean } {
+  const candidates = Array.isArray(source?.candidates) ? source.candidates : [];
+  const parts = Array.isArray(candidates[0]?.content?.parts) ? candidates[0].content.parts : null;
+  if (!parts) {
+    return { thoughtText: '', signature: '', hasParts: false };
+  }
+  let thoughtText = '';
+  let signature = '';
+  for (const part of parts) {
+    if (typeof part?.text === 'string' && part?.thought === true) {
+      thoughtText += part.text;
+    }
+    if (typeof part?.thoughtSignature === 'string') {
+      signature = String(part.thoughtSignature);
+    }
+  }
+  return { thoughtText, signature, hasParts: true };
+}
+
+function getGeminiDelta(next: string, previous: string): { delta: string; updated: string } {
+  if (!next) return { delta: '', updated: previous };
+  if (next.startsWith(previous)) {
+    return { delta: next.slice(previous.length), updated: next };
+  }
+  return { delta: next, updated: previous + next };
 }
 
 async function* streamFromGemini(
@@ -427,7 +443,9 @@ async function* streamFromGemini(
   }
 
   let yieldedAny = false;
-  let lastThinkingBlocks: ThinkingContentBlock[] = [];
+  let lastThinkingText = '';
+  let lastThinkingSignature = '';
+  let lastTextSnapshot = '';
   const rawChunks: unknown[] = [];
   try {
     for await (const chunk of stream.stream) {
@@ -457,53 +475,40 @@ async function* streamFromGemini(
           }
         }
       }
-      const nextBlocks = extractGeminiThinkingBlocks(chunk);
-      if (nextBlocks.length > 0) {
-        if (
-          lastThinkingBlocks.length > 0 &&
-          nextBlocks.length >= lastThinkingBlocks.length &&
-          nextBlocks.slice(0, lastThinkingBlocks.length).every((block, idx) => JSON.stringify(block) === JSON.stringify(lastThinkingBlocks[idx]))
-        ) {
-          const deltaBlocks = nextBlocks.slice(lastThinkingBlocks.length);
-          for (const block of deltaBlocks) {
-            if (block.type === 'thinking') {
-              if (typeof block.thinking === 'string') {
-                yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
-              }
-            } else if (block.type === 'thinking_signature') {
-              if (typeof block.signature === 'string') {
-                yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
-              }
-            }
-          }
-          lastThinkingBlocks = nextBlocks;
-        } else if (lastThinkingBlocks.length === 0) {
-          for (const block of nextBlocks) {
-            if (block.type === 'thinking') {
-              if (typeof block.thinking === 'string') {
-                yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
-              }
-            } else if (block.type === 'thinking_signature') {
-              if (typeof block.signature === 'string') {
-                yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
-              }
-            }
-          }
-          lastThinkingBlocks = nextBlocks;
+      const thoughtData = extractGeminiThoughtData(chunk);
+      if (thoughtData.hasParts) {
+        const { delta: thoughtDelta, updated } = getGeminiDelta(thoughtData.thoughtText, lastThinkingText);
+        if (thoughtDelta) {
+          yield { type: 'thinking', content: thoughtDelta, append: true } satisfies LLMStreamChunk;
+        }
+        lastThinkingText = updated;
+        if (thoughtData.signature && thoughtData.signature !== lastThinkingSignature) {
+          yield { type: 'thinking_signature', content: thoughtData.signature, append: false } satisfies LLMStreamChunk;
+          lastThinkingSignature = thoughtData.signature;
         }
       }
+
       let text = '';
-      try {
-        text = chunk.text();
-      } catch (error) {
-        if (error instanceof GoogleGenerativeAIResponseError) {
-          throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+      const textData = extractGeminiTextData(chunk);
+      if (textData.hasParts) {
+        text = textData.text;
+      } else {
+        try {
+          text = chunk.text();
+        } catch (error) {
+          if (error instanceof GoogleGenerativeAIResponseError) {
+            throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+          }
+          throw error;
         }
-        throw error;
       }
       if (text) {
-        yieldedAny = true;
-        yield { type: 'text', content: text } satisfies LLMStreamChunk;
+        const { delta, updated } = getGeminiDelta(text, lastTextSnapshot);
+        if (delta) {
+          yieldedAny = true;
+          yield { type: 'text', content: delta } satisfies LLMStreamChunk;
+        }
+        lastTextSnapshot = updated;
       }
     }
   } catch (error) {
@@ -546,41 +551,42 @@ async function* streamFromGemini(
           }
         }
       }
-      const responseBlocks = extractGeminiThinkingBlocks(response);
-      if (responseBlocks.length > lastThinkingBlocks.length) {
-        const deltaBlocks =
-          lastThinkingBlocks.length > 0 &&
-          responseBlocks.slice(0, lastThinkingBlocks.length).every((block, idx) => JSON.stringify(block) === JSON.stringify(lastThinkingBlocks[idx]))
-            ? responseBlocks.slice(lastThinkingBlocks.length)
-            : responseBlocks;
-        for (const block of deltaBlocks) {
-          if (block.type === 'thinking') {
-            if (typeof block.thinking === 'string') {
-              yield { type: 'thinking', content: block.thinking, append: false } satisfies LLMStreamChunk;
-            }
-          } else if (block.type === 'thinking_signature') {
-            if (typeof block.signature === 'string') {
-              yield { type: 'thinking_signature', content: block.signature, append: false } satisfies LLMStreamChunk;
-            }
-          }
+      const responseThought = extractGeminiThoughtData(response);
+      if (responseThought.hasParts) {
+        const { delta: thoughtDelta, updated } = getGeminiDelta(responseThought.thoughtText, lastThinkingText);
+        if (thoughtDelta) {
+          yield { type: 'thinking', content: thoughtDelta, append: true } satisfies LLMStreamChunk;
         }
-        lastThinkingBlocks = responseBlocks;
+        lastThinkingText = updated;
+        if (responseThought.signature && responseThought.signature !== lastThinkingSignature) {
+          yield { type: 'thinking_signature', content: responseThought.signature, append: false } satisfies LLMStreamChunk;
+          lastThinkingSignature = responseThought.signature;
+        }
       }
-      if (yieldedAny) {
-        yield { type: 'raw_response', content: '', payload: rawResponse } satisfies LLMStreamChunk;
-        return;
-      }
+
       let text = '';
-      try {
-        text = response.text();
-      } catch (error) {
-        if (error instanceof GoogleGenerativeAIResponseError) {
-          throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+      const responseText = extractGeminiTextData(response);
+      if (responseText.hasParts) {
+        text = responseText.text;
+      } else {
+        try {
+          text = response.text();
+        } catch (error) {
+          if (error instanceof GoogleGenerativeAIResponseError) {
+            throw new Error(sanitizeGeminiErrorMessage(`Gemini response error: ${error.message}`));
+          }
+          throw error;
         }
-        throw error;
       }
       if (text) {
-        yield { type: 'text', content: text } satisfies LLMStreamChunk;
+        const { delta, updated } = getGeminiDelta(text, lastTextSnapshot);
+        if (delta) {
+          yieldedAny = true;
+          yield { type: 'text', content: delta } satisfies LLMStreamChunk;
+        }
+        lastTextSnapshot = updated;
+      }
+      if (yieldedAny) {
         yield { type: 'raw_response', content: '', payload: rawResponse } satisfies LLMStreamChunk;
         return;
       }

@@ -23,10 +23,10 @@ export function RailShell({
               <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
               <Link
                 href="/"
-                className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                 aria-label="Back to home"
               >
-                <HomeIcon className="h-5 w-5" />
+                <HomeIcon className="h-4 w-4" />
               </Link>
             </div>
           ) : (
@@ -35,10 +35,10 @@ export function RailShell({
                 <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
                 <Link
                   href="/"
-                  className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                  className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                   aria-label="Back to home"
                 >
-                  <HomeIcon className="h-5 w-5" />
+                  <HomeIcon className="h-4 w-4" />
                 </Link>
               </div>
             </div>
