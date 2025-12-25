@@ -474,6 +474,15 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [composerPadding, setComposerPadding] = useState(128);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const composerRef = useRef<HTMLDivElement | null>(null);
+  const openEditModal = (node: MessageNode) => {
+    setEditingNode(node);
+    setEditDraft(node.content);
+    setEditBranchName('');
+    setEditError(null);
+    setEditProvider(normalizeProviderForUi(branchProvider));
+    setEditThinking(thinking);
+    setShowEditModal(true);
+  };
 
   const {
     data: starsData,
@@ -980,7 +989,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     const composer = composerRef.current;
     if (!composer || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
-      const next = Math.max(96, Math.ceil(composer.offsetHeight + 16));
+      const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
       setComposerPadding(next);
     });
     observer.observe(composer);
@@ -1868,7 +1877,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 subtitle={node.createdOnBranch ? `from ${node.createdOnBranch}` : undefined}
                                 isStarred={starredSet.has(node.id)}
                                 onToggleStar={() => void toggleStar(node.id)}
-                                onEdit={undefined}
+                                onEdit={
+                                  node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
+                                    ? (n) => openEditModal(n)
+                                    : undefined
+                                }
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
                                 highlighted={highlightedNodeId === node.id}
@@ -1892,15 +1905,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
                             node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
-                              ? (n) => {
-                                  setEditingNode(n);
-                                  setEditDraft(n.content);
-                                  setEditBranchName('');
-                                  setEditError(null);
-                                  setEditProvider(normalizeProviderForUi(branchProvider));
-                                  setEditThinking(thinking);
-                                  setShowEditModal(true);
-                                }
+                              ? (n) => openEditModal(n)
                               : undefined
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
@@ -2890,13 +2895,14 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     const editModel =
                       providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
                       getDefaultModelForProviderFromCapabilities(editProvider);
+                    const fromRef = editingNode?.createdOnBranch ?? branchName;
                     const res = await fetch(`/api/projects/${project.id}/edit`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         content: editDraft.trim(),
                         branchName: editBranchName.trim(),
-                        fromRef: branchName,
+                        fromRef,
                         llmProvider: editProvider,
                         llmModel: editModel,
                         thinking: editThinking,
