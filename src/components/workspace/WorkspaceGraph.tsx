@@ -544,7 +544,13 @@ function buildCollapsedGraphNodes(
   const activeNodeIds = new Set<string>();
   const mergeNodeIds = new Set<string>();
 
-  for (const [branchName, nodes] of Object.entries(branchHistories)) {
+  const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
+    if (a === trunkName && b !== trunkName) return -1;
+    if (a !== trunkName && b === trunkName) return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const [branchName, nodes] of orderedBranchEntries) {
     for (const node of nodes) {
       if (!nodeById.has(node.id)) {
         nodeById.set(node.id, node);
@@ -564,7 +570,7 @@ function buildCollapsedGraphNodes(
   const activeHeadId = branchHistories[activeBranchName]?.[branchHistories[activeBranchName].length - 1]?.id ?? null;
 
   const important = new Set<string>();
-  for (const [branchName, nodes] of Object.entries(branchHistories)) {
+  for (const [branchName, nodes] of orderedBranchEntries) {
     const tip = nodes[nodes.length - 1];
     if (tip) important.add(tip.id);
     if (branchName === trunkName) continue;
@@ -633,7 +639,7 @@ function buildCollapsedGraphNodes(
       originBranchId,
       laneBranchId: inferredBranch,
       isOnActiveBranch: activeNodeIds.has(id),
-      label: node.type === 'merge' ? `Merge · ${node.mergeFrom}` : inferredBranch,
+      label: node.type === 'merge' ? `Merge · ${node.mergeFrom}` : originBranchId,
       icon:
         node.type === 'merge'
           ? 'merge'
@@ -669,7 +675,13 @@ function buildStarredGraphNodes(
   const firstSeenBranchById = new Map<string, string>();
   const activeNodeIds = new Set<string>();
 
-  for (const [branchName, nodes] of Object.entries(branchHistories)) {
+  const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
+    if (a === trunkName && b !== trunkName) return -1;
+    if (a !== trunkName && b === trunkName) return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const [branchName, nodes] of orderedBranchEntries) {
     for (const node of nodes) {
       if (!nodeById.has(node.id)) {
         nodeById.set(node.id, node);

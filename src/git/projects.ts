@@ -4,7 +4,7 @@ import { simpleGit } from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
 import { INITIAL_BRANCH, PROJECT_FILES, PROJECTS_ROOT } from './constants';
 import type { ProjectMetadata } from './types';
-import { getDefaultModelForProvider, resolveLLMProvider } from '@/src/server/llm';
+import { getDefaultModelForProvider, resolveLLMProvider, type LLMProvider } from '@/src/server/llm';
 import {
   assertProjectExists,
   ensureProjectsRoot,
@@ -20,7 +20,11 @@ import {
 } from './utils';
 import { setBranchConfig } from './branchConfig';
 
-export async function initProject(name: string, description?: string): Promise<ProjectMetadata> {
+export async function initProject(
+  name: string,
+  description?: string,
+  provider?: LLMProvider
+): Promise<ProjectMetadata> {
   if (!name) {
     throw new Error('Project name is required');
   }
@@ -35,10 +39,10 @@ export async function initProject(name: string, description?: string): Promise<P
   const git = simpleGit(projectPath);
   await git.init();
   await git.checkoutLocalBranch(INITIAL_BRANCH);
-  const defaultProvider = resolveLLMProvider();
+  const resolvedProvider = resolveLLMProvider(provider);
   await setBranchConfig(id, INITIAL_BRANCH, {
-    provider: defaultProvider,
-    model: getDefaultModelForProvider(defaultProvider)
+    provider: resolvedProvider,
+    model: getDefaultModelForProvider(resolvedProvider)
   });
 
   const metadata: ProjectMetadata = {
