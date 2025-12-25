@@ -87,7 +87,8 @@ describe('/api/projects/[id]/branches', () => {
     expect(res.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
       provider: 'openai',
-      model: 'gpt-5.2'
+      model: 'gpt-5.2',
+      previousResponseId: null
     });
   });
 
@@ -108,7 +109,8 @@ describe('/api/projects/[id]/branches', () => {
       newRefName: 'new-branch',
       fromRefName: 'main',
       provider: 'openai',
-      model: 'gpt-5.2'
+      model: 'gpt-5.2',
+      previousResponseId: null
     });
     expect(mocks.createBranch).not.toHaveBeenCalled();
   });
