@@ -24,7 +24,9 @@ function buildOpenAIBlocksFromRaw(rawResponse: unknown): ThinkingContentBlock[] 
       : [];
   let text = '';
 
-  const hasResponsesEvents = parts.some((part) => typeof (part as any)?.type === 'string' && String((part as any).type).startsWith('response.'));
+  const hasResponsesEvents = parts.some(
+    (part: unknown) => typeof (part as any)?.type === 'string' && String((part as any).type).startsWith('response.')
+  );
   if (hasResponsesEvents) {
     for (const event of parts) {
       const delta = extractOpenAIResponsesDelta(event);

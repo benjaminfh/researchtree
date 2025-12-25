@@ -198,7 +198,7 @@ function toOpenAIResponsesInput(messages: ChatMessage[]): {
     .filter((message) => message.role !== 'system')
     .map((message) => ({
       role: message.role as 'user' | 'assistant',
-      content: [{ type: 'text', text: flattenMessageContent(message.content) }]
+      content: [{ type: 'text' as const, text: flattenMessageContent(message.content) }]
     }))
     .filter((item) => item.content[0]?.text?.trim());
 
