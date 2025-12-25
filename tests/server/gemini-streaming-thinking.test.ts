@@ -30,7 +30,7 @@ vi.mock('@google/generative-ai', async () => {
   };
 });
 
-type GeminiPart = { text?: string; thought?: boolean; thoughtSignature?: string };
+type GeminiPart = { text?: string; thought?: unknown; thoughtSignature?: string };
 
 const makeChunk = (parts: GeminiPart[], textSpy?: () => string) => ({
   candidates: [
@@ -110,6 +110,44 @@ describe('Gemini streaming thinking', () => {
 
     expect(chunkTextSpy).not.toHaveBeenCalled();
     expect(chunkTextSpy2).not.toHaveBeenCalled();
+    expect(responseTextSpy).not.toHaveBeenCalled();
+  });
+
+  it('treats truthy thought markers as thinking', async () => {
+    const chunkTextSpy = vi.fn(() => 'should-not-use');
+    const responseTextSpy = vi.fn(() => 'should-not-use');
+
+    const chunks = [makeChunk([{ thought: 'true', text: 'think' }, { text: 'Answer' }], chunkTextSpy)];
+    const response = makeChunk([{ thought: 'true', text: 'think' }, { text: 'Answer' }], responseTextSpy);
+
+    generateContentStream.mockResolvedValueOnce({
+      stream: (async function* () {
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+      })(),
+      response: Promise.resolve(response)
+    });
+
+    const { streamAssistantCompletion } = await import('@/src/server/llm');
+    const output: Array<{ type: string; content?: string; append?: boolean }> = [];
+    for await (const chunk of streamAssistantCompletion({
+      provider: 'gemini',
+      apiKey: 'user-key',
+      thinking: 'low',
+      messages: [{ role: 'user', content: 'hi' }]
+    })) {
+      output.push({ type: chunk.type, content: chunk.content, append: chunk.append });
+    }
+
+    const trimmed = output.filter((chunk) => chunk.type !== 'raw_response');
+
+    expect(trimmed).toEqual([
+      { type: 'thinking', content: 'think', append: true },
+      { type: 'text', content: 'Answer', append: undefined }
+    ]);
+
+    expect(chunkTextSpy).not.toHaveBeenCalled();
     expect(responseTextSpy).not.toHaveBeenCalled();
   });
 });
