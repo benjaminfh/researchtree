@@ -2,9 +2,6 @@ import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { z } from 'zod';
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
-
 const updateKeysSchema = z
   .object({
     openaiToken: z.string().max(500).optional().nullable(),
