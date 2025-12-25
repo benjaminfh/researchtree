@@ -1781,7 +1781,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 >
                   <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 flex flex-wrap items-center gap-3">
                     {branchName !== trunkName && sharedCount > 0 ? (
-                      <div className="pointer-events-auto w-full md:w-3/5">
+                      <div className="pointer-events-auto w-full md:w-3/5 md:ml-4">
                         <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[rgba(238,243,255,0.95)] px-4 py-3 text-sm text-slate-700 shadow-sm">
                           <div className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-primary/80" />
@@ -1797,7 +1797,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                         </div>
                       </div>
                     ) : null}
-                    <div className="pointer-events-auto ml-auto flex flex-wrap items-center justify-end gap-2">
+                    <div className="pointer-events-auto ml-auto flex flex-wrap items-center justify-end gap-2 md:mr-4">
                       <span className="text-xs text-muted">{branchModel}</span>
                       <div className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs shadow-sm">
                         <span className="font-medium text-slate-700">Provider</span>
@@ -2461,7 +2461,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <span className="flex-1 text-left">
                       {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
                     </span>
-                    <span className="flex-1 text-center">⌘ + Enter to send · Shift + Enter adds a newline.</span>
+                    <span className="flex-[2] whitespace-nowrap text-center">
+                      ⌘ + Enter to send · Shift + Enter adds a newline.
+                    </span>
                     <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
                       {state.isStreaming ? 'Streaming…' : ''}
                     </span>
