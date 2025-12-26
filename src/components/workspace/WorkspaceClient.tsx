@@ -1678,57 +1678,59 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   {branchActionError ? <p className="text-sm text-red-600">{branchActionError}</p> : null}
                 </div>
 
-                <NewBranchFormCard
-                  fromLabel={displayBranchName(branchName)}
-                  value={newBranchName}
-                  onValueChange={setNewBranchName}
-                  onSubmit={() => void createBranch()}
-                  disabled={isSwitching}
-                  submitting={isCreating}
-                  error={branchActionError}
-                  providerSelector={
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                        <span className="font-semibold text-slate-700">Provider</span>
-                        <select
-                          value={newBranchProvider}
-                          onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
-                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                          disabled={isSwitching || isCreating}
-                        >
-                          {selectableProviderOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                        <span className="font-semibold text-slate-700">Thinking</span>
-                        <select
-                          value={newBranchThinking}
-                          onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
-                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                          disabled={isSwitching || isCreating}
-                        >
-                          {(() => {
-                            const branchModel =
-                              providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
-                              getDefaultModelForProviderFromCapabilities(newBranchProvider);
-                            const allowed = branchModel
-                              ? getAllowedThinkingSettings(newBranchProvider, branchModel)
-                              : THINKING_SETTINGS;
-                            return allowed.map((setting) => (
-                              <option key={setting} value={setting}>
-                                {THINKING_SETTING_LABELS[setting]}
+                {features.uiRailBranchCreator ? (
+                  <NewBranchFormCard
+                    fromLabel={displayBranchName(branchName)}
+                    value={newBranchName}
+                    onValueChange={setNewBranchName}
+                    onSubmit={() => void createBranch()}
+                    disabled={isSwitching}
+                    submitting={isCreating}
+                    error={branchActionError}
+                    providerSelector={
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                          <span className="font-semibold text-slate-700">Provider</span>
+                          <select
+                            value={newBranchProvider}
+                            onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                            className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                            disabled={isSwitching || isCreating}
+                          >
+                            {selectableProviderOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
                               </option>
-                            ));
-                          })()}
-                        </select>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                          <span className="font-semibold text-slate-700">Thinking</span>
+                          <select
+                            value={newBranchThinking}
+                            onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                            className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                            disabled={isSwitching || isCreating}
+                          >
+                            {(() => {
+                              const branchModel =
+                                providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                                getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                              const allowed = branchModel
+                                ? getAllowedThinkingSettings(newBranchProvider, branchModel)
+                                : THINKING_SETTINGS;
+                              return allowed.map((setting) => (
+                                <option key={setting} value={setting}>
+                                  {THINKING_SETTING_LABELS[setting]}
+                                </option>
+                              ));
+                            })()}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                  }
-                />
+                    }
+                  />
+                ) : null}
 
               </>
             ) : null}

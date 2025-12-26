@@ -78,7 +78,10 @@ const DotNode = ({ data }: NodeProps<DotNodeData>) => (
       className="!h-2 !w-2 !border-0 !bg-transparent"
       style={{ left: 8, bottom: -2, opacity: 0 }}
     />
-    <span className={`relative z-10 inline-flex rounded-full ${data.isSelected ? 'ring-2 ring-primary/40 ring-offset-2' : ''}`}>
+    <span
+      className={`relative z-10 inline-flex rounded-full ${data.isSelected ? 'ring-2 ring-primary/40 ring-offset-2' : ''}`}
+      style={{ transform: 'translateX(-2px)' }}
+    >
       {data.icon === 'assistant' ? (
         <span
           className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white"
@@ -1041,7 +1044,7 @@ export function layoutGraph(
     const newIndex = totalRows - 1 - oldIndex;
     const lane = vertices[newIndex].getLane();
     const rightMostAtRow = vertices[newIndex].getMaxReservedX();
-    const x = lane * laneSpacing;
+    const x = lane * laneSpacing - 20;
     const y = oldIndex * rowSpacing;
     const color = getBranchColor(node.originBranchId, trunkName, branchColors);
     const labelTranslateX =
