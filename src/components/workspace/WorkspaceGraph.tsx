@@ -5,6 +5,7 @@ import ReactFlow, {
   Background,
   type Edge,
   type EdgeProps,
+  EdgeLabelRenderer,
   Handle,
   PanOnScrollMode,
   type ReactFlowInstance,
@@ -16,6 +17,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import type { NodeRecord } from '@git/types';
 import { deriveTextFromBlocks, getContentBlocksWithLegacyFallback } from '@/src/shared/thinkingTraces';
+import { features } from '@/src/config/features';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { ArrowLeftCircleIcon, CpuChipIcon, UserIcon } from './HeroIcons';
@@ -47,6 +49,7 @@ interface GitEdgeData {
   style: 'angular' | 'curve';
   lockedFirst: boolean;
   strokeWidth?: number;
+  hiddenCount?: number;
 }
 
 const rowSpacing = 45;
@@ -59,6 +62,7 @@ const LABEL_BASE_OFFSET = 24; // icon (16) + gap (8)
 const LABEL_ROW_GAP = 20; // gap after the right-most line when the node isn't on it
 const EDGE_ANGULAR_BEND = 0.32;
 const EDGE_CURVE_BEND = 0.7;
+const EDGE_STYLE = features.graphEdgeStyle;
 
 const DotNode = ({ data }: NodeProps<DotNodeData>) => (
   <div className="relative flex items-center gap-2">
@@ -125,20 +129,83 @@ const DotNode = ({ data }: NodeProps<DotNodeData>) => (
 
 const GitEdge = ({ sourceX, sourceY, targetX, targetY, data }: EdgeProps<GitEdgeData>) => {
   const path =
-    data?.style === 'curve'
+    EDGE_STYLE === 'orthogonal'
+      ? buildOrthogonalRoundedPath(sourceX, sourceY, targetX, targetY, laneSpacing / 2.5)
+      : data?.style === 'curve'
       ? buildCurvePath(sourceX, sourceY, targetX, targetY)
       : buildAngularPath(sourceX, sourceY, targetX, targetY, data?.lockedFirst);
+  const hiddenCount = data?.hiddenCount ?? 0;
+  const strokeWidth = data?.strokeWidth ?? 2;
+  const dotSize = strokeWidth * 4;
+  const edgeAngle = (Math.atan2(targetY - sourceY, targetX - sourceX) * 180) / Math.PI;
+  let labelX = (sourceX + targetX) / 2;
+  let labelY = (sourceY + targetY) / 2;
+  let labelAngle = edgeAngle;
+  if (EDGE_STYLE === 'orthogonal') {
+    if (sourceX === targetX || sourceY === targetY) {
+      labelAngle = sourceX === targetX ? 90 : 0;
+    } else {
+      const bendY = getOrthogonalBendY(sourceY, targetY);
+      const seg1 = Math.abs(bendY - sourceY);
+      const seg2 = Math.abs(targetX - sourceX);
+      const seg3 = Math.abs(targetY - bendY);
+      const total = seg1 + seg2 + seg3;
+      const half = total / 2;
+      if (half <= seg1) {
+        labelX = sourceX;
+        labelY = sourceY + Math.sign(bendY - sourceY) * half;
+        labelAngle = 90;
+      } else if (half <= seg1 + seg2) {
+        labelX = sourceX + Math.sign(targetX - sourceX) * (half - seg1);
+        labelY = bendY;
+        labelAngle = 0;
+      } else {
+        labelX = targetX;
+        labelY = bendY + Math.sign(targetY - bendY) * (half - seg1 - seg2);
+        labelAngle = 90;
+      }
+    }
+  }
   return (
-    <path
-      d={path}
-      className="react-flow__edge-path"
-      style={{
-        fill: 'none',
-        stroke: data?.color ?? '#94a3b8',
-        strokeWidth: data?.strokeWidth ?? 2,
-        strokeLinecap: 'round'
-      }}
-    />
+    <>
+      <path
+        d={path}
+        className="react-flow__edge-path"
+        style={{
+          fill: 'none',
+          stroke: data?.color ?? '#94a3b8',
+          strokeWidth,
+          strokeLinecap: 'round'
+        }}
+      />
+      {hiddenCount > 0 ? (
+        <EdgeLabelRenderer>
+          <div
+            className="pointer-events-auto z-10"
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px) rotate(${labelAngle}deg)`
+            }}
+          >
+            <div className="group relative flex items-center">
+              <span
+                className="rounded-full"
+                style={{ width: dotSize, height: dotSize, backgroundColor: data?.color ?? '#94a3b8', opacity: 0.6 }}
+              />
+              <span
+                className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-900/90 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow-md ring-1 transition-opacity group-hover:opacity-100"
+                style={{
+                  transform: `translate(-80%, -25%) rotate(${-labelAngle}deg)`,
+                  boxShadow: `0 0 0 1px ${data?.color ?? '#94a3b8'}`
+                }}
+              >
+                {hiddenCount} hidden nodes
+              </span>
+            </div>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
   );
 };
 
@@ -156,6 +223,50 @@ function buildAngularPath(sx: number, sy: number, tx: number, ty: number, locked
   return `M ${sx},${sy} L ${sx},${sy + d} L ${tx},${ty}`;
 }
 
+function getOrthogonalBendY(sy: number, ty: number) {
+  const dy = ty - sy;
+  const bend = sy + dy * EDGE_ANGULAR_BEND;
+  if (Math.abs(bend - sy) < 1 || Math.abs(ty - bend) < 1) {
+    return sy + dy / 2;
+  }
+  return bend;
+}
+
+function buildOrthogonalRoundedPath(sx: number, sy: number, tx: number, ty: number, radius: number) {
+  if (sx === tx || sy === ty) {
+    return `M ${sx},${sy} L ${tx},${ty}`;
+  }
+
+  const bendY = getOrthogonalBendY(sy, ty);
+  const dx = tx - sx;
+  const dy1 = bendY - sy;
+  const dy2 = ty - bendY;
+  const signX = Math.sign(dx) || 1;
+  const signY1 = Math.sign(dy1) || 1;
+  const signY2 = Math.sign(dy2) || 1;
+  const r = Math.min(radius, Math.abs(dy1), Math.abs(dx), Math.abs(dy2));
+  if (r < 0.5) {
+    return `M ${sx},${sy} L ${sx},${bendY} L ${tx},${bendY} L ${tx},${ty}`;
+  }
+
+  const sweep1 = signX === signY1 ? 0 : 1;
+  const sweep2 = signX === signY2 ? 1 : 0;
+
+  const p1y = bendY - signY1 * r;
+  const p2x = sx + signX * r;
+  const p3x = tx - signX * r;
+  const p4y = bendY + signY2 * r;
+
+  return [
+    `M ${sx},${sy}`,
+    `L ${sx},${p1y}`,
+    `A ${r} ${r} 0 0 ${sweep1} ${p2x} ${bendY}`,
+    `L ${p3x} ${bendY}`,
+    `A ${r} ${r} 0 0 ${sweep2} ${tx} ${p4y}`,
+    `L ${tx},${ty}`
+  ].join(' ');
+}
+
 function buildCurvePath(sx: number, sy: number, tx: number, ty: number) {
   const d = Math.abs(ty - sy) * EDGE_CURVE_BEND;
   return `M ${sx},${sy} C ${sx},${sy + d} ${tx},${ty - d} ${tx},${ty}`;
@@ -169,6 +280,7 @@ export interface GraphNode {
   isOnActiveBranch: boolean;
   label: string;
   icon?: 'assistant' | 'user' | 'merge';
+  hiddenCountByParent?: Record<string, number>;
 }
 
 interface Point {
@@ -572,16 +684,19 @@ function buildCollapsedGraphNodes(
 
   const important = new Set<string>();
   for (const [branchName, nodes] of orderedBranchEntries) {
-    const tip = nodes[nodes.length - 1];
-    if (tip) important.add(tip.id);
+    const createdOnBranch = nodes.filter((node) => node.createdOnBranch === branchName);
+    if (createdOnBranch.length >= 2) {
+      important.add(createdOnBranch[0].id);
+      important.add(createdOnBranch[createdOnBranch.length - 1].id);
+    } else if (createdOnBranch.length === 1) {
+      important.add(createdOnBranch[0].id);
+    }
     if (branchName === trunkName) continue;
     const max = Math.min(nodes.length, trunkHistory.length);
     let idx = 0;
     while (idx < max && nodes[idx]?.id === trunkHistory[idx]?.id) idx += 1;
     const forkBase = idx > 0 ? trunkHistory[idx - 1] : null;
-    const firstUnique = idx < nodes.length ? nodes[idx] : null;
     if (forkBase) important.add(forkBase.id);
-    if (firstUnique) important.add(firstUnique.id);
   }
   for (const id of mergeNodeIds) important.add(id);
 
@@ -606,16 +721,18 @@ function buildCollapsedGraphNodes(
     }
   }
 
-  const resolveIncludedAncestor = (startId: string | null): string | null => {
+  const resolveIncludedAncestor = (startId: string | null): { id: string | null; hiddenCount: number } => {
     let current: string | null = startId;
     const seen = new Set<string>();
+    let hiddenCount = 0;
     while (current) {
-      if (important.has(current)) return current;
-      if (seen.has(current)) return null;
+      if (important.has(current)) return { id: current, hiddenCount };
+      if (seen.has(current)) return { id: null, hiddenCount };
       seen.add(current);
+      hiddenCount += 1;
       current = primaryParentById.get(current) ?? null;
     }
-    return null;
+    return { id: null, hiddenCount };
   };
 
   const collapsedNodes: GraphNode[] = [];
@@ -626,12 +743,19 @@ function buildCollapsedGraphNodes(
     const originBranchId = node.createdOnBranch ?? inferredBranch;
 
     const parents: string[] = [];
+    const hiddenCountByParent: Record<string, number> = {};
     const primary = resolveIncludedAncestor(node.parent);
-    if (primary) parents.push(primary);
+    if (primary.id) {
+      parents.push(primary.id);
+      hiddenCountByParent[primary.id] = primary.hiddenCount;
+    }
     const mergeParents = mergeParentsById.get(id) ?? [];
     for (const mergeParentId of mergeParents) {
       const resolved = resolveIncludedAncestor(mergeParentId);
-      if (resolved && !parents.includes(resolved)) parents.push(resolved);
+      if (resolved.id && !parents.includes(resolved.id)) {
+        parents.push(resolved.id);
+        hiddenCountByParent[resolved.id] = resolved.hiddenCount;
+      }
     }
 
     collapsedNodes.push({
@@ -648,7 +772,8 @@ function buildCollapsedGraphNodes(
           ? node.role === 'assistant'
             ? 'assistant'
             : 'user'
-          : undefined
+          : undefined,
+      hiddenCountByParent: Object.keys(hiddenCountByParent).length > 0 ? hiddenCountByParent : undefined
     });
   }
 
@@ -848,7 +973,8 @@ function buildSimpleLayout(
         data: {
           color,
           style: sameLane ? 'angular' : 'curve',
-          lockedFirst: !sameLane
+          lockedFirst: !sameLane,
+          hiddenCount: node.hiddenCountByParent?.[parentId]
         }
       });
     });
@@ -957,7 +1083,8 @@ export function layoutGraph(
         data: {
           color,
           style: sameLane ? 'angular' : 'curve',
-          lockedFirst: parentLane < childLane
+          lockedFirst: parentLane < childLane,
+          hiddenCount: node.hiddenCountByParent?.[parentId]
         }
       });
     });
