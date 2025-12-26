@@ -65,7 +65,7 @@ const makeForkMergeNodes = (): GraphNode[] => [
 describe('layoutGraph', () => {
   it('falls back to the simple layout when the iteration budget is exhausted', () => {
     const nodes = makeLinearNodes(5);
-    const result = layoutGraph(nodes, 'feature', 'main', { maxIterations: 1 });
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, { maxIterations: 0 });
 
     expect(result.usedFallback).toBe(true);
     expect(result.nodes).toHaveLength(nodes.length);
