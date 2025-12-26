@@ -1934,7 +1934,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   <p className="text-sm italic text-muted">No new messages on this branch yet.</p>
                 ) : null}
 
-                {sortedBranches.length > 1 || state.error || thinkingUnsupportedError ? (
+                {sortedBranches.length > 0 || state.error || thinkingUnsupportedError ? (
                   <div className="absolute bottom-4 left-4 right-10 flex items-center gap-3">
                     {state.error || thinkingUnsupportedError ? (
                       <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full border border-red-200 bg-red-50 px-4 text-sm text-red-700">
