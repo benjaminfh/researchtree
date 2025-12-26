@@ -479,6 +479,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [insightCollapsed, setInsightCollapsed] = useState(false);
   const [chatPaneWidth, setChatPaneWidth] = useState<number | null>(null);
   const paneContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastPaneWidthRef = useRef<number | null>(null);
   const isResizingRef = useRef(false);
   const savedChatPaneWidthRef = useRef<number | null>(null);
   const [graphHistories, setGraphHistories] = useState<Record<string, NodeRecord[]> | null>(null);
@@ -903,6 +904,32 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, [chatPaneWidth, insightCollapsed]);
+
+  useEffect(() => {
+    const container = paneContainerRef.current;
+    if (!container || !chatPaneWidth) return;
+    const clampWidth = (currentWidth: number, nextPaneWidth: number) => {
+      const rightMin = insightCollapsed ? 56 : 360;
+      const maxChat = Math.max(0, nextPaneWidth - rightMin - 24);
+      if (maxChat <= 0) return currentWidth;
+      const adjusted = currentWidth + (nextPaneWidth - (lastPaneWidthRef.current ?? nextPaneWidth));
+      return Math.min(adjusted, Math.floor(maxChat));
+    };
+    const syncWidth = () => {
+      const rect = container.getBoundingClientRect();
+      if (!Number.isFinite(rect.width) || rect.width <= 0) return;
+      const nextChat = clampWidth(chatPaneWidth, rect.width);
+      lastPaneWidthRef.current = rect.width;
+      if (nextChat !== chatPaneWidth) {
+        setChatPaneWidth(nextChat);
+      }
+    };
+    syncWidth();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => syncWidth());
+    observer.observe(container);
+    return () => observer.disconnect();
   }, [chatPaneWidth, insightCollapsed]);
 
   useEffect(() => {
