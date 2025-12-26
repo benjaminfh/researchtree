@@ -24,7 +24,7 @@ import type { FC } from 'react';
 import { RailLayout } from '@/src/components/layout/RailLayout';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { WorkspaceGraph } from './WorkspaceGraph';
-import { getBranchColor } from './branchColors';
+import { buildBranchColorMap, getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { RailPopover } from '@/src/components/layout/RailPopover';
@@ -378,6 +378,7 @@ const NodeBubble: FC<{
 const ChatNodeRow: FC<{
   node: NodeRecord;
   trunkName: string;
+  branchColors?: Record<string, string>;
   muted?: boolean;
   subtitle?: string;
   messageInsetClassName?: string;
@@ -387,9 +388,22 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
-}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff, highlighted }) => {
+}> = ({
+  node,
+  trunkName,
+  branchColors,
+  muted,
+  subtitle,
+  messageInsetClassName,
+  isStarred,
+  onToggleStar,
+  onEdit,
+  isCanvasDiffPinned,
+  onPinCanvasDiff,
+  highlighted
+}) => {
   const isUser = node.type === 'message' && node.role === 'user';
-  const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName);
+  const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
 
   return (
     <div className="grid min-w-0 grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
@@ -471,7 +485,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
+  const [composerPadding, setComposerPadding] = useState(128);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const openEditModal = (node: MessageNode) => {
+    setEditingNode(node);
+    setEditDraft(node.content);
+    setEditBranchName('');
+    setEditError(null);
+    setEditProvider(normalizeProviderForUi(branchProvider));
+    setEditThinking(thinking);
+    setShowEditModal(true);
+  };
 
   const {
     data: starsData,
@@ -943,6 +968,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
   const displayBranchName = (name: string) => (name === trunkName ? 'trunk' : name);
   const sortedBranches = branches;
+  const branchColorMap = useMemo(
+    () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
+    [sortedBranches, trunkName]
+  );
   const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
   const lastGraphRequestKeyRef = useRef<string | null>(null);
 
@@ -973,6 +1002,17 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     void load();
     return () => controller.abort();
   }, [insightCollapsed, insightTab, graphRequestKey, project.id, graphHistories, graphHistoryError]);
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
+      setComposerPadding(next);
+    });
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -1638,57 +1678,59 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   {branchActionError ? <p className="text-sm text-red-600">{branchActionError}</p> : null}
                 </div>
 
-                <NewBranchFormCard
-                  fromLabel={displayBranchName(branchName)}
-                  value={newBranchName}
-                  onValueChange={setNewBranchName}
-                  onSubmit={() => void createBranch()}
-                  disabled={isSwitching}
-                  submitting={isCreating}
-                  error={branchActionError}
-                  providerSelector={
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                        <span className="font-semibold text-slate-700">Provider</span>
-                        <select
-                          value={newBranchProvider}
-                          onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
-                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                          disabled={isSwitching || isCreating}
-                        >
-                          {selectableProviderOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                        <span className="font-semibold text-slate-700">Thinking</span>
-                        <select
-                          value={newBranchThinking}
-                          onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
-                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                          disabled={isSwitching || isCreating}
-                        >
-                          {(() => {
-                            const branchModel =
-                              providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
-                              getDefaultModelForProviderFromCapabilities(newBranchProvider);
-                            const allowed = branchModel
-                              ? getAllowedThinkingSettings(newBranchProvider, branchModel)
-                              : THINKING_SETTINGS;
-                            return allowed.map((setting) => (
-                              <option key={setting} value={setting}>
-                                {THINKING_SETTING_LABELS[setting]}
+                {features.uiRailBranchCreator ? (
+                  <NewBranchFormCard
+                    fromLabel={displayBranchName(branchName)}
+                    value={newBranchName}
+                    onValueChange={setNewBranchName}
+                    onSubmit={() => void createBranch()}
+                    disabled={isSwitching}
+                    submitting={isCreating}
+                    error={branchActionError}
+                    providerSelector={
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                          <span className="font-semibold text-slate-700">Provider</span>
+                          <select
+                            value={newBranchProvider}
+                            onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                            className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                            disabled={isSwitching || isCreating}
+                          >
+                            {selectableProviderOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
                               </option>
-                            ));
-                          })()}
-                        </select>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                          <span className="font-semibold text-slate-700">Thinking</span>
+                          <select
+                            value={newBranchThinking}
+                            onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                            className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                            disabled={isSwitching || isCreating}
+                          >
+                            {(() => {
+                              const branchModel =
+                                providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                                getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                              const allowed = branchModel
+                                ? getAllowedThinkingSettings(newBranchProvider, branchModel)
+                                : THINKING_SETTINGS;
+                              return allowed.map((setting) => (
+                                <option key={setting} value={setting}>
+                                  {THINKING_SETTING_LABELS[setting]}
+                                </option>
+                              ));
+                            })()}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                  }
-                />
+                    }
+                  />
+                ) : null}
 
               </>
             ) : null}
@@ -1780,7 +1822,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         )}
         renderMain={(ctx) => (
           <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
-            <div className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-32 pt-3 md:px-8 lg:px-12">
+            <div
+              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-12"
+              style={{ paddingBottom: composerPadding }}
+            >
               <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
                 <section
                   className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${
@@ -1847,12 +1892,17 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 key={node.id}
                                 node={node}
                                 trunkName={trunkName}
+                                branchColors={branchColorMap}
                                 muted
                                 messageInsetClassName="pr-3"
                                 subtitle={node.createdOnBranch ? `from ${node.createdOnBranch}` : undefined}
                                 isStarred={starredSet.has(node.id)}
                                 onToggleStar={() => void toggleStar(node.id)}
-                                onEdit={undefined}
+                                onEdit={
+                                  node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
+                                    ? (n) => openEditModal(n)
+                                    : undefined
+                                }
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
                                 highlighted={highlightedNodeId === node.id}
@@ -1871,20 +1921,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           key={node.id}
                           node={node}
                           trunkName={trunkName}
+                          branchColors={branchColorMap}
                           messageInsetClassName="pr-3"
                           isStarred={starredSet.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
                             node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
-                              ? (n) => {
-                                  setEditingNode(n);
-                                  setEditDraft(n.content);
-                                  setEditBranchName('');
-                                  setEditError(null);
-                                  setEditProvider(normalizeProviderForUi(branchProvider));
-                                  setEditThinking(thinking);
-                                  setShowEditModal(true);
-                                }
+                              ? (n) => openEditModal(n)
                               : undefined
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
@@ -2129,6 +2172,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                               }
                               activeBranchName={branchName}
                               trunkName={trunkName}
+                              branchColors={branchColorMap}
                               mode={graphMode}
                               onModeChange={setGraphMode}
                               starredNodeIds={stableStarredNodeIds}
@@ -2417,7 +2461,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
               style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
             >
-              <div className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer">
+              <div
+                ref={composerRef}
+                className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+              >
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2871,13 +2918,14 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     const editModel =
                       providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
                       getDefaultModelForProviderFromCapabilities(editProvider);
+                    const fromRef = editingNode?.createdOnBranch ?? branchName;
                     const res = await fetch(`/api/projects/${project.id}/edit`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         content: editDraft.trim(),
                         branchName: editBranchName.trim(),
-                        fromRef: branchName,
+                        fromRef,
                         llmProvider: editProvider,
                         llmModel: editModel,
                         thinking: editThinking,

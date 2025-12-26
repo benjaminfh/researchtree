@@ -140,7 +140,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                         const isConfirming = confirming.has(project.id);
                         return (
                           <li key={project.id} className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm">
-                            <div className="flex min-w-0 items-center gap-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
                               <span
                                 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
                                 title={project.name}
