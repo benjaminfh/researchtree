@@ -1953,7 +1953,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       <div className="flex-1" />
                     )}
 
-                    {sortedBranches.length > 1 ? (
+                    {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
                         <div ref={newBranchPopoverRef} className="relative h-11">
                           {showNewBranchPopover ? (
@@ -2046,22 +2046,24 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMergeError(null);
-                            setMergeSummary('');
-                            setMergeTargetBranch(trunkName);
-                            setShowMergeModal(true);
-                          }}
-                          disabled={isMerging}
-                          className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
-                        >
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                            <BlueprintIcon icon="git-merge" className="h-4 w-4" />
-                          </span>
-                          Merge…
-                        </button>
+                        {sortedBranches.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMergeError(null);
+                              setMergeSummary('');
+                              setMergeTargetBranch(trunkName);
+                              setShowMergeModal(true);
+                            }}
+                            disabled={isMerging}
+                            className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                          >
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                              <BlueprintIcon icon="git-merge" className="h-4 w-4" />
+                            </span>
+                            Merge…
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
