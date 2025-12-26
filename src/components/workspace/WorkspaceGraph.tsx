@@ -687,12 +687,24 @@ function buildCollapsedGraphNodes(
 
   const important = new Set<string>();
   for (const [branchName, nodes] of orderedBranchEntries) {
-    const createdOnBranch = nodes.filter((node) => node.createdOnBranch === branchName);
-    if (createdOnBranch.length >= 2) {
-      important.add(createdOnBranch[0].id);
-      important.add(createdOnBranch[createdOnBranch.length - 1].id);
-    } else if (createdOnBranch.length === 1) {
-      important.add(createdOnBranch[0].id);
+    if (features.uiCollapsedBranchTwoNodes) {
+      const createdOnBranch = nodes.filter((node) => node.createdOnBranch === branchName);
+      if (createdOnBranch.length >= 2) {
+        important.add(createdOnBranch[0].id);
+        important.add(createdOnBranch[createdOnBranch.length - 1].id);
+      } else if (createdOnBranch.length === 1) {
+        important.add(createdOnBranch[0].id);
+      }
+    } else {
+      const tip = nodes[nodes.length - 1];
+      if (tip) important.add(tip.id);
+      if (branchName !== trunkName) {
+        const max = Math.min(nodes.length, trunkHistory.length);
+        let idx = 0;
+        while (idx < max && nodes[idx]?.id === trunkHistory[idx]?.id) idx += 1;
+        const firstUnique = idx < nodes.length ? nodes[idx] : null;
+        if (firstUnique) important.add(firstUnique.id);
+      }
     }
     if (branchName === trunkName) continue;
     const max = Math.min(nodes.length, trunkHistory.length);
