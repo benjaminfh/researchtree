@@ -750,6 +750,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           contentBlocks: streamBlocks,
           timestamp: Date.now(),
           parent: optimisticUserNode?.id ?? null,
+          createdOnBranch: optimisticUserNode?.createdOnBranch ?? branchName,
           interrupted: state.error !== null
         }
       : null;
