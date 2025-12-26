@@ -41,8 +41,14 @@ function createInMemoryStorage() {
 }
 
 function ensureStorage(name: 'localStorage' | 'sessionStorage') {
-  const current = (window as any)[name];
+  const descriptor =
+    Object.getOwnPropertyDescriptor(window, name) ??
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), name);
+  const current = descriptor?.value as Storage | undefined;
   if (current && typeof current.clear === 'function') {
+    return;
+  }
+  if (descriptor && descriptor.configurable === false) {
     return;
   }
   Object.defineProperty(window, name, {

@@ -85,7 +85,11 @@ describe('/api/projects/[id]/branches', () => {
   it('creates branch', async () => {
     const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
     expect(res.status).toBe(201);
-    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main');
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
+      provider: 'openai',
+      model: 'gpt-5.2',
+      previousResponseId: null
+    });
   });
 
   it('creates branch via Postgres when RT_STORE=pg', async () => {
@@ -103,7 +107,10 @@ describe('/api/projects/[id]/branches', () => {
     expect(mocks.rtCreateRefFromRefShadowV1).toHaveBeenCalledWith({
       projectId: 'project-1',
       newRefName: 'new-branch',
-      fromRefName: 'main'
+      fromRefName: 'main',
+      provider: 'openai',
+      model: 'gpt-5.2',
+      previousResponseId: null
     });
     expect(mocks.createBranch).not.toHaveBeenCalled();
   });

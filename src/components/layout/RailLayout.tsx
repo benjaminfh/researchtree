@@ -50,16 +50,16 @@ export function RailLayout({
   const ctx: RailLayoutContext = { railCollapsed, toggleRail };
 
   return (
-    <div className={`grid ${outerClassName}`} style={{ gridTemplateColumns: railCollapsed ? '72px minmax(0, 1fr)' : '270px minmax(0, 1fr)' }}>
+    <div className={`grid ${outerClassName}`} style={{ gridTemplateColumns: railCollapsed ? '54px minmax(0, 1fr)' : '270px minmax(0, 1fr)' }}>
       <aside className={asideClassName}>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={toggleRail}
-            className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
+            className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
             aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
           >
-            {railCollapsed ? <MenuIcon className="h-5 w-5" /> : <MenuClosedIcon className="h-5 w-5" />}
+            {railCollapsed ? <MenuIcon className="h-4 w-4" /> : <MenuClosedIcon className="h-4 w-4" />}
           </button>
           {!railCollapsed ? (
             pathname === '/' ? (

@@ -19,6 +19,11 @@ function formatRpcError(error: any): string {
     .join(' ');
 }
 
+function normalizeKeyedProvider(provider: LLMProvider): KeyedProvider {
+  if (provider === 'openai_responses') return 'openai';
+  return provider as KeyedProvider;
+}
+
 function assertKeyedProvider(provider: LLMProvider): asserts provider is KeyedProvider {
   if (provider === 'mock') {
     throw new Error('Mock provider has no API key');
@@ -62,11 +67,12 @@ export async function rtSetUserLlmKeyV1(input: { provider: KeyedProvider; secret
 }
 
 export async function rtGetUserLlmKeyServerV1(input: { userId: string; provider: LLMProvider }): Promise<string | null> {
-  assertKeyedProvider(input.provider);
+  const normalized = normalizeKeyedProvider(input.provider);
+  assertKeyedProvider(normalized);
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase.rpc('rt_get_user_llm_key_server_v1', {
     p_user_id: input.userId,
-    p_provider: input.provider
+    p_provider: normalized
   });
   if (error) {
     throw new Error(formatRpcError(error));

@@ -10,7 +10,13 @@ import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import { APP_NAME, storageKey } from '@/src/config/app';
+import { storageKey } from '@/src/config/app';
+import {
+  deriveTextFromBlocks,
+  deriveThinkingFromBlocks,
+  getContentBlocksWithLegacyFallback,
+  type ThinkingContentBlock
+} from '@/src/shared/thinkingTraces';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
@@ -18,7 +24,7 @@ import type { FC } from 'react';
 import { RailLayout } from '@/src/components/layout/RailLayout';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { WorkspaceGraph } from './WorkspaceGraph';
-import { getBranchColor } from './branchColors';
+import { buildBranchColorMap, getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { RailPopover } from '@/src/components/layout/RailPopover';
@@ -41,6 +47,26 @@ const fetchJson = async <T,>(url: string): Promise<T> => {
     throw new Error(`Failed to fetch ${url}`);
   }
   return res.json();
+};
+
+const normalizeProviderForUi = (provider: LLMProvider): LLMProvider => {
+  return provider === 'openai_responses' ? 'openai' : provider;
+};
+
+const getNodeBlocks = (node: NodeRecord): ThinkingContentBlock[] => {
+  return getContentBlocksWithLegacyFallback(node);
+};
+
+const getNodeText = (node: NodeRecord): string => {
+  if (node.type !== 'message') return '';
+  const blocks = getNodeBlocks(node);
+  return deriveTextFromBlocks(blocks) || node.content;
+};
+
+const getNodeThinkingText = (node: NodeRecord): string => {
+  if (node.type !== 'message') return '';
+  const blocks = getNodeBlocks(node);
+  return deriveThinkingFromBlocks(blocks);
 };
 
 type DiffLine = {
@@ -84,7 +110,9 @@ const NodeBubble: FC<{
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const isAssistantPending = node.type === 'message' && node.role === 'assistant' && node.id === 'assistant-pending';
-  const canCopy = node.type === 'message' && node.content.length > 0;
+  const messageText = getNodeText(node);
+  const thinkingText = getNodeThinkingText(node);
+  const canCopy = node.type === 'message' && messageText.length > 0;
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showCanvasDiff, setShowCanvasDiff] = useState(false);
@@ -92,7 +120,9 @@ const NodeBubble: FC<{
   const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
   const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
+  const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
+  const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const width = isUser ? 'min-w-[14rem] max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
   const palette = muted
@@ -139,13 +169,35 @@ const NodeBubble: FC<{
   return (
     <article className={`flex flex-col gap-1 ${align}`}>
       <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
-        {node.type === 'message' && node.content ? (
+        {hasThinking ? (
+          <div
+            className={`mb-3 rounded-xl border border-slate-200/70 bg-slate-50 ${
+              showThinking ? 'p-3' : 'px-3 py-2'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <span className="font-semibold text-slate-700">Thinking</span>
+              <button
+                type="button"
+                onClick={() => setShowThinking((prev) => !prev)}
+                className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                aria-label={showThinking ? 'Hide thinking' : 'Show thinking'}
+              >
+                {showThinking ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {showThinking ? (
+              <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">{thinkingText}</p>
+            ) : null}
+          </div>
+        ) : null}
+        {node.type === 'message' && messageText ? (
           isAssistant ? (
             <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageText}</ReactMarkdown>
             </div>
           ) : (
-            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{node.content}</p>
+            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{messageText}</p>
           )
         ) : null}
         {isAssistantPending ? (
@@ -288,7 +340,7 @@ const NodeBubble: FC<{
               type="button"
               onClick={() => {
                 void (async () => {
-                  await copyToClipboard(node.content);
+                  await copyToClipboard(messageText);
                   setCopyFeedback(true);
                   if (copyFeedbackTimeoutRef.current) {
                     clearTimeout(copyFeedbackTimeoutRef.current);
@@ -326,6 +378,7 @@ const NodeBubble: FC<{
 const ChatNodeRow: FC<{
   node: NodeRecord;
   trunkName: string;
+  branchColors?: Record<string, string>;
   muted?: boolean;
   subtitle?: string;
   messageInsetClassName?: string;
@@ -335,9 +388,22 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
-}> = ({ node, trunkName, muted, subtitle, messageInsetClassName, isStarred, onToggleStar, onEdit, isCanvasDiffPinned, onPinCanvasDiff, highlighted }) => {
+}> = ({
+  node,
+  trunkName,
+  branchColors,
+  muted,
+  subtitle,
+  messageInsetClassName,
+  isStarred,
+  onToggleStar,
+  onEdit,
+  isCanvasDiffPinned,
+  onPinCanvasDiff,
+  highlighted
+}) => {
   const isUser = node.type === 'message' && node.role === 'user';
-  const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName);
+  const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
 
   return (
     <div className="grid min-w-0 grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
@@ -391,12 +457,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [editBranchName, setEditBranchName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editProvider, setEditProvider] = useState<LLMProvider>('mock');
+  const [editProvider, setEditProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
   const [editThinking, setEditThinking] = useState<ThinkingSetting>('medium');
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
-  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(defaultProvider);
+  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
   const [newBranchThinking, setNewBranchThinking] = useState<ThinkingSetting>('medium');
   const autosaveControllerRef = useRef<AbortController | null>(null);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -419,7 +485,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
+  const [composerPadding, setComposerPadding] = useState(128);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const openEditModal = (node: MessageNode) => {
+    setEditingNode(node);
+    setEditDraft(node.content);
+    setEditBranchName('');
+    setEditError(null);
+    setEditProvider(normalizeProviderForUi(branchProvider));
+    setEditThinking(thinking);
+    setShowEditModal(true);
+  };
 
   const {
     data: starsData,
@@ -486,13 +563,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const optimisticDraftRef = useRef<string | null>(null);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
-  const [provider, setProvider] = useState<LLMProvider>(defaultProvider);
-  const providerStorageKey = useMemo(
-    () => `researchtree:provider:${project.id}:${branchName}`,
-    [project.id, branchName]
+  const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
+  const branchProvider = useMemo(
+    () => activeBranch?.provider ?? defaultProvider,
+    [activeBranch?.provider, defaultProvider]
   );
+  const branchModel = useMemo(() => {
+    const option = providerOptions.find((entry) => entry.id === branchProvider);
+    return activeBranch?.model ?? option?.defaultModel ?? getDefaultModelForProviderFromCapabilities(branchProvider);
+  }, [activeBranch?.model, branchProvider, providerOptions]);
   const [thinking, setThinking] = useState<ThinkingSetting>('medium');
   const thinkingStorageKey = useMemo(
     () => `researchtree:thinking:${project.id}:${branchName}`,
@@ -500,9 +582,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   );
   const [thinkingHydratedKey, setThinkingHydratedKey] = useState<string | null>(null);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
-  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
-  const providerMenuRef = useRef<HTMLDivElement | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const webSearchStorageKey = useMemo(
     () => `researchtree:websearch:${project.id}:${branchName}`,
@@ -513,7 +593,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const { sendMessage, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
-    provider,
+    provider: branchProvider,
     thinking,
     webSearch: webSearchEnabled,
     onChunk: (chunk) => {
@@ -526,11 +606,48 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         setAssistantPending(false);
         shouldScrollToBottomRef.current = true;
       }
-      setStreamPreview((prev) => prev + chunk);
+      if (chunk.type === 'thinking') {
+        setStreamBlocks((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (chunk.append && last?.type === 'thinking') {
+            last.thinking += chunk.content;
+            return next;
+          }
+          next.push({
+            type: 'thinking',
+            thinking: chunk.content
+          });
+          return next;
+        });
+        return;
+      }
+      if (chunk.type === 'thinking_signature') {
+        setStreamBlocks((prev) => [
+          ...prev,
+          {
+            type: 'thinking_signature',
+            signature: chunk.content
+          }
+        ]);
+        return;
+      }
+      setStreamBlocks((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.type === 'text') {
+          last.text += chunk.content;
+          return next;
+        }
+        next.push({ type: 'text', text: chunk.content });
+        return next;
+      });
+      setStreamPreview((prev) => prev + chunk.content);
     },
     onComplete: async () => {
       await Promise.all([mutateHistory(), mutateArtefact()]);
       setStreamPreview('');
+      setStreamBlocks([]);
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
       hasReceivedAssistantChunkRef.current = false;
@@ -543,21 +660,26 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   });
 
   const activeProvider = useMemo(
-    () => providerOptions.find((option) => option.id === provider),
-    [provider, providerOptions]
+    () => providerOptions.find((option) => option.id === branchProvider),
+    [branchProvider, providerOptions]
   );
+  const selectableProviderOptions = useMemo(
+    () => providerOptions.filter((option) => option.id !== 'openai_responses'),
+    [providerOptions]
+  );
+  const branchProviderLabel = activeProvider?.label ?? (branchProvider === 'openai_responses' ? 'OpenAI' : branchProvider);
 
-  const activeProviderModel = activeProvider?.defaultModel ?? getDefaultModelForProviderFromCapabilities(provider);
+  const activeProviderModel = branchModel;
   const allowedThinking = useMemo(
-    () => getAllowedThinkingSettings(provider, activeProviderModel),
-    [provider, activeProviderModel]
+    () => getAllowedThinkingSettings(branchProvider, activeProviderModel),
+    [branchProvider, activeProviderModel]
   );
   const thinkingUnsupportedError =
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
-      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${provider} (model=${activeProviderModel}).`;
-  const webSearchAvailable = provider !== 'mock';
-  const showOpenAISearchNote = webSearchEnabled && provider === 'openai';
+      : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
+  const webSearchAvailable = branchProvider !== 'mock';
+  const showOpenAISearchNote = webSearchEnabled && (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -569,6 +691,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
+    setStreamBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -580,6 +703,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       type: 'message',
       role: 'user',
       content: sent,
+      contentBlocks: [{ type: 'text', text: sent }],
       timestamp: Date.now(),
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
       createdOnBranch: branchName
@@ -603,6 +727,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           type: 'message',
           role: 'assistant',
           content: '',
+          contentBlocks: [],
           timestamp: Date.now(),
           parent: optimisticUserNode.id,
           interrupted: false,
@@ -611,12 +736,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       : null;
 
   const streamingNode: NodeRecord | null =
-    streamPreview.length > 0
+    streamPreview.length > 0 || streamBlocks.length > 0
       ? {
           id: 'streaming',
           type: 'message',
           role: 'assistant',
           content: streamPreview,
+          contentBlocks: streamBlocks,
           timestamp: Date.now(),
           parent: optimisticUserNode?.id ?? null,
           interrupted: state.error !== null
@@ -630,6 +756,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     void Promise.all([mutateHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
+    setStreamBlocks([]);
     if (!hasReceivedAssistantChunkRef.current) {
       setDraft(sent);
     }
@@ -662,18 +789,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     if (typeof window === 'undefined') return;
     setThinkingHydratedKey(null);
     const saved = window.localStorage.getItem(thinkingStorageKey) as ThinkingSetting | null;
-    const defaultThinking = getDefaultThinkingSetting(provider, activeProviderModel);
-    const allowed = activeProviderModel ? getAllowedThinkingSettings(provider, activeProviderModel) : THINKING_SETTINGS;
+    const defaultThinking = getDefaultThinkingSetting(branchProvider, activeProviderModel);
+    const allowed = activeProviderModel
+      ? getAllowedThinkingSettings(branchProvider, activeProviderModel)
+      : THINKING_SETTINGS;
     const isValid = saved && (THINKING_SETTINGS as readonly string[]).includes(saved) && allowed.includes(saved as ThinkingSetting);
     setThinking(isValid ? (saved as ThinkingSetting) : defaultThinking);
     setThinkingHydratedKey(thinkingStorageKey);
-  }, [thinkingStorageKey, provider, activeProviderModel]);
+  }, [thinkingStorageKey, branchProvider, activeProviderModel]);
 
   useEffect(() => {
     if (!activeProviderModel) return;
     if (allowedThinking.includes(thinking)) return;
-    setThinking(getDefaultThinkingSetting(provider, activeProviderModel));
-  }, [allowedThinking, thinking, provider, activeProviderModel]);
+    setThinking(getDefaultThinkingSetting(branchProvider, activeProviderModel));
+  }, [allowedThinking, thinking, branchProvider, activeProviderModel]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -731,34 +860,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [thinkingMenuOpen]);
-
-  useEffect(() => {
-    if (!providerMenuOpen) return;
-
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const container = providerMenuRef.current;
-      const target = event.target;
-      if (!container || !(target instanceof Node)) return;
-      if (!container.contains(target)) {
-        setProviderMenuOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setProviderMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [providerMenuOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -855,28 +956,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   }, [draft, draftStorageKey]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const savedProvider = window.localStorage.getItem(providerStorageKey) as LLMProvider | null;
-    const isValid = savedProvider && providerOptions.some((option) => option.id === savedProvider);
-    const nextProvider = (isValid ? savedProvider : defaultProvider) as LLMProvider;
-    setProvider((prev) => (prev === nextProvider ? prev : nextProvider));
-  }, [providerStorageKey, providerOptions, defaultProvider]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(providerStorageKey, provider);
-  }, [provider, providerStorageKey]);
-
-  useEffect(() => {
     if (newBranchName.trim()) return;
-    setNewBranchProvider(provider);
+    setNewBranchProvider(normalizeProviderForUi(branchProvider));
     setNewBranchThinking(thinking);
-  }, [provider, thinking, newBranchName]);
-
-  const selectProvider = (next: LLMProvider) => {
-    setProvider(next);
-    setProviderMenuOpen(false);
-  };
+  }, [branchProvider, thinking, newBranchName]);
 
   useEffect(() => {
     setArtefactDraft(artefact);
@@ -885,6 +968,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
   const displayBranchName = (name: string) => (name === trunkName ? 'trunk' : name);
   const sortedBranches = branches;
+  const branchColorMap = useMemo(
+    () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
+    [sortedBranches, trunkName]
+  );
   const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
   const lastGraphRequestKeyRef = useRef<string | null>(null);
 
@@ -915,6 +1002,17 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     void load();
     return () => controller.abort();
   }, [insightCollapsed, insightTab, graphRequestKey, project.id, graphHistories, graphHistoryError]);
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
+      setComposerPadding(next);
+    });
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -1317,7 +1415,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
         node.type === 'message' &&
         node.role === 'assistant' &&
         node.id !== 'streaming' &&
-        node.content.trim().length > 0 &&
+        getNodeText(node).trim().length > 0 &&
         (node.createdOnBranch ? node.createdOnBranch === branchName : true)
     ) as MessageNode[];
   }, [branchNodes, branchName]);
@@ -1486,10 +1584,18 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
     setIsCreating(true);
     setBranchActionError(null);
     try {
+      const branchModel =
+        providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+        getDefaultModelForProviderFromCapabilities(newBranchProvider);
       const res = await fetch(`/api/projects/${project.id}/branches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newBranchName.trim(), fromRef: branchName })
+        body: JSON.stringify({
+          name: newBranchName.trim(),
+          fromRef: branchName,
+          provider: newBranchProvider,
+          model: branchModel
+        })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -1500,7 +1606,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       setBranches(data.branches);
       setNewBranchName('');
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, newBranchProvider);
         window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, newBranchThinking);
       }
       await Promise.all([mutateHistory(), mutateArtefact()]);
@@ -1530,6 +1635,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           <div className="mt-6 flex h-full flex-col gap-6">
             {!ctx.railCollapsed ? (
               <>
+                <div className="rounded-2xl border border-divider/70 bg-white/80 px-3 py-2 shadow-sm">
+                  <div className="truncate text-xs font-semibold text-slate-800">{project.name}</div>
+                  <div className="truncate text-[11px] text-muted">{project.description ?? 'No description provided.'}</div>
+                </div>
                 <div className="space-y-3 overflow-hidden">
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
                     <span>Branches</span>
@@ -1569,57 +1678,59 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   {branchActionError ? <p className="text-sm text-red-600">{branchActionError}</p> : null}
                 </div>
 
-                <NewBranchFormCard
-                  fromLabel={displayBranchName(branchName)}
-                  value={newBranchName}
-                  onValueChange={setNewBranchName}
-                  onSubmit={() => void createBranch()}
-                  disabled={isSwitching}
-                  submitting={isCreating}
-                  error={branchActionError}
-                  providerSelector={
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                        <span className="font-semibold text-slate-700">Provider</span>
-                        <select
-                          value={newBranchProvider}
-                          onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
-                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                          disabled={isSwitching || isCreating}
-                        >
-                          {providerOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                        <span className="font-semibold text-slate-700">Thinking</span>
-                        <select
-                          value={newBranchThinking}
-                          onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
-                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                          disabled={isSwitching || isCreating}
-                        >
-                          {(() => {
-                            const branchModel =
-                              providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
-                              getDefaultModelForProviderFromCapabilities(newBranchProvider);
-                            const allowed = branchModel
-                              ? getAllowedThinkingSettings(newBranchProvider, branchModel)
-                              : THINKING_SETTINGS;
-                            return allowed.map((setting) => (
-                              <option key={setting} value={setting}>
-                                {THINKING_SETTING_LABELS[setting]}
+                {features.uiRailBranchCreator ? (
+                  <NewBranchFormCard
+                    fromLabel={displayBranchName(branchName)}
+                    value={newBranchName}
+                    onValueChange={setNewBranchName}
+                    onSubmit={() => void createBranch()}
+                    disabled={isSwitching}
+                    submitting={isCreating}
+                    error={branchActionError}
+                    providerSelector={
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                          <span className="font-semibold text-slate-700">Provider</span>
+                          <select
+                            value={newBranchProvider}
+                            onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                            className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                            disabled={isSwitching || isCreating}
+                          >
+                            {selectableProviderOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
                               </option>
-                            ));
-                          })()}
-                        </select>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                          <span className="font-semibold text-slate-700">Thinking</span>
+                          <select
+                            value={newBranchThinking}
+                            onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                            className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                            disabled={isSwitching || isCreating}
+                          >
+                            {(() => {
+                              const branchModel =
+                                providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                                getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                              const allowed = branchModel
+                                ? getAllowedThinkingSettings(newBranchProvider, branchModel)
+                                : THINKING_SETTINGS;
+                              return allowed.map((setting) => (
+                                <option key={setting} value={setting}>
+                                  {THINKING_SETTING_LABELS[setting]}
+                                </option>
+                              ));
+                            })()}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                  }
-                />
+                    }
+                  />
+                ) : null}
 
               </>
             ) : null}
@@ -1631,11 +1742,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     type="button"
                     onClick={() => setShowHints((prev) => !prev)}
                     ref={hintsButtonRef}
-                    className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                    className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                     aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
                     aria-expanded={showHints}
                   >
-                    <QuestionMarkCircleIcon className="h-5 w-5" />
+                    <QuestionMarkCircleIcon className="h-4 w-4" />
                   </button>
                   <RailPopover
                     open={showHints}
@@ -1657,10 +1768,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 <AuthRailStatus railCollapsed={ctx.railCollapsed} onRequestExpandRail={ctx.toggleRail} />
                 <Link
                   href="/"
-                  className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
+                  className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
                   aria-label="Back to home"
                 >
-                  <HomeIcon className="h-5 w-5" />
+                  <HomeIcon className="h-4 w-4" />
                 </Link>
               </div>
             ) : (
@@ -1671,11 +1782,11 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       type="button"
                       onClick={() => setShowHints((prev) => !prev)}
                       ref={hintsButtonRef}
-                      className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                      className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                       aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
                       aria-expanded={showHints}
                     >
-                      <QuestionMarkCircleIcon className="h-5 w-5" />
+                      <QuestionMarkCircleIcon className="h-4 w-4" />
                     </button>
                     <RailPopover
                       open={showHints}
@@ -1699,10 +1810,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 
                   <Link
                     href="/"
-                    className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                    className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                     aria-label="Back to home"
                   >
-                    <HomeIcon className="h-5 w-5" />
+                    <HomeIcon className="h-4 w-4" />
                   </Link>
                 </div>
               </div>
@@ -1710,96 +1821,58 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           </div>
         )}
         renderMain={(ctx) => (
-        <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
-          <div className="px-6 pt-6 md:px-8 lg:px-12">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold tracking-wide text-primary">
-                <span>{APP_NAME}</span>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">Workspace</span>
-              </div>
-              <h1 className="text-xl font-semibold text-slate-900">{project.name}</h1>
-              <span className="text-sm text-muted">{project.description ?? 'No description provided.'}</span>
-            </div>
-          </div>
-
-          <div className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-36 pt-4 md:px-8 lg:px-12">
-          <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
-            <section
-              className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${
-                chatPaneWidth ? 'flex-none' : 'flex-1 lg:flex-[2]'
-              }`}
-              style={chatPaneWidth ? { width: chatPaneWidth, maxWidth: '100%' } : undefined}
+          <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
+            <div
+              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-12"
+              style={{ paddingBottom: composerPadding }}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Conversation</p>
-                  <p className="text-sm text-muted">
-                    Branch {displayBranchName(branchName)} · {visibleNodes.length} message{visibleNodes.length === 1 ? '' : 's'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <span className="text-sm text-muted">{activeProvider?.defaultModel ?? 'mock'}</span>
-                  <div ref={providerMenuRef} className="relative flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-sm shadow-sm">
-                    <span className="font-medium text-slate-700">Provider</span>
-                    <button
-                      type="button"
-                      onClick={() => setProviderMenuOpen((prev) => !prev)}
-                      className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-sm text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                      aria-label={`Provider: ${activeProvider?.label ?? provider}`}
-                      aria-haspopup="menu"
-                      aria-expanded={providerMenuOpen}
-                    >
-                      {activeProvider?.label ?? provider}
-                    </button>
-                    {providerMenuOpen ? (
-                      <div
-                        role="menu"
-                        className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
-                      >
-                        {providerOptions.map((option) => {
-                          const active = provider === option.id;
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={active}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
-                              }`}
-                              onClick={() => selectProvider(option.id)}
+              <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
+                <section
+                  className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${
+                    chatPaneWidth ? 'flex-none' : 'flex-1 lg:flex-[2]'
+                  }`}
+                  style={chatPaneWidth ? { width: chatPaneWidth, maxWidth: '100%' } : undefined}
+                >
+                  <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 flex flex-wrap items-center gap-3">
+                    {branchName !== trunkName && sharedCount > 0 ? (
+                      <div className="pointer-events-auto w-full md:w-3/5 md:ml-4">
+                        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[rgba(238,243,255,0.95)] px-4 py-3 text-sm text-slate-700 shadow-sm">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-primary/80" />
+                            <span
+                              className="min-w-0 flex-1 whitespace-normal"
+                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
                             >
-                              <span>{option.label}</span>
-                              {active ? <span aria-hidden="true">✓</span> : null}
-                            </button>
-                          );
-                        })}
+                              Shared {sharedCount} {sharedCount === 1 ? 'message' : 'messages'} from upstream
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setHideShared((prev) => !prev)}
+                            className="ml-auto rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                          >
+                            {hideShared ? 'Show' : 'Hide'}
+                          </button>
+                        </div>
                       </div>
                     ) : null}
-                  </div>
-                </div>
-              </div>
-
-                {branchName !== trunkName && sharedCount > 0 ? (
-                  <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[rgba(238,243,255,0.7)] px-4 py-3 text-sm text-slate-700">
-                    <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-primary/80" />
-                      Shared {sharedCount} {sharedCount === 1 ? 'message' : 'messages'} from upstream
+                    <div className="pointer-events-auto ml-auto flex flex-wrap items-center justify-end gap-2 md:mr-4">
+                      <div className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs shadow-sm">
+                        <span className="font-medium text-slate-700">Provider</span>
+                        <span
+                          className="rounded-lg border border-divider/60 bg-white px-2 py-2 text-xs text-slate-800"
+                          title={branchModel}
+                        >
+                          {branchProviderLabel}
+                        </span>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setHideShared((prev) => !prev)}
-                      className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
-                    >
-                      {hideShared ? 'Show shared' : 'Hide shared'}
-                    </button>
                   </div>
-                ) : null}
 
-	                <div
-                    ref={messageListRef}
-                    data-testid="chat-message-list"
-                  className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pb-20"
+                <div
+                  ref={messageListRef}
+                  data-testid="chat-message-list"
+                  className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
                   onScroll={handleMessageListScroll}
                 >
                   {isLoading ? (
@@ -1819,12 +1892,17 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                 key={node.id}
                                 node={node}
                                 trunkName={trunkName}
+                                branchColors={branchColorMap}
                                 muted
                                 messageInsetClassName="pr-3"
                                 subtitle={node.createdOnBranch ? `from ${node.createdOnBranch}` : undefined}
                                 isStarred={starredSet.has(node.id)}
                                 onToggleStar={() => void toggleStar(node.id)}
-                                onEdit={undefined}
+                                onEdit={
+                                  node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
+                                    ? (n) => openEditModal(n)
+                                    : undefined
+                                }
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
                                 highlighted={highlightedNodeId === node.id}
@@ -1843,20 +1921,13 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                           key={node.id}
                           node={node}
                           trunkName={trunkName}
+                          branchColors={branchColorMap}
                           messageInsetClassName="pr-3"
                           isStarred={starredSet.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
                             node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
-                              ? (n) => {
-                                  setEditingNode(n);
-                                  setEditDraft(n.content);
-                                  setEditBranchName('');
-                                  setEditError(null);
-                                  setEditProvider(provider);
-                                  setEditThinking(thinking);
-                                  setShowEditModal(true);
-                                }
+                              ? (n) => openEditModal(n)
                               : undefined
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
@@ -1931,7 +2002,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
                                           disabled={isSwitching || isCreating}
                                         >
-                                          {providerOptions.map((option) => (
+                                          {selectableProviderOptions.map((option) => (
                                             <option key={option.id} value={option.id}>
                                               {option.label}
                                             </option>
@@ -2004,7 +2075,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     ) : null}
                   </div>
                 ) : null}
-              </section>
+                </section>
 
             <div className="hidden lg:flex h-full w-6 items-stretch">
               <div
@@ -2101,6 +2172,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                               }
                               activeBranchName={branchName}
                               trunkName={trunkName}
+                              branchColors={branchColorMap}
                               mode={graphMode}
                               onModeChange={setGraphMode}
                               starredNodeIds={stableStarredNodeIds}
@@ -2387,9 +2459,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           >
             <div
               className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
-              style={{ paddingLeft: ctx.railCollapsed ? '96px' : '320px' }}
+              style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
             >
-              <div className="flex items-center gap-3 rounded-full border border-divider bg-white px-4 py-3 shadow-composer">
+              <div
+                ref={composerRef}
+                className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+              >
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2397,7 +2472,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       if (!webSearchAvailable || state.isStreaming) return;
                       setWebSearchEnabled((prev) => !prev);
                     }}
-                    className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus:outline-none ${
+                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-2.5 text-xs font-semibold transition focus:outline-none ${
                       webSearchEnabled
                         ? 'border-primary/30 bg-primary/10 text-primary'
                         : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
@@ -2407,9 +2482,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     disabled={state.isStreaming || !webSearchAvailable}
                   >
                     <SearchIcon className="h-4 w-4" />
-                    <span>Search</span>
+                    <span>Web search</span>
                   </button>
-                  <div className="flex h-10 w-10 items-center justify-center">
+                  {/* <div className="flex h-10 w-10 items-center justify-center">
                     {features.uiAttachments ? (
                       <button
                         type="button"
@@ -2421,29 +2496,42 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     ) : (
                       <span aria-hidden="true" />
                     )}
+                  </div> */}
+                </div>
+                <div className="relative flex-1">
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    placeholder="Ask anything"
+                    rows={2}
+                    className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                    disabled={state.isStreaming}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') {
+                        return;
+                      }
+                      if (event.metaKey) {
+                        event.preventDefault();
+                        void sendDraft();
+                        return;
+                      }
+                      if (event.shiftKey || event.altKey) {
+                        return;
+                      }
+                    }}
+                  />
+                  <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
+                    <span className="flex-1 text-left">
+                      {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
+                    </span>
+                    <span className="flex-[2] whitespace-nowrap text-center">
+                      ⌘ + Enter to send · Shift + Enter adds a newline.
+                    </span>
+                    <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
+                      {state.isStreaming ? 'Streaming…' : ''}
+                    </span>
                   </div>
                 </div>
-                <textarea
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder="Ask anything"
-                  rows={2}
-                  className="flex-1 resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 py-2 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  disabled={state.isStreaming}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter') {
-                      return;
-                    }
-                    if (event.metaKey) {
-                      event.preventDefault();
-                      void sendDraft();
-                      return;
-                    }
-                    if (event.shiftKey || event.altKey) {
-                      return;
-                    }
-                  }}
-                />
                 <div className="flex items-center gap-2">
                   <div ref={thinkingMenuRef} className="relative hidden sm:block">
                     <button
@@ -2492,7 +2580,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     <button
                       type="button"
                       onClick={interrupt}
-                      className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
                       aria-label="Stop streaming"
                     >
                       <XMarkIcon className="h-5 w-5" />
@@ -2501,19 +2589,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 	                  <button
 	                    type="submit"
 	                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
-	                    className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+	                    className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
 	                    aria-label="Send message"
 	                  >
                     <ArrowUpIcon className="h-5 w-5" />
                   </button>
                 </div>
-              </div>
-              <div className="relative mt-2 flex items-center text-xs text-muted">
-                <span className="mx-auto">⌘ + Enter to send · Shift + Enter adds a newline.</span>
-                {showOpenAISearchNote ? (
-                  <span className="absolute left-0 text-[11px] text-slate-400">Search uses gpt-4o-mini-search-preview.</span>
-                ) : null}
-                {state.isStreaming ? <span className="absolute right-0 animate-pulse text-primary">Streaming…</span> : null}
               </div>
             </div>
           </form>
@@ -2615,7 +2696,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                     disabled={isMerging}
                   >
                     {mergePayloadCandidates.map((node) => {
-                      const firstLine = node.content.split(/\r?\n/)[0] ?? '';
+                      const firstLine = getNodeText(node).split(/\r?\n/)[0] ?? '';
                       const label = `${new Date(node.timestamp).toLocaleTimeString()} · ${firstLine}`.slice(0, 120);
                       return (
                         <option key={node.id} value={node.id}>
@@ -2764,7 +2845,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
 	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
 	                  disabled={isEditing}
 	                >
-	                  {providerOptions.map((option) => (
+	                  {selectableProviderOptions.map((option) => (
 	                    <option key={option.id} value={option.id}>
 	                      {option.label}
 	                    </option>
@@ -2834,14 +2915,19 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   setIsEditing(true);
                   setEditError(null);
                   try {
+                    const editModel =
+                      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
+                      getDefaultModelForProviderFromCapabilities(editProvider);
+                    const fromRef = editingNode?.createdOnBranch ?? branchName;
                     const res = await fetch(`/api/projects/${project.id}/edit`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         content: editDraft.trim(),
                         branchName: editBranchName.trim(),
-                        fromRef: branchName,
+                        fromRef,
                         llmProvider: editProvider,
+                        llmModel: editModel,
                         thinking: editThinking,
                         nodeId: editingNode?.id
                       })
@@ -2858,7 +2944,6 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                       setBranches(branchesData.branches);
                     }
                     if (typeof window !== 'undefined') {
-                      window.localStorage.setItem(`researchtree:provider:${project.id}:${data.branchName}`, editProvider);
                       window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, editThinking);
                     }
                     await Promise.all([mutateHistory(), mutateArtefact()]);

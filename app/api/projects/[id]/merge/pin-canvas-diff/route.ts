@@ -5,6 +5,7 @@ import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
+import { buildTextBlock } from '@/src/server/llmContentBlocks';
 
 interface RouteContext {
   params: { id: string };
@@ -62,6 +63,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           type: 'message',
           role: 'assistant',
           content: mergeNode.canvasDiff,
+          contentBlocks: buildTextBlock(mergeNode.canvasDiff),
           pinnedFromMergeId: mergeNodeId,
           timestamp: Date.now(),
           parent: parentId,
@@ -111,6 +113,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         type: 'message',
         role: 'assistant',
         content: mergeNode.canvasDiff,
+        contentBlocks: buildTextBlock(mergeNode.canvasDiff),
         pinnedFromMergeId: mergeNodeId
       });
 

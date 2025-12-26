@@ -4,6 +4,7 @@ import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
+import { resolveBranchConfig } from '@/src/server/branchConfig';
 
 interface RouteContext {
   params: { id: string };
@@ -62,15 +63,29 @@ export async function POST(request: Request, { params }: RouteContext) {
           (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' })).refName ??
           'main';
 
-        const baseExists = existingBranches.some((b) => b.name === baseRef);
+        const baseBranch = existingBranches.find((b) => b.name === baseRef);
+        const baseExists = Boolean(baseBranch);
         if (!baseExists) {
           throw badRequest(`Branch ${baseRef} does not exist`);
         }
 
+        const baseConfig = resolveBranchConfig({
+          provider: baseBranch?.provider ?? null,
+          model: baseBranch?.model ?? null
+        });
+        const resolvedConfig = resolveBranchConfig({
+          provider: parsed.data.provider ?? baseConfig.provider,
+          model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
+          fallback: baseConfig
+        });
+
         await rtCreateRefFromRefShadowV1({
           projectId: params.id,
           newRefName: parsed.data.name,
-          fromRefName: baseRef
+          fromRefName: baseRef,
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model,
+          previousResponseId: null
         });
         await rtSetCurrentRefShadowV1({ projectId: params.id, refName: parsed.data.name });
         const branches = await rtListRefsShadowV1({ projectId: params.id });
@@ -86,7 +101,23 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     return await withProjectLock(project.id, async () => {
-      await createBranch(project.id, parsed.data.name, parsed.data.fromRef);
+      const existingBranches = await listBranches(project.id);
+      const baseRef = parsed.data.fromRef ?? (existingBranches.find((b) => b.isTrunk)?.name ?? 'main');
+      const baseBranch = existingBranches.find((b) => b.name === baseRef);
+      const baseConfig = resolveBranchConfig({
+        provider: baseBranch?.provider ?? null,
+        model: baseBranch?.model ?? null
+      });
+      const resolvedConfig = resolveBranchConfig({
+        provider: parsed.data.provider ?? baseConfig.provider,
+        model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
+        fallback: baseConfig
+      });
+      await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
+        provider: resolvedConfig.provider,
+        model: resolvedConfig.model,
+        previousResponseId: null
+      });
       const branches = await listBranches(project.id);
       return Response.json({ branchName: parsed.data.name, branches }, { status: 201 });
     });

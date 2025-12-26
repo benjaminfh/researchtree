@@ -1,178 +1,493 @@
-# OpenAI Responses API Migration Plan (Scoping Draft)
+# **Updated OpenAI Responses API Migration Plan (Draft)**
 
-Status: draft
-Owner: TBD
-Last updated: 2025-01-XX
+*Status: draft*
+*Owner: TBD*
+*Last edited: 2025-12 (updated with current API facts)*
 
-Note: I was not able to run web search in this environment (network restricted). This plan is grounded in our current repo usage and the existing `PM_DOCS/LLM_API_DOCS.md`, and should be updated with live API doc details once confirmed.
+This updated plan incorporates official and community knowledge of the *Responses API*, especially regarding statefulness, native tools, structured outputs, and streaming. Any claims below are cited from OpenAI docs and credible tutorials.
 
-## Executive summary
-We currently use OpenAI Chat Completions in `src/server/llm.ts` alongside Gemini and Anthropic. Migrating to OpenAI Responses requires new request/streaming shapes, different tool schemas, and a state model that can be server-managed by OpenAI. This introduces friction with our existing app model (client-side chat history in our DB) and a common interface shared by Gemini/Anthropic. We need to decide whether to wrap Responses to look like our current chat interface or to accept a provider-specific execution path.
+---
 
-Key decision: **wrap Responses into our existing chat interface** (keep our DB as source of truth) vs **adopt OpenAI server-side state for OpenAI only** (and translate on the edges). The first is safer for product consistency but may leave some Responses-native capabilities unused.
+## **Executive Summary (Updated)**
 
-## Current state (repo context)
-- OpenAI usage is in `src/server/llm.ts` via `openai.chat.completions.create(...)`.
-- We stream tokens to the UI with a simple `LLMStreamChunk` of `{ type: 'text', content: string }`.
-- We keep conversation state in our DB/Git backend (chat history stored server-side in our app).
-- Provider selection and thinking settings are unified across providers.
-- We already have a temporary OpenAI web search hack in `src/server/llm.ts` and documented in `WEBSEARCH_IMPL.md`.
+We are migrating from the legacy **Chat Completions** interface (`openai.chat.completions.create(...)`) to the **Responses API**, which unifies and extends prior conversation and assistant APIs into a single, flexible endpoint with **better integrated tooling support, optional state management, and native streaming**. ([OpenAI Platform][1])
 
-## Migration goals
-1) Move OpenAI requests to Responses API while preserving our current UX and state model.
-2) Support web search via Responses tool (once we remove the chat completions hack).
-3) Preserve streaming behavior and our `LLMStreamChunk` output.
-4) Maintain compatibility with Gemini and Anthropic through a stable abstraction.
-5) Minimize code churn and allow rollback.
+Because Responses supports **both stateless and stateful** patterns, along with *structured output types* and tool orchestration internal to a single call, we should refine how we integrate and adapt our current architecture rather than treat this as a like-for-like swap. ([Ragwalla][2])
 
-## Key challenges
-### 1) State model mismatch
-Responses favors server-side state (conversation or response IDs) while our app stores message history and replays it on each request. This mismatch can cause:
-- Duplicate or inconsistent state if we both store history and pass it into Responses.
-- Increased friction when editing history or branching (we allow branch-based conversation editing).
-However, we may be able to preserve branching by storing `previous_response_id` per branch and sending only new content with that pointer.
+Key decisions:
 
-### 2) Different request/response shapes
-Responses introduces:
-- New request fields and tool schemas.
-- Output items that are not plain text deltas.
-- Potential tool or reasoning objects we do not currently handle.
+* **Leverage Responses’ strengths** (built-in tools, structured outputs) where beneficial.
+* **Preserve our existing UX, streaming model, and history semantics**.
+* Migrate incrementally with feature flags to reduce risk.
 
-### 3) Common interface pressure
-Gemini and Anthropic are stateless in our current implementation. Responses is not. We need to decide if:
-- We “wrap” Responses so it behaves like our current chat primitive.
-- We allow OpenAI to behave differently and accept provider-specific branching logic.
+---
 
-## Option analysis: wrap vs provider-specific
+## **Current State (Repo Context)**
 
-### Option A: Wrap Responses into our chat-like interface (recommended default)
-We treat Responses as a stateless primitive by:
-- Sending our full chat history each request (or a subset with context windowing).
-- Parsing Responses outputs into `LLMStreamChunk` text.
-- Ignoring or minimally processing new response item types until we explicitly support them.
+* We call OpenAI Chat Completions (`openai.chat.completions.create(...)`) with our own streaming adapter.
+* Conversation history is stored client-side and replayed each call.
+* Providers (Gemini, Anthropic) are unified under a stateless model.
+* We cheat web search currently via hacky integrations documented in `WEBSEARCH_IMPL.md`.
 
-Pros:
-- Keeps UX consistent across providers.
-- Easier to integrate with existing branching/history logic.
-- Minimizes UI changes and data model changes.
+---
 
-Cons:
-- May forgo some Responses-native benefits (server-side state, reduced context replay).
-- Requires careful parsing of response output items to avoid silently dropping important content.
+## **Migration Goals (Updated)**
 
-### Option B: Provider-specific path (OpenAI uses server-side state)
-We use OpenAI response state IDs and store them alongside our history (e.g., `previous_response_id` per branch).
+1. **Replace Chat Completions with the Responses API** while preserving UX and our streaming interface.
+2. **Use Responses API’s built-in tool and structured output capabilities**, especially for web­search and reasoning integration.
+3. **Preserve our streaming behavior** via Responses streaming events.
+4. Maintain compatibility with our abstraction for other providers.
+5. Minimize code churn; maintain rollback safety.
 
-Pros:
-- Aligns with OpenAI’s recommended usage.
-- Potentially reduces token usage and request size.
+---
 
-Cons:
-- Introduces mismatched behavior across providers.
-- Complicates branching/editing (our UI allows edits; OpenAI server state is immutable).
-- Requires new data model fields (conversation/response IDs per branch or message).
-  - Mitigation: track `previous_response_id` per branch and reset when a user edits history.
+## **Key Changes in the API to Understand**
 
-### Option C: Hybrid
-Default to Option A but allow optional server-side state when explicitly enabled (feature flag).
+### ✅ **Responses API Unified & Extended Endpoint**
 
-Pros:
-- Safe default with an escape hatch.
-- Can test performance or cost improvements without full migration.
+* The *Responses API* replaces the older Chat Completions and Assistants APIs with one interface.
+* Supports **optional stateful sessions** (via conversation IDs or `previous_response_id`) **and stateless usage** (full history replay). ([Ragwalla][2])
 
-Cons:
-- More complexity in configuration and QA.
+---
 
-Recommendation: Start with **Option A** to de-risk the migration and preserve current product behavior. Consider a feature-flagged Option C after the migration is stable.
+### ✅ **Stateful vs Stateless Behavior**
 
-## Proposed architecture changes
-1) Introduce an OpenAI Responses adapter in `src/server/llm.ts`:
-   - `streamFromOpenAIResponses(...)` returning `LLMStreamChunk`.
-   - Translate our `messages[]` to a Responses input structure.
-   - Parse streaming outputs and emit only text chunks initially.
-2) Add a response item parser:
-   - Recognize text content outputs and stream them.
-   - Log or capture unsupported output types for visibility (for debugging).
-3) Keep our current chat history in the app DB and pass it into Responses:
-   - Avoid using server-side conversation state until explicitly needed.
-4) Gate by feature flag:
-   - Use env var (e.g. `OPENAI_USE_RESPONSES=true`) to switch between Chat Completions and Responses.
-   - Allow quick rollback.
+**Stateless**
 
-## Data model sketch (branch-aware `previous_response_id`)
-Goal: allow OpenAI server-side state without breaking our branch/edit workflow.
+* You can continue to send full history on every call, exactly like Chat Completions.
+* This preserves your existing workflow without using server state. ([Ragwalla][2])
 
-Proposal:
-- Store a `previous_response_id` per branch head (not per message), updated after each successful OpenAI Responses call.
-- When a user edits history or forks a branch, **reset** `previous_response_id` for that branch to `null` so the next request replays full context.
-- When switching providers away from OpenAI, we ignore this field.
+**Stateful**
 
-Behavior rules:
-- On new assistant response (OpenAI/Responses): set `branch.previous_response_id = response.id`.
-- On edit or branch creation from a prior node: set `branch.previous_response_id = null`.
-- On OpenAI request:
-  - If `previous_response_id` exists, send only the new user message + `previous_response_id`.
-  - If missing, send the full current context.
+* The API supports carrying **conversation context/state server side**, referenced via `previous_response_id` or a dedicated conversation ID.
+* This means you may send *only new messages*, reducing tokens and cost. ([LangChain Forum][3])
 
-Storage placement (options):
-- PG: add a nullable column on the branch/ref record.
-- Git store: add a small metadata blob or branch config entry alongside branch refs.
+---
 
-This keeps the Responses state path optional and local to OpenAI while preserving our ability to branch and edit.
+### ✅ **Native Tools and Structured Outputs**
 
-## API surface changes (to confirm with docs)
-Placeholder topics to validate with current docs:
-- Request shape for responses vs chat completions.
-- How to pass system + user messages.
-- Streaming response event types and payload.
-- Tool schemas and web search config.
-- How to enable reasoning effort (if supported).
+The Responses API has native tool orchestration:
 
-## Implementation plan (phased)
-### Phase 0: Research + validation
-- Confirm exact Responses API request/streaming shapes.
-- Confirm tool/web search config.
-- Confirm how to represent system/developer messages.
+* Built-in tools (web search, file search, etc.) are supported natively.
+* Models can return function/tool calls which are part of the stream.
+* Structured tool responses and final answers can be encoded with JSON schema. ([DataCamp][4])
 
-### Phase 1: Adapter scaffold
-- Add a new function in `src/server/llm.ts` for Responses.
-- Parse streaming outputs into `LLMStreamChunk`.
-- Add a debug mode to surface non-text outputs in logs.
+This contrasts with Chat Completions, where tools must be manually orchestrated by parsing fields and responding separately.
 
-### Phase 2: Feature flag and switch
-- Add env flag to route OpenAI requests to Responses.
-- Keep Chat Completions fallback for rollback.
+---
 
-### Phase 3: Tool support parity
-- Add web search via Responses tool definitions.
-- Ensure output items are handled gracefully.
+### ✅ **Streaming Is First-Class**
 
-### Phase 4: Clean up
-- Remove chat completions hack for OpenAI web search.
-- Remove legacy code path once stable.
+The Responses API supports streaming of output items including:
 
-## Open questions
-- Do we need to store response IDs or conversation IDs at all for audits/traceability?
-- If we adopt `previous_response_id` per branch, what is the reset behavior when users edit or fork messages?
-- How should we handle non-text output items (e.g., tool call results, reasoning objects)?
-- Do we want to expose citations from search tool output in the UI?
-- Does Responses require special headers or beta flags?
-- How do we reconcile OpenAI server-side state with our branch-based history?
+* Text tokens
+* Tool calls and return points
+* Structured item types as events
 
-## Risks and mitigations
-- Risk: streaming parser misses some content types.
-  - Mitigation: log unhandled response items and add tests for them.
-- Risk: tool payloads introduce unexpected JSON shapes.
-  - Mitigation: keep tool output handling isolated and guard parsing.
-- Risk: mismatched behavior across providers.
-  - Mitigation: keep the UI/LLM stream interface stable and treat Responses as an adapter.
+Streaming is enabled with `stream=True` and returns server-sent events (SSE). ([OpenAI Platform][5])
 
-## Success criteria
-- OpenAI Responses API successfully powers chat without UI regressions.
-- Web search works without the chat completions hack.
-- Rollback path remains trivial (single env switch).
+---
 
-## Next actions
-- Update this doc with verified Responses API details.
-- Decide on Option A vs C after validating docs.
-- Implement Phase 1 adapter behind a feature flag.
+## **Challenges Refined**
+
+### 📌 State Management
+
+* **We can do stateless replay and keep existing history model**, or
+* **Use server-state for more efficient incremental requests**, but must handle edits and forks carefully.
+* Using state side-by-side with our own history model requires good consistency rules (see below). ([Ragwalla][2])
+
+---
+
+### 📌 Request & Response Shapes
+
+Responses defines rich **output item types** not just text:
+
+* Plain text
+* Tool calls
+* Structured outputs
+* Reasoning/support trace items
+
+These can’t be safely ignored without loss of semantic content. ([DataCamp][4])
+
+---
+
+### 📌 Common Interface Pressure
+
+* Gemini/Anthropic will remain **stateless**.
+* Responses can operate both **statelessly and statefully**.
+* Our abstraction should treat Responses as a superset of Chat Completions.
+
+---
+
+## **Option Analysis (Updated)**
+
+### 🔷 **Option A: Wrap Responses into Chat-like Interface**
+
+* Send **full history each request** (stateless) if `previous_response_id` is absent.
+* Parse streaming events into simple text chunks.
+* Cache tool invocations or structured outputs where needed.
+
+**Pros**
+
+* Minimal product changes.
+* Preserves existing behavior.
+
+**Cons**
+
+* May underutilize native statefulness or tools.
+* Needs careful streaming parsing.
+
+Used behind feature flag for safe rollback.
+
+---
+
+### 🔷 **Option B: Provider-Specific Stateful Mode**
+
+Use `previous_response_id` for incremental request payloads and leverage server state.
+Requires:
+
+* Tracking `conversation_id` and/or last response IDs per branch.
+* Resetting state when history is edited.
+
+**Pros**
+
+* Lower token usage.
+* Aligns with how Responses supports server state. ([LangChain Forum][3])
+
+**Cons**
+
+* More complex consistency logic.
+* Different from how other providers behave.
+
+---
+
+### 🔷 **Option C: Hybrid**
+
+Default to Option A, then progressively enable Option B for select traffic/features.
+
+**Best path for risk mitigation.**
+
+---
+
+## **Proposed Architecture Changes**
+
+### **1) Introduce Responses Adapter**
+
+Add `streamFromOpenAIResponses(...)` analogous to Chat Completions adapter, exposing:
+
+* streaming text chunks
+* structured items handling (tool call events, JSON outputs)
+
+---
+
+### **2) Response Item Parser**
+
+Instead of ignoring non-text output items, parse:
+
+* text
+* tool calls (function call outputs)
+* structured response blocks
+
+This preserves richer output semantics.
+
+---
+
+### **3) History & State Strategy**
+
+* Track `previous_response_id` for incremental requests when flagged ON. ([LangChain Forum][3])
+* Branch edit -> **reset state pointer** to avoid incorrect state.
+
+---
+
+## **Implementation Plan (Phased)**
+
+### **Phase 0: Confirm API Details**
+
+* Validate request/response shapes for streaming Responses. ([OpenAI Platform][5])
+* Confirm tool invocation mechanism via official docs and tool schemas.
+
+---
+
+### **Phase 1: Adapter Scaffold**
+
+* Build new adapter for Responses.
+* Streaming parser that emits text and handles structured events.
+
+---
+
+### **Phase 2: Feature Flag**
+
+* Add `OPENAI_USE_RESPONSES=true` to route new API.
+* Maintain legacy path for rollback.
+
+---
+
+### **Phase 3: Tool Support Parity**
+
+* Integrate built-in tools (web search, file search).
+* Test structured outputs.
+
+---
+
+### **Phase 4: Cleanup**
+
+* Remove web search hack.
+* Sunsetting legacy endpoints once stable.
+
+---
+
+## **Open Questions to Address**
+
+1. Should we **persist structured reasoning items** in our DB?
+2. How do we reflect **tool call state and outputs** in UI?
+3. Does server-state token cost/benefit justify complexity?
+4. What safety/moderation behavior differences arise from streaming? ([OpenAI Platform][5])
+
+---
+
+## **Success Criteria (Updated)**
+
+* Equivalent UX with Responses API vs Chat Completions.
+* Web search/features working natively.
+* Rollback via feature flag is trivial.
+* Streaming parser handles structured items (tools/JSON) without loss.
+
+
+
+[1]: https://platform.openai.com/docs/api-reference/responses?utm_source=chatgpt.com "Responses API reference"
+[2]: https://ragwalla.com/blog/openai-assistants-api-vs-openai-responses-api-complete-comparison-guide?utm_source=chatgpt.com "In-Depth Analysis: OpenAI Assistants API vs. ..."
+[3]: https://forum.langchain.com/t/how-can-i-pass-conversation-id-when-invoking-openais-responses-api-with-langchain/1935?utm_source=chatgpt.com "How can I pass conversation id when invoking OpenAi's ..."
+[4]: https://www.datacamp.com/tutorial/openai-responses-api?utm_source=chatgpt.com "OpenAI Responses API: The Ultimate Developer Guide"
+[5]: https://platform.openai.com/docs/guides/streaming-responses?utm_source=chatgpt.com "Streaming API responses"
+
+
+---
+
+Here are **practical code snippets** to guide your engineering team in implementing the Responses API (including streaming, structured output parsing, and tool support) using the official OpenAI JavaScript/TypeScript SDK.
+
+These examples assume you’re using **the official `openai` SDK** and are familiar with Node.js/TypeScript (or JavaScript). They’re based on the documented API behavior from the OpenAI docs. ([OpenAI Platform][1])
+
+---
+
+## ✅ 1) **Installing & Initializing the SDK**
+
+Install the official OpenAI SDK for Node.js:
+
+```bash
+npm install openai
+```
+
+Then import and initialize a client:
+
+```js
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // Store API key securely
+});
+```
+
+The primary API surface you’ll use for responses is `client.responses.create(...)`. ([OpenAI Platform][2])
+
+---
+
+## ✅ 2) **Simple Stateless Response (Non-Streaming)**
+
+This is the basic Responses API call:
+
+```js
+const response = await client.responses.create({
+  model: "gpt-5.2",
+  input: "Explain how quantum entanglement works in simple terms.",
+});
+
+console.log(response.output_text);
+```
+
+Here `response.output_text` contains the final generated text. ([OpenAI Platform][1])
+
+---
+
+## ✅ 3) **Streaming Response Example**
+
+To stream partial tokens as they’re generated:
+
+```js
+const stream = await client.responses.create({
+  model: "gpt-5.2",
+  input: "Tell me a creative story about AI in space.",
+  stream: true,
+});
+
+// Each event is streamed as an async iterator
+for await (const event of stream) {
+  // `event.type` might be text chunks or other item types
+  if (event.type === "response.output_text.delta") {
+    // Emit each chunk of text
+    process.stdout.write(event.delta);
+  }
+}
+```
+
+This uses **Server-Sent Events (SSE)** behind the scenes and lets you print output incrementally like ChatGPT. ([OpenAI Platform][3])
+
+---
+
+## ✅ 4) **Handling Structured Output or JSON Schema**
+
+If you want the model to output JSON that conforms to a schema (e.g., for function arguments), you can define structured output requests.
+
+Example pattern:
+
+```js
+const response = await client.responses.create({
+  model: "gpt-5.2",
+  input: "Summarize the following chat into JSON with fields summary & actionItems:",
+  text: {
+    // Tell the model how to structure the output
+    output_schema: {
+      fields: [
+        { name: "summary", type: "string" },
+        { name: "actionItems", type: "array", items: { type: "string" } },
+      ],
+    },
+  }
+});
+
+console.log(response.output_parsed);
+```
+
+You’ll need to map fields manually from the API response; include your schema type hints according to your own use case. ([OpenAI Platform][4])
+
+---
+
+## ✅ 5) **Using Tools (e.g., Web Search)**
+
+To enable built-in tools like web search, include them in the `tools` array:
+
+```js
+const response = await client.responses.create({
+  model: "gpt-5.2",
+  input: "Find the latest info on Mars rover missions.",
+  stream: true,
+  tools: [
+    { type: "web_search_preview" },
+  ],
+});
+```
+
+Built-in tools like web search are passed this way, and the model can choose to invoke them internally. ([OpenAI Platform][5])
+
+---
+
+## ✅ 6) **Streaming + Tools Together**
+
+You can **stream text plus tool invocation hints**:
+
+```js
+const stream = await client.responses.create({
+  model: "gpt-5.2",
+  stream: true,
+  input: "Search for and summarize the latest stock market news",
+  tools: [
+    { type: "web_search_preview" },
+  ],
+});
+
+for await (const event of stream) {
+  if (event.type === "response.output_text.delta") {
+    process.stdout.write(event.delta);
+  } else if (event.type === "tool.call") {
+    console.log("\n📡 Tool invocation:", event.tool.name);
+  }
+}
+```
+
+This prints text chunks and detects when the model invokes a tool. ([OpenAI Platform][5])
+
+---
+
+## ✅ 7) **Incremental Stateful Usage with `previous_response_id`**
+
+To reduce tokens (send only new content), capture the last response’s ID and reuse it:
+
+```js
+// First call
+const first = await client.responses.create({
+  model: "gpt-5.2",
+  input: "Translate this into French: 'Hello world!'",
+});
+const lastId = first.id;
+
+// Next call referencing the previous
+const followup = await client.responses.create({
+  previous_response_id: lastId,
+  input: "Also say it politely like a letter opening.",
+});
+
+console.log(followup.output_text);
+```
+
+Using a state pointer can **avoid replaying full history** each time. You’ll still need logic to reset when history editing occurs. ([OpenAI Platform][1])
+
+---
+
+## 🛠 Tips for Implementation
+
+### ✅ **Parsing Streaming Events**
+
+Streaming returns items like:
+
+* `response.output_text.delta` — text chunks
+* `tool.call` / `tool.return` — tool call events
+* `structured_output` — JSON blocks
+
+Make sure your event loop checks event types, else you may silently drop structured content (e.g., tool output or JSON schema). ([OpenAI Platform][3])
+
+---
+
+### ✅ **Error Handling**
+
+Wrap API calls in try/catch and emit partial data where possible. For streaming, catch errors inside the async loop to avoid breaking open streams.
+
+---
+
+### ✅ **Security & API Key Management**
+
+Never hard-code API keys. Use environment variables and secure key stores. Production best practices also include rate limits and monitoring API quota usage. ([OpenAI Platform][6])
+
+---
+
+## 📌 Summary Code Reference
+
+Here’s a compact outline you can reuse:
+
+```js
+import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Streaming with tools
+const stream = await client.responses.create({
+  model: "gpt-5.2",
+  stream: true,
+  input: "Your query here",
+  tools: [{ type: "web_search_preview" }],
+});
+
+for await (const ev of stream) {
+  if (ev.type === "response.output_text.delta") {
+    process.stdout.write(ev.delta);
+  }
+  // Add structured handlers for tool calls / JSON blocks here
+}
+```
+
+
+
+[1]: https://platform.openai.com/docs/api-reference/responses?utm_source=chatgpt.com "Responses | OpenAI API Reference"
+[2]: https://platform.openai.com/docs/libraries?utm_source=chatgpt.com "Libraries | OpenAI API"
+[3]: https://platform.openai.com/docs/guides/streaming-responses?utm_source=chatgpt.com "Streaming API responses"
+[4]: https://platform.openai.com/docs/guides/structured-outputs?utm_source=chatgpt.com "Structured model outputs | OpenAI API"
+[5]: https://platform.openai.com/docs/guides/tools-web-search?utm_source=chatgpt.com "Web search | OpenAI API"
+[6]: https://platform.openai.com/docs/guides/production-best-practices?utm_source=chatgpt.com "Production best practices | OpenAI API"

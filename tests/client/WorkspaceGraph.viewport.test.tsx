@@ -9,6 +9,20 @@ vi.mock('reactflow/dist/style.css', () => ({}));
 let lastFlowInstance: { setViewport: ReturnType<typeof vi.fn> } | null = null;
 let lastOnMoveEnd: ((event: any, viewport: any) => void) | null = null;
 
+const ROW_SPACING = 45;
+const BOTTOM_VIEWPORT_PADDING = 56;
+const CENTER_VIEWPORT_THRESHOLD = 0.75;
+
+const expectedPreferredY = (nodeCount: number, viewportHeight: number) => {
+  if (nodeCount <= 0) return 0;
+  const maxY = (nodeCount - 1) * ROW_SPACING;
+  const contentHeight = maxY + ROW_SPACING;
+  if (contentHeight < viewportHeight * CENTER_VIEWPORT_THRESHOLD) {
+    return viewportHeight / 2 - maxY / 2;
+  }
+  return viewportHeight - BOTTOM_VIEWPORT_PADDING - maxY;
+};
+
 vi.mock('reactflow', () => {
   const React = require('react');
   return {
@@ -86,7 +100,8 @@ describe('WorkspaceGraph viewport initialization', () => {
 
     const calls = lastFlowInstance!.setViewport.mock.calls;
     const [viewportArg] = calls[calls.length - 1] ?? [];
-    expect(viewportArg).toMatchObject({ x: 48, y: 88, zoom: 1 });
+    expect(viewportArg).toMatchObject({ x: 48, zoom: 1 });
+    expect(viewportArg?.y).toBeCloseTo(expectedPreferredY(2, 600), 3);
   });
 
   it('pins to the bottom when the graph overflows vertically', async () => {
@@ -111,8 +126,8 @@ describe('WorkspaceGraph viewport initialization', () => {
 
     const calls = lastFlowInstance!.setViewport.mock.calls;
     const [viewportArg] = calls[calls.length - 1] ?? [];
-    const maxY = (nodes.length - 1) * 45;
-    const expectedY = 600 - 56 - maxY;
+    const maxY = (nodes.length - 1) * ROW_SPACING;
+    const expectedY = 600 - BOTTOM_VIEWPORT_PADDING - maxY;
     expect(viewportArg).toMatchObject({ x: 48, zoom: 1 });
     expect(Math.abs((viewportArg?.y ?? 0) - expectedY)).toBeLessThan(1);
   });
@@ -211,6 +226,6 @@ describe('WorkspaceGraph viewport initialization', () => {
 
     const calls = lastFlowInstance!.setViewport.mock.calls;
     const lastViewport = calls[calls.length - 1]?.[0];
-    expect(lastViewport?.y).toBe(0);
+    expect(lastViewport?.y).toBeCloseTo(expectedPreferredY(31, 600), 3);
   });
 });

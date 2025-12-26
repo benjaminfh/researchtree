@@ -2,10 +2,22 @@
 
 import React, { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 
-export function CreateProjectForm() {
+interface ProviderOption {
+  id: LLMProvider;
+  label: string;
+}
+
+interface CreateProjectFormProps {
+  providerOptions: ProviderOption[];
+  defaultProvider: LLMProvider;
+}
+
+export function CreateProjectForm({ providerOptions, defaultProvider }: CreateProjectFormProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [provider, setProvider] = useState<LLMProvider>(defaultProvider);
   const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -23,7 +35,7 @@ export function CreateProjectForm() {
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description })
+        body: JSON.stringify({ name, description, provider })
       });
 
       if (!response.ok) {
@@ -80,6 +92,22 @@ export function CreateProjectForm() {
           disabled={isSubmitting}
         />
       </label>
+
+      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+        <span className="font-semibold text-slate-700">Provider</span>
+        <select
+          value={provider}
+          onChange={(event) => setProvider(event.target.value as LLMProvider)}
+          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+          disabled={isSubmitting || providerOptions.length === 0}
+        >
+          {providerOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 

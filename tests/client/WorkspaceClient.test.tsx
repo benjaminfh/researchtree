@@ -6,6 +6,7 @@ import type { BranchSummary, ProjectMetadata, NodeRecord } from '@git/types';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
+import { getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 
 type CapturedWorkspaceGraphProps = {
   mode?: 'nodes' | 'collapsed' | 'starred';
@@ -255,7 +256,7 @@ describe('WorkspaceClient', () => {
     expect(capturedChatOptions).not.toBeNull();
 
     await act(async () => {
-      capturedChatOptions?.onChunk?.('partial response');
+      capturedChatOptions?.onChunk?.({ type: 'text', content: 'partial response' });
     });
 
     expect(screen.getByText('partial response')).toBeInTheDocument();
@@ -459,16 +460,13 @@ describe('WorkspaceClient', () => {
     expect(screen.getByText('Failed to load history.')).toBeInTheDocument();
   });
 
-  it('updates the chat stream provider when the selector changes', async () => {
-    const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
-    expect(capturedChatOptions?.provider).toBe('openai');
-
-    await user.click(screen.getByRole('button', { name: /provider:/i }));
-    await user.click(screen.getByRole('menuitemradio', { name: 'Gemini' }));
-
+  it('uses the branch provider for chat streaming', async () => {
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, provider: 'openai', model: 'gpt-5.2' },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
+    ];
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
     expect(capturedChatOptions?.provider).toBe('gemini');
-    expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
   });
 
   it('renders assistant messages with a wider bubble', () => {
@@ -487,39 +485,47 @@ describe('WorkspaceClient', () => {
 
   it('keeps provider/thinking pinned to branch when switching branches', async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem('researchtree:provider:proj-1:feature/phase-2', 'gemini');
-    window.localStorage.setItem('researchtree:provider:proj-1:main', 'openai');
     window.localStorage.setItem('researchtree:thinking:proj-1:feature/phase-2', 'high');
     window.localStorage.setItem('researchtree:thinking:proj-1:main', 'medium');
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, provider: 'openai', model: 'gpt-5.2' },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
+    ];
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn(async () => {
       return new Response(
         JSON.stringify({
           branchName: 'main',
-          branches: baseBranches
+          branches
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
     }) as unknown as typeof fetch;
 
     try {
-      render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+      render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /provider:/i })).toHaveTextContent('Gemini');
+        const header = screen.getByText('Conversation').closest('div')?.parentElement;
+        const badge = header ? within(header).getByText('Provider').parentElement : null;
+        expect(badge).toHaveTextContent('Gemini');
       });
 
       await user.click(screen.getByRole('button', { name: 'trunk' }));
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /provider:/i })).toHaveTextContent('OpenAI');
+        const header = screen.getByText('Conversation').closest('div')?.parentElement;
+        const badge = header ? within(header).getByText('Provider').parentElement : null;
+        expect(badge).toHaveTextContent('OpenAI');
       });
 
-      expect(window.localStorage.getItem('researchtree:provider:proj-1:feature/phase-2')).toBe('gemini');
-      expect(window.localStorage.getItem('researchtree:provider:proj-1:main')).toBe('openai');
-      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
-      expect(window.localStorage.getItem('researchtree:thinking:proj-1:main')).toBe('medium');
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe(
+        getDefaultThinkingSetting('gemini', 'gemini-3.0-pro')
+      );
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:main')).toBe(
+        getDefaultThinkingSetting('openai', 'gpt-5.2')
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }

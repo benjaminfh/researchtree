@@ -3,6 +3,7 @@ import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { getStoreConfig } from '@/src/server/storeConfig';
+import { getDefaultModelForProvider, resolveLLMProvider } from '@/src/server/llm';
 
 export async function GET() {
   try {
@@ -53,9 +54,17 @@ export async function POST(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
+    const defaultProvider = resolveLLMProvider(parsed.data.provider);
+    const defaultModel = getDefaultModelForProvider(defaultProvider);
+
     if (store.mode === 'pg') {
       const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-      const created = await rtCreateProjectShadow({ name: parsed.data.name, description: parsed.data.description });
+      const created = await rtCreateProjectShadow({
+        name: parsed.data.name,
+        description: parsed.data.description,
+        provider: defaultProvider,
+        model: defaultModel
+      });
       const supabase = createSupabaseServerClient();
       const { data, error } = await supabase
         .from('projects')
@@ -77,11 +86,17 @@ export async function POST(request: Request) {
     }
 
     const { initProject, deleteProject } = await import('@git/projects');
-    const project = await initProject(parsed.data.name, parsed.data.description);
+    const project = await initProject(parsed.data.name, parsed.data.description, defaultProvider);
 
     try {
       const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
-      await rtCreateProjectShadow({ projectId: project.id, name: project.name, description: project.description });
+      await rtCreateProjectShadow({
+        projectId: project.id,
+        name: project.name,
+        description: project.description,
+        provider: defaultProvider,
+        model: defaultModel
+      });
     } catch (error) {
       await deleteProject(project.id).catch(() => undefined);
       throw error;

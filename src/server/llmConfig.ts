@@ -41,7 +41,13 @@ function isAllowedModel(allowedModels: string[] | null, model: string): boolean 
 
 export function getEnabledProviders(): LLMProvider[] {
   const enabled: LLMProvider[] = [];
-  if (parseBooleanEnv(process.env.LLM_ENABLE_OPENAI, true)) enabled.push('openai');
+  const openAIEnabled = parseBooleanEnv(process.env.LLM_ENABLE_OPENAI, true);
+  if (openAIEnabled) {
+    enabled.push('openai');
+    if (getOpenAIUseResponses()) {
+      enabled.push('openai_responses');
+    }
+  }
   if (parseBooleanEnv(process.env.LLM_ENABLE_GEMINI, true)) enabled.push('gemini');
   if (parseBooleanEnv(process.env.LLM_ENABLE_ANTHROPIC, false)) enabled.push('anthropic');
   if (getDeployEnv() === 'dev') {
@@ -53,14 +59,20 @@ export function getEnabledProviders(): LLMProvider[] {
 export function getDefaultProvider(): LLMProvider {
   const enabled = new Set(getEnabledProviders());
   const raw = (process.env.LLM_DEFAULT_PROVIDER ?? '').trim().toLowerCase();
-  const candidate = (raw === 'openai' || raw === 'gemini' || raw === 'anthropic' || raw === 'mock' ? raw : '') as
-    | LLMProvider
-    | '';
+  const candidate = (
+    raw === 'openai' ||
+    raw === 'openai_responses' ||
+    raw === 'gemini' ||
+    raw === 'anthropic' ||
+    raw === 'mock'
+      ? raw
+      : ''
+  ) as LLMProvider | '';
   if (candidate && enabled.has(candidate)) {
     return candidate;
   }
 
-  for (const fallback of ['openai', 'gemini', 'anthropic', 'mock'] as const) {
+  for (const fallback of ['openai', 'openai_responses', 'gemini', 'anthropic', 'mock'] as const) {
     if (enabled.has(fallback)) return fallback;
   }
   // Should be unreachable (dev always includes mock), but keep safe default.
@@ -68,9 +80,9 @@ export function getDefaultProvider(): LLMProvider {
 }
 
 export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
-  if (provider === 'openai') {
+  if (provider === 'openai' || provider === 'openai_responses') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_OPENAI, true);
-    const supportedModels = LLM_ENDPOINTS.openai.models;
+    const supportedModels = LLM_ENDPOINTS[provider].models;
     const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_OPENAI);
     if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
       throw new Error(
@@ -78,7 +90,7 @@ export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
       );
     }
     const allowedModels = allowedFromEnv ?? supportedModels;
-    const fallbackModel = LLM_ENDPOINTS.openai.defaultModel;
+    const fallbackModel = LLM_ENDPOINTS[provider].defaultModel;
     const envModel = (process.env.OPENAI_MODEL ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {
@@ -128,4 +140,8 @@ export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
   }
 
   return { enabled: true, allowedModels: null, defaultModel: 'mock' };
+}
+
+export function getOpenAIUseResponses(): boolean {
+  return parseBooleanEnv(process.env.OPENAI_USE_RESPONSES, false);
 }

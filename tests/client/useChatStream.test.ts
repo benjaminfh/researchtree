@@ -31,7 +31,10 @@ describe('useChatStream', () => {
       if (url.toString().includes('/chat')) {
         return Promise.resolve({
           ok: true,
-          body: createTextStream(['foo', 'bar'])
+          body: createTextStream([
+            JSON.stringify({ type: 'text', content: 'foo' }) + '\n',
+            JSON.stringify({ type: 'text', content: 'bar' }) + '\n'
+          ])
         } as Response);
       }
       throw new Error('Unexpected fetch call');
@@ -53,8 +56,8 @@ describe('useChatStream', () => {
         body: JSON.stringify({ message: 'Hello world', llmProvider: undefined })
       })
     );
-    expect(onChunk).toHaveBeenNthCalledWith(1, 'foo');
-    expect(onChunk).toHaveBeenNthCalledWith(2, 'bar');
+    expect(onChunk).toHaveBeenNthCalledWith(1, { type: 'text', content: 'foo' });
+    expect(onChunk).toHaveBeenNthCalledWith(2, { type: 'text', content: 'bar' });
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(result.current.state.isStreaming).toBe(false);
     expect(result.current.state.error).toBeNull();
@@ -65,7 +68,7 @@ describe('useChatStream', () => {
       if (url.toString().includes('/chat')) {
         return Promise.resolve({
           ok: true,
-          body: createTextStream(['ok'])
+          body: createTextStream([JSON.stringify({ type: 'text', content: 'ok' }) + '\n'])
         } as Response);
       }
       throw new Error('Unexpected fetch call');
@@ -94,7 +97,7 @@ describe('useChatStream', () => {
       if (url.toString().includes('/chat')) {
         return Promise.resolve({
           ok: true,
-          body: createTextStream(['ok'])
+          body: createTextStream([JSON.stringify({ type: 'text', content: 'ok' }) + '\n'])
         } as Response);
       }
       throw new Error('Unexpected fetch call');
