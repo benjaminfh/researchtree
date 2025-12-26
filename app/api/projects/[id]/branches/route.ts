@@ -5,6 +5,7 @@ import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { resolveBranchConfig } from '@/src/server/branchConfig';
+import { resolveOpenAIProviderSelection } from '@/src/server/llm';
 
 interface RouteContext {
   params: { id: string };
@@ -73,8 +74,11 @@ export async function POST(request: Request, { params }: RouteContext) {
           provider: baseBranch?.provider ?? null,
           model: baseBranch?.model ?? null
         });
+        const requestedProvider = parsed.data.provider
+          ? resolveOpenAIProviderSelection(parsed.data.provider)
+          : baseConfig.provider;
         const resolvedConfig = resolveBranchConfig({
-          provider: parsed.data.provider ?? baseConfig.provider,
+          provider: requestedProvider,
           model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
           fallback: baseConfig
         });
@@ -108,8 +112,11 @@ export async function POST(request: Request, { params }: RouteContext) {
         provider: baseBranch?.provider ?? null,
         model: baseBranch?.model ?? null
       });
+      const requestedProvider = parsed.data.provider
+        ? resolveOpenAIProviderSelection(parsed.data.provider)
+        : baseConfig.provider;
       const resolvedConfig = resolveBranchConfig({
-        provider: parsed.data.provider ?? baseConfig.provider,
+        provider: requestedProvider,
         model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
         fallback: baseConfig
       });

@@ -1,5 +1,5 @@
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { resolveLLMProvider, getDefaultModelForProvider } from '@/src/server/llm';
+import { resolveOpenAIProviderSelection, getDefaultModelForProvider } from '@/src/server/llm';
 import { readBranchConfigMap, writeBranchConfigMap } from '@/src/git/branchConfig';
 
 export async function getPreviousResponseId(projectId: string, refName: string): Promise<string | null> {
@@ -26,7 +26,7 @@ export async function setPreviousResponseId(projectId: string, refName: string, 
   if (existing) {
     map[refName] = { ...existing, previousResponseId: responseId ?? null };
   } else {
-    const provider = resolveLLMProvider();
+    const provider = resolveOpenAIProviderSelection();
     map[refName] = {
       provider,
       model: getDefaultModelForProvider(provider),

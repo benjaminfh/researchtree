@@ -1,7 +1,7 @@
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext } from '@/src/server/context';
-import { encodeChunk, resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { encodeChunk, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
@@ -63,14 +63,10 @@ export async function POST(request: Request, { params }: RouteContext) {
     const activeConfig = branchConfigMap[targetRef] ?? resolveBranchConfig();
     const provider = activeConfig.provider;
     const modelName = activeConfig.model;
-    if (llmProvider) {
-      const normalizedRequested = llmProvider === 'openai_responses' ? 'openai' : llmProvider;
-      const normalizedProvider = provider === 'openai_responses' ? 'openai' : provider;
-      if (normalizedRequested !== normalizedProvider) {
-        throw badRequest(
-          `Branch ${targetRef} is locked to ${labelForProvider(provider)} (${modelName}). Create a new branch to switch.`
-        );
-      }
+    if (llmProvider && llmProvider !== provider) {
+      throw badRequest(
+        `Branch ${targetRef} is locked to ${labelForProvider(provider)} (${modelName}). Create a new branch to switch.`
+      );
     }
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
@@ -84,9 +80,8 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
     const tokenLimit = await getProviderTokenLimit(provider, modelName);
     const apiKey = await requireUserApiKeyForProvider(provider);
-    const resolvedProvider = resolveLLMProvider(provider);
     const previousResponseId =
-      resolvedProvider === 'openai_responses' ? await getPreviousResponseId(params.id, targetRef).catch(() => null) : null;
+      provider === 'openai_responses' ? await getPreviousResponseId(params.id, targetRef).catch(() => null) : null;
 
     console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRef, webSearch });
     const releaseLock = await acquireProjectRefLock(params.id, targetRef);
@@ -183,7 +178,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             for await (const chunk of streamAssistantCompletion({
               messages: messagesForCompletion,
               signal: abortController.signal,
-              provider: resolvedProvider,
+              provider,
               model: modelName,
               thinking: effectiveThinking,
               webSearch,
@@ -292,7 +287,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   rawResponse
                 });
               }
-              if (resolvedProvider === 'openai_responses' && responseId) {
+              if (provider === 'openai_responses' && responseId) {
                 await setPreviousResponseId(params.id, targetRef, responseId);
               }
             }
