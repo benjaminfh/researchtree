@@ -187,7 +187,7 @@ async function* streamFromOpenAI(
 
 function toOpenAIResponsesInput(messages: ChatMessage[]): {
   instructions?: string;
-  input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }>;
+  input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }>;
 } {
   const instructions = messages
     .filter((message) => message.role === 'system')
@@ -195,13 +195,25 @@ function toOpenAIResponsesInput(messages: ChatMessage[]): {
     .join('\n\n')
     .trim();
 
-  const input = messages
-    .filter((message) => message.role !== 'system')
-    .map((message) => ({
-      role: message.role as 'user' | 'assistant',
-      content: [{ type: 'input_text' as const, text: flattenMessageContent(message.content) }]
-    }))
-    .filter((item) => item.content[0]?.text?.trim());
+  let lastUserText = '';
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== 'user') continue;
+    const text = flattenMessageContent(message.content).trim();
+    if (text) {
+      lastUserText = text;
+      break;
+    }
+  }
+
+  const input = lastUserText
+    ? [
+        {
+          role: 'user' as const,
+          content: [{ type: 'input_text' as const, text: lastUserText }]
+        }
+      ]
+    : [];
 
   return {
     ...(instructions ? { instructions } : {}),
