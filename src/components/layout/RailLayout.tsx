@@ -52,7 +52,7 @@ export function RailLayout({
   return (
     <div className={`grid ${outerClassName}`} style={{ gridTemplateColumns: railCollapsed ? '54px minmax(0, 1fr)' : '270px minmax(0, 1fr)' }}>
       <aside className={asideClassName}>
-        <div className="flex items-center gap-2">
+        <div className="flex h-10 items-center gap-2">
           <button
             type="button"
             onClick={toggleRail}
@@ -63,13 +63,13 @@ export function RailLayout({
           </button>
           {!railCollapsed ? (
             pathname === '/' ? (
-              <div className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
+              <div className="inline-flex h-8 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
                 <span>{APP_NAME}</span>
               </div>
             ) : (
               <Link
                 href="/"
-                className="focus-ring inline-flex h-10 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm hover:bg-primary/10"
+                className="focus-ring inline-flex h-8 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm hover:bg-primary/10"
                 aria-label="Back to home"
               >
                 <span>{APP_NAME}</span>

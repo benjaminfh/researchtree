@@ -478,7 +478,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const graphCopyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insightCollapsed, setInsightCollapsed] = useState(false);
   const [chatPaneWidth, setChatPaneWidth] = useState<number | null>(null);
+  const [insightPaneWidth, setInsightPaneWidth] = useState<number | null>(null);
   const paneContainerRef = useRef<HTMLDivElement | null>(null);
+  const insightPaneRef = useRef<HTMLDivElement | null>(null);
   const isResizingRef = useRef(false);
   const savedChatPaneWidthRef = useRef<number | null>(null);
   const [graphHistories, setGraphHistories] = useState<Record<string, NodeRecord[]> | null>(null);
@@ -487,6 +489,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+  const INSIGHT_MIN_WIDTH = 360;
+  const INSIGHT_COLLAPSED_WIDTH = 56;
+  const SPLIT_GAP = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
   const openEditModal = (node: MessageNode) => {
     setEditingNode(node);
@@ -872,38 +877,23 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   }, [CHAT_WIDTH_KEY]);
 
   useEffect(() => {
-    if (!chatPaneWidth) return;
     const container = paneContainerRef.current;
-    if (!container) return;
+    if (!container || !chatPaneWidth) return;
     const rect = container.getBoundingClientRect();
     if (!Number.isFinite(rect.width) || rect.width <= 0) return;
-    const rightMin = insightCollapsed ? 56 : 360;
-    const maxChat = Math.max(0, rect.width - rightMin - 24);
-    if (maxChat <= 0) return;
-    const clamped = Math.min(chatPaneWidth, Math.floor(maxChat));
-    if (clamped !== chatPaneWidth) {
-      setChatPaneWidth(clamped);
-    }
+    const rightMin = insightCollapsed ? INSIGHT_COLLAPSED_WIDTH : INSIGHT_MIN_WIDTH;
+    const nextWidth = Math.max(rightMin, Math.floor(rect.width - chatPaneWidth - SPLIT_GAP));
+    setInsightPaneWidth(nextWidth);
   }, [chatPaneWidth, insightCollapsed]);
 
   useEffect(() => {
-    const onResize = () => {
-      const container = paneContainerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      if (!Number.isFinite(rect.width) || rect.width <= 0) return;
-      const rightMin = insightCollapsed ? 56 : 360;
-      const maxChat = Math.max(0, rect.width - rightMin - 24);
-      if (!chatPaneWidth || maxChat <= 0) return;
-      const clamped = Math.min(chatPaneWidth, Math.floor(maxChat));
-      if (clamped !== chatPaneWidth) {
-        setChatPaneWidth(clamped);
-      }
-    };
-
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [chatPaneWidth, insightCollapsed]);
+    if (chatPaneWidth || insightPaneWidth || insightCollapsed) return;
+    const panel = insightPaneRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || rect.width <= 0) return;
+    setInsightPaneWidth(Math.max(INSIGHT_MIN_WIDTH, Math.floor(rect.width)));
+  }, [chatPaneWidth, insightPaneWidth, insightCollapsed]);
 
   useEffect(() => {
     const handleMove = (event: MouseEvent | TouchEvent) => {
@@ -919,11 +909,12 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           ? (event.touches[0]?.clientX ?? rect.left)
           : (event as MouseEvent).clientX;
 
-      const rightMin = insightCollapsed ? 56 : 360;
+      const rightMin = insightCollapsed ? INSIGHT_COLLAPSED_WIDTH : INSIGHT_MIN_WIDTH;
       const minChat = 380;
-      const maxChat = Math.max(minChat, rect.width - rightMin - 24);
+      const maxChat = Math.max(minChat, rect.width - rightMin - SPLIT_GAP);
       const next = Math.min(maxChat, Math.max(minChat, clientX - rect.left));
       setChatPaneWidth(Math.round(next));
+      setInsightPaneWidth(Math.floor(rect.width - next - SPLIT_GAP));
     };
 
     const stop = () => {
@@ -1829,9 +1820,9 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
               <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
                 <section
                   className={`card-surface relative flex h-full min-h-0 min-w-0 flex-col gap-4 p-5 ${
-                    chatPaneWidth ? 'flex-none' : 'flex-1 lg:flex-[2]'
+                    chatPaneWidth ? 'flex-1' : 'flex-1 lg:flex-[2]'
                   }`}
-                  style={chatPaneWidth ? { width: chatPaneWidth, maxWidth: '100%' } : undefined}
+                  style={chatPaneWidth ? { flexBasis: chatPaneWidth } : undefined}
                 >
                   <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 flex flex-wrap items-center gap-3">
                     {branchName !== trunkName && sharedCount > 0 ? (
@@ -2077,7 +2068,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                 ) : null}
                 </section>
 
-            <div className="hidden lg:flex h-full w-6 items-stretch">
+            <div
+              className="hidden lg:flex h-full flex-none items-stretch"
+              style={{ width: SPLIT_GAP, minWidth: SPLIT_GAP, maxWidth: SPLIT_GAP }}
+            >
               <div
                 role="separator"
                 aria-orientation="vertical"
@@ -2094,14 +2088,20 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
                   insightCollapsed ? 'cursor-not-allowed opacity-40' : 'cursor-col-resize'
                 }`}
               >
-                <div className="h-full w-px bg-divider/70 transition group-hover:bg-primary/40" />
+                <div className="relative h-full w-1">
+                  <div className="absolute left-1/2 top-0 h-[calc(50%-8px)] w-[1.5px] -translate-x-1/2 bg-divider/70 transition group-hover:bg-primary/40" />
+                  <div className="absolute left-1/2 bottom-0 h-[calc(50%-8px)] w-[1.5px] -translate-x-1/2 bg-divider/70 transition group-hover:bg-primary/40" />
+                  <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-sm ring-1 ring-divider/80 transition group-hover:ring-primary/50" />
+                </div>
               </div>
             </div>
 
             <div
+              ref={insightPaneRef}
               className={`flex h-full min-h-0 min-w-0 flex-col gap-4 ${
-                insightCollapsed ? 'lg:w-14 lg:flex-none' : 'lg:min-w-[360px] lg:flex-1'
+                insightCollapsed ? 'lg:w-14 lg:flex-none' : insightPaneWidth ? 'lg:flex-none' : 'lg:min-w-[360px] lg:flex-1'
               }`}
+              style={!insightCollapsed && insightPaneWidth ? { flex: `0 0 ${insightPaneWidth}px` } : undefined}
             >
               {insightCollapsed ? (
                 <button
