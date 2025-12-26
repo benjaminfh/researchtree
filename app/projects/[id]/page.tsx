@@ -5,7 +5,7 @@ import { resolveLLMProvider, getDefaultModelForProvider, type LLMProvider } from
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
-import { getEnabledProviders } from '@/src/server/llmConfig';
+import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
 
 interface ProjectPageProps {
   params: {
@@ -79,6 +79,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
         initialBranches={branches}
         defaultProvider={resolveLLMProvider()}
         providerOptions={providerOptions}
+        openAIUseResponses={getOpenAIUseResponses()}
       />
     </main>
   );

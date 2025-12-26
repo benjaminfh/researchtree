@@ -256,7 +256,7 @@ async function* streamFromOpenAIResponses(
     ...(instructions ? { instructions } : {}),
     ...thinkingParams,
     ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-    ...(webSearch ? { tools: [{ type: 'web_search_preview' }] } : {})
+    ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
   } as any);
 
   if (signal) {
