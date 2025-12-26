@@ -79,6 +79,7 @@ interface WorkspaceClientProps {
   initialBranches: BranchSummary[];
   defaultProvider: LLMProvider;
   providerOptions: ProviderOption[];
+  openAIUseResponses: boolean;
 }
 
 interface ProviderOption {
@@ -433,7 +434,13 @@ const ChatNodeRow: FC<{
   );
 };
 
-export function WorkspaceClient({ project, initialBranches, defaultProvider, providerOptions }: WorkspaceClientProps) {
+export function WorkspaceClient({
+  project,
+  initialBranches,
+  defaultProvider,
+  providerOptions,
+  openAIUseResponses
+}: WorkspaceClientProps) {
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
@@ -684,7 +691,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       ? null
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
   const webSearchAvailable = branchProvider !== 'mock';
-  const showOpenAISearchNote = webSearchEnabled && (branchProvider === 'openai' || branchProvider === 'openai_responses');
+  const showOpenAISearchNote =
+    webSearchEnabled &&
+    !openAIUseResponses &&
+    (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
