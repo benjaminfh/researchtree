@@ -4,7 +4,7 @@ import { editMessageSchema } from '@/src/server/schemas';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { resolveLLMProvider, streamAssistantCompletion } from '@/src/server/llm';
+import { resolveOpenAIProviderSelection, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
@@ -52,14 +52,14 @@ export async function POST(request: Request, { params }: RouteContext) {
     const sourceRef = fromRef?.trim() || currentBranch;
     const branchConfigMap = await getBranchConfigMap(params.id);
     const baseConfig = branchConfigMap[sourceRef] ?? resolveBranchConfig();
+    const requestedProvider = llmProvider ? resolveOpenAIProviderSelection(llmProvider) : baseConfig.provider;
     const requestedConfig = resolveBranchConfig({
-      provider: llmProvider ?? baseConfig.provider,
+      provider: requestedProvider,
       model: llmModel ?? (llmProvider ? null : baseConfig.model),
       fallback: baseConfig
     });
     const provider = requestedConfig.provider;
     const modelName = requestedConfig.model;
-    const resolvedProvider = resolveLLMProvider(provider);
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
     if (!thinkingValidation.ok) {
@@ -150,12 +150,10 @@ export async function POST(request: Request, { params }: RouteContext) {
               let rawResponse: unknown = null;
               let responseId: string | null = null;
               const previousResponseId =
-                resolvedProvider === 'openai_responses'
-                  ? await getPreviousResponseId(params.id, targetBranch).catch(() => null)
-                  : null;
+                provider === 'openai_responses' ? await getPreviousResponseId(params.id, targetBranch).catch(() => null) : null;
               for await (const chunk of streamAssistantCompletion({
                 messages: messagesForCompletion,
-                provider: resolvedProvider,
+                provider,
                 model: modelName,
                 thinking: effectiveThinking,
                 apiKey,
@@ -230,7 +228,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   attachDraft: false,
                   rawResponse
                 });
-                if (resolvedProvider === 'openai_responses' && responseId) {
+                if (provider === 'openai_responses' && responseId) {
                   await setPreviousResponseId(params.id, targetBranch, responseId);
                 }
               } else {
@@ -296,12 +294,10 @@ export async function POST(request: Request, { params }: RouteContext) {
             let rawResponse: unknown = null;
             let responseId: string | null = null;
             const previousResponseId =
-              resolvedProvider === 'openai_responses'
-                ? await getPreviousResponseId(params.id, targetBranch).catch(() => null)
-                : null;
+              provider === 'openai_responses' ? await getPreviousResponseId(params.id, targetBranch).catch(() => null) : null;
             for await (const chunk of streamAssistantCompletion({
               messages: messagesForCompletion,
-              provider: resolvedProvider,
+              provider,
               model: modelName,
               thinking: effectiveThinking,
               apiKey,
@@ -364,7 +360,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 },
                 { ref: targetBranch }
               );
-              if (resolvedProvider === 'openai_responses' && responseId) {
+              if (provider === 'openai_responses' && responseId) {
                 await setPreviousResponseId(params.id, targetBranch, responseId);
               }
             } else {

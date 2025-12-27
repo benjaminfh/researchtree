@@ -3,7 +3,7 @@ import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { getDefaultModelForProvider, resolveLLMProvider } from '@/src/server/llm';
+import { getDefaultModelForProvider, resolveLLMProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';
 
 export async function GET() {
   try {
@@ -54,7 +54,8 @@ export async function POST(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const defaultProvider = resolveLLMProvider(parsed.data.provider);
+    const requestedProvider = resolveOpenAIProviderSelection(parsed.data.provider ?? null);
+    const defaultProvider = resolveLLMProvider(requestedProvider);
     const defaultModel = getDefaultModelForProvider(defaultProvider);
 
     if (store.mode === 'pg') {

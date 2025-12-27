@@ -21,7 +21,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
 import type { FC } from 'react';
-import { RailLayout } from '@/src/components/layout/RailLayout';
+import { RailPageLayout } from '@/src/components/layout/RailPageLayout';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { WorkspaceGraph } from './WorkspaceGraph';
 import { buildBranchColorMap, getBranchColor } from './branchColors';
@@ -79,6 +79,7 @@ interface WorkspaceClientProps {
   initialBranches: BranchSummary[];
   defaultProvider: LLMProvider;
   providerOptions: ProviderOption[];
+  openAIUseResponses: boolean;
 }
 
 interface ProviderOption {
@@ -433,7 +434,13 @@ const ChatNodeRow: FC<{
   );
 };
 
-export function WorkspaceClient({ project, initialBranches, defaultProvider, providerOptions }: WorkspaceClientProps) {
+export function WorkspaceClient({
+  project,
+  initialBranches,
+  defaultProvider,
+  providerOptions,
+  openAIUseResponses
+}: WorkspaceClientProps) {
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
@@ -684,7 +691,10 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
       ? null
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
   const webSearchAvailable = branchProvider !== 'mock';
-  const showOpenAISearchNote = webSearchEnabled && (branchProvider === 'openai' || branchProvider === 'openai_responses');
+  const showOpenAISearchNote =
+    webSearchEnabled &&
+    !openAIUseResponses &&
+    (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -1618,11 +1628,8 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-white text-slate-800">
-      <RailLayout
-        outerClassName="h-full"
-        asideClassName="relative z-40 flex h-full flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur"
-        mainClassName="h-full min-h-0 min-w-0 overflow-hidden"
+    <>
+      <RailPageLayout
         renderRail={(ctx) => (
           <div className="mt-6 flex h-full flex-col gap-6">
             {!ctx.railCollapsed ? (
@@ -2969,7 +2976,7 @@ export function WorkspaceClient({ project, initialBranches, defaultProvider, pro
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 

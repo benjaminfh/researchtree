@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
-import { resolveLLMProvider, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
+import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
-import { getEnabledProviders } from '@/src/server/llmConfig';
+import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
 
 interface ProjectPageProps {
   params: {
@@ -77,8 +77,9 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       <WorkspaceClient
         project={project}
         initialBranches={branches}
-        defaultProvider={resolveLLMProvider()}
+        defaultProvider={resolveOpenAIProviderSelection()}
         providerOptions={providerOptions}
+        openAIUseResponses={getOpenAIUseResponses()}
       />
     </main>
   );

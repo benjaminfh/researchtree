@@ -4,7 +4,7 @@ import { createNodeRecord, writeNodeRecord } from './nodes';
 import type { BranchSummary, NodeRecord } from './types';
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { isSupportedModelForProvider } from '@/src/shared/llmCapabilities';
-import { getDefaultModelForProvider, resolveLLMProvider } from '@/src/server/llm';
+import { getDefaultModelForProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';
 import {
   assertProjectExists,
   buildCommitMessage,
@@ -85,7 +85,7 @@ export async function createBranch(
   await git.checkoutLocalBranch(branchName);
 
   const configMap = await readBranchConfigMap(projectId);
-  const fallbackProvider = resolveLLMProvider();
+  const fallbackProvider = resolveOpenAIProviderSelection();
   const sourceConfig = configMap[sourceRef];
   const provider = options?.provider ?? sourceConfig?.provider ?? fallbackProvider;
   const modelCandidate =
@@ -113,7 +113,7 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   const git = simpleGit(getProjectPath(projectId));
   const branches = await git.branchLocal();
   const configMap = await readBranchConfigMap(projectId);
-  const fallbackProvider = resolveLLMProvider();
+  const fallbackProvider = resolveOpenAIProviderSelection();
 
   const summaries: (BranchSummary & { _lastModifiedAt: number; _createdAt: number })[] = [];
   for (const name of branches.all) {

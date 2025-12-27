@@ -4,7 +4,7 @@ import { simpleGit } from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
 import { INITIAL_BRANCH, PROJECT_FILES, PROJECTS_ROOT } from './constants';
 import type { ProjectMetadata } from './types';
-import { getDefaultModelForProvider, resolveLLMProvider, type LLMProvider } from '@/src/server/llm';
+import { getDefaultModelForProvider, resolveLLMProvider, resolveOpenAIProviderSelection, type LLMProvider } from '@/src/server/llm';
 import {
   assertProjectExists,
   ensureProjectsRoot,
@@ -39,7 +39,8 @@ export async function initProject(
   const git = simpleGit(projectPath);
   await git.init();
   await git.checkoutLocalBranch(INITIAL_BRANCH);
-  const resolvedProvider = resolveLLMProvider(provider);
+  const requestedProvider = resolveOpenAIProviderSelection(provider);
+  const resolvedProvider = resolveLLMProvider(requestedProvider);
   await setBranchConfig(id, INITIAL_BRANCH, {
     provider: resolvedProvider,
     model: getDefaultModelForProvider(resolvedProvider)

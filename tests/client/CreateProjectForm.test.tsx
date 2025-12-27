@@ -6,6 +6,11 @@ import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
 
 const refreshMock = vi.fn();
 const pushMock = vi.fn();
+const providerOptions = [
+  { id: 'openai', label: 'OpenAI' },
+  { id: 'gemini', label: 'Gemini' }
+] as const;
+const defaultProvider = 'openai';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -29,7 +34,7 @@ describe('CreateProjectForm', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
     const user = userEvent.setup();
 
-    render(<CreateProjectForm />);
+    render(<CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />);
 
     await user.type(screen.getByLabelText('Workspace Name', { selector: 'input' }), '   ');
     await user.click(screen.getByRole('button', { name: 'Create Workspace' }));
@@ -48,7 +53,7 @@ describe('CreateProjectForm', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
     const user = userEvent.setup();
 
-    render(<CreateProjectForm />);
+    render(<CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />);
 
     const nameInput = screen.getAllByLabelText('Workspace Name', { selector: 'input' })[0];
     const descriptionInput = screen.getAllByLabelText('Description (optional)')[0];
@@ -62,7 +67,7 @@ describe('CreateProjectForm', () => {
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'New Project', description: 'Exploration work' })
+          body: JSON.stringify({ name: 'New Project', description: 'Exploration work', provider: defaultProvider })
         })
       );
     });
@@ -83,7 +88,7 @@ describe('CreateProjectForm', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
     const user = userEvent.setup();
 
-    render(<CreateProjectForm />);
+    render(<CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />);
 
     const nameInput = screen.getAllByLabelText('Workspace Name', { selector: 'input' })[0];
     await user.type(nameInput, 'Broken Project');

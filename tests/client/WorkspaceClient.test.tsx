@@ -180,14 +180,14 @@ describe('WorkspaceClient', () => {
 
   it('renders metadata, nodes, and artefact content', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
-    expect(screen.getByText(/Branch\s+feature\/phase-2\s+·/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'feature/phase-2' })).toBeInTheDocument();
     expect(screen.getByText('Test project description')).toBeInTheDocument();
 
     // Reveal shared history on non-trunk branches before asserting messages.
-    await user.click(await screen.findByRole('button', { name: /show shared/i }));
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
 
     expect(screen.getByText('How is progress going?')).toBeInTheDocument();
     expect(screen.getByText('All tasks queued.')).toBeInTheDocument();
@@ -198,7 +198,7 @@ describe('WorkspaceClient', () => {
 
     // Copy is exposed for every message, while edit is only exposed for user messages by default.
     expect(screen.getAllByRole('button', { name: 'Copy message' })).toHaveLength(3);
-    expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(2);
   });
 
   it('renders assistant message content as markdown', async () => {
@@ -221,7 +221,7 @@ describe('WorkspaceClient', () => {
       state: { isStreaming: false, error: null }
     } as unknown as ReturnType<typeof useChatStream>);
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     const bold = await screen.findByText('world');
     expect(bold.tagName).toBe('STRONG');
@@ -229,7 +229,7 @@ describe('WorkspaceClient', () => {
 
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     const composer = screen.getByPlaceholderText('Ask anything');
     await user.type(composer, 'New investigation');
@@ -251,7 +251,7 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>);
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     expect(capturedChatOptions).not.toBeNull();
 
@@ -263,7 +263,7 @@ describe('WorkspaceClient', () => {
   });
 
   it('refreshes history and artefact when the stream completes', async () => {
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
     expect(capturedChatOptions).not.toBeNull();
 
     await act(async () => {
@@ -303,7 +303,7 @@ describe('WorkspaceClient', () => {
     } as ReturnType<typeof useProjectData>);
 
     render(
-      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
     );
 
     expect(screen.getByRole('button', { name: 'Add canvas diff to context' })).toBeInTheDocument();
@@ -379,7 +379,7 @@ describe('WorkspaceClient', () => {
         project={baseProject}
         initialBranches={baseBranches}
         defaultProvider="openai"
-        providerOptions={providerOptions}
+        providerOptions={providerOptions} openAIUseResponses={false}
       />
     );
 
@@ -418,7 +418,7 @@ describe('WorkspaceClient', () => {
   it('shows stop controls and error text while streaming', async () => {
     chatState.isStreaming = true;
     chatState.error = 'Network issue';
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     expect(screen.getByLabelText('Stop streaming')).toBeInTheDocument();
     expect(screen.getByText('Network issue')).toBeInTheDocument();
@@ -443,7 +443,7 @@ describe('WorkspaceClient', () => {
 
     mockUseProjectData.mockImplementation(() => currentProjectData);
 
-    const { rerender } = render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    const { rerender } = render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
     expect(screen.getByText('Loading history…')).toBeInTheDocument();
 
     currentProjectData = {
@@ -456,7 +456,7 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>;
 
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
     expect(screen.getByText('Failed to load history.')).toBeInTheDocument();
   });
 
@@ -465,7 +465,7 @@ describe('WorkspaceClient', () => {
       { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, provider: 'openai', model: 'gpt-5.2' },
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
     ];
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
     expect(capturedChatOptions?.provider).toBe('gemini');
   });
 
@@ -475,7 +475,7 @@ describe('WorkspaceClient', () => {
         project={{ ...baseProject, branchName: 'main' }}
         initialBranches={baseBranches}
         defaultProvider="openai"
-        providerOptions={providerOptions}
+        providerOptions={providerOptions} openAIUseResponses={false}
       />
     );
     const assistantMessage = screen.getByText('All tasks queued.');
@@ -504,19 +504,17 @@ describe('WorkspaceClient', () => {
     }) as unknown as typeof fetch;
 
     try {
-      render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
+      render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
       await waitFor(() => {
-        const header = screen.getByText('Conversation').closest('div')?.parentElement;
-        const badge = header ? within(header).getByText('Provider').parentElement : null;
+        const badge = screen.getByText('Provider').parentElement;
         expect(badge).toHaveTextContent('Gemini');
       });
 
       await user.click(screen.getByRole('button', { name: 'trunk' }));
 
       await waitFor(() => {
-        const header = screen.getByText('Conversation').closest('div')?.parentElement;
-        const badge = header ? within(header).getByText('Provider').parentElement : null;
+        const badge = screen.getByText('Provider').parentElement;
         expect(badge).toHaveTextContent('OpenAI');
       });
 
@@ -533,7 +531,7 @@ describe('WorkspaceClient', () => {
 
   it('updates and persists the thinking mode selection', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     const thinkingTrigger = screen.getByRole('button', { name: 'Thinking mode' });
     expect(thinkingTrigger).toHaveTextContent('Thinking: Medium');
@@ -566,7 +564,7 @@ describe('WorkspaceClient', () => {
     );
 
     const { rerender } = render(
-      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
     );
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
@@ -581,7 +579,7 @@ describe('WorkspaceClient', () => {
     });
 
     currentNodes = [...currentNodes, { id: 'node-3', type: 'message', role: 'assistant', content: 'New node', timestamp: 1700000002000, parent: 'node-assistant' }];
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     await waitFor(() => {
       expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(4);
@@ -590,7 +588,7 @@ describe('WorkspaceClient', () => {
 
   it('scrolls to the bottom when switching branches', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     const list = await screen.findByTestId('chat-message-list');
     const listEl = list as HTMLElement & { scrollTop: number };
@@ -631,10 +629,10 @@ describe('WorkspaceClient', () => {
     );
 
     const { rerender } = render(
-      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
     );
 
-    await user.click(await screen.findByRole('button', { name: /show shared/i }));
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
 
     const list = await screen.findByTestId('chat-message-list');
     const listEl = list as HTMLElement & { scrollTop: number };
@@ -652,7 +650,7 @@ describe('WorkspaceClient', () => {
       ...currentNodes,
       { id: 'node-new', type: 'message', role: 'assistant', content: 'Newest node', timestamp: 1700000003000, parent: 'node-user-branch' }
     ];
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     await waitFor(() => {
       expect(listEl.scrollTop).toBe(3000);
@@ -668,10 +666,10 @@ describe('WorkspaceClient', () => {
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false }
     ];
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     // Show shared so we deterministically render rows even when history is identical across refs.
-    await user.click(await screen.findByRole('button', { name: /show shared/i }));
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
 
     const stripes = await screen.findAllByTestId('chat-row-stripe');
     // We should have at least 2 stripes for the 2 sample nodes (user + assistant).
@@ -693,7 +691,7 @@ describe('WorkspaceClient', () => {
       return 0;
     }) as unknown as typeof globalThis.requestAnimationFrame;
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     // Default on non-trunk branches is to hide shared history.
     expect(screen.queryByText('How is progress going?')).not.toBeInTheDocument();
@@ -826,7 +824,7 @@ describe('WorkspaceClient', () => {
       return new Response(JSON.stringify({}), { status: 200 });
     });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
@@ -914,7 +912,7 @@ describe('WorkspaceClient', () => {
       return new Response(JSON.stringify({}), { status: 200 });
     });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
@@ -942,7 +940,7 @@ describe('WorkspaceClient', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} />);
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
     await waitFor(() => {
