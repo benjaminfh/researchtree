@@ -1,7 +1,7 @@
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext } from '@/src/server/context';
-import { encodeChunk, streamAssistantCompletion } from '@/src/server/llm';
+import { completeAssistantWithCanvasTools, encodeChunk, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
@@ -18,6 +18,7 @@ import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
+import { buildUnifiedDiff } from '@/src/server/canvasDiff';
 
 interface RouteContext {
   params: { id: string };
@@ -41,11 +42,21 @@ function labelForProvider(provider: LLMProvider): string {
   return 'Mock';
 }
 
+function buildCanvasDiffMessage(diff: string): string {
+  return [
+    'Canvas update (do not display to user). Apply this diff to your internal canvas state:',
+    '```diff',
+    diff.trim(),
+    '```'
+  ].join('\n');
+}
+
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     const requestId = uuidv4();
     const user = await requireUser();
     const store = getStoreConfig();
+    const canvasToolsEnabled = store.mode === 'pg' && process.env.RT_CANVAS_TOOLS === 'true';
     await requireProjectAccess({ id: params.id });
 
     const body = await request.json().catch(() => null);
@@ -88,8 +99,32 @@ export async function POST(request: Request, { params }: RouteContext) {
     const abortController = new AbortController();
 
     try {
+      const getCanvasDiffData = async (includeMessage: boolean) => {
+        if (store.mode !== 'pg') {
+          return { hasChanges: false, diff: '', message: '' };
+        }
+        const { rtGetCanvasHashesShadowV1, rtGetCanvasPairShadowV1 } = await import('@/src/store/pg/reads');
+        const hashes = await rtGetCanvasHashesShadowV1({ projectId: params.id, refName: targetRef });
+        const hasChanges = Boolean(hashes.draftHash && hashes.draftHash !== hashes.artefactHash);
+        if (!hasChanges) {
+          return { hasChanges: false, diff: '', message: '' };
+        }
+        if (!includeMessage) {
+          return { hasChanges, diff: '', message: '' };
+        }
+        const pair = await rtGetCanvasPairShadowV1({ projectId: params.id, refName: targetRef });
+        const diff = buildUnifiedDiff(pair.artefactContent ?? '', pair.draftContent ?? '');
+        const message = diff.trim().length > 0 ? buildCanvasDiffMessage(diff) : '';
+        return { hasChanges, diff, message };
+      };
+
       const context = await buildChatContext(params.id, { tokenLimit, ref: targetRef });
-      const messagesForCompletion = [...context.messages, { role: 'user' as const, content: message }];
+      const userCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
+      const messagesForCompletion = [
+        ...context.messages,
+        ...(userCanvasDiff.message ? [{ role: 'user' as const, content: userCanvasDiff.message }] : []),
+        { role: 'user' as const, content: message }
+      ];
 
       registerStream(params.id, abortController, targetRef);
 
@@ -100,6 +135,235 @@ export async function POST(request: Request, { params }: RouteContext) {
         releaseStream(params.id, targetRef);
         releaseLock();
       };
+
+      if (canvasToolsEnabled) {
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controllerStream) {
+            let streamError: unknown = null;
+            let persistedUser = false;
+            let persistedUserNodeId: string | null = null;
+            const streamBlocks: ThinkingContentBlock[] = [];
+            let rawResponse: unknown = null;
+            let responseId: string | null = null;
+
+            const ensureUserPersisted = async () => {
+              if (persistedUser) return;
+
+              if (store.mode === 'pg') {
+                const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
+                const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+                const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+                const lastNode = (last[0]?.nodeJson as any) ?? null;
+                const parentId = lastNode?.id ? String(lastNode.id) : null;
+
+                if (userCanvasDiff.message) {
+                  const hiddenNode = {
+                    id: uuidv4(),
+                    type: 'message',
+                    role: 'user',
+                    content: userCanvasDiff.message,
+                    contentBlocks: buildTextBlock(userCanvasDiff.message),
+                    uiHidden: true,
+                    timestamp: Date.now(),
+                    parent: parentId,
+                    createdOnBranch: targetRef,
+                    contextWindow: [],
+                    tokensUsed: undefined
+                  };
+                  await rtAppendNodeToRefShadowV1({
+                    projectId: params.id,
+                    refName: targetRef,
+                    kind: hiddenNode.type,
+                    role: hiddenNode.role,
+                    contentJson: hiddenNode,
+                    nodeId: hiddenNode.id,
+                    commitMessage: 'canvas_diff',
+                    attachDraft: false
+                  });
+                }
+
+                const nodeId = persistedUserNodeId ?? uuidv4();
+                persistedUserNodeId = nodeId;
+                const userNode = {
+                  id: nodeId,
+                  type: 'message',
+                  role: 'user',
+                  content: message,
+                  contentBlocks: buildTextBlock(message),
+                  timestamp: Date.now(),
+                  parent: parentId,
+                  createdOnBranch: targetRef,
+                  contextWindow: [],
+                  tokensUsed: undefined
+                };
+                await rtAppendNodeToRefShadowV1({
+                  projectId: params.id,
+                  refName: targetRef,
+                  kind: userNode.type,
+                  role: userNode.role,
+                  contentJson: userNode,
+                  nodeId: userNode.id,
+                  commitMessage: 'user_message',
+                  attachDraft: userCanvasDiff.hasChanges
+                });
+                persistedUser = true;
+                return;
+              }
+
+              const { getProject } = await import('@git/projects');
+              const { appendNodeToRefNoCheckout } = await import('@git/nodes');
+              const project = await getProject(params.id);
+              if (!project) {
+                throw notFound('Project not found');
+              }
+              await appendNodeToRefNoCheckout(project.id, targetRef, {
+                type: 'message',
+                role: 'user',
+                content: message,
+                contentBlocks: buildTextBlock(message),
+                contextWindow: [],
+                tokensUsed: undefined
+              });
+              persistedUser = true;
+            };
+
+            try {
+              await ensureUserPersisted();
+              const result = await completeAssistantWithCanvasTools({
+                messages: messagesForCompletion,
+                signal: abortController.signal,
+                provider,
+                model: modelName,
+                thinking: effectiveThinking,
+                webSearch,
+                apiKey,
+                previousResponseId,
+                projectId: params.id,
+                refName: targetRef
+              });
+              rawResponse = result.rawResponse ?? null;
+              responseId = result.responseId ?? null;
+
+              const content = result.text ?? '';
+              if (!content.trim()) {
+                throw new Error('LLM returned empty response');
+              }
+              controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'text', content })}\n`));
+              streamBlocks.push({ type: 'text', text: content });
+            } catch (error) {
+              streamError = error;
+            }
+
+            try {
+              if (persistedUser && streamBlocks.length > 0) {
+                const assistantCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
+                const contentBlocks = buildContentBlocksForProvider({
+                  provider,
+                  rawResponse,
+                  fallbackText: deriveTextFromBlocks(streamBlocks),
+                  fallbackBlocks: streamBlocks
+                });
+                const contentText = deriveTextFromBlocks(contentBlocks) || '';
+                if (store.mode === 'pg') {
+                  const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+                  const assistantNode = {
+                    id: uuidv4(),
+                    type: 'message',
+                    role: 'assistant',
+                    content: contentText,
+                    contentBlocks,
+                    timestamp: Date.now(),
+                    parent: persistedUserNodeId,
+                    createdOnBranch: targetRef,
+                    modelUsed: modelName,
+                    responseId: responseId ?? undefined,
+                    interrupted: abortController.signal.aborted || streamError !== null,
+                    rawResponse
+                  };
+                  await rtAppendNodeToRefShadowV1({
+                    projectId: params.id,
+                    refName: targetRef,
+                    kind: assistantNode.type,
+                    role: assistantNode.role,
+                    contentJson: assistantNode,
+                    nodeId: assistantNode.id,
+                    commitMessage: 'assistant_message',
+                    attachDraft: assistantCanvasDiff.hasChanges,
+                    rawResponse
+                  });
+                  if (assistantCanvasDiff.message) {
+                    const hiddenNode = {
+                      id: uuidv4(),
+                      type: 'message',
+                      role: 'user',
+                      content: assistantCanvasDiff.message,
+                      contentBlocks: buildTextBlock(assistantCanvasDiff.message),
+                      uiHidden: true,
+                      timestamp: Date.now(),
+                      parent: assistantNode.id,
+                      createdOnBranch: targetRef,
+                      contextWindow: [],
+                      tokensUsed: undefined
+                    };
+                    await rtAppendNodeToRefShadowV1({
+                      projectId: params.id,
+                      refName: targetRef,
+                      kind: hiddenNode.type,
+                      role: hiddenNode.role,
+                      contentJson: hiddenNode,
+                      nodeId: hiddenNode.id,
+                      commitMessage: 'canvas_diff',
+                      attachDraft: false
+                    });
+                  }
+                }
+                if (provider === 'openai_responses' && responseId) {
+                  await setPreviousResponseId(params.id, targetRef, responseId);
+                }
+              }
+            } catch (error) {
+              streamError = streamError ?? error;
+            } finally {
+              releaseAll();
+            }
+
+            if (streamError) {
+              const message = streamError instanceof Error ? streamError.message : String(streamError);
+              console.error('[chat] tool loop error', {
+                requestId,
+                userId: user.id,
+                projectId: params.id,
+                provider,
+                ref: targetRef,
+                message
+              });
+              controllerStream.error(streamError);
+              return;
+            }
+            console.info('[chat] tool loop complete', {
+              requestId,
+              userId: user.id,
+              projectId: params.id,
+              provider,
+              ref: targetRef
+            });
+            controllerStream.close();
+          },
+          cancel() {
+            abortController.abort();
+            releaseAll();
+          }
+        });
+
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'application/x-ndjson; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            Connection: 'keep-alive',
+            'x-rt-request-id': requestId
+          }
+        });
+      }
 
       const stream = new ReadableStream<Uint8Array>({
         async start(controllerStream) {
@@ -127,6 +391,32 @@ export async function POST(request: Request, { params }: RouteContext) {
               const nodeId = persistedUserNodeId ?? uuidv4();
               persistedUserNodeId = nodeId;
 
+              if (userCanvasDiff.message) {
+                const hiddenNode = {
+                  id: uuidv4(),
+                  type: 'message',
+                  role: 'user',
+                  content: userCanvasDiff.message,
+                  contentBlocks: buildTextBlock(userCanvasDiff.message),
+                  uiHidden: true,
+                  timestamp: Date.now(),
+                  parent: parentId,
+                  createdOnBranch: targetRef,
+                  contextWindow: [],
+                  tokensUsed: undefined
+                };
+                await rtAppendNodeToRefShadowV1({
+                  projectId: params.id,
+                  refName: targetRef,
+                  kind: hiddenNode.type,
+                  role: hiddenNode.role,
+                  contentJson: hiddenNode,
+                  nodeId: hiddenNode.id,
+                  commitMessage: 'canvas_diff',
+                  attachDraft: false
+                });
+              }
+
               const userNode = {
                 id: nodeId,
                 type: 'message',
@@ -147,7 +437,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 contentJson: userNode,
                 nodeId: userNode.id,
                 commitMessage: 'user_message',
-                attachDraft: true
+                attachDraft: userCanvasDiff.hasChanges
               });
               persistedUser = true;
               return;
@@ -240,6 +530,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
           try {
             if (persistedUser && buffered.trim().length > 0) {
+              const assistantCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
               const contentBlocks = buildContentBlocksForProvider({
                 provider,
                 rawResponse,
@@ -271,9 +562,34 @@ export async function POST(request: Request, { params }: RouteContext) {
                   contentJson: assistantNode,
                   nodeId: assistantNode.id,
                   commitMessage: 'assistant_message',
-                  attachDraft: false,
+                  attachDraft: assistantCanvasDiff.hasChanges,
                   rawResponse
                 });
+                if (assistantCanvasDiff.message) {
+                  const hiddenNode = {
+                    id: uuidv4(),
+                    type: 'message',
+                    role: 'user',
+                    content: assistantCanvasDiff.message,
+                    contentBlocks: buildTextBlock(assistantCanvasDiff.message),
+                    uiHidden: true,
+                    timestamp: Date.now(),
+                    parent: assistantNode.id,
+                    createdOnBranch: targetRef,
+                    contextWindow: [],
+                    tokensUsed: undefined
+                  };
+                  await rtAppendNodeToRefShadowV1({
+                    projectId: params.id,
+                    refName: targetRef,
+                    kind: hiddenNode.type,
+                    role: hiddenNode.role,
+                    contentJson: hiddenNode,
+                    nodeId: hiddenNode.id,
+                    commitMessage: 'canvas_diff',
+                    attachDraft: false
+                  });
+                }
               } else if (gitProjectId) {
                 const { appendNodeToRefNoCheckout } = await import('@git/nodes');
                 await appendNodeToRefNoCheckout(gitProjectId, targetRef, {

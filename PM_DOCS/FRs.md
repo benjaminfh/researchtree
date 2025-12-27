@@ -29,6 +29,7 @@
 
 ## Canvas
 [ ] LLM Agent has no way to edit the canvas currently - we need to give it tools [Open - system prompt includes canvas content, but no tool/function pathway for the model to write canvas updates]
+[ ] [streaming tool use] LLM canvas tools currently run via non-streamed tool loop; add streaming tool-use support once tool calls are stable across providers [Planned - use streamed tool_call/tool_use events to preserve chat UX]
 
 # USER PROFILE
 [x] [User profile] A user profile page. MVP shows registered email, plus 3 fields for LLM provider keys. We must store these keys securely using supabase vault!! [Partial - profile page + token storage via Supabase Vault exists; no change-password flow found]
