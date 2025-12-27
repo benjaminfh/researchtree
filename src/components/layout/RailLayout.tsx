@@ -52,29 +52,27 @@ export function RailLayout({
   return (
     <div className={`grid ${outerClassName}`} style={{ gridTemplateColumns: railCollapsed ? '54px minmax(0, 1fr)' : '270px minmax(0, 1fr)' }}>
       <aside className={asideClassName}>
-        <div className="flex h-10 items-center gap-2">
+        <div className="flex h-10 shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={toggleRail}
-            className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 shadow-sm hover:bg-primary/10"
             aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
           >
             <MenuIcon className="h-4 w-4" />
           </button>
           {!railCollapsed ? (
-            pathname === '/' ? (
-              <div className="inline-flex h-8 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm">
-                <span>{APP_NAME}</span>
-              </div>
-            ) : (
-              <Link
-                href="/"
-                className="focus-ring inline-flex h-8 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm hover:bg-primary/10"
-                aria-label="Back to home"
-              >
-                <span>{APP_NAME}</span>
-              </Link>
-            )
+            <Link
+              href="/"
+              className={`focus-ring inline-flex h-8 flex-1 items-center justify-center rounded-full border border-divider/70 bg-white px-4 text-xs font-semibold tracking-wide text-primary shadow-sm no-underline ${
+                pathname === '/' ? 'pointer-events-none' : 'hover:bg-primary/10'
+              }`}
+              aria-label="Back to home"
+              aria-current={pathname === '/' ? 'page' : undefined}
+              tabIndex={pathname === '/' ? -1 : 0}
+            >
+              <span>{APP_NAME}</span>
+            </Link>
           ) : null}
         </div>
 

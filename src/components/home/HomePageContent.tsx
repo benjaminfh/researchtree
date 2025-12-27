@@ -8,7 +8,7 @@ import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import type { ProjectMetadata } from '@git/types';
 import type { LLMProvider } from '@/src/shared/llmProvider';
-import { RailLayout } from '@/src/components/layout/RailLayout';
+import { RailPageLayout } from '@/src/components/layout/RailPageLayout';
 
 interface HomePageContentProps {
   projects: Array<ProjectMetadata & { nodeCount: number; lastModified: number }>;
@@ -74,9 +74,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
   };
 
   return (
-    <RailLayout
-      outerClassName="h-screen bg-[rgba(238,243,255,0.4)]"
-      asideClassName="relative z-40 flex h-screen flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur"
+    <RailPageLayout
       renderRail={({ railCollapsed, toggleRail }) =>
         !railCollapsed ? (
           <div className="mt-6 flex flex-1 flex-col gap-3">

@@ -87,11 +87,13 @@ export default async function HomePage() {
 
     projectsWithCounts.sort((a, b) => b.lastModified - a.lastModified);
     return (
-      <HomePageContent
-        projects={projectsWithCounts}
-        providerOptions={providerOptions}
-        defaultProvider={defaultProvider}
-      />
+      <main className="min-h-screen bg-white">
+        <HomePageContent
+          projects={projectsWithCounts}
+          providerOptions={providerOptions}
+          defaultProvider={defaultProvider}
+        />
+      </main>
     );
   }
 
@@ -109,6 +111,8 @@ export default async function HomePage() {
   projectsWithCounts.sort((a, b) => b.lastModified - a.lastModified);
 
   return (
-    <HomePageContent projects={projectsWithCounts} providerOptions={providerOptions} defaultProvider={defaultProvider} />
+    <main className="min-h-screen bg-white">
+      <HomePageContent projects={projectsWithCounts} providerOptions={providerOptions} defaultProvider={defaultProvider} />
+    </main>
   );
 }
