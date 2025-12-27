@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { FormEvent } from 'react';
 import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@git/types';
@@ -481,6 +481,7 @@ export function WorkspaceClient({
   const [graphDetailError, setGraphDetailError] = useState<string | null>(null);
   const [isGraphDetailBusy, setIsGraphDetailBusy] = useState(false);
   const [confirmGraphAddCanvas, setConfirmGraphAddCanvas] = useState(false);
+  const [isCanvasFocused, setIsCanvasFocused] = useState(false);
   const [graphCopyFeedback, setGraphCopyFeedback] = useState(false);
   const graphCopyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insightCollapsed, setInsightCollapsed] = useState(false);
@@ -496,6 +497,17 @@ export function WorkspaceClient({
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+  const collapseInsights = useCallback(() => {
+    savedChatPaneWidthRef.current = chatPaneWidth;
+    setChatPaneWidth(null);
+    setInsightCollapsed(true);
+  }, [chatPaneWidth]);
+  const expandInsights = useCallback(() => {
+    setInsightCollapsed(false);
+    if (savedChatPaneWidthRef.current) {
+      setChatPaneWidth(savedChatPaneWidthRef.current);
+    }
+  }, []);
   const INSIGHT_MIN_WIDTH = 360;
   const INSIGHT_COLLAPSED_WIDTH = 56;
   const SPLIT_GAP = 12;
@@ -1069,13 +1081,35 @@ export function WorkspaceClient({
         setInsightTab('canvas');
         return;
       }
+      if (event.key === 'ArrowDown') {
+        const target = event.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        if (!insightCollapsed) {
+          event.preventDefault();
+          collapseInsights();
+        }
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        const target = event.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        if (insightCollapsed) {
+          event.preventDefault();
+          expandInsights();
+        }
+        return;
+      }
       if (event.key === 'Escape') {
         setSelectedGraphNodeId(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [collapseInsights, expandInsights, insightCollapsed]);
 
   useEffect(() => {
     return () => {
@@ -1759,6 +1793,7 @@ export function WorkspaceClient({
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                       <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
                       <li>← Thred graph · → Canvas.</li>
+                      <li>↑ show graph/canvas · ↓ hide panel.</li>
                       <li>Branch to try edits without losing the trunk.</li>
                       <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                     </ul>
@@ -1799,6 +1834,7 @@ export function WorkspaceClient({
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                         <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
                         <li>← Thred graph · → Canvas.</li>
+                        <li>↑ show graph/canvas · ↓ hide panel.</li>
                         <li>Branch to try edits without losing the trunk.</li>
                         <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                       </ul>
@@ -2117,10 +2153,7 @@ export function WorkspaceClient({
                 <button
                   type="button"
                   onClick={() => {
-                    setInsightCollapsed(false);
-                    if (savedChatPaneWidthRef.current) {
-                      setChatPaneWidth(savedChatPaneWidthRef.current);
-                    }
+                    expandInsights();
                   }}
                   aria-label="Show canvas / graph panel"
                   className="card-surface flex h-full w-full items-start justify-center rounded-2xl border border-dashed border-divider/70 bg-white/80 px-2 py-6 text-sm font-semibold text-primary shadow-sm hover:bg-primary/5"
@@ -2155,9 +2188,7 @@ export function WorkspaceClient({
                     <button
                       type="button"
                       onClick={() => {
-                        savedChatPaneWidthRef.current = chatPaneWidth;
-                        setChatPaneWidth(null);
-                        setInsightCollapsed(true);
+                        collapseInsights();
                       }}
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
                       aria-label="Hide canvas / graph panel"
@@ -2439,8 +2470,15 @@ export function WorkspaceClient({
                                 <textarea
                                   value={artefactDraft}
                                   onChange={(event) => setArtefactDraft(event.target.value)}
+                                  onFocus={() => setIsCanvasFocused(true)}
+                                  onBlur={() => setIsCanvasFocused(false)}
                                   className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
                                 />
+                                {!isCanvasFocused && artefactDraft.length === 0 ? (
+                                  <div className="pointer-events-none absolute left-4 top-4 text-sm text-slate-400">
+                                    Add notes to the canvas…
+                                  </div>
+                                ) : null}
                                 {isSavingArtefact || artefactError ? (
                                   <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
                                     {isSavingArtefact ? (
@@ -2482,7 +2520,7 @@ export function WorkspaceClient({
                       if (!webSearchAvailable || state.isStreaming) return;
                       setWebSearchEnabled((prev) => !prev);
                     }}
-                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-2.5 text-xs font-semibold transition focus:outline-none ${
+                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
                       webSearchEnabled
                         ? 'border-primary/30 bg-primary/10 text-primary'
                         : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
@@ -2547,7 +2585,7 @@ export function WorkspaceClient({
                     <button
                       type="button"
                       onClick={() => setThinkingMenuOpen((prev) => !prev)}
-                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Thinking mode"
                       aria-haspopup="menu"
                       aria-expanded={thinkingMenuOpen}
@@ -2599,7 +2637,7 @@ export function WorkspaceClient({
 	                  <button
 	                    type="submit"
 	                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
-	                    className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
 	                    aria-label="Send message"
 	                  >
                     <ArrowUpIcon className="h-5 w-5" />
