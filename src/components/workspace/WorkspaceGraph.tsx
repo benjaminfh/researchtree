@@ -196,9 +196,9 @@ const GitEdge = ({ sourceX, sourceY, targetX, targetY, data }: EdgeProps<GitEdge
                 style={{ width: dotSize, height: dotSize, backgroundColor: data?.color ?? '#94a3b8', opacity: 0.6 }}
               />
               <span
-                className="pointer-events-none absolute left-1/2 top-0 z-50 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-900/90 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow-md ring-1 transition-opacity group-hover:opacity-100"
+                className="pointer-events-none absolute left-full top-1/2 z-50 whitespace-nowrap rounded-md bg-slate-900/90 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow-md ring-1 transition-opacity group-hover:opacity-100"
                 style={{
-                  transform: `translate(-80%, -25%) rotate(${-labelAngle}deg)`,
+                  transform: `translate(-50px, -300%) rotate(${-labelAngle}deg)`,
                   boxShadow: `0 0 0 1px ${data?.color ?? '#94a3b8'}`
                 }}
               >
