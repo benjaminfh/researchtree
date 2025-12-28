@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "local:pg:bootstrap": "node --loader ts-node/esm scripts/local-pg-bootstrap.ts",
-    "desktop:dev": "electron-forge start",
+    "desktop:dev": "DESKTOP_NEXT_DEV=1 electron-forge start",
     "desktop:package": "npm run build && electron-forge package",
     "desktop:make": "npm run build && electron-forge make",
     "typecheck": "tsc --noEmit",
