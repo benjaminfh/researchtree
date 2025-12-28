@@ -1,6 +1,6 @@
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { isSupportedModelForProvider } from '@/src/shared/llmCapabilities';
-import { getDefaultModelForProvider, resolveLLMProvider } from '@/src/server/llm';
+import { getDefaultModelForProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';
 import { getProviderEnvConfig } from '@/src/server/llmConfig';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { readBranchConfigMap } from '@/src/git/branchConfig';
@@ -26,8 +26,8 @@ export function resolveBranchConfig(input?: {
   model?: string | null;
   fallback?: BranchConfig;
 }): BranchConfig {
-  const fallbackProvider = input?.fallback?.provider ?? resolveLLMProvider();
-  const provider = input?.provider ? resolveLLMProvider(input.provider as LLMProvider) : fallbackProvider;
+  const fallbackProvider = input?.fallback?.provider ?? resolveOpenAIProviderSelection();
+  const provider = input?.provider ? (input.provider as LLMProvider) : fallbackProvider;
   const modelCandidate =
     input?.model ?? (provider === input?.fallback?.provider ? input?.fallback?.model : undefined);
   const model = resolveModelForProvider(provider, modelCandidate);

@@ -57,19 +57,19 @@ function getOpenAIModelForRequest(webSearch?: boolean): string {
   return getDefaultModelForProvider('openai');
 }
 
-function mapOpenAIProvider(provider: LLMProvider): LLMProvider {
-  if (provider === 'openai' && getOpenAIUseResponses()) return 'openai_responses';
-  if (provider === 'openai_responses' && !getOpenAIUseResponses()) return 'openai';
-  return provider;
-}
-
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
     const enabled = new Set(getEnabledProviders());
-    const resolved = enabled.has(requested) ? requested : getDefaultProvider();
-    return mapOpenAIProvider(resolved);
+    return enabled.has(requested) ? requested : getDefaultProvider();
   }
-  return mapOpenAIProvider(getDefaultProvider());
+  return getDefaultProvider();
+}
+
+export function resolveOpenAIProviderSelection(requested?: LLMProvider | null): LLMProvider {
+  if (!requested || requested === 'openai') {
+    return getOpenAIUseResponses() ? 'openai_responses' : 'openai';
+  }
+  return requested;
 }
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {
@@ -87,7 +87,11 @@ export async function* streamAssistantCompletion({
   apiKey,
   previousResponseId
 }: LLMStreamOptions): AsyncGenerator<LLMStreamChunk> {
-  const resolvedProvider = resolveLLMProvider(provider);
+  const resolvedProvider = provider ?? resolveOpenAIProviderSelection();
+  const enabled = new Set(getEnabledProviders());
+  if (!enabled.has(resolvedProvider)) {
+    throw new Error(`Provider ${resolvedProvider} is not enabled.`);
+  }
 
   if (resolvedProvider === 'openai') {
     yield* streamFromOpenAI(messages, signal, thinking, webSearch, apiKey ?? undefined, model);
@@ -187,7 +191,7 @@ async function* streamFromOpenAI(
 
 function toOpenAIResponsesInput(messages: ChatMessage[]): {
   instructions?: string;
-  input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'text'; text: string }> }>;
+  input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }>;
 } {
   const instructions = messages
     .filter((message) => message.role === 'system')
@@ -195,13 +199,25 @@ function toOpenAIResponsesInput(messages: ChatMessage[]): {
     .join('\n\n')
     .trim();
 
-  const input = messages
-    .filter((message) => message.role !== 'system')
-    .map((message) => ({
-      role: message.role as 'user' | 'assistant',
-      content: [{ type: 'text' as const, text: flattenMessageContent(message.content) }]
-    }))
-    .filter((item) => item.content[0]?.text?.trim());
+  let lastUserText = '';
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== 'user') continue;
+    const text = flattenMessageContent(message.content).trim();
+    if (text) {
+      lastUserText = text;
+      break;
+    }
+  }
+
+  const input = lastUserText
+    ? [
+        {
+          role: 'user' as const,
+          content: [{ type: 'input_text' as const, text: lastUserText }]
+        }
+      ]
+    : [];
 
   return {
     ...(instructions ? { instructions } : {}),
@@ -244,7 +260,7 @@ async function* streamFromOpenAIResponses(
     ...(instructions ? { instructions } : {}),
     ...thinkingParams,
     ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-    ...(webSearch ? { tools: [{ type: 'web_search_preview' }] } : {})
+    ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
   } as any);
 
   if (signal) {

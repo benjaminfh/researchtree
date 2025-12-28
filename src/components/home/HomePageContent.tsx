@@ -8,7 +8,7 @@ import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import type { ProjectMetadata } from '@git/types';
 import type { LLMProvider } from '@/src/shared/llmProvider';
-import { RailLayout } from '@/src/components/layout/RailLayout';
+import { RailPageLayout } from '@/src/components/layout/RailPageLayout';
 
 interface HomePageContentProps {
   projects: Array<ProjectMetadata & { nodeCount: number; lastModified: number }>;
@@ -74,9 +74,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
   };
 
   return (
-    <RailLayout
-      outerClassName="h-screen bg-[rgba(238,243,255,0.4)]"
-      asideClassName="relative z-40 flex h-screen flex-col border-r border-divider/80 bg-[rgba(238,243,255,0.85)] px-3 py-6 backdrop-blur"
+    <RailPageLayout
       renderRail={({ railCollapsed, toggleRail }) =>
         !railCollapsed ? (
           <div className="mt-6 flex flex-1 flex-col gap-3">
@@ -92,16 +90,17 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                       No workspaces yet. Create one to get started.
                     </p>
                   ) : (
-                    <ul className="grid gap-2">
+                    <ul className="grid min-w-0 grid-cols-1 gap-2">
                       {recentProjects.map((project) => {
                         const isConfirming = confirming.has(project.id);
                         return (
                           <li
                             key={project.id}
-                            className="group rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
+                            className="group w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
+                            title={project.name}
                           >
                             <div className="flex min-w-0 items-center justify-between gap-3">
-                              <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 truncate" title={project.name}>
+                              <Link href={`/projects/${project.id}`} className="min-w-0 flex-1" title={project.name}>
                                 <div className="truncate text-sm font-semibold text-slate-900" title={project.name}>
                                   {project.name}
                                 </div>
@@ -135,11 +134,15 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                 {archivedProjects.length > 0 ? (
                   <div className="space-y-2">
                     <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Archived</div>
-                    <ul className="grid gap-2">
+                    <ul className="grid min-w-0 grid-cols-1 gap-2">
                       {archivedProjects.map((project) => {
                         const isConfirming = confirming.has(project.id);
                         return (
-                          <li key={project.id} className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm">
+                          <li
+                            key={project.id}
+                            className="w-full min-w-0 rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm"
+                            title={project.name}
+                          >
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
                               <span
                                 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
