@@ -140,95 +140,11 @@ export async function POST(request: Request, { params }: RouteContext) {
         const stream = new ReadableStream<Uint8Array>({
           async start(controllerStream) {
             let streamError: unknown = null;
-            let persistedUser = false;
-            let persistedUserNodeId: string | null = null;
             const streamBlocks: ThinkingContentBlock[] = [];
             let rawResponse: unknown = null;
             let responseId: string | null = null;
 
-            const ensureUserPersisted = async () => {
-              if (persistedUser) return;
-
-              if (store.mode === 'pg') {
-                const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-                const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-                const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
-                const lastNode = (last[0]?.nodeJson as any) ?? null;
-                const parentId = lastNode?.id ? String(lastNode.id) : null;
-
-                if (userCanvasDiff.message) {
-                  const hiddenNode = {
-                    id: uuidv4(),
-                    type: 'message',
-                    role: 'user',
-                    content: userCanvasDiff.message,
-                    contentBlocks: buildTextBlock(userCanvasDiff.message),
-                    uiHidden: true,
-                    timestamp: Date.now(),
-                    parent: parentId,
-                    createdOnBranch: targetRef,
-                    contextWindow: [],
-                    tokensUsed: undefined
-                  };
-                  await rtAppendNodeToRefShadowV1({
-                    projectId: params.id,
-                    refName: targetRef,
-                    kind: hiddenNode.type,
-                    role: hiddenNode.role,
-                    contentJson: hiddenNode,
-                    nodeId: hiddenNode.id,
-                    commitMessage: 'canvas_diff',
-                    attachDraft: false
-                  });
-                }
-
-                const nodeId = persistedUserNodeId ?? uuidv4();
-                persistedUserNodeId = nodeId;
-                const userNode = {
-                  id: nodeId,
-                  type: 'message',
-                  role: 'user',
-                  content: message,
-                  contentBlocks: buildTextBlock(message),
-                  timestamp: Date.now(),
-                  parent: parentId,
-                  createdOnBranch: targetRef,
-                  contextWindow: [],
-                  tokensUsed: undefined
-                };
-                await rtAppendNodeToRefShadowV1({
-                  projectId: params.id,
-                  refName: targetRef,
-                  kind: userNode.type,
-                  role: userNode.role,
-                  contentJson: userNode,
-                  nodeId: userNode.id,
-                  commitMessage: 'user_message',
-                  attachDraft: userCanvasDiff.hasChanges
-                });
-                persistedUser = true;
-                return;
-              }
-
-              const { getProject } = await import('@git/projects');
-              const { appendNodeToRefNoCheckout } = await import('@git/nodes');
-              const project = await getProject(params.id);
-              if (!project) {
-                throw notFound('Project not found');
-              }
-              await appendNodeToRefNoCheckout(project.id, targetRef, {
-                type: 'message',
-                role: 'user',
-                content: message,
-                contentBlocks: buildTextBlock(message),
-                contextWindow: [],
-                tokensUsed: undefined
-              });
-              persistedUser = true;
-            };
-
             try {
-              await ensureUserPersisted();
               const result = await completeAssistantWithCanvasTools({
                 messages: messagesForCompletion,
                 signal: abortController.signal,
@@ -255,7 +171,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             }
 
             try {
-              if (persistedUser && streamBlocks.length > 0) {
+              if (streamBlocks.length > 0) {
                 const assistantCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
                 const contentBlocks = buildContentBlocksForProvider({
                   provider,
@@ -265,7 +181,62 @@ export async function POST(request: Request, { params }: RouteContext) {
                 });
                 const contentText = deriveTextFromBlocks(contentBlocks) || '';
                 if (store.mode === 'pg') {
+                  const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
                   const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+                  const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+                  const lastNode = (last[0]?.nodeJson as any) ?? null;
+                  const parentId = lastNode?.id ? String(lastNode.id) : null;
+
+                  if (userCanvasDiff.message) {
+                    const hiddenNode = {
+                      id: uuidv4(),
+                      type: 'message',
+                      role: 'user',
+                      content: userCanvasDiff.message,
+                      contentBlocks: buildTextBlock(userCanvasDiff.message),
+                      uiHidden: true,
+                      timestamp: Date.now(),
+                      parent: parentId,
+                      createdOnBranch: targetRef,
+                      contextWindow: [],
+                      tokensUsed: undefined
+                    };
+                    await rtAppendNodeToRefShadowV1({
+                      projectId: params.id,
+                      refName: targetRef,
+                      kind: hiddenNode.type,
+                      role: hiddenNode.role,
+                      contentJson: hiddenNode,
+                      nodeId: hiddenNode.id,
+                      commitMessage: 'canvas_diff',
+                      attachDraft: false
+                    });
+                  }
+
+                  const userNodeId = uuidv4();
+                  const userNode = {
+                    id: userNodeId,
+                    type: 'message',
+                    role: 'user',
+                    content: message,
+                    contentBlocks: buildTextBlock(message),
+                    timestamp: Date.now(),
+                    parent: parentId,
+                    createdOnBranch: targetRef,
+                    contextWindow: [],
+                    tokensUsed: undefined
+                  };
+                  await rtAppendNodeToRefShadowV1({
+                    projectId: params.id,
+                    refName: targetRef,
+                    kind: userNode.type,
+                    role: userNode.role,
+                    contentJson: userNode,
+                    nodeId: userNode.id,
+                    commitMessage: 'user_message',
+                    attachDraft: userCanvasDiff.hasChanges
+                  });
+
                   const assistantNode = {
                     id: uuidv4(),
                     type: 'message',
@@ -273,7 +244,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                     content: contentText,
                     contentBlocks,
                     timestamp: Date.now(),
-                    parent: persistedUserNodeId,
+                    parent: userNodeId,
                     createdOnBranch: targetRef,
                     modelUsed: modelName,
                     responseId: responseId ?? undefined,
