@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export interface PgBranchSummary {
   name: string;
@@ -14,8 +14,8 @@ export async function rtGetHistoryShadowV1(input: {
   refName: string;
   limit?: number;
 }): Promise<{ ordinal: number; nodeJson: unknown }[]> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_history_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_history_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
     p_limit: input.limit ?? 200
@@ -34,8 +34,8 @@ export async function rtGetCanvasShadowV1(input: {
   projectId: string;
   refName: string;
 }): Promise<{ content: string; contentHash: string; updatedAt: string | null; source: string }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_canvas_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_canvas_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName
   });
@@ -55,8 +55,8 @@ export async function rtGetCanvasShadowV1(input: {
 }
 
 export async function rtListRefsShadowV1(input: { projectId: string }): Promise<PgBranchSummary[]> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_list_refs_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_list_refs_v1', {
     p_project_id: input.projectId
   });
   if (error) {
@@ -74,8 +74,8 @@ export async function rtListRefsShadowV1(input: { projectId: string }): Promise<
 }
 
 export async function rtGetStarredNodeIdsShadowV1(input: { projectId: string }): Promise<string[]> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_starred_node_ids_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_starred_node_ids_v1', {
     p_project_id: input.projectId
   });
   if (error) {

@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtAppendNodeToRefShadowV1(input: {
   projectId: string;
@@ -11,8 +11,8 @@ export async function rtAppendNodeToRefShadowV1(input: {
   attachDraft?: boolean;
   rawResponse?: unknown;
 }): Promise<{ newCommitId: string; nodeId: string; ordinal: number; artefactId: string | null; artefactContentHash: string | null }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_append_node_to_ref_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_append_node_to_ref_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
     p_kind: input.kind,

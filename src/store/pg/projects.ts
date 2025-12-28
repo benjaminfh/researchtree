@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtCreateProjectShadow(input: {
   projectId?: string;
@@ -7,8 +7,8 @@ export async function rtCreateProjectShadow(input: {
   provider?: string | null;
   model?: string | null;
 }): Promise<{ projectId: string }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_create_project', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_create_project', {
     p_name: input.name,
     p_description: input.description ?? null,
     p_project_id: input.projectId ?? null,

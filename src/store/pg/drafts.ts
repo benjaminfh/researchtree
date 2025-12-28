@@ -1,12 +1,12 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtSaveArtefactDraft(input: {
   projectId: string;
   refName: string;
   content: string;
 }): Promise<{ contentHash: string; updatedAt: string }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_save_artefact_draft', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_save_artefact_draft', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
     p_content: input.content ?? ''
