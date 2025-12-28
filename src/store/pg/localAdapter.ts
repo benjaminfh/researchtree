@@ -93,6 +93,9 @@ function getPool(): PoolClient {
     const { Pool } = require('pg');
     pool = new Pool({ connectionString: process.env.LOCAL_PG_URL });
   }
+  if (!pool) {
+    throw new Error('Local PG pool failed to initialize');
+  }
   return pool;
 }
 
