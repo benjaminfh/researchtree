@@ -13,12 +13,12 @@ let bootstrapPromise: Promise<void> | null = null;
 
 function shouldWrapInTransaction(sql: string): boolean {
   const normalized = sql.toLowerCase();
-  return !/\\b(begin|commit|rollback)\\b/.test(normalized);
+  return !/\b(begin|commit|rollback)\b/.test(normalized);
 }
 
 function getDatabaseName(connectionString: string): string {
   const url = new URL(connectionString);
-  const dbName = decodeURIComponent(url.pathname.replace(/^\\//, ''));
+  const dbName = decodeURIComponent(url.pathname.replace(/^\//, ''));
   if (!dbName) {
     throw new Error('LOCAL_PG_URL must include a database name');
   }
