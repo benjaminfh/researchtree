@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   rtAppendNodeToRefShadowV1: vi.fn(),
   rtGetHistoryShadowV1: vi.fn(),
   rtGetCurrentRefShadowV1: vi.fn(),
-  getBranchConfigMap: vi.fn()
+  getBranchConfigMap: vi.fn(),
+  rtGetCanvasHashesShadowV1: vi.fn(),
+  rtGetCanvasPairShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -51,7 +53,9 @@ vi.mock('@/src/store/pg/nodes', () => ({
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
+  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
+  rtGetCanvasHashesShadowV1: mocks.rtGetCanvasHashesShadowV1,
+  rtGetCanvasPairShadowV1: mocks.rtGetCanvasPairShadowV1
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
@@ -97,6 +101,15 @@ describe('/api/projects/[id]/chat', () => {
     mocks.rtGetHistoryShadowV1.mockResolvedValue([]);
     mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
     mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
+    mocks.rtGetCanvasHashesShadowV1.mockResolvedValue({ draftHash: null, artefactHash: null });
+    mocks.rtGetCanvasPairShadowV1.mockResolvedValue({
+      draftContent: '',
+      draftHash: null,
+      artefactContent: '',
+      artefactHash: null,
+      draftUpdatedAt: null,
+      artefactUpdatedAt: null
+    });
     process.env.RT_STORE = 'git';
   });
 
@@ -123,6 +136,17 @@ describe('/api/projects/[id]/chat', () => {
 
   it('uses Postgres for user+assistant nodes when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
+    mocks.rtGetCanvasHashesShadowV1
+      .mockResolvedValueOnce({ draftHash: 'draft-1', artefactHash: 'artefact-0' })
+      .mockResolvedValueOnce({ draftHash: 'draft-1', artefactHash: 'draft-1' });
+    mocks.rtGetCanvasPairShadowV1.mockResolvedValue({
+      draftContent: 'Canvas v2',
+      draftHash: 'draft-1',
+      artefactContent: 'Canvas v1',
+      artefactHash: 'artefact-0',
+      draftUpdatedAt: null,
+      artefactUpdatedAt: null
+    });
     mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
       newCommitId: 'c1',
       nodeId: 'user-1',
