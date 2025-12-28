@@ -21,6 +21,7 @@
     "@supabase/supabase-js": "^2.89.0",
     "next": "^14.2.15",
     "openai": "^4.75.1",
+    "pg": "^8.16.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",

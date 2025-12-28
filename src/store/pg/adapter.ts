@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { createSupabaseAdminClient } from '@/src/server/supabase/admin';
+import { createLocalPgAdapter } from '@/src/store/pg/localAdapter';
 
 export type PgRpcResponse = { data: unknown; error: any };
 
@@ -25,7 +26,7 @@ export function getPgStoreAdapter(): PgStoreAdapter {
     if (!process.env.LOCAL_PG_URL) {
       throw new Error('RT_PG_ADAPTER=local requires LOCAL_PG_URL');
     }
-    throw new Error('Local Postgres adapter not implemented yet');
+    return createLocalPgAdapter();
   }
   if (mode !== 'supabase') {
     throw new Error(`Unknown RT_PG_ADAPTER mode: ${mode}`);
