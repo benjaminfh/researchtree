@@ -159,7 +159,7 @@ To run against a local Postgres instance (no Supabase auth/RLS, single-user):
 2. Set `.env.local`:
    ```
    RT_PG_ADAPTER=local
-   LOCAL_PG_URL=postgres://user:password@localhost:5432/researchtree
+   LOCAL_PG_URL=postgres://user:password@localhost:5432/thredsdb
    RT_PG_BOOTSTRAP=1
    ```
 3. Start the app as usual (`npm run dev` or your desktop bundle).
@@ -167,4 +167,5 @@ To run against a local Postgres instance (no Supabase auth/RLS, single-user):
 Notes:
 - Local mode fails closed if any Supabase env vars are present.
 - Migrations auto-run on first RPC call and are tracked in `local_migrations`.
+- The database name is read from `LOCAL_PG_URL` (default `thredsdb`) and auto-created if missing.
 - Use `npm run local:pg:bootstrap` if you want to run migrations manually.
