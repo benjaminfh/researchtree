@@ -85,9 +85,10 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
 };
 
 const require = createRequire(import.meta.url);
-let pool: { query: (sql: string, values: unknown[]) => Promise<QueryResult> } | null = null;
+type PoolClient = { query: (sql: string, values: unknown[]) => Promise<QueryResult> };
+let pool: PoolClient | null = null;
 
-function getPool() {
+function getPool(): PoolClient {
   if (!pool) {
     const { Pool } = require('pg');
     pool = new Pool({ connectionString: process.env.LOCAL_PG_URL });
