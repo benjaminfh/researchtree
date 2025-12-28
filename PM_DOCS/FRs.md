@@ -22,6 +22,8 @@
 
 [x] [model selection] we currently allow the user to select a branch when branching via edit message button. The branch button at the bottom of the chat is not at parity. need to mirror the provider and thinking mode selectors (they should mirror current branch selections.) [Done - new branch UI now mirrors current branch provider/thinking selections in rail + popover]
 [ ] [model selection] we currently allow the user to select a branch when branching via edit message button. The branch button at the bottom of the chat is not at parity. need to mirror the provider and thinking mode selectors (they should mirror current branch selections.) 
+[ ] allow user to branch from assistant message
+
 ### Merge
 [x] [descoped] Merge modal includes **Provider** and **Thinking** selectors used for merge-assist actions (kept independent from the main chat composer settings). [Open - merge modal only has summary + payload picker; no independent provider/thinking inputs]
 [x] Merge summary remains **required** for completing a merge; user can always type/edit it manually. [Done - merge is blocked if `mergeSummary.trim()` is empty]
@@ -30,6 +32,9 @@
 ## Canvas
 [ ] LLM Agent has no way to edit the canvas currently - we need to give it tools [Open - system prompt includes canvas content, but no tool/function pathway for the model to write canvas updates]
 [ ] [streaming tool use] LLM canvas tools currently run via non-streamed tool loop; add streaming tool-use support once tool calls are stable across providers [Planned - use streamed tool_call/tool_use events to preserve chat UX]
+
+## Graph
+[ ] branch labels on graph view
 
 # USER PROFILE
 [x] [User profile] A user profile page. MVP shows registered email, plus 3 fields for LLM provider keys. We must store these keys securely using supabase vault!! [Partial - profile page + token storage via Supabase Vault exists; no change-password flow found]

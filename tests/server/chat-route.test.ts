@@ -249,7 +249,10 @@ describe('/api/projects/[id]/chat', () => {
 
     const response = await POST(createRequest({ message: 'Hi there' }), { params: { id: 'project-1' } });
     expect(response.status).toBe(200);
-    await expect(response.text()).rejects.toThrow(/empty response/i);
+    const text = await response.text();
+    const lines = text.trim().split('\n').filter(Boolean);
+    const chunks = lines.map((line) => JSON.parse(line));
+    expect(chunks).toEqual([{ type: 'error', message: 'LLM returned empty response' }]);
 
     expect(appended).toHaveLength(0);
   });
@@ -270,7 +273,10 @@ describe('/api/projects/[id]/chat', () => {
 
     const res = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
-    await expect(res.text()).rejects.toThrow(/empty response/i);
+    const text = await res.text();
+    const lines = text.trim().split('\n').filter(Boolean);
+    const chunks = lines.map((line) => JSON.parse(line));
+    expect(chunks).toEqual([{ type: 'error', message: 'LLM returned empty response' }]);
 
     expect(mocks.rtAppendNodeToRefShadowV1).not.toHaveBeenCalled();
   });
