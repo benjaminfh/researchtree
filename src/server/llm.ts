@@ -979,6 +979,10 @@ function extractOpenAIResponsesText(response: any): string {
     for (const block of content) {
       if (block?.type === 'output_text' && typeof block.text === 'string') {
         parts.push(block.text);
+        continue;
+      }
+      if (block?.type === 'refusal' && typeof block.text === 'string') {
+        parts.push(block.text);
       }
     }
   }
@@ -1012,7 +1016,25 @@ async function completeWithOpenAIResponsesTools(options: LLMToolLoopOptions): Pr
   while (steps < maxSteps) {
     const toolCalls = extractOpenAIResponsesToolCalls(Array.isArray(response?.output) ? response.output : []);
     if (toolCalls.length === 0) {
-      return { text: extractOpenAIResponsesText(response), rawResponse: rawResponses, responseId: response?.id ?? null };
+      let text = extractOpenAIResponsesText(response);
+      if (!text.trim() && steps + 1 < maxSteps) {
+        response = await openAIClient.responses.create({
+          model,
+          input: [
+            {
+              role: 'user',
+              content: [{ type: 'input_text', text: 'Please provide a final response.' }]
+            }
+          ],
+          previous_response_id: response?.id ?? options.previousResponseId ?? undefined,
+          ...(instructions ? { instructions } : {}),
+          ...thinkingParams,
+          tools: responseTools
+        } as any);
+        rawResponses.push(response);
+        text = extractOpenAIResponsesText(response);
+      }
+      return { text, rawResponse: rawResponses, responseId: response?.id ?? null };
     }
 
     const toolOutputs = [];
