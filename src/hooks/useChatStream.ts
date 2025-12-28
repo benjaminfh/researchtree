@@ -10,8 +10,9 @@ export interface ChatStreamState {
 }
 
 export interface ChatStreamChunk {
-  type: 'text' | 'thinking' | 'thinking_signature';
-  content: string;
+  type: 'text' | 'thinking' | 'thinking_signature' | 'error';
+  content?: string;
+  message?: string;
   append?: boolean;
 }
 
@@ -65,6 +66,7 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
 
         const reader = response.body.getReader();
         let buffer = '';
+        let streamErrorMessage: string | null = null;
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
@@ -76,21 +78,41 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
             if (line) {
               try {
                 const parsed = JSON.parse(line) as ChatStreamChunk;
-                if (parsed && typeof parsed.content === 'string') {
+                if (parsed?.type === 'error' && typeof parsed.message === 'string') {
+                  streamErrorMessage = parsed.message.trim() || 'Chat request failed';
+                  setState({ isStreaming: false, error: streamErrorMessage });
+                  await reader.cancel().catch(() => {});
+                  break;
+                }
+                if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
                   onChunk?.(parsed);
                 }
               } catch {
                 // ignore malformed lines
               }
             }
-          newlineIndex = buffer.indexOf('\n');
+            if (streamErrorMessage) {
+              break;
+            }
+            newlineIndex = buffer.indexOf('\n');
           }
+          if (streamErrorMessage) {
+            break;
+          }
+        }
+        if (streamErrorMessage) {
+          return;
         }
         const remaining = buffer.trim();
         if (remaining) {
           try {
             const parsed = JSON.parse(remaining) as ChatStreamChunk;
-            if (parsed && typeof parsed.content === 'string') {
+            if (parsed?.type === 'error' && typeof parsed.message === 'string') {
+              streamErrorMessage = parsed.message.trim() || 'Chat request failed';
+              setState({ isStreaming: false, error: streamErrorMessage });
+              return;
+            }
+            if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
               onChunk?.(parsed);
             }
           } catch {

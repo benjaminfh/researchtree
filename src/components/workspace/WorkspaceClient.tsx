@@ -634,8 +634,8 @@ export function WorkspaceClient({
         setStreamBlocks((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
-          if (chunk.append && last?.type === 'thinking') {
-            last.thinking += chunk.content;
+          if (chunk.append && last?.type === 'thinking' && typeof (last as { thinking?: unknown }).thinking === 'string') {
+            (last as { thinking: string }).thinking += chunk.content;
             return next;
           }
           next.push({
@@ -659,8 +659,8 @@ export function WorkspaceClient({
       setStreamBlocks((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
-        if (last?.type === 'text') {
-          last.text += chunk.content;
+        if (last?.type === 'text' && typeof (last as { text?: unknown }).text === 'string') {
+          (last as { text: string }).text += chunk.content;
           return next;
         }
         next.push({ type: 'text', text: chunk.content });

@@ -299,6 +299,8 @@ export async function POST(request: Request, { params }: RouteContext) {
 
           if (streamError) {
             const message = streamError instanceof Error ? streamError.message : String(streamError);
+            const isAbort =
+              abortController.signal.aborted || (streamError as { name?: string | null })?.name === 'AbortError';
             console.error('[chat] stream error', {
               requestId,
               userId: user.id,
@@ -309,7 +311,10 @@ export async function POST(request: Request, { params }: RouteContext) {
               bufferedLength: buffered.length,
               message
             });
-            controllerStream.error(streamError);
+            if (!isAbort) {
+              controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'error', message })}\n`));
+            }
+            controllerStream.close();
             return;
           }
           console.info('[chat] complete', {
