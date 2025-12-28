@@ -143,7 +143,8 @@ function normalizePgError(error: any) {
   };
 }
 
-export function createLocalPgAdapter(options?: { query?: QueryFn }): PgStoreAdapter {
+export function createLocalPgAdapter(options?: { query?: QueryFn; bootstrap?: () => Promise<void> }): PgStoreAdapter {
+  const bootstrapPromise = options?.bootstrap ? options.bootstrap() : null;
   const query: QueryFn =
     options?.query ??
     (async (sql, values) => {
@@ -154,6 +155,9 @@ export function createLocalPgAdapter(options?: { query?: QueryFn }): PgStoreAdap
 
   const run = async (fn: string, params?: Record<string, unknown>): Promise<PgRpcResponse> => {
     try {
+      if (bootstrapPromise) {
+        await bootstrapPromise;
+      }
       const { sql, values, returnType } = buildRpcCall(fn, params);
       const result = await query(sql, values);
       if (returnType === 'scalar') {
