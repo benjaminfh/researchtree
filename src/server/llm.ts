@@ -270,7 +270,7 @@ function toOpenAIResponsesInput(messages: ChatMessage[]): {
 
 function toOpenAIResponsesInputFromMessages(messages: ChatMessage[]): {
   instructions?: string;
-  input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }>;
+  input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }>;
 } {
   const instructions = messages
     .filter((message) => message.role === 'system')
@@ -278,12 +278,12 @@ function toOpenAIResponsesInputFromMessages(messages: ChatMessage[]): {
     .join('\n\n')
     .trim();
 
-  const input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }> = [];
+  const input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }> = [];
   for (const message of messages) {
-    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    if (message.role !== 'user') continue;
     input.push({
-      role: message.role,
-      content: [{ type: 'input_text' as const, text: flattenMessageContent(message.content) }]
+      role: 'user',
+      content: [{ type: 'input_text', text: flattenMessageContent(message.content) }]
     });
   }
 
