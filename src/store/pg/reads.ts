@@ -142,6 +142,25 @@ export async function rtListRefsShadowV1(input: { projectId: string }): Promise<
   }));
 }
 
+export async function rtGetProjectMainRefUpdatesShadowV1(input: {
+  projectIds: string[];
+}): Promise<Array<{ projectId: string; updatedAt: string }>> {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_project_main_ref_updates_v1', {
+    p_project_ids: input.projectIds
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const rows = Array.isArray(data) ? data : [];
+  return rows
+    .filter((row) => row?.project_id && row?.updated_at)
+    .map((row) => ({
+      projectId: String(row.project_id),
+      updatedAt: new Date(row.updated_at).toISOString()
+    }));
+}
+
 export async function rtGetStarredNodeIdsShadowV1(input: { projectId: string }): Promise<string[]> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_get_starred_node_ids_v1', {

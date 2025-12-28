@@ -3,11 +3,12 @@ import {
   rtGetHistoryShadowV1,
   rtGetCanvasShadowV1,
   rtListRefsShadowV1,
+  rtGetProjectMainRefUpdatesShadowV1,
   rtGetStarredNodeIdsShadowV1
 } from '@/src/store/pg/reads';
-import { rtAppendNodeToRefShadowV1 } from '@/src/store/pg/nodes';
+import { rtAppendNodeToRefShadowV1, rtGetNodeContentShadowV1 } from '@/src/store/pg/nodes';
 import { rtCreateRefFromNodeParentShadowV1, rtCreateRefFromRefShadowV1 } from '@/src/store/pg/branches';
-import { rtCreateProjectShadow } from '@/src/store/pg/projects';
+import { rtCreateProjectShadow, rtGetProjectShadowV1, rtListProjectsShadowV1 } from '@/src/store/pg/projects';
 import { rtGetCurrentRefShadowV1, rtSetCurrentRefShadowV1 } from '@/src/store/pg/prefs';
 import { rtGetRefPreviousResponseIdV1, rtSetRefPreviousResponseIdV1 } from '@/src/store/pg/refs';
 import { rtUpdateArtefactShadow } from '@/src/store/pg/artefacts';
@@ -15,6 +16,7 @@ import { rtSaveArtefactDraft } from '@/src/store/pg/drafts';
 import { rtMergeOursShadowV1 } from '@/src/store/pg/merge';
 import { rtToggleStarV1 } from '@/src/store/pg/stars';
 import { rtGetUserLlmKeyStatusV1, rtSetUserLlmKeyV1, rtGetUserLlmKeyServerV1 } from '@/src/store/pg/userLlmKeys';
+import { rtListProjectMemberIdsShadowV1 } from '@/src/store/pg/members';
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -83,6 +85,69 @@ describe('pg store RPC wrappers', () => {
       { name: 'main', headCommit: 'c1', nodeCount: 2, isTrunk: true, provider: undefined, model: undefined },
       { name: 'feat', headCommit: 'c2', nodeCount: 1, isTrunk: false, provider: 'openai', model: 'gpt-5.2' }
     ]);
+  });
+
+  it('rtListProjectsShadowV1 maps rows', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [{ id: 'p1', name: 'PG', description: null, created_at: '2025-01-01T00:00:00Z', updated_at: null }],
+      error: null
+    });
+
+    const result = await rtListProjectsShadowV1();
+    expect(result).toEqual([
+      {
+        id: 'p1',
+        name: 'PG',
+        description: undefined,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z'
+      }
+    ]);
+  });
+
+  it('rtGetProjectShadowV1 maps rows and handles missing', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [{ id: 'p1', name: 'PG', description: 'd', created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-02T00:00:00Z' }],
+      error: null
+    });
+
+    const result = await rtGetProjectShadowV1({ projectId: 'p1' });
+    expect(result).toEqual({
+      id: 'p1',
+      name: 'PG',
+      description: 'd',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-02T00:00:00.000Z'
+    });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    expect(await rtGetProjectShadowV1({ projectId: 'p1' })).toBeNull();
+  });
+
+  it('rtGetProjectMainRefUpdatesShadowV1 maps rows', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [
+        { project_id: 'p1', updated_at: '2025-01-03T00:00:00Z' },
+        { project_id: null, updated_at: null }
+      ],
+      error: null
+    });
+
+    const result = await rtGetProjectMainRefUpdatesShadowV1({ projectIds: ['p1'] });
+    expect(result).toEqual([{ projectId: 'p1', updatedAt: '2025-01-03T00:00:00.000Z' }]);
+  });
+
+  it('rtGetNodeContentShadowV1 returns data and handles errors', async () => {
+    mocks.rpc.mockResolvedValue({ data: { id: 'node-1' }, error: null });
+    await expect(rtGetNodeContentShadowV1({ projectId: 'p1', nodeId: 'node-1' })).resolves.toEqual({ id: 'node-1' });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: 'nope' } });
+    await expect(rtGetNodeContentShadowV1({ projectId: 'p1', nodeId: 'node-1' })).rejects.toThrow('nope');
+  });
+
+  it('rtListProjectMemberIdsShadowV1 maps rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ project_id: 'p1' }, { project_id: 'p2' }], error: null });
+    await expect(rtListProjectMemberIdsShadowV1({ userId: 'u1' })).resolves.toEqual(['p1', 'p2']);
   });
 
   it('rtGetStarredNodeIdsShadowV1 normalizes response', async () => {
