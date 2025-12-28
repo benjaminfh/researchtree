@@ -150,3 +150,22 @@ The Next.js workspace lets you try the git-backed chat UI locally.
 Hot reload is enabled; API changes and UI tweaks are reflected immediately. Stop the server with `Ctrl+C`.
 
 You now have everything needed to extend ResearchTree or embed the git helpers into another application. Happy hacking! 
+
+## Local Postgres Mode (Desktop-Style)
+
+To run against a local Postgres instance (no Supabase auth/RLS, single-user):
+
+1. Install Postgres.app or Homebrew Postgres and create a local database.
+2. Set `.env.local`:
+   ```
+   RT_PG_ADAPTER=local
+   LOCAL_PG_URL=postgres://user:password@localhost:5432/thredsdb
+   RT_PG_BOOTSTRAP=1
+   ```
+3. Start the app as usual (`npm run dev` or your desktop bundle).
+
+Notes:
+- Local mode fails closed if any Supabase env vars are present.
+- Migrations auto-run on first RPC call and are tracked in `local_migrations`.
+- The database name is read from `LOCAL_PG_URL` (default `thredsdb`) and auto-created if missing.
+- Use `npm run local:pg:bootstrap` if you want to run migrations manually.
