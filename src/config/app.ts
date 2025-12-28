@@ -6,11 +6,13 @@ function slugify(input: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-export const APP_NAME = (process.env.NEXT_PUBLIC_APP_NAME ?? 'ResearchTree').trim() || 'ResearchTree';
+const DEFAULT_APP_NAME = 'Threds';
+
+export const APP_NAME = (process.env.NEXT_PUBLIC_APP_NAME ?? DEFAULT_APP_NAME).trim() || DEFAULT_APP_NAME;
 
 // Used for things like localStorage key prefixes. Defaults to APP_NAME, but can be set explicitly.
 export const APP_ID = (process.env.NEXT_PUBLIC_APP_ID ?? APP_NAME).trim() || APP_NAME;
-export const APP_SLUG = slugify(APP_ID) || 'researchtree';
+export const APP_SLUG = slugify(APP_ID) || 'threds';
 
 export function storageKey(suffix: string): string {
   return `${APP_SLUG}:${suffix}`;

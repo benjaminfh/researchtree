@@ -1,4 +1,5 @@
 import path from 'path';
+import { APP_NAME, APP_SLUG } from '@/src/config/app';
 
 export let PROJECTS_ROOT = process.env.RESEARCHTREE_PROJECTS_ROOT
   ? path.resolve(process.env.RESEARCHTREE_PROJECTS_ROOT)
@@ -20,8 +21,8 @@ export const PROJECT_FILES = {
 } as const;
 
 export const DEFAULT_USER = {
-  name: 'ResearchTree',
-  email: 'researchtree@example.com'
+  name: APP_NAME,
+  email: `${APP_SLUG}@example.com`
 };
 
 export const COMMIT_SUMMARY_LIMIT = 72;

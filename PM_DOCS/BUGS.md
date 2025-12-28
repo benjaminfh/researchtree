@@ -1,4 +1,5 @@
 # BACK END
+[ ] Desktop/local PG mode: app routes to `/login` or throws Supabase env errors when `.env.local` is missing, because several pages and API routes still call `createSupabaseServerClient()` in PG mode. This bypasses the intended local auth failsafe and breaks desktop runs. [Open]
 
 # FRONT END
 ## HOME

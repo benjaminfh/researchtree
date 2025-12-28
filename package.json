@@ -1,9 +1,9 @@
 {
-  "name": "researchtree",
+  "name": "threds",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "desktop/main.js",
+  "main": "./desktop/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

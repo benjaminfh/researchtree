@@ -32,7 +32,7 @@ This keeps the web app intact while providing a desktop window, local file paths
 ### Local PG expectations
 - Desktop mode runs with:
   - `RT_PG_ADAPTER=local`
-  - `LOCAL_PG_URL=postgres://user:pass@localhost:5432/researchtree`
+  - `LOCAL_PG_URL=postgresql://localhost:5432/youruser`
   - `RT_STORE=pg`
 - `maybeBootstrapLocalPg()` runs migrations on first use.
 - No Supabase env vars are allowed in local PG mode (see `assertLocalPgModeConfig()`).
