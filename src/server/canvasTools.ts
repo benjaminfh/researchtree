@@ -11,7 +11,7 @@ export interface CanvasToolResult {
 const canvasToolsSchema = {
   canvas_grep: {
     name: 'canvas_grep',
-    description: 'Search the canvas for a query and return matching line numbers.',
+    description: 'Search the canvas for a query and return matching line numbers. Rules: query is plain text or /regex/flags. Example: {query:"TODO"} or {query:"/TODO:\\\\s+/i"}.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -23,7 +23,7 @@ const canvasToolsSchema = {
   },
   canvas_read_lines: {
     name: 'canvas_read_lines',
-    description: 'Read a range of lines from the canvas (1-based, inclusive).',
+    description: 'Read a range of lines from the canvas (1-based, inclusive). Example: {start_line:4,end_line:12}.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -36,7 +36,7 @@ const canvasToolsSchema = {
   },
   canvas_read_all: {
     name: 'canvas_read_all',
-    description: 'Read the entire canvas.',
+    description: 'Read the entire canvas. Example: {}.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -45,7 +45,8 @@ const canvasToolsSchema = {
   },
   canvas_apply_patch: {
     name: 'canvas_apply_patch',
-    description: 'Apply a unified diff patch to the canvas. All hunks must apply cleanly.',
+    description:
+      'Apply a unified diff patch to the canvas. Rules: must include @@ hunks; no Begin Patch blocks. Example:\\n--- a/canvas\\n+++ b/canvas\\n@@ -1,1 +1,2 @@\\n-old line\\n+old line\\n+new line',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -258,7 +259,11 @@ export async function executeCanvasTool(options: {
     const patch = String(options.args.patch ?? '');
     const applied = applyUnifiedDiff(canvas.content ?? '', patch);
     if (!applied.ok || applied.text == null) {
-      return { ok: false, error: applied.error ?? 'Patch rejected.' };
+      const message = applied.error ?? 'Patch rejected.';
+      return {
+        ok: false,
+        error: `${message} Use unified diff with @@ hunks (e.g. ---/+++ headers + @@ -a,b +c,d @@).`
+      };
     }
     const saved = await rtSaveArtefactDraft({
       projectId: options.projectId,
