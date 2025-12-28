@@ -1,7 +1,6 @@
 import { HomePageContent } from '@/src/components/home/HomePageContent';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { resolveLLMProvider, type LLMProvider } from '@/src/server/llm';
 import { getEnabledProviders } from '@/src/server/llmConfig';
 
@@ -28,38 +27,22 @@ export default async function HomePage() {
 
   if (store.mode === 'pg') {
     await requireUser();
-    const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from('projects')
-      .select('id,name,description,created_at,updated_at')
-      .order('updated_at', { ascending: false });
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const rows = (data ?? []) as any[];
-    const projectIds = rows.map((row) => String(row.id));
+    const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
+    const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
+    const rows = await rtListProjectsShadowV1();
+    const projectIds = rows.map((row) => row.id);
 
     const mainRefUpdatedAtByProject = new Map<string, string>();
     if (projectIds.length > 0) {
-      const { data: refRows, error: refError } = await supabase
-        .from('refs')
-        .select('project_id,updated_at')
-        .eq('name', 'main')
-        .in('project_id', projectIds);
-      if (refError) {
-        throw new Error(refError.message);
-      }
-      for (const refRow of (refRows ?? []) as any[]) {
-        mainRefUpdatedAtByProject.set(String(refRow.project_id), String(refRow.updated_at));
+      const refRows = await rtGetProjectMainRefUpdatesShadowV1({ projectIds });
+      for (const refRow of refRows) {
+        mainRefUpdatedAtByProject.set(refRow.projectId, refRow.updatedAt);
       }
     }
-
-    const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
     const projectsWithCounts = await Promise.all(
       rows.map(async (row) => {
-        const projectId = String(row.id);
-        const createdAt = new Date(row.created_at).toISOString();
+        const projectId = row.id;
+        const createdAt = row.createdAt;
 
         let nodeCount = 0;
         try {
@@ -69,14 +52,14 @@ export default async function HomePage() {
           nodeCount = 0;
         }
 
-        const lastModifiedSource = mainRefUpdatedAtByProject.get(projectId) ?? String(row.updated_at ?? row.created_at);
+        const lastModifiedSource = mainRefUpdatedAtByProject.get(projectId) ?? row.updatedAt ?? row.createdAt;
         const lastModified = Number.isFinite(Date.parse(lastModifiedSource))
           ? new Date(lastModifiedSource).getTime()
           : new Date(createdAt).getTime();
 
         return {
           id: projectId,
-          name: String(row.name),
+          name: row.name,
           description: row.description ?? undefined,
           createdAt,
           nodeCount,

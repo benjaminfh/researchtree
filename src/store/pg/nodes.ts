@@ -41,3 +41,18 @@ export async function rtAppendNodeToRefShadowV1(input: {
     artefactContentHash: row.artefact_content_hash ? String(row.artefact_content_hash) : null
   };
 }
+
+export async function rtGetNodeContentShadowV1(input: {
+  projectId: string;
+  nodeId: string;
+}): Promise<unknown | null> {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_node_content_json_v1', {
+    p_project_id: input.projectId,
+    p_node_id: input.nodeId
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data ?? null;
+}

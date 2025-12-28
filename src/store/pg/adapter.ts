@@ -11,6 +11,7 @@ export interface PgStoreAdapter {
   adminRpc: (fn: string, params?: Record<string, unknown>) => Promise<PgRpcResponse>;
 }
 
+// Keep pg data access behind this adapter so local/supabase routing stays consistent.
 export function getPgStoreAdapter(): PgStoreAdapter {
   const mode = process.env.RT_PG_ADAPTER ?? 'supabase';
   if (mode === 'local') {

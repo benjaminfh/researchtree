@@ -11,6 +11,11 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
   rt_get_history_v1: { params: ['p_project_id', 'p_ref_name', 'p_limit'], returnType: 'set' },
   rt_get_canvas_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
   rt_list_refs_v1: { params: ['p_project_id'], returnType: 'set' },
+  rt_list_projects_v1: { params: [], returnType: 'set' },
+  rt_get_project_v1: { params: ['p_project_id'], returnType: 'set' },
+  rt_list_project_member_ids_v1: { params: ['p_user_id'], returnType: 'set' },
+  rt_get_project_main_ref_updates_v1: { params: ['p_project_ids'], returnType: 'set' },
+  rt_get_node_content_json_v1: { params: ['p_project_id', 'p_node_id'], returnType: 'scalar' },
   rt_get_starred_node_ids_v1: { params: ['p_project_id'], returnType: 'scalar' },
   rt_append_node_to_ref_v1: {
     params: [

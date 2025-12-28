@@ -9,7 +9,6 @@ import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
 import { deriveTextFromBlocks } from '@/src/shared/thinkingTraces';
@@ -77,19 +76,9 @@ export async function POST(request: Request, { params }: RouteContext) {
         if (store.mode === 'pg') {
           const { rtCreateRefFromNodeParentShadowV1 } = await import('@/src/store/pg/branches');
           const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-          const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+          const { rtAppendNodeToRefShadowV1, rtGetNodeContentShadowV1 } = await import('@/src/store/pg/nodes');
 
-          const supabase = createSupabaseServerClient();
-          const { data, error } = await supabase
-            .from('nodes')
-            .select('content_json')
-            .eq('project_id', params.id)
-            .eq('id', nodeId)
-            .maybeSingle();
-          if (error) {
-            throw new Error(error.message);
-          }
-          const targetNode = (data as any)?.content_json as any | null;
+          const targetNode = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId })) as any | null;
           if (!targetNode) {
             throw badRequest(`Node ${nodeId} not found`);
           }

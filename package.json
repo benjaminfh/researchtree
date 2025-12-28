@@ -8,7 +8,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && node scripts/check-supabase-usage.js",
     "local:pg:bootstrap": "node --loader ts-node/esm scripts/local-pg-bootstrap.ts",
     "desktop:dev": "DESKTOP_NEXT_DEV=1 electron-forge start",
     "desktop:package": "npm run build && electron-forge package",
