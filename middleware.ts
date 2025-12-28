@@ -24,6 +24,18 @@ function getSupabaseEnv() {
   return { url, anonKey };
 }
 
+function hasAnySupabaseEnv(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+}
+
+function isExplicitLocalMode(): boolean {
+  return (process.env.RT_PG_ADAPTER ?? '').toLowerCase() === 'local' && (process.env.RT_STORE ?? '').toLowerCase() === 'pg';
+}
+
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
   if (pathname === '/check-email') return true;
@@ -42,8 +54,16 @@ function sanitizeRedirectTo(input: string | null): string | null {
 }
 
 export async function middleware(request: NextRequest) {
+  const anySupabaseEnv = hasAnySupabaseEnv();
+  if (isExplicitLocalMode() && !anySupabaseEnv) {
+    return NextResponse.next();
+  }
+
   const supabaseEnv = getSupabaseEnv();
   if (!supabaseEnv) {
+    if (anySupabaseEnv) {
+      return new NextResponse('Supabase env is incomplete', { status: 500 });
+    }
     return NextResponse.next();
   }
 

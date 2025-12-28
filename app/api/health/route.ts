@@ -1,5 +1,7 @@
 import { Pool } from 'pg';
 import { isLocalPgMode } from '@/src/server/pgMode';
+import { maybeBootstrapLocalPg } from '@/src/server/localPgBootstrap';
+import { getLocalPgConnectionStrings } from '@/src/server/localPgConfig';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -7,8 +9,10 @@ export const runtime = 'nodejs';
 type MigrationStatus = 'ok' | 'missing' | 'error' | 'unknown';
 
 async function checkLocalPg(): Promise<{ reachable: boolean; migrationStatus: MigrationStatus; error?: string }> {
-  const connectionString = process.env.LOCAL_PG_URL;
-  if (!connectionString) {
+  let connectionString: string;
+  try {
+    ({ connectionString } = getLocalPgConnectionStrings());
+  } catch (error) {
     return { reachable: false, migrationStatus: 'missing', error: 'LOCAL_PG_URL not set' };
   }
 
@@ -42,6 +46,21 @@ export async function GET() {
   let error: string | null = null;
 
   if (isLocalPgMode()) {
+    try {
+      await maybeBootstrapLocalPg();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Local PG bootstrap failed';
+      return Response.json(
+        {
+          ok: false,
+          storage_mode: storageMode,
+          db_reachable: false,
+          migration_status: 'error',
+          error: message
+        },
+        { status: 503 }
+      );
+    }
     const result = await checkLocalPg();
     dbReachable = result.reachable;
     migrationStatus = result.migrationStatus;

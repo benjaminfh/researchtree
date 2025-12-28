@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn()
@@ -34,12 +35,12 @@ describe('auth local mode', () => {
 
   it('returns a local user without calling Supabase', async () => {
     const user = await getUserOrNull();
-    expect(user?.id).toBe('local-user');
+    expect(user?.id).toBe(LOCAL_PG_USER_ID);
     expect(mocks.getUser).not.toHaveBeenCalled();
   });
 
   it('requireUser resolves in local mode', async () => {
     const user = await requireUser();
-    expect(user.id).toBe('local-user');
+    expect(user.id).toBe(LOCAL_PG_USER_ID);
   });
 });

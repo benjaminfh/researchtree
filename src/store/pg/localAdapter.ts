@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import type { PgStoreAdapter, PgRpcResponse } from '@/src/store/pg/adapter';
+import { getLocalPgConnectionStrings } from '@/src/server/localPgConfig';
 
 type QueryResult = { rows: any[] };
 type QueryFn = (sql: string, values: unknown[]) => Promise<QueryResult>;
@@ -91,7 +92,8 @@ let pool: PoolClient | null = null;
 function getPool(): PoolClient {
   if (!pool) {
     const { Pool } = require('pg');
-    pool = new Pool({ connectionString: process.env.LOCAL_PG_URL });
+    const { connectionString } = getLocalPgConnectionStrings();
+    pool = new Pool({ connectionString });
   }
   if (!pool) {
     throw new Error('Local PG pool failed to initialize');

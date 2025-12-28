@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ResearchTree Setup</title>
+    <title>Setup</title>
     <style>
       :root {
         color-scheme: light;
@@ -81,12 +81,13 @@
         <input
           id="pg-url"
           name="pg-url"
-          placeholder="postgres://user:password@localhost:5432/researchtree"
+          placeholder="postgresql://localhost:5432/youruser"
           autocomplete="off"
           spellcheck="false"
           required
         />
-        <div class="hint">Example: <code>postgres://user:password@localhost:5432/researchtree</code></div>
+        <div class="hint">Example: <code>postgresql://localhost:5432/youruser</code></div>
+        <div class="hint">We will create/use the <code>threds</code> database automatically.</div>
         <button type="submit">Save &amp; Continue</button>
         <div class="error" id="error" hidden></div>
       </form>

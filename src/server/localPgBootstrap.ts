@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
+import { getLocalPgConnectionStrings, LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,28 +17,19 @@ function shouldWrapInTransaction(sql: string): boolean {
   return !/\b(begin|commit|rollback)\b/.test(normalized);
 }
 
-function getDatabaseName(connectionString: string): string {
-  const url = new URL(connectionString);
-  const dbName = decodeURIComponent(url.pathname.replace(/^\//, ''));
-  if (!dbName) {
-    throw new Error('LOCAL_PG_URL must include a database name');
-  }
-  return dbName;
-}
-
-function getAdminConnectionString(connectionString: string): string {
-  const url = new URL(connectionString);
-  url.pathname = '/postgres';
-  return url.toString();
-}
-
 function quoteIdentifier(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-function isMissingDatabaseError(error: any): boolean {
-  const message = typeof error?.message === 'string' ? error.message : '';
-  return error?.code === '3D000' || message.includes('does not exist');
+const LOCAL_PG_ROLES = ['anon', 'authenticated', 'service_role'] as const;
+
+async function ensureLocalRoles(pool: Pool): Promise<void> {
+  for (const role of LOCAL_PG_ROLES) {
+    const result = await pool.query('select 1 from pg_roles where rolname = $1;', [role]);
+    if ((result.rowCount ?? 0) === 0) {
+      await pool.query(`create role ${quoteIdentifier(role)};`);
+    }
+  }
 }
 
 async function ensureMigrationsTable(pool: Pool): Promise<void> {
@@ -47,6 +39,34 @@ async function ensureMigrationsTable(pool: Pool): Promise<void> {
       applied_at timestamptz not null default now()
     );
   `);
+}
+
+async function ensureLocalSchemas(pool: Pool): Promise<void> {
+  await pool.query('create schema if not exists auth;');
+  await pool.query(
+    `
+    create or replace function auth.uid()
+    returns uuid
+    language sql
+    stable
+    as $$
+      select '${LOCAL_PG_USER_ID}'::uuid
+    $$;
+  `
+  );
+  await pool.query('create schema if not exists extensions;');
+  await pool.query('create extension if not exists pgcrypto;');
+  await pool.query(
+    `
+    create or replace function extensions.digest(data bytea, type text)
+    returns bytea
+    language sql
+    immutable
+    as $$
+      select public.digest(data, type)
+    $$;
+  `
+  );
 }
 
 async function getAppliedMigrations(pool: Pool): Promise<Set<string>> {
@@ -73,41 +93,34 @@ async function applyMigration(pool: Pool, name: string, sql: string): Promise<vo
   }
 }
 
-async function ensureDatabaseExists(connectionString: string): Promise<void> {
-  const dbName = getDatabaseName(connectionString);
-  const adminConnectionString = getAdminConnectionString(connectionString);
-  const adminPool = new Pool({ connectionString: adminConnectionString });
+async function ensureDatabaseExists(adminPool: Pool, dbName: string): Promise<void> {
   try {
+    const existing = await adminPool.query('select 1 from pg_database where datname = $1;', [dbName]);
+    if ((existing.rowCount ?? 0) > 0) {
+      return;
+    }
     await adminPool.query(`create database ${quoteIdentifier(dbName)};`);
   } catch (error: any) {
-    if (error?.code !== '42P04') {
-      throw error;
-    }
-  } finally {
-    await adminPool.end();
+    if (error?.code === '42P04') return;
+    throw error;
   }
 }
 
 async function bootstrapLocalPg(): Promise<void> {
-  const connectionString = process.env.LOCAL_PG_URL;
-  if (!connectionString) {
-    throw new Error('LOCAL_PG_URL is required to run local pg bootstrap');
+  const { connectionString, adminConnectionString, dbName } = getLocalPgConnectionStrings();
+  const adminPool = new Pool({ connectionString: adminConnectionString });
+  try {
+    await ensureLocalRoles(adminPool);
+    await ensureDatabaseExists(adminPool, dbName);
+  } finally {
+    await adminPool.end();
   }
 
-  let pool = new Pool({ connectionString });
+  const pool = new Pool({ connectionString });
 
   try {
-    try {
-      await ensureMigrationsTable(pool);
-    } catch (error) {
-      if (!isMissingDatabaseError(error)) {
-        throw error;
-      }
-      await ensureDatabaseExists(connectionString);
-      await pool.end();
-      pool = new Pool({ connectionString });
-      await ensureMigrationsTable(pool);
-    }
+    await ensureLocalSchemas(pool);
+    await ensureMigrationsTable(pool);
     const applied = await getAppliedMigrations(pool);
 
     const files = (await readdir(MIGRATIONS_DIR))
