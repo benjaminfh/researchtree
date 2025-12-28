@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   rtSetCurrentRefShadowV1: vi.fn(),
   rtGetHistoryShadowV1: vi.fn(),
   rtGetCurrentRefShadowV1: vi.fn(),
-  createSupabaseServerClient: vi.fn(),
+  rtGetNodeContentShadowV1: vi.fn(),
   getBranchConfigMap: vi.fn(),
   resolveBranchConfig: vi.fn()
 }));
@@ -65,7 +65,8 @@ vi.mock('@/src/store/pg/branches', () => ({
 }));
 
 vi.mock('@/src/store/pg/nodes', () => ({
-  rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1
+  rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1,
+  rtGetNodeContentShadowV1: mocks.rtGetNodeContentShadowV1
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
@@ -75,10 +76,6 @@ vi.mock('@/src/store/pg/prefs', () => ({
 
 vi.mock('@/src/store/pg/reads', () => ({
   rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
-}));
-
-vi.mock('@/src/server/supabase/server', () => ({
-  createSupabaseServerClient: mocks.createSupabaseServerClient
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/edit';
@@ -205,21 +202,13 @@ describe('/api/projects/[id]/edit', () => {
     process.env.RT_STORE = 'pg';
     mocks.rtCreateRefFromNodeParentShadowV1.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
     mocks.rtSetCurrentRefShadowV1.mockResolvedValue(undefined);
-    mocks.createSupabaseServerClient.mockReturnValue({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: {
-                  content_json: { id: 'node-5', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: null }
-                },
-                error: null
-              })
-            })
-          })
-        })
-      })
+    mocks.rtGetNodeContentShadowV1.mockResolvedValue({
+      id: 'node-5',
+      type: 'message',
+      role: 'user',
+      content: 'Original',
+      timestamp: 0,
+      parent: null
     });
     mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
       if (refName === 'edit-123') {
@@ -239,7 +228,7 @@ describe('/api/projects/[id]/edit', () => {
       params: { id: 'project-1' }
     });
     expect(res.status).toBe(201);
-    expect(mocks.createSupabaseServerClient).toHaveBeenCalled();
+    expect(mocks.rtGetNodeContentShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', nodeId: 'node-5' });
     expect(mocks.rtCreateRefFromNodeParentShadowV1).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'project-1',

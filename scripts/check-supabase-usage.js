@@ -4,6 +4,7 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const SCAN_ROOTS = ['app', 'src', 'middleware.ts'];
 const ALLOWED = new Set([
+  'middleware.ts',
   'src/store/pg/adapter.ts',
   'src/server/supabase/server.ts',
   'src/server/supabase/admin.ts',
@@ -11,10 +12,23 @@ const ALLOWED = new Set([
   'src/server/auth.ts',
   'src/server/authz.ts',
   'src/server/waitlist.ts',
-  'src/components/auth/AuthStatusPill.tsx'
+  'src/components/auth/AuthStatusPill.tsx',
+  'app/login/actions.ts',
+  'app/forgot-password/actions.ts',
+  'app/reset-password/actions.ts',
+  'app/auth/callback/route.ts',
+  'app/auth/signout/route.ts',
+  'app/api/profile/password/route.ts'
 ]);
 const TARGET_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
-const FORBIDDEN = ['createSupabaseServerClient', 'createSupabaseAdminClient'];
+const FORBIDDEN = [
+  'createSupabaseServerClient',
+  'createSupabaseServerActionClient',
+  'createSupabaseAdminClient',
+  'createSupabaseBrowserClient',
+  'createServerClient',
+  'createClient'
+];
 
 async function gatherFiles(entry) {
   const fullPath = path.join(ROOT, entry);
