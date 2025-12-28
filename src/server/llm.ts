@@ -20,6 +20,14 @@ import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getOpenAIUseResponses, getProviderEnvConfig } from '@/src/server/llmConfig';
 import { flattenMessageContent, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { extractGeminiTextData, extractGeminiThoughtData, getGeminiDelta } from '@/src/server/geminiThought';
+import {
+  executeCanvasTool,
+  getCanvasToolsForAnthropic,
+  getCanvasToolsForGemini,
+  getCanvasToolsForOpenAIChat,
+  getCanvasToolsForOpenAIResponses,
+  type CanvasToolName
+} from '@/src/server/canvasTools';
 
 export type { LLMProvider } from '@/src/shared/llmProvider';
 
@@ -41,6 +49,18 @@ export interface LLMStreamOptions {
   previousResponseId?: string | null;
 }
 
+export interface LLMToolLoopOptions extends LLMStreamOptions {
+  projectId: string;
+  refName: string;
+  maxSteps?: number;
+}
+
+export interface LLMCompletionResult {
+  text: string;
+  rawResponse: unknown;
+  responseId?: string | null;
+}
+
 const encoder = new TextEncoder();
 // TODO: Remove OpenAI search-preview routing once we migrate to Responses API web search.
 const OPENAI_SEARCH_MODELS = new Set(['gpt-4o-search-preview', 'gpt-4o-mini-search-preview']);
@@ -55,6 +75,90 @@ function getOpenAIModelForRequest(webSearch?: boolean): string {
     return 'gpt-4o-mini-search-preview';
   }
   return getDefaultModelForProvider('openai');
+}
+
+function getErrorStatus(error: unknown): number | null {
+  const direct = (error as { status?: unknown })?.status;
+  if (typeof direct === 'number') return direct;
+  const response = (error as { response?: { status?: unknown } })?.response?.status;
+  return typeof response === 'number' ? response : null;
+}
+
+function getErrorCode(error: unknown): string | null {
+  const direct = (error as { code?: unknown })?.code;
+  if (typeof direct === 'string') return direct;
+  const nested = (error as { error?: { code?: unknown } })?.error?.code;
+  return typeof nested === 'string' ? nested : null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  if (typeof error === 'string') return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function getOpenAIUserFacingError(error: unknown): string | null {
+  const status = getErrorStatus(error);
+  const code = (getErrorCode(error) ?? '').toLowerCase();
+  const message = getErrorMessage(error).toLowerCase();
+  const invalidKey =
+    status === 401 ||
+    message.includes('invalid api key') ||
+    message.includes('incorrect api key') ||
+    message.includes('invalid_api_key') ||
+    (message.includes('api key') && message.includes('invalid'));
+  if (invalidKey) {
+    return 'OpenAI API key is invalid or missing. Update it in Profile and try again.';
+  }
+  if (status === 429 || message.includes('rate limit') || message.includes('rate_limit')) {
+    return 'OpenAI rate limit exceeded. Wait a moment and try again.';
+  }
+  const hasQuota =
+    code === 'insufficient_quota' ||
+    code === 'insufficient-quota' ||
+    code === 'insufficient quota' ||
+    message.includes('insufficient_quota') ||
+    message.includes('insufficient-quota') ||
+    message.includes('insufficient quota') ||
+    message.includes('quota exceeded') ||
+    message.includes('quota') ||
+    message.includes('billing');
+  if (hasQuota) {
+    return 'OpenAI quota exceeded. Check your OpenAI billing or usage limits and try again.';
+  }
+  return null;
+}
+
+function getGeminiUserFacingError(error: unknown): string | null {
+  const status = getErrorStatus(error);
+  const message = getErrorMessage(error).toLowerCase();
+  const invalidKey =
+    status === 401 ||
+    status === 403 ||
+    (message.includes('api key') && message.includes('invalid')) ||
+    message.includes('permission denied');
+  if (invalidKey) {
+    return 'Gemini API key is invalid or missing. Update it in Profile and try again.';
+  }
+  if (status === 429 || message.includes('rate limit') || message.includes('too many requests')) {
+    return 'Gemini rate limit exceeded. Wait a moment and try again.';
+  }
+  const hasQuota =
+    message.includes('resource_exhausted') ||
+    message.includes('insufficient_quota') ||
+    message.includes('insufficient-quota') ||
+    message.includes('insufficient quota') ||
+    message.includes('quota exceeded') ||
+    message.includes('quota') ||
+    message.includes('insufficient');
+  if (hasQuota) {
+    return 'Gemini quota exceeded. Check your Google AI Studio quota or billing and try again.';
+  }
+  return null;
 }
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
@@ -116,6 +220,29 @@ export async function* streamAssistantCompletion({
   yield* streamFromMock(messages, signal);
 }
 
+export async function completeAssistantWithCanvasTools(options: LLMToolLoopOptions): Promise<LLMCompletionResult> {
+  const resolvedProvider = options.provider ?? resolveOpenAIProviderSelection();
+  const enabled = new Set(getEnabledProviders());
+  if (!enabled.has(resolvedProvider)) {
+    throw new Error(`Provider ${resolvedProvider} is not enabled.`);
+  }
+
+  if (resolvedProvider === 'openai') {
+    return completeWithOpenAIChatTools(options);
+  }
+  if (resolvedProvider === 'openai_responses') {
+    return completeWithOpenAIResponsesTools(options);
+  }
+  if (resolvedProvider === 'gemini') {
+    return completeWithGeminiTools(options);
+  }
+  if (resolvedProvider === 'anthropic') {
+    return completeWithAnthropicTools(options);
+  }
+
+  return { text: 'Ready for instructions.', rawResponse: null };
+}
+
 export function encodeChunk(content: string): Uint8Array {
   return encoder.encode(content);
 }
@@ -152,11 +279,20 @@ async function* streamFromOpenAI(
   } as const;
 
   const thinkingParams = isOpenAISearchModel(model) ? {} : buildOpenAIThinkingParams(thinking);
-  const stream: any = await openAIClient.chat.completions.create({
-    ...baseRequest,
-    ...thinkingParams,
-    ...(webSearch ? { web_search_options: {} } : {})
-  } as any);
+  let stream: any;
+  try {
+    stream = await openAIClient.chat.completions.create({
+      ...baseRequest,
+      ...thinkingParams,
+      ...(webSearch ? { web_search_options: {} } : {})
+    } as any);
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
+    throw error;
+  }
 
   if (signal) {
     signal.addEventListener('abort', () => {
@@ -167,24 +303,32 @@ async function* streamFromOpenAI(
   }
 
   const rawParts: unknown[] = [];
-  for await (const part of stream) {
-    rawParts.push(part);
-    const delta = part.choices[0]?.delta;
-    if (!delta?.content) {
-      continue;
-    }
+  try {
+    for await (const part of stream) {
+      rawParts.push(part);
+      const delta = part.choices[0]?.delta;
+      if (!delta?.content) {
+        continue;
+      }
 
-    if (typeof delta.content === 'string') {
-      yield { type: 'text', content: delta.content } satisfies LLMStreamChunk;
-      continue;
-    }
+      if (typeof delta.content === 'string') {
+        yield { type: 'text', content: delta.content } satisfies LLMStreamChunk;
+        continue;
+      }
 
-    const blocks = (Array.isArray(delta.content) ? delta.content : []) as Array<{ type?: string; text?: string }>;
-    for (const block of blocks) {
-      if (block.type === 'text' && typeof block.text === 'string') {
-        yield { type: 'text', content: block.text } satisfies LLMStreamChunk;
+      const blocks = (Array.isArray(delta.content) ? delta.content : []) as Array<{ type?: string; text?: string }>;
+      for (const block of blocks) {
+        if (block.type === 'text' && typeof block.text === 'string') {
+          yield { type: 'text', content: block.text } satisfies LLMStreamChunk;
+        }
       }
     }
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
+    throw error;
   }
   yield { type: 'raw_response', content: '', payload: rawParts } satisfies LLMStreamChunk;
 }
@@ -225,6 +369,31 @@ function toOpenAIResponsesInput(messages: ChatMessage[]): {
   };
 }
 
+function toOpenAIResponsesInputFromMessages(messages: ChatMessage[]): {
+  instructions?: string;
+  input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }>;
+} {
+  const instructions = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => flattenMessageContent(message.content))
+    .join('\n\n')
+    .trim();
+
+  const input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }> = [];
+  for (const message of messages) {
+    if (message.role !== 'user') continue;
+    input.push({
+      role: 'user',
+      content: [{ type: 'input_text', text: flattenMessageContent(message.content) }]
+    });
+  }
+
+  return {
+    ...(instructions ? { instructions } : {}),
+    input
+  };
+}
+
 function extractOpenAIResponsesTextDelta(event: any): string | null {
   if (!event || typeof event !== 'object') return null;
   if (event.type !== 'response.output_text.delta') return null;
@@ -253,15 +422,24 @@ async function* streamFromOpenAIResponses(
   const { instructions, input } = toOpenAIResponsesInput(messages);
   const thinkingParams = buildOpenAIResponsesThinkingParams(thinking);
 
-  const stream: any = await openAIClient.responses.create({
-    model,
-    input,
-    stream: true,
-    ...(instructions ? { instructions } : {}),
-    ...thinkingParams,
-    ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-    ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
-  } as any);
+  let stream: any;
+  try {
+    stream = await openAIClient.responses.create({
+      model,
+      input,
+      stream: true,
+      ...(instructions ? { instructions } : {}),
+      ...thinkingParams,
+      ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+      ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
+    } as any);
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
+    throw error;
+  }
 
   if (signal) {
     signal.addEventListener('abort', () => {
@@ -273,23 +451,31 @@ async function* streamFromOpenAIResponses(
 
   const rawEvents: unknown[] = [];
   let responseId: string | null = null;
-  for await (const event of stream) {
-    rawEvents.push(event);
-    const delta = extractOpenAIResponsesTextDelta(event);
-    if (typeof delta === 'string' && delta.length > 0) {
-      yield { type: 'text', content: delta } satisfies LLMStreamChunk;
+  try {
+    for await (const event of stream) {
+      rawEvents.push(event);
+      const delta = extractOpenAIResponsesTextDelta(event);
+      if (typeof delta === 'string' && delta.length > 0) {
+        yield { type: 'text', content: delta } satisfies LLMStreamChunk;
+      }
+      const candidate =
+        typeof (event as any)?.response?.id === 'string'
+          ? String((event as any).response.id)
+          : typeof (event as any)?.response_id === 'string'
+            ? String((event as any).response_id)
+            : event?.type === 'response.completed' && typeof (event as any)?.id === 'string'
+              ? String((event as any).id)
+              : null;
+      if (candidate) {
+        responseId = candidate;
+      }
     }
-    const candidate =
-      typeof (event as any)?.response?.id === 'string'
-        ? String((event as any).response.id)
-        : typeof (event as any)?.response_id === 'string'
-          ? String((event as any).response_id)
-          : event?.type === 'response.completed' && typeof (event as any)?.id === 'string'
-            ? String((event as any).id)
-            : null;
-    if (candidate) {
-      responseId = candidate;
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
     }
+    throw error;
   }
 
   yield {
@@ -407,6 +593,10 @@ async function* streamFromGemini(
   try {
     stream = await model.generateContentStream(request);
   } catch (error) {
+    const mapped = getGeminiUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
     throwIfStreamingNotSupported(error);
     const status = getGeminiHttpStatus(error);
     if (error instanceof GoogleGenerativeAIFetchError || status != null) {
@@ -487,6 +677,10 @@ async function* streamFromGemini(
       }
     }
   } catch (error) {
+    const mapped = getGeminiUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
     throwIfStreamingNotSupported(error);
     const status = getGeminiHttpStatus(error);
     if (error instanceof GoogleGenerativeAIFetchError || status != null) {
@@ -570,6 +764,10 @@ async function* streamFromGemini(
       console.error('[LLM] Gemini returned empty response', { modelName, meta });
       throw new Error(`Gemini returned an empty response (model=${modelName}).`);
     } catch (error) {
+      const mapped = getGeminiUserFacingError(error);
+      if (mapped) {
+        throw new Error(mapped);
+      }
       if (error instanceof Error) {
         throw new Error(sanitizeGeminiErrorMessage(error.message));
       }
@@ -720,6 +918,40 @@ async function* streamFromAnthropic(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
+    let parsed: { error?: { type?: string; message?: string } } | null = null;
+    try {
+      parsed = text ? (JSON.parse(text) as { error?: { type?: string; message?: string } }) : null;
+    } catch {
+      parsed = null;
+    }
+    const rawMessage = (parsed?.error?.message ?? text ?? '').toString();
+    const lowerMessage = rawMessage.toLowerCase();
+    const type = (parsed?.error?.type ?? '').toLowerCase();
+    const invalidKey =
+      response.status === 401 ||
+      response.status === 403 ||
+      type.includes('authentication') ||
+      lowerMessage.includes('invalid api key') ||
+      (lowerMessage.includes('api key') && lowerMessage.includes('invalid'));
+    if (invalidKey) {
+      throw new Error('Anthropic API key is invalid or missing. Update it in Profile and try again.');
+    }
+    if (response.status === 429 || type.includes('rate_limit') || lowerMessage.includes('rate limit')) {
+      throw new Error('Anthropic rate limit exceeded. Wait a moment and try again.');
+    }
+    const hasQuota =
+      type.includes('insufficient-quota') ||
+      type.includes('insufficient_quota') ||
+      lowerMessage.includes('insufficient-quota') ||
+      lowerMessage.includes('insufficient quota') ||
+      lowerMessage.includes('quota') ||
+      lowerMessage.includes('quota exceeded') ||
+      lowerMessage.includes('insufficient') ||
+      lowerMessage.includes('credit') ||
+      lowerMessage.includes('balance');
+    if (response.status === 402 || hasQuota) {
+      throw new Error('Anthropic quota exceeded. Check your billing or credits and try again.');
+    }
     throw new Error(`[anthropic] ${response.status} ${response.statusText}${text ? `: ${text}` : ''}`);
   }
 
@@ -804,4 +1036,351 @@ async function* streamFromMock(messages: ChatMessage[], signal?: AbortSignal): A
     await new Promise((resolve) => setTimeout(resolve, 10));
     yield { type: 'text', content: token } satisfies LLMStreamChunk;
   }
+}
+
+async function completeWithOpenAIChatTools(options: LLMToolLoopOptions): Promise<LLMCompletionResult> {
+  const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing OpenAI API key. Add one in Profile to use this provider.');
+  }
+  const openAIClient = new OpenAI({ apiKey });
+  const model = options.model ?? getDefaultModelForProvider('openai');
+  const maxSteps = options.maxSteps ?? 8;
+  const formattedMessages = options.messages.map((message) => ({
+    role: message.role,
+    content: flattenMessageContent(message.content)
+  })) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+  const tools = getCanvasToolsForOpenAIChat();
+  const thinkingParams = buildOpenAIThinkingParams(options.thinking);
+
+  const rawResponses: unknown[] = [];
+  let steps = 0;
+  while (steps < maxSteps) {
+    const response = await openAIClient.chat.completions.create({
+      model,
+      messages: formattedMessages,
+      tools,
+      ...(options.webSearch ? { web_search_options: {} } : {}),
+      ...thinkingParams
+    } as any);
+    rawResponses.push(response);
+    const message = response.choices?.[0]?.message;
+    if (!message) {
+      break;
+    }
+
+    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    if (toolCalls.length === 0) {
+      const content = (message as any).content;
+      const text =
+        typeof content === 'string'
+          ? content
+          : Array.isArray(content)
+            ? content.map((block: any) => (block?.type === 'text' ? String(block.text ?? '') : '')).join('')
+            : '';
+      return { text, rawResponse: rawResponses, responseId: response.id ?? null };
+    }
+
+    formattedMessages.push(message as OpenAI.Chat.Completions.ChatCompletionMessageParam);
+    for (const toolCall of toolCalls) {
+      const toolName = toolCall.function?.name as CanvasToolName;
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(toolCall.function?.arguments ?? '{}');
+      } catch {
+        args = {};
+      }
+      const result = await executeCanvasTool({
+        tool: toolName,
+        args,
+        projectId: options.projectId,
+        refName: options.refName
+      });
+      formattedMessages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result)
+      } as OpenAI.Chat.Completions.ChatCompletionMessageParam);
+    }
+
+    steps += 1;
+  }
+
+  return { text: '', rawResponse: rawResponses };
+}
+
+function extractOpenAIResponsesToolCalls(output: any[]): Array<{ name: string; arguments: unknown; callId: string }> {
+  const calls: Array<{ name: string; arguments: unknown; callId: string }> = [];
+  for (const item of output ?? []) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.type !== 'function_call') continue;
+    const callId = String(item.call_id ?? item.id ?? '');
+    const name = String(item.name ?? '');
+    let args: unknown = item.arguments ?? {};
+    if (typeof args === 'string') {
+      try {
+        args = JSON.parse(args);
+      } catch {
+        args = {};
+      }
+    }
+    if (callId && name) {
+      calls.push({ name, arguments: args, callId });
+    }
+  }
+  return calls;
+}
+
+function extractOpenAIResponsesText(response: any): string {
+  if (typeof response?.output_text === 'string') {
+    return response.output_text;
+  }
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const parts: string[] = [];
+  for (const item of output) {
+    if (item?.type !== 'message') continue;
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const block of content) {
+      if (block?.type === 'output_text' && typeof block.text === 'string') {
+        parts.push(block.text);
+      }
+    }
+  }
+  return parts.join('');
+}
+
+async function completeWithOpenAIResponsesTools(options: LLMToolLoopOptions): Promise<LLMCompletionResult> {
+  const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing OpenAI API key. Add one in Profile to use this provider.');
+  }
+  const openAIClient = new OpenAI({ apiKey });
+  const model = options.model ?? getDefaultModelForProvider('openai_responses');
+  const maxSteps = options.maxSteps ?? 8;
+  const tools = getCanvasToolsForOpenAIResponses();
+  const responseTools = options.webSearch ? [...tools, { type: 'web_search' }] : tools;
+  const thinkingParams = buildOpenAIResponsesThinkingParams(options.thinking);
+  const { instructions, input } = toOpenAIResponsesInputFromMessages(options.messages);
+
+  const rawResponses: unknown[] = [];
+  let response: any = await openAIClient.responses.create({
+    model,
+    input,
+    ...(instructions ? { instructions } : {}),
+    ...thinkingParams,
+    tools: responseTools
+  } as any);
+  rawResponses.push(response);
+
+  let steps = 0;
+  while (steps < maxSteps) {
+    const toolCalls = extractOpenAIResponsesToolCalls(Array.isArray(response?.output) ? response.output : []);
+    if (toolCalls.length === 0) {
+      return { text: extractOpenAIResponsesText(response), rawResponse: rawResponses, responseId: response?.id ?? null };
+    }
+
+    const toolOutputs = [];
+    for (const call of toolCalls) {
+      const result = await executeCanvasTool({
+        tool: call.name as CanvasToolName,
+        args: (call.arguments ?? {}) as Record<string, unknown>,
+        projectId: options.projectId,
+        refName: options.refName
+      });
+      toolOutputs.push({
+        type: 'function_call_output',
+        call_id: call.callId,
+        output: JSON.stringify(result)
+      });
+    }
+
+    response = await openAIClient.responses.create({
+      model,
+      input: toolOutputs,
+      previous_response_id: response?.id ?? options.previousResponseId ?? undefined,
+      ...(instructions ? { instructions } : {}),
+      ...thinkingParams,
+      tools: responseTools
+    } as any);
+    rawResponses.push(response);
+    steps += 1;
+  }
+
+  return { text: extractOpenAIResponsesText(response), rawResponse: rawResponses, responseId: response?.id ?? null };
+}
+
+function buildGeminiContents(messages: ChatMessage[]) {
+  return messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: flattenMessageContent(message.content) }]
+    }));
+}
+
+async function completeWithGeminiTools(options: LLMToolLoopOptions): Promise<LLMCompletionResult> {
+  const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing Gemini API key. Add one in Profile to use this provider.');
+  }
+  const geminiClient = new GoogleGenerativeAI(apiKey);
+  const modelName = options.model ?? getDefaultModelForProvider('gemini');
+  const systemInstruction = options.messages
+    .filter((message) => message.role === 'system')
+    .map((message) => flattenMessageContent(message.content))
+    .join('\n\n')
+    .trim();
+  const model = geminiClient.getGenerativeModel(
+    systemInstruction ? { model: modelName, systemInstruction } : { model: modelName }
+  );
+  const tools = getCanvasToolsForGemini();
+  const maxSteps = options.maxSteps ?? 8;
+
+  let contents = buildGeminiContents(options.messages);
+  const request: any = { contents, tools };
+  if (typeof options.thinking === 'string') {
+    const params = buildGeminiThinkingParams(modelName, options.thinking);
+    if (params.generationConfig) {
+      request.generationConfig = params.generationConfig;
+    }
+  }
+  if (options.thinking && options.thinking !== 'off') {
+    request.generationConfig = request.generationConfig ?? {};
+    request.generationConfig.thinkingConfig = {
+      ...(request.generationConfig.thinkingConfig ?? {}),
+      includeThoughts: true
+    };
+  }
+  if (options.webSearch) {
+    request.tools = [...tools, { google_search: {} }];
+  }
+
+  const rawResponses: unknown[] = [];
+  let steps = 0;
+  while (steps < maxSteps) {
+    const result = await model.generateContent(request);
+    rawResponses.push(result);
+    const response = (result as any)?.response ?? result;
+    const calls = typeof response?.functionCalls === 'function' ? response.functionCalls() : [];
+    if (!Array.isArray(calls) || calls.length === 0) {
+      const text = typeof response?.text === 'function' ? response.text() : '';
+      return { text, rawResponse: rawResponses };
+    }
+
+    const toolParts = [];
+    for (const call of calls) {
+      const result = await executeCanvasTool({
+        tool: call.name as CanvasToolName,
+        args: (call.args ?? {}) as Record<string, unknown>,
+        projectId: options.projectId,
+        refName: options.refName
+      });
+      toolParts.push({
+        functionResponse: {
+          name: call.name,
+          response: result
+        }
+      });
+    }
+
+    contents = [...contents, { role: 'model', parts: response?.candidates?.[0]?.content?.parts ?? [] }, { role: 'user', parts: toolParts }];
+    request.contents = contents;
+    steps += 1;
+  }
+
+  return { text: '', rawResponse: rawResponses };
+}
+
+async function completeWithAnthropicTools(options: LLMToolLoopOptions): Promise<LLMCompletionResult> {
+  const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing Anthropic API key. Add one in Profile to use this provider.');
+  }
+  const systemText = flattenMessageContent(options.messages.find((m) => m.role === 'system')?.content ?? '');
+  const anthropicMessages = options.messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({ role: m.role, content: flattenMessageContent(m.content) })) as Array<{
+    role: 'user' | 'assistant';
+    content: any;
+  }>;
+  const model = options.model ?? getDefaultModelForProvider('anthropic');
+  const maxOutputTokens = getAnthropicMaxOutputTokens(model);
+  const maxTokens = maxOutputTokens ?? 8192;
+  const tools = getCanvasToolsForAnthropic();
+  const maxSteps = options.maxSteps ?? 8;
+
+  const makeRequest = async (body: any) => {
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    };
+    const beta = (process.env.ANTHROPIC_BETA ?? '').trim();
+    if (beta) {
+      headers['anthropic-beta'] = beta;
+    }
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: options.signal
+    });
+    return res;
+  };
+
+  const rawResponses: unknown[] = [];
+  let steps = 0;
+  while (steps < maxSteps) {
+    const body: any = {
+      model,
+      max_tokens: maxTokens,
+      system: systemText,
+      messages: anthropicMessages,
+      tools,
+      stream: false
+    };
+    if (options.thinking && options.thinking !== 'off') {
+      body.thinking = toAnthropicThinking(options.thinking);
+    }
+    if (options.webSearch) {
+      body.tools = [...tools, { type: 'web_search_20250305', name: 'web_search', max_uses: 5 }];
+    }
+    const response = await makeRequest(body);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`[anthropic] ${response.status} ${response.statusText}${text ? `: ${text}` : ''}`);
+    }
+    const payload = await response.json();
+    rawResponses.push(payload);
+
+    const content = Array.isArray(payload?.content) ? payload.content : [];
+    const toolUses = content.filter((block: any) => block?.type === 'tool_use');
+    if (toolUses.length === 0) {
+      const text = content
+        .filter((block: any) => block?.type === 'text')
+        .map((block: any) => String(block.text ?? ''))
+        .join('');
+      return { text, rawResponse: rawResponses };
+    }
+
+    anthropicMessages.push({ role: 'assistant', content });
+    const toolResults = [];
+    for (const toolUse of toolUses) {
+      const result = await executeCanvasTool({
+        tool: String(toolUse.name ?? '') as CanvasToolName,
+        args: (toolUse.input ?? {}) as Record<string, unknown>,
+        projectId: options.projectId,
+        refName: options.refName
+      });
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: JSON.stringify(result)
+      });
+    }
+    anthropicMessages.push({ role: 'user', content: toolResults as any });
+    steps += 1;
+  }
+
+  return { text: '', rawResponse: rawResponses };
 }

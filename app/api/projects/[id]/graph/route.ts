@@ -11,6 +11,10 @@ interface RouteContext {
 
 const MAX_PER_BRANCH = 500;
 
+function isHiddenMessage(node: NodeRecord): boolean {
+  return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
+}
+
 function capNodesForGraph(nodes: NodeRecord[], max: number): NodeRecord[] {
   if (max <= 0) return [];
   if (nodes.length <= max) return nodes;
@@ -38,7 +42,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
           branches.map(async (branch) => {
             const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName: branch.name, limit: MAX_PER_BRANCH });
             const nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
-            return [branch.name, capNodesForGraph(nodes, MAX_PER_BRANCH)] as const;
+            const visible = nodes.filter((node) => !isHiddenMessage(node));
+            return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as const;
           })
         ),
         rtGetStarredNodeIdsShadowV1({ projectId: params.id })
@@ -75,7 +80,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
       Promise.all(
         branches.map(async (branch) => {
           const nodes = await readNodesFromRef(project.id, branch.name);
-          return [branch.name, capNodesForGraph(nodes, MAX_PER_BRANCH)] as const;
+          const visible = nodes.filter((node) => !isHiddenMessage(node));
+          return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as const;
         })
       ),
       getStarredNodeIds(project.id)
