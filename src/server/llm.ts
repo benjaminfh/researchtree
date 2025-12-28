@@ -278,12 +278,14 @@ function toOpenAIResponsesInputFromMessages(messages: ChatMessage[]): {
     .join('\n\n')
     .trim();
 
-  const input = messages
-    .filter((message) => message.role !== 'system')
-    .map((message) => ({
+  const input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }> = [];
+  for (const message of messages) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    input.push({
       role: message.role,
       content: [{ type: 'input_text' as const, text: flattenMessageContent(message.content) }]
-    }));
+    });
+  }
 
   return {
     ...(instructions ? { instructions } : {}),
@@ -905,11 +907,12 @@ async function completeWithOpenAIChatTools(options: LLMToolLoopOptions): Promise
 
     const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
     if (toolCalls.length === 0) {
+      const content = (message as any).content;
       const text =
-        typeof message.content === 'string'
-          ? message.content
-          : Array.isArray(message.content)
-            ? message.content.map((block: any) => (block?.type === 'text' ? String(block.text ?? '') : '')).join('')
+        typeof content === 'string'
+          ? content
+          : Array.isArray(content)
+            ? content.map((block: any) => (block?.type === 'text' ? String(block.text ?? '') : '')).join('')
             : '';
       return { text, rawResponse: rawResponses, responseId: response.id ?? null };
     }
