@@ -71,11 +71,9 @@ export function getCanvasToolsForOpenAIChat() {
 export function getCanvasToolsForOpenAIResponses() {
   return Object.values(canvasToolsSchema).map((tool) => ({
     type: 'function',
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters
-    }
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters
   }));
 }
 
