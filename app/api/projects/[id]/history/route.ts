@@ -9,6 +9,10 @@ interface RouteContext {
   params: { id: string };
 }
 
+function isHiddenMessage(node: NodeRecord): boolean {
+  return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
+}
+
 export async function GET(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -27,7 +31,7 @@ export async function GET(request: Request, { params }: RouteContext) {
         refParam?.trim() || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
       const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName, limit: effectiveLimit });
       const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
-      const nonStateNodes = pgNodes.filter((node) => node.type !== 'state');
+      const nonStateNodes = pgNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
       return Response.json({ nodes: nonStateNodes });
     }
 
@@ -43,7 +47,7 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     // Canvas saves create `state` nodes in the git backend; those are not user-facing chat turns.
     // Keep them out of the history API response to avoid flooding the chat UI.
-    const nonStateNodes = nodes.filter((node) => node.type !== 'state');
+    const nonStateNodes = nodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
 
     let result = nonStateNodes;
     if (limitParam) {

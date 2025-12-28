@@ -54,6 +54,75 @@ export async function rtGetCanvasShadowV1(input: {
   };
 }
 
+export async function rtGetCanvasHashesShadowV1(input: {
+  projectId: string;
+  refName: string;
+}): Promise<{ draftHash: string | null; artefactHash: string | null; draftUpdatedAt: string | null; artefactUpdatedAt: string | null }> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('rt_get_canvas_hashes_v1', {
+    p_project_id: input.projectId,
+    p_ref_name: input.refName
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return {
+      draftHash: null,
+      artefactHash: null,
+      draftUpdatedAt: null,
+      artefactUpdatedAt: null
+    };
+  }
+  return {
+    draftHash: row.draft_hash ? String(row.draft_hash) : null,
+    artefactHash: row.artefact_hash ? String(row.artefact_hash) : null,
+    draftUpdatedAt: row.draft_updated_at ? String(row.draft_updated_at) : null,
+    artefactUpdatedAt: row.artefact_updated_at ? String(row.artefact_updated_at) : null
+  };
+}
+
+export async function rtGetCanvasPairShadowV1(input: {
+  projectId: string;
+  refName: string;
+}): Promise<{
+  draftContent: string | null;
+  draftHash: string | null;
+  artefactContent: string | null;
+  artefactHash: string | null;
+  draftUpdatedAt: string | null;
+  artefactUpdatedAt: string | null;
+}> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('rt_get_canvas_pair_v1', {
+    p_project_id: input.projectId,
+    p_ref_name: input.refName
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return {
+      draftContent: null,
+      draftHash: null,
+      artefactContent: null,
+      artefactHash: null,
+      draftUpdatedAt: null,
+      artefactUpdatedAt: null
+    };
+  }
+  return {
+    draftContent: row.draft_content ? String(row.draft_content) : null,
+    draftHash: row.draft_hash ? String(row.draft_hash) : null,
+    artefactContent: row.artefact_content ? String(row.artefact_content) : null,
+    artefactHash: row.artefact_hash ? String(row.artefact_hash) : null,
+    draftUpdatedAt: row.draft_updated_at ? String(row.draft_updated_at) : null,
+    artefactUpdatedAt: row.artefact_updated_at ? String(row.artefact_updated_at) : null
+  };
+}
+
 export async function rtListRefsShadowV1(input: { projectId: string }): Promise<PgBranchSummary[]> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_list_refs_v1', {
