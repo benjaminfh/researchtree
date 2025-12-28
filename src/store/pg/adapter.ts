@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { createSupabaseAdminClient } from '@/src/server/supabase/admin';
+import { assertLocalPgModeConfig } from '@/src/server/pgMode';
 import { createLocalPgAdapter } from '@/src/store/pg/localAdapter';
 
 export type PgRpcResponse = { data: unknown; error: any };
@@ -9,23 +10,10 @@ export interface PgStoreAdapter {
   adminRpc: (fn: string, params?: Record<string, unknown>) => Promise<PgRpcResponse>;
 }
 
-function hasSupabaseEnv(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
-
 export function getPgStoreAdapter(): PgStoreAdapter {
   const mode = process.env.RT_PG_ADAPTER ?? 'supabase';
   if (mode === 'local') {
-    if (hasSupabaseEnv()) {
-      throw new Error('RT_PG_ADAPTER=local cannot be used with Supabase env vars present');
-    }
-    if (!process.env.LOCAL_PG_URL) {
-      throw new Error('RT_PG_ADAPTER=local requires LOCAL_PG_URL');
-    }
+    assertLocalPgModeConfig();
     return createLocalPgAdapter();
   }
   if (mode !== 'supabase') {
