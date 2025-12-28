@@ -21,6 +21,10 @@ describe('getPgStoreAdapter', () => {
     mocks.rpc.mockReset();
     mocks.adminRpc.mockReset();
     delete process.env.RT_PG_ADAPTER;
+    delete process.env.LOCAL_PG_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   });
 
   afterEach(() => {
@@ -47,7 +51,19 @@ describe('getPgStoreAdapter', () => {
 
   it('throws when local adapter is requested', () => {
     process.env.RT_PG_ADAPTER = 'local';
-    expect(() => getPgStoreAdapter()).toThrow('Local Postgres adapter not implemented yet');
+    expect(() => getPgStoreAdapter()).toThrow('RT_PG_ADAPTER=local requires LOCAL_PG_URL');
+  });
+
+  it('throws when local adapter is requested with Supabase env present', () => {
+    process.env.RT_PG_ADAPTER = 'local';
+    process.env.LOCAL_PG_URL = 'postgres://local';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    expect(() => getPgStoreAdapter()).toThrow('RT_PG_ADAPTER=local cannot be used with Supabase env vars present');
+  });
+
+  it('throws when local adapter is requested without LOCAL_PG_URL', () => {
+    process.env.RT_PG_ADAPTER = 'local';
+    expect(() => getPgStoreAdapter()).toThrow('RT_PG_ADAPTER=local requires LOCAL_PG_URL');
   });
 
   it('throws on unknown adapter modes', () => {
