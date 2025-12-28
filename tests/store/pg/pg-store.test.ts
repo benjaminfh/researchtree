@@ -128,6 +128,32 @@ describe('pg store RPC wrappers', () => {
     });
   });
 
+  it('rtAppendNodeToRefShadowV1 throws when RPC fails or returns no rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'nope' } });
+    await expect(
+      rtAppendNodeToRefShadowV1({
+        projectId: 'p1',
+        refName: 'main',
+        kind: 'message',
+        role: 'user',
+        contentJson: {},
+        nodeId: 'n1'
+      })
+    ).rejects.toThrow('nope');
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(
+      rtAppendNodeToRefShadowV1({
+        projectId: 'p1',
+        refName: 'main',
+        kind: 'message',
+        role: 'user',
+        contentJson: {},
+        nodeId: 'n1'
+      })
+    ).rejects.toThrow('No data returned from rt_append_node_to_ref_v1');
+  });
+
   it('rtCreateRefFromNodeParentShadowV1 maps data', async () => {
     mocks.rpc.mockResolvedValue({
       data: [{ base_commit_id: 'c1', base_ordinal: 4 }],
@@ -156,6 +182,28 @@ describe('pg store RPC wrappers', () => {
     expect(result).toEqual({ baseCommitId: 'c1', baseOrdinal: 4 });
   });
 
+  it('rtCreateRefFromNodeParentShadowV1 throws when RPC fails or returns no rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(
+      rtCreateRefFromNodeParentShadowV1({
+        projectId: 'p1',
+        sourceRefName: 'main',
+        newRefName: 'feat',
+        nodeId: 'n1'
+      })
+    ).rejects.toThrow('fail');
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(
+      rtCreateRefFromNodeParentShadowV1({
+        projectId: 'p1',
+        sourceRefName: 'main',
+        newRefName: 'feat',
+        nodeId: 'n1'
+      })
+    ).rejects.toThrow('No data returned from rt_create_ref_from_node_parent_v1');
+  });
+
   it('rtCreateRefFromRefShadowV1 maps data', async () => {
     mocks.rpc.mockResolvedValue({
       data: [{ base_commit_id: null, base_ordinal: 0 }],
@@ -179,6 +227,26 @@ describe('pg store RPC wrappers', () => {
     expect(result).toEqual({ baseCommitId: null, baseOrdinal: 0 });
   });
 
+  it('rtCreateRefFromRefShadowV1 throws when RPC fails or returns no rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(
+      rtCreateRefFromRefShadowV1({
+        projectId: 'p1',
+        fromRefName: 'main',
+        newRefName: 'feat'
+      })
+    ).rejects.toThrow('fail');
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(
+      rtCreateRefFromRefShadowV1({
+        projectId: 'p1',
+        fromRefName: 'main',
+        newRefName: 'feat'
+      })
+    ).rejects.toThrow('No data returned from rt_create_ref_from_ref_v1');
+  });
+
   it('rtCreateProjectShadow maps params and result', async () => {
     mocks.rpc.mockResolvedValue({ data: 'proj-1', error: null });
 
@@ -193,12 +261,22 @@ describe('pg store RPC wrappers', () => {
     expect(result).toEqual({ projectId: 'proj-1' });
   });
 
+  it('rtCreateProjectShadow throws when RPC fails', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtCreateProjectShadow({ name: 'Test' })).rejects.toThrow('fail');
+  });
+
   it('rtGetCurrentRefShadowV1 omits default ref params and returns fallback', async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null });
 
     const result = await rtGetCurrentRefShadowV1({ projectId: 'p1', defaultRefName: 'main' });
     expect(mocks.rpc).toHaveBeenCalledWith('rt_get_current_ref_v1', { p_project_id: 'p1' });
     expect(result).toEqual({ refName: 'main' });
+  });
+
+  it('rtGetCurrentRefShadowV1 throws when RPC fails', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtGetCurrentRefShadowV1({ projectId: 'p1' })).rejects.toThrow('fail');
   });
 
   it('rtSetCurrentRefShadowV1 includes lock timeout', async () => {
@@ -209,6 +287,11 @@ describe('pg store RPC wrappers', () => {
       p_ref_name: 'main',
       p_lock_timeout_ms: 3000
     });
+  });
+
+  it('rtSetCurrentRefShadowV1 throws when RPC fails', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtSetCurrentRefShadowV1({ projectId: 'p1', refName: 'main' })).rejects.toThrow('fail');
   });
 
   it('rtGetRefPreviousResponseIdV1 and rtSetRefPreviousResponseIdV1 map params', async () => {
@@ -225,6 +308,16 @@ describe('pg store RPC wrappers', () => {
       p_ref_name: 'main',
       p_previous_response_id: null
     });
+  });
+
+  it('rtGetRefPreviousResponseIdV1 and rtSetRefPreviousResponseIdV1 throw on RPC errors', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtGetRefPreviousResponseIdV1({ projectId: 'p1', refName: 'main' })).rejects.toThrow('fail');
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: 'fail' } });
+    await expect(
+      rtSetRefPreviousResponseIdV1({ projectId: 'p1', refName: 'main', previousResponseId: null })
+    ).rejects.toThrow('fail');
   });
 
   it('rtUpdateArtefactShadow maps params and data', async () => {
@@ -247,6 +340,16 @@ describe('pg store RPC wrappers', () => {
     expect(result).toEqual({ newCommitId: 'c1', artefactId: 'a1', stateNodeId: null, ordinal: 3, contentHash: 'h1' });
   });
 
+  it('rtUpdateArtefactShadow throws when RPC fails or returns no rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtUpdateArtefactShadow({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow('fail');
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(rtUpdateArtefactShadow({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow(
+      'No data returned from rt_update_artefact_on_ref'
+    );
+  });
+
   it('rtSaveArtefactDraft maps params and data', async () => {
     mocks.rpc.mockResolvedValue({
       data: [{ content_hash: 'h1', updated_at: 't1' }],
@@ -260,6 +363,16 @@ describe('pg store RPC wrappers', () => {
       p_content: 'hi'
     });
     expect(result).toEqual({ contentHash: 'h1', updatedAt: 't1' });
+  });
+
+  it('rtSaveArtefactDraft throws when RPC fails or returns no rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtSaveArtefactDraft({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow('fail');
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(rtSaveArtefactDraft({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow(
+      'No data returned from rt_save_artefact_draft'
+    );
   });
 
   it('rtMergeOursShadowV1 maps params and data', async () => {
@@ -288,12 +401,41 @@ describe('pg store RPC wrappers', () => {
     expect(result).toEqual({ newCommitId: 'c1', nodeId: 'n1', ordinal: 5 });
   });
 
+  it('rtMergeOursShadowV1 throws when RPC fails or returns no rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(
+      rtMergeOursShadowV1({
+        projectId: 'p1',
+        targetRefName: 'main',
+        sourceRefName: 'feat',
+        mergeNodeId: 'm1',
+        mergeNodeJson: { id: 'm1' }
+      })
+    ).rejects.toThrow('fail');
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await expect(
+      rtMergeOursShadowV1({
+        projectId: 'p1',
+        targetRefName: 'main',
+        sourceRefName: 'feat',
+        mergeNodeId: 'm1',
+        mergeNodeJson: { id: 'm1' }
+      })
+    ).rejects.toThrow('No data returned from rt_merge_ours_v1');
+  });
+
   it('rtToggleStarV1 normalizes response', async () => {
     mocks.rpc.mockResolvedValue({ data: ['n1'], error: null });
     expect(await rtToggleStarV1({ projectId: 'p1', nodeId: 'n1' })).toEqual(['n1']);
 
     mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
     expect(await rtToggleStarV1({ projectId: 'p1', nodeId: 'n1' })).toEqual([]);
+  });
+
+  it('rtToggleStarV1 throws when RPC fails', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtToggleStarV1({ projectId: 'p1', nodeId: 'n1' })).rejects.toThrow('fail');
   });
 
   it('rtGetUserLlmKeyStatusV1 maps status and formats errors', async () => {
@@ -333,5 +475,13 @@ describe('pg store RPC wrappers', () => {
     await expect(rtGetUserLlmKeyServerV1({ userId: 'u1', provider: 'mock' })).rejects.toThrow(
       'Mock provider has no API key'
     );
+  });
+
+  it('rtSetUserLlmKeyV1 and rtGetUserLlmKeyServerV1 throw on RPC errors', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtSetUserLlmKeyV1({ provider: 'openai', secret: 's' })).rejects.toThrow('fail');
+
+    mocks.adminRpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    await expect(rtGetUserLlmKeyServerV1({ userId: 'u1', provider: 'openai' })).rejects.toThrow('fail');
   });
 });
