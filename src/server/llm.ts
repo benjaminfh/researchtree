@@ -57,6 +57,90 @@ function getOpenAIModelForRequest(webSearch?: boolean): string {
   return getDefaultModelForProvider('openai');
 }
 
+function getErrorStatus(error: unknown): number | null {
+  const direct = (error as { status?: unknown })?.status;
+  if (typeof direct === 'number') return direct;
+  const response = (error as { response?: { status?: unknown } })?.response?.status;
+  return typeof response === 'number' ? response : null;
+}
+
+function getErrorCode(error: unknown): string | null {
+  const direct = (error as { code?: unknown })?.code;
+  if (typeof direct === 'string') return direct;
+  const nested = (error as { error?: { code?: unknown } })?.error?.code;
+  return typeof nested === 'string' ? nested : null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  if (typeof error === 'string') return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function getOpenAIUserFacingError(error: unknown): string | null {
+  const status = getErrorStatus(error);
+  const code = (getErrorCode(error) ?? '').toLowerCase();
+  const message = getErrorMessage(error).toLowerCase();
+  const invalidKey =
+    status === 401 ||
+    message.includes('invalid api key') ||
+    message.includes('incorrect api key') ||
+    message.includes('invalid_api_key') ||
+    (message.includes('api key') && message.includes('invalid'));
+  if (invalidKey) {
+    return 'OpenAI API key is invalid or missing. Update it in Profile and try again.';
+  }
+  if (status === 429 || message.includes('rate limit') || message.includes('rate_limit')) {
+    return 'OpenAI rate limit exceeded. Wait a moment and try again.';
+  }
+  const hasQuota =
+    code === 'insufficient_quota' ||
+    code === 'insufficient-quota' ||
+    code === 'insufficient quota' ||
+    message.includes('insufficient_quota') ||
+    message.includes('insufficient-quota') ||
+    message.includes('insufficient quota') ||
+    message.includes('quota exceeded') ||
+    message.includes('quota') ||
+    message.includes('billing');
+  if (hasQuota) {
+    return 'OpenAI quota exceeded. Check your OpenAI billing or usage limits and try again.';
+  }
+  return null;
+}
+
+function getGeminiUserFacingError(error: unknown): string | null {
+  const status = getErrorStatus(error);
+  const message = getErrorMessage(error).toLowerCase();
+  const invalidKey =
+    status === 401 ||
+    status === 403 ||
+    (message.includes('api key') && message.includes('invalid')) ||
+    message.includes('permission denied');
+  if (invalidKey) {
+    return 'Gemini API key is invalid or missing. Update it in Profile and try again.';
+  }
+  if (status === 429 || message.includes('rate limit') || message.includes('too many requests')) {
+    return 'Gemini rate limit exceeded. Wait a moment and try again.';
+  }
+  const hasQuota =
+    message.includes('resource_exhausted') ||
+    message.includes('insufficient_quota') ||
+    message.includes('insufficient-quota') ||
+    message.includes('insufficient quota') ||
+    message.includes('quota exceeded') ||
+    message.includes('quota') ||
+    message.includes('insufficient');
+  if (hasQuota) {
+    return 'Gemini quota exceeded. Check your Google AI Studio quota or billing and try again.';
+  }
+  return null;
+}
+
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
     const enabled = new Set(getEnabledProviders());
@@ -152,11 +236,20 @@ async function* streamFromOpenAI(
   } as const;
 
   const thinkingParams = isOpenAISearchModel(model) ? {} : buildOpenAIThinkingParams(thinking);
-  const stream: any = await openAIClient.chat.completions.create({
-    ...baseRequest,
-    ...thinkingParams,
-    ...(webSearch ? { web_search_options: {} } : {})
-  } as any);
+  let stream: any;
+  try {
+    stream = await openAIClient.chat.completions.create({
+      ...baseRequest,
+      ...thinkingParams,
+      ...(webSearch ? { web_search_options: {} } : {})
+    } as any);
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
+    throw error;
+  }
 
   if (signal) {
     signal.addEventListener('abort', () => {
@@ -167,24 +260,32 @@ async function* streamFromOpenAI(
   }
 
   const rawParts: unknown[] = [];
-  for await (const part of stream) {
-    rawParts.push(part);
-    const delta = part.choices[0]?.delta;
-    if (!delta?.content) {
-      continue;
-    }
+  try {
+    for await (const part of stream) {
+      rawParts.push(part);
+      const delta = part.choices[0]?.delta;
+      if (!delta?.content) {
+        continue;
+      }
 
-    if (typeof delta.content === 'string') {
-      yield { type: 'text', content: delta.content } satisfies LLMStreamChunk;
-      continue;
-    }
+      if (typeof delta.content === 'string') {
+        yield { type: 'text', content: delta.content } satisfies LLMStreamChunk;
+        continue;
+      }
 
-    const blocks = (Array.isArray(delta.content) ? delta.content : []) as Array<{ type?: string; text?: string }>;
-    for (const block of blocks) {
-      if (block.type === 'text' && typeof block.text === 'string') {
-        yield { type: 'text', content: block.text } satisfies LLMStreamChunk;
+      const blocks = (Array.isArray(delta.content) ? delta.content : []) as Array<{ type?: string; text?: string }>;
+      for (const block of blocks) {
+        if (block.type === 'text' && typeof block.text === 'string') {
+          yield { type: 'text', content: block.text } satisfies LLMStreamChunk;
+        }
       }
     }
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
+    throw error;
   }
   yield { type: 'raw_response', content: '', payload: rawParts } satisfies LLMStreamChunk;
 }
@@ -253,15 +354,24 @@ async function* streamFromOpenAIResponses(
   const { instructions, input } = toOpenAIResponsesInput(messages);
   const thinkingParams = buildOpenAIResponsesThinkingParams(thinking);
 
-  const stream: any = await openAIClient.responses.create({
-    model,
-    input,
-    stream: true,
-    ...(instructions ? { instructions } : {}),
-    ...thinkingParams,
-    ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-    ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
-  } as any);
+  let stream: any;
+  try {
+    stream = await openAIClient.responses.create({
+      model,
+      input,
+      stream: true,
+      ...(instructions ? { instructions } : {}),
+      ...thinkingParams,
+      ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+      ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
+    } as any);
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
+    throw error;
+  }
 
   if (signal) {
     signal.addEventListener('abort', () => {
@@ -273,23 +383,31 @@ async function* streamFromOpenAIResponses(
 
   const rawEvents: unknown[] = [];
   let responseId: string | null = null;
-  for await (const event of stream) {
-    rawEvents.push(event);
-    const delta = extractOpenAIResponsesTextDelta(event);
-    if (typeof delta === 'string' && delta.length > 0) {
-      yield { type: 'text', content: delta } satisfies LLMStreamChunk;
+  try {
+    for await (const event of stream) {
+      rawEvents.push(event);
+      const delta = extractOpenAIResponsesTextDelta(event);
+      if (typeof delta === 'string' && delta.length > 0) {
+        yield { type: 'text', content: delta } satisfies LLMStreamChunk;
+      }
+      const candidate =
+        typeof (event as any)?.response?.id === 'string'
+          ? String((event as any).response.id)
+          : typeof (event as any)?.response_id === 'string'
+            ? String((event as any).response_id)
+            : event?.type === 'response.completed' && typeof (event as any)?.id === 'string'
+              ? String((event as any).id)
+              : null;
+      if (candidate) {
+        responseId = candidate;
+      }
     }
-    const candidate =
-      typeof (event as any)?.response?.id === 'string'
-        ? String((event as any).response.id)
-        : typeof (event as any)?.response_id === 'string'
-          ? String((event as any).response_id)
-          : event?.type === 'response.completed' && typeof (event as any)?.id === 'string'
-            ? String((event as any).id)
-            : null;
-    if (candidate) {
-      responseId = candidate;
+  } catch (error) {
+    const mapped = getOpenAIUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
     }
+    throw error;
   }
 
   yield {
@@ -407,6 +525,10 @@ async function* streamFromGemini(
   try {
     stream = await model.generateContentStream(request);
   } catch (error) {
+    const mapped = getGeminiUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
     throwIfStreamingNotSupported(error);
     const status = getGeminiHttpStatus(error);
     if (error instanceof GoogleGenerativeAIFetchError || status != null) {
@@ -487,6 +609,10 @@ async function* streamFromGemini(
       }
     }
   } catch (error) {
+    const mapped = getGeminiUserFacingError(error);
+    if (mapped) {
+      throw new Error(mapped);
+    }
     throwIfStreamingNotSupported(error);
     const status = getGeminiHttpStatus(error);
     if (error instanceof GoogleGenerativeAIFetchError || status != null) {
@@ -570,6 +696,10 @@ async function* streamFromGemini(
       console.error('[LLM] Gemini returned empty response', { modelName, meta });
       throw new Error(`Gemini returned an empty response (model=${modelName}).`);
     } catch (error) {
+      const mapped = getGeminiUserFacingError(error);
+      if (mapped) {
+        throw new Error(mapped);
+      }
       if (error instanceof Error) {
         throw new Error(sanitizeGeminiErrorMessage(error.message));
       }
@@ -720,6 +850,40 @@ async function* streamFromAnthropic(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
+    let parsed: { error?: { type?: string; message?: string } } | null = null;
+    try {
+      parsed = text ? (JSON.parse(text) as { error?: { type?: string; message?: string } }) : null;
+    } catch {
+      parsed = null;
+    }
+    const rawMessage = (parsed?.error?.message ?? text ?? '').toString();
+    const lowerMessage = rawMessage.toLowerCase();
+    const type = (parsed?.error?.type ?? '').toLowerCase();
+    const invalidKey =
+      response.status === 401 ||
+      response.status === 403 ||
+      type.includes('authentication') ||
+      lowerMessage.includes('invalid api key') ||
+      (lowerMessage.includes('api key') && lowerMessage.includes('invalid'));
+    if (invalidKey) {
+      throw new Error('Anthropic API key is invalid or missing. Update it in Profile and try again.');
+    }
+    if (response.status === 429 || type.includes('rate_limit') || lowerMessage.includes('rate limit')) {
+      throw new Error('Anthropic rate limit exceeded. Wait a moment and try again.');
+    }
+    const hasQuota =
+      type.includes('insufficient-quota') ||
+      type.includes('insufficient_quota') ||
+      lowerMessage.includes('insufficient-quota') ||
+      lowerMessage.includes('insufficient quota') ||
+      lowerMessage.includes('quota') ||
+      lowerMessage.includes('quota exceeded') ||
+      lowerMessage.includes('insufficient') ||
+      lowerMessage.includes('credit') ||
+      lowerMessage.includes('balance');
+    if (response.status === 402 || hasQuota) {
+      throw new Error('Anthropic quota exceeded. Check your billing or credits and try again.');
+    }
     throw new Error(`[anthropic] ${response.status} ${response.statusText}${text ? `: ${text}` : ''}`);
   }
 

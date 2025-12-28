@@ -17,6 +17,8 @@
 [ ] after sending a new message, the 'scroll to bottom' initially updates to include the optimistic user message + pending assistant stream, but then blinks and scrolls back up.
 [ ] after sending a mesage, the assistant message's coloured branch indicator stripe initially adopts the master branch colour (black)
 [ ] (optimization) history fetches for shared-count currently query all branches; if "upstream" only means trunk path, we can streamline to trunk-only (or server-side merge-base) and reduce API load. [Exploration]
+[x] if a user has entered provider API token but hits a quota issue with the provider, we surface a generic errors. We need to detect this response for each provider and surface a clear user facing error.
+[x] double check that we surface a clear user facing error if user tries a provider and has not entered an api token for that provider.
 
 ### Branches
 [x] LLM config should be pinned to branch [Fixed - provider/thinking persisted per `projectId + branchName` storage keys]
