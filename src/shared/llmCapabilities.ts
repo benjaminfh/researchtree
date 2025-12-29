@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { ThinkingSetting } from '@/src/shared/thinking';
 import { toGemini25ThinkingBudget, toOpenAIReasoningEffort } from '@/src/shared/thinking';
 import type { LLMProvider } from '@/src/shared/llmProvider';

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import React, { type FormEvent } from 'react';
 
 export function NewBranchFormCard({

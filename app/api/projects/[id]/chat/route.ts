@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { buildChatContext } from '@/src/server/context';

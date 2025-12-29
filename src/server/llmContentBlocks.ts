@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { stripThinkingTextIfSignature, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { extractGeminiTextData, extractGeminiThoughtData, getGeminiDelta, getGeminiPartText, isGeminiThoughtPart } from './geminiThought';

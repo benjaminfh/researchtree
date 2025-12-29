@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 export default function Loading() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-white">

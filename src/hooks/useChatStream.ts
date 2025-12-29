@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { useCallback, useRef, useState } from 'react';
 import type { LLMProvider } from '@/src/server/llm';
 import type { ThinkingSetting } from '@/src/shared/thinking';

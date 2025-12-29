@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { createBranch, deleteProject, getArtefact, getArtefactFromRef, initProject, switchBranch, updateArtefact } from '../../src/git';
 import { setProjectsRoot } from '../../src/git/constants';

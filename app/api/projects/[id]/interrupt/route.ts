@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { abortStream } from '@/src/server/stream-registry';
 import { requireUser } from '@/src/server/auth';
 import { handleRouteError, notFound } from '@/src/server/http';

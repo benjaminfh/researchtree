@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import React, { ReactNode } from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { SWRConfig } from 'swr';

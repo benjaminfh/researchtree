@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 export type ErrorDetails = Record<string, unknown>;
 
 export class ApiError extends Error {

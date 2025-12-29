@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { getStoreConfig } from '@/src/server/storeConfig';
 
 export type CanvasToolName = 'canvas_grep' | 'canvas_read_lines' | 'canvas_read_all' | 'canvas_apply_patch';

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { createProjectSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';

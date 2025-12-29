@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { User } from '@supabase/supabase-js';
 import { unauthorized } from '@/src/server/http';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';

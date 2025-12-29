@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import Link from 'next/link';
 import { APP_NAME } from '@/src/config/app';
 import { submitAccessCode, submitWaitlistRequest } from './actions';

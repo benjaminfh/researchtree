@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { useChatStream } from '@/src/hooks/useChatStream';
