@@ -8,7 +8,8 @@ export function resolveNextServerPath(appPath) {
   if (process.env.DESKTOP_NEXT_SERVER_PATH) {
     return process.env.DESKTOP_NEXT_SERVER_PATH;
   }
-  return path.join(appPath, '.next', 'standalone', 'server.js');
+  const basePath = appPath.includes('.asar') ? process.resourcesPath : appPath;
+  return path.join(basePath, '.next', 'standalone', 'server.js');
 }
 
 function resolveNextDevPath() {

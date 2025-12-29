@@ -1,6 +1,7 @@
 module.exports = {
   packagerConfig: {
-    asar: false,
+    asar: true,
+    icon: 'desktop/assets/threds',
     extraResource: ['.next/standalone', '.next/static', 'supabase/migrations']
   },
   makers: [
