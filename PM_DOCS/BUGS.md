@@ -1,4 +1,5 @@
 # BACK END
+[ ] (optimization) rawResponse is duplicated in PG (`nodes.content_json` + `nodes.raw_response`); consider de-dupe + a history projection so UI payloads stay small.
 
 # FRONT END
 ## HOME
