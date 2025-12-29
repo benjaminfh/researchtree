@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, it, expect, vi } from 'vitest';
 import { buildGraphNodes, layoutGraph, type GraphNode } from '@/src/components/workspace/WorkspaceGraph';
 

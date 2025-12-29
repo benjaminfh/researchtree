@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { resolveOpenAIProviderSelection, getDefaultModelForProvider } from '@/src/server/llm';
 import { readBranchConfigMap, writeBranchConfigMap } from '@/src/git/branchConfig';

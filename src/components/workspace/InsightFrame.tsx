@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import React from 'react';
 import type { ReactNode } from 'react';
 

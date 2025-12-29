@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export interface PgBranchSummary {

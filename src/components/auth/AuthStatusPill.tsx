@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 
 export async function AuthStatusPill() {

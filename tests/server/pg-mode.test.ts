@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, it, expect, afterEach } from 'vitest';
 import { assertLocalPgModeConfig } from '@/src/server/pgMode';
 

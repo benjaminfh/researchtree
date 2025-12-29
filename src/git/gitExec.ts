@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { spawn } from 'node:child_process';
 
 export async function gitExec(

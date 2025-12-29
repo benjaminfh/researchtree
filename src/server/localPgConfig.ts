@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 const DEFAULT_LOCAL_PG_DB = 'threds';
 export const LOCAL_PG_USER_ID = '00000000-0000-0000-0000-000000000001';
 const DEFAULT_LOCAL_PG_USER = process.env.USER ?? process.env.USERNAME ?? process.env.LOGNAME ?? '';

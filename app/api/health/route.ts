@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { Pool } from 'pg';
 import { isLocalPgMode } from '@/src/server/pgMode';
 import { maybeBootstrapLocalPg } from '@/src/server/localPgBootstrap';

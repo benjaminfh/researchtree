@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';

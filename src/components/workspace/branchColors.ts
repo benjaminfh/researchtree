@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 export const branchPalette = ['#8b5cf6', '#0ea5e9', '#ec4899', '#f97316', '#10b981', '#facc15', '#94a3b8'];
 export const trunkColor = '#0f172a';
 

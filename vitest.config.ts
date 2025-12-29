@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 

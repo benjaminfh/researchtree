@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
 

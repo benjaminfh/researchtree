@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { requireAdminUser } from '@/src/server/admin';
 import { listAllowlistedEmails, listWaitlistRequests } from '@/src/server/waitlist';
 import { approveEmailAction, approveEmailWithFeedbackAction, removeAllowlistEmailAction } from './actions';

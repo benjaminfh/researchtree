@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { LLMProvider } from '@/src/shared/llmProvider';
 
 export const THINKING_SETTINGS = ['off', 'low', 'medium', 'high'] as const;

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import useSWR, { type KeyedMutator } from 'swr';
 import type { NodeRecord } from '@git/types';
 

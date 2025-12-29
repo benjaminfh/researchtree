@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, expect, it } from 'vitest';
 import { assertSupabaseConfigured, getSupabaseAnonKey, getSupabaseServiceRoleKey, getSupabaseUrl } from '@/src/server/supabase/env';
 

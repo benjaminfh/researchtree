@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { promises as fs } from 'fs';
 import { simpleGit } from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { createRequire } from 'node:module';
 import type { PgStoreAdapter, PgRpcResponse } from '@/src/store/pg/adapter';
 import { getLocalPgConnectionStrings } from '@/src/server/localPgConfig';

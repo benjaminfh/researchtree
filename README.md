@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2025 Benjamin F. Hall. All rights reserved. -->
+
 # ResearchTree Developer Guide
 
 ResearchTree is a git-backed reasoning workspace. Each project is its own git repository containing:

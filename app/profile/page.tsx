@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { requireUser } from '@/src/server/auth';
 import { ProfilePageClient } from '@/src/components/profile/ProfilePageClient';
 import { RailShell } from '@/src/components/layout/RailShell';
