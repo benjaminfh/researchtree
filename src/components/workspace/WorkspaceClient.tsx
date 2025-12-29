@@ -1430,9 +1430,6 @@ export function WorkspaceClient({
   const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
   const [sharedCount, setSharedCount] = useState(0);
   useEffect(() => {
-    if (state.isStreaming) {
-      return;
-    }
     const prefixLength = (a: NodeRecord[], b: NodeRecord[]) => {
       const min = Math.min(a.length, b.length);
       let idx = 0;
@@ -1447,6 +1444,16 @@ export function WorkspaceClient({
       return;
     }
 
+    const persistedNodes = persistedNodesRef.current;
+    const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
+    const trunkPrefix =
+      trunkNodes.length > 0 ? prefixLength(trunkNodes, persistedNodes) : Math.min(trunkNodeCount, persistedNodes.length);
+    setSharedCount(trunkPrefix);
+
+    if (state.isStreaming) {
+      return;
+    }
+
     const aborted = { current: false };
     const timeoutId = setTimeout(() => {
       // Debounce shared-count recompute to coalesce rapid post-stream history updates.
@@ -1454,12 +1461,6 @@ export function WorkspaceClient({
         return;
       }
       void (async () => {
-        const persistedNodes = persistedNodesRef.current;
-        const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
-        const trunkPrefix =
-          trunkNodes.length > 0 ? prefixLength(trunkNodes, persistedNodes) : Math.min(trunkNodeCount, persistedNodes.length);
-        setSharedCount(trunkPrefix);
-
         const others = branches.filter((b) => b.name !== branchName);
         if (others.length === 0) return;
         const histories = await Promise.all(
