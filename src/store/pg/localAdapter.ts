@@ -10,6 +10,8 @@ type RpcReturnType = 'set' | 'scalar' | 'void';
 const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }> = {
   rt_get_history_v1: { params: ['p_project_id', 'p_ref_name', 'p_limit'], returnType: 'set' },
   rt_get_canvas_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
+  rt_get_canvas_hashes_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
+  rt_get_canvas_pair_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
   rt_list_refs_v1: { params: ['p_project_id'], returnType: 'set' },
   rt_list_projects_v1: { params: [], returnType: 'set' },
   rt_get_project_v1: { params: ['p_project_id'], returnType: 'set' },
@@ -27,6 +29,8 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
       'p_node_id',
       'p_commit_message',
       'p_attach_draft',
+      'p_artefact_kind',
+      'p_lock_timeout_ms',
       'p_raw_response'
     ],
     returnType: 'set'
@@ -90,6 +94,8 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
   rt_get_user_llm_key_server_v1: { params: ['p_user_id', 'p_provider'], returnType: 'scalar' }
 };
 
+const JSONB_PARAMS = new Set(['p_content_json', 'p_state_node_json', 'p_merge_node_json', 'p_raw_response']);
+
 const require = createRequire(import.meta.url);
 type PoolClient = { query: (sql: string, values: unknown[]) => Promise<QueryResult> };
 let pool: PoolClient | null = null;
@@ -122,17 +128,33 @@ export function buildRpcCall(fn: string, params: Record<string, unknown> = {}): 
   }
 
   const values: unknown[] = [];
+  const placeholderParts: string[] = [];
   if (lastIndex >= 0) {
     for (let i = 0; i <= lastIndex; i += 1) {
       const key = paramKeys[i];
       if (!Object.prototype.hasOwnProperty.call(params, key)) {
         throw new Error(`Missing parameter ${key} for ${fn}`);
       }
-      values.push(params[key]);
+      const value = params[key];
+      if (JSONB_PARAMS.has(key)) {
+        if (value === null || value === undefined) {
+          values.push(null);
+        } else {
+          try {
+            values.push(JSON.stringify(value));
+          } catch {
+            values.push(null);
+          }
+        }
+        placeholderParts.push(`$${values.length}::jsonb`);
+      } else {
+        values.push(value);
+        placeholderParts.push(`$${values.length}`);
+      }
     }
   }
 
-  const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+  const placeholders = placeholderParts.join(', ');
   let sql = '';
   if (returnType === 'set') {
     sql = placeholders.length ? `select * from ${fn}(${placeholders});` : `select * from ${fn}();`;

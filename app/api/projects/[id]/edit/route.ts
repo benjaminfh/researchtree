@@ -16,6 +16,7 @@ import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
+import { toJsonValue } from '@/src/server/json';
 
 interface RouteContext {
   params: { id: string };
@@ -191,6 +192,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   fallbackBlocks: streamBlocks
                 });
                 const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
+                const rawResponseForStorage = toJsonValue(rawResponse);
                 assistantNode = {
                   id: uuidv4(),
                   type: 'message',
@@ -203,7 +205,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   modelUsed: modelName,
                   responseId: responseId ?? undefined,
                   interrupted: false,
-                  rawResponse
+                  rawResponse: rawResponseForStorage
                 };
 
                 await rtAppendNodeToRefShadowV1({
@@ -215,7 +217,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   nodeId: assistantNode.id,
                   commitMessage: 'assistant_message',
                   attachDraft: false,
-                  rawResponse
+                  rawResponse: rawResponseForStorage
                 });
                 if (provider === 'openai_responses' && responseId) {
                   await setPreviousResponseId(params.id, targetBranch, responseId);
@@ -335,6 +337,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 fallbackBlocks: streamBlocks
               });
               const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
+              const rawResponseForStorage = toJsonValue(rawResponse);
               assistantNode = await appendNode(
                 project.id,
                 {
@@ -345,7 +348,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   modelUsed: modelName,
                   responseId: responseId ?? undefined,
                   interrupted: false,
-                  rawResponse
+                  rawResponse: rawResponseForStorage
                 },
                 { ref: targetBranch }
               );

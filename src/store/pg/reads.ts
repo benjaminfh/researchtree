@@ -58,8 +58,8 @@ export async function rtGetCanvasHashesShadowV1(input: {
   projectId: string;
   refName: string;
 }): Promise<{ draftHash: string | null; artefactHash: string | null; draftUpdatedAt: string | null; artefactUpdatedAt: string | null }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_canvas_hashes_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_canvas_hashes_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName
   });
@@ -94,8 +94,8 @@ export async function rtGetCanvasPairShadowV1(input: {
   draftUpdatedAt: string | null;
   artefactUpdatedAt: string | null;
 }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_canvas_pair_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_canvas_pair_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName
   });

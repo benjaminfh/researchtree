@@ -21,6 +21,8 @@ export async function rtAppendNodeToRefShadowV1(input: {
     p_node_id: input.nodeId,
     p_commit_message: input.commitMessage ?? null,
     p_attach_draft: input.attachDraft ?? false,
+    p_artefact_kind: 'canvas_md',
+    p_lock_timeout_ms: 3000,
     p_raw_response: input.rawResponse ?? null
   });
 

@@ -67,6 +67,84 @@ async function ensureLocalSchemas(pool: Pool): Promise<void> {
     $$;
   `
   );
+  await pool.query('create schema if not exists vault;');
+  await pool.query(
+    `
+    create table if not exists vault.secrets (
+      id uuid primary key default gen_random_uuid(),
+      secret text not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+  `
+  );
+  await pool.query(
+    `
+    create or replace function vault.create_secret(p_secret text)
+    returns uuid
+    language plpgsql
+    as $$
+    declare
+      v_id uuid;
+    begin
+      insert into vault.secrets (secret)
+      values (p_secret)
+      returning id into v_id;
+      return v_id;
+    end;
+    $$;
+  `
+  );
+  await pool.query(
+    `
+    create or replace function vault.update_secret(p_id uuid, p_secret text)
+    returns void
+    language plpgsql
+    as $$
+    begin
+      update vault.secrets
+      set secret = p_secret,
+          updated_at = now()
+      where id = p_id;
+    end;
+    $$;
+  `
+  );
+  await pool.query(
+    `
+    create or replace function vault.delete_secret(p_id uuid)
+    returns void
+    language plpgsql
+    as $$
+    begin
+      delete from vault.secrets
+      where id = p_id;
+    end;
+    $$;
+  `
+  );
+  await pool.query(
+    `
+    create or replace function vault.decrypt_secret(p_id uuid)
+    returns text
+    language sql
+    stable
+    as $$
+      select secret from vault.secrets where id = p_id
+    $$;
+  `
+  );
+  await pool.query(
+    `
+    create or replace function vault.read_secret(p_id uuid)
+    returns jsonb
+    language sql
+    stable
+    as $$
+      select jsonb_build_object('secret', secret) from vault.secrets where id = p_id
+    $$;
+  `
+  );
 }
 
 async function getAppliedMigrations(pool: Pool): Promise<Set<string>> {

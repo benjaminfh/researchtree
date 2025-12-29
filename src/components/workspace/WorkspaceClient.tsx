@@ -581,6 +581,11 @@ export function WorkspaceClient({
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
     ref: branchName
   });
+  const [historyEpoch, setHistoryEpoch] = useState(0);
+  const refreshHistory = useCallback(async () => {
+    await mutateHistory();
+    setHistoryEpoch((value) => value + 1);
+  }, [mutateHistory]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [draft, setDraft] = useState('');
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
@@ -669,7 +674,7 @@ export function WorkspaceClient({
       setStreamPreview((prev) => prev + chunk.content);
     },
     onComplete: async () => {
-      await Promise.all([mutateHistory(), mutateArtefact()]);
+      await Promise.all([refreshHistory(), mutateArtefact()]);
       setStreamPreview('');
       setStreamBlocks([]);
       setOptimisticUserNode(null);
@@ -781,7 +786,7 @@ export function WorkspaceClient({
     if (!state.error || !optimisticDraftRef.current) return;
     const sent = optimisticDraftRef.current;
     optimisticDraftRef.current = null;
-    void Promise.all([mutateHistory(), mutateArtefact()]).catch(() => {});
+    void Promise.all([refreshHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
     setStreamBlocks([]);
@@ -794,7 +799,7 @@ export function WorkspaceClient({
       assistantPendingTimerRef.current = null;
     }
     setAssistantPending(false);
-  }, [state.error, mutateArtefact, mutateHistory]);
+  }, [state.error, mutateArtefact, refreshHistory]);
 
   useEffect(() => {
     return () => {
@@ -1158,7 +1163,6 @@ export function WorkspaceClient({
             throw new Error(data?.error?.message ?? 'Failed to save canvas');
           }
           await mutateArtefact();
-          await mutateHistory();
         } catch (err) {
           if ((err as Error).name === 'AbortError') return;
           setArtefactError((err as Error).message);
@@ -1184,7 +1188,7 @@ export function WorkspaceClient({
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [artefactDraft, artefact, branchName, trunkName, project.id, mutateArtefact, mutateHistory]);
+  }, [artefactDraft, artefact, branchName, trunkName, project.id, mutateArtefact]);
 
   useEffect(() => {
     return () => {
@@ -1327,10 +1331,8 @@ export function WorkspaceClient({
     return out;
   }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
-  const stableVisibleNodes = useMemo(
-    () => visibleNodes.filter((node) => node.id !== 'streaming' && node.id !== 'assistant-pending'),
-    [visibleNodes]
-  );
+  const persistedNodesRef = useRef<NodeRecord[]>([]);
+  persistedNodesRef.current = nodes.filter((node) => node.type !== 'state');
 
   useEffect(() => {
     if (previousVisibleBranchRef.current !== branchName) {
@@ -1376,6 +1378,9 @@ export function WorkspaceClient({
   const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
   const [sharedCount, setSharedCount] = useState(0);
   useEffect(() => {
+    if (state.isStreaming) {
+      return;
+    }
     const prefixLength = (a: NodeRecord[], b: NodeRecord[]) => {
       const min = Math.min(a.length, b.length);
       let idx = 0;
@@ -1390,49 +1395,54 @@ export function WorkspaceClient({
       return;
     }
 
-    const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
-    const trunkPrefix =
-      trunkNodes.length > 0
-        ? prefixLength(trunkNodes, stableVisibleNodes)
-        : Math.min(trunkNodeCount, stableVisibleNodes.length);
-    setSharedCount(trunkPrefix);
-
     const aborted = { current: false };
-    const compute = async () => {
-      const others = branches.filter((b) => b.name !== branchName);
-      if (others.length === 0) return;
-      const histories = await Promise.all(
-        others.map(async (b) => {
-          try {
-            const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${stableVisibleNodes.length}`
-            );
-            if (!res.ok) return null;
-            const data = (await res.json()) as { nodes: NodeRecord[] };
-            return { name: b.name, nodes: (data.nodes ?? []).filter((node) => node.type !== 'state') };
-          } catch {
-            return null;
-          }
-        })
-      );
-      const longest = histories.reduce((max, entry) => {
-        if (!entry) return max;
-        const min = Math.min(entry.nodes.length, stableVisibleNodes.length);
-        let idx = 0;
-        while (idx < min && entry.nodes[idx]?.id === stableVisibleNodes[idx]?.id) {
-          idx += 1;
-        }
-        return Math.max(max, idx);
-      }, trunkPrefix);
-      if (!aborted.current) {
-        setSharedCount(longest);
+    const timeoutId = setTimeout(() => {
+      // Debounce shared-count recompute to coalesce rapid post-stream history updates.
+      if (aborted.current) {
+        return;
       }
-    };
-    void compute();
+      void (async () => {
+        const persistedNodes = persistedNodesRef.current;
+        const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
+        const trunkPrefix =
+          trunkNodes.length > 0 ? prefixLength(trunkNodes, persistedNodes) : Math.min(trunkNodeCount, persistedNodes.length);
+        setSharedCount(trunkPrefix);
+
+        const others = branches.filter((b) => b.name !== branchName);
+        if (others.length === 0) return;
+        const histories = await Promise.all(
+          others.map(async (b) => {
+            try {
+              const res = await fetch(
+                `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${persistedNodes.length}`
+              );
+              if (!res.ok) return null;
+              const data = (await res.json()) as { nodes: NodeRecord[] };
+              return { name: b.name, nodes: (data.nodes ?? []).filter((node) => node.type !== 'state') };
+            } catch {
+              return null;
+            }
+          })
+        );
+        const longest = histories.reduce((max, entry) => {
+          if (!entry) return max;
+          const min = Math.min(entry.nodes.length, persistedNodes.length);
+          let idx = 0;
+          while (idx < min && entry.nodes[idx]?.id === persistedNodes[idx]?.id) {
+            idx += 1;
+          }
+          return Math.max(max, idx);
+        }, trunkPrefix);
+        if (!aborted.current) {
+          setSharedCount(longest);
+        }
+      })();
+    }, 150);
     return () => {
       aborted.current = true;
+      clearTimeout(timeoutId);
     };
-  }, [branchName, trunkName, trunkHistory, trunkNodeCount, stableVisibleNodes, branches, project.id]);
+  }, [branchName, trunkName, trunkHistory, trunkNodeCount, branches, project.id, historyEpoch, state.isStreaming]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
@@ -1520,7 +1530,7 @@ export function WorkspaceClient({
 
   const pinCanvasDiffToCurrentBranch = async (mergeNodeId: string) => {
     await pinCanvasDiffToContext(mergeNodeId, branchName);
-    await mutateHistory();
+    await refreshHistory();
   };
 
   useEffect(() => {
@@ -1607,7 +1617,7 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branchName: string; branches: BranchSummary[] };
       setBranchName(data.branchName);
       setBranches(data.branches);
-      await Promise.all([mutateHistory(), mutateArtefact()]);
+      await Promise.all([refreshHistory(), mutateArtefact()]);
     } catch (err) {
       setBranchActionError((err as Error).message);
     } finally {
@@ -1644,7 +1654,7 @@ export function WorkspaceClient({
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, newBranchThinking);
       }
-      await Promise.all([mutateHistory(), mutateArtefact()]);
+      await Promise.all([refreshHistory(), mutateArtefact()]);
       return true;
     } catch (err) {
       setBranchActionError((err as Error).message);
@@ -2994,7 +3004,7 @@ export function WorkspaceClient({
                     if (typeof window !== 'undefined') {
                       window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, editThinking);
                     }
-                    await Promise.all([mutateHistory(), mutateArtefact()]);
+                    await Promise.all([refreshHistory(), mutateArtefact()]);
                     setShowEditModal(false);
                     setEditDraft('');
                     setEditBranchName('');

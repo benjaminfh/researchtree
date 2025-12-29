@@ -45,3 +45,7 @@
 
 # TESTING
 [ ] Add a Node-environment test suite for server routes (see `PM_DOCS/NODE_TESTS.md`).
+
+# DESKTOP
+[ ] Store LLM provider keys in macOS Keychain instead of local PG vault (use Electron IPC + native keychain bridge).
+[ ] Hide password change profile section when we are in desktop env
