@@ -3,6 +3,8 @@
 [ ] (optimization) rawResponse is duplicated in PG (`nodes.content_json` + `nodes.raw_response`); consider de-dupe + a history projection so UI payloads stay small.
 
 # FRONT END
+
+
 ## HOME
 ### RAIL
 [x] (home) rail does not always pick up new workspaces on load [Open - home rail is server-rendered from `app/page.tsx`; likely Next router cache on back nav without a refresh]
@@ -11,6 +13,7 @@
 [ ] on page load (home, workspace) rail renders as open and then closes, causing a flicker.
 
 ## WORKSPACE / PROJECT
+[x] workspace UI sometimes refers to main, sometimes to trunk
 ### CHAT
 [x] rail toggle button jitters vertically when navigating between home/workspace [Fixed - top rail bar was flex-shrinking under rail content pressure; added `shrink-0` so it stays at 40px]
 [x] when creating a branch via the rail, inherited messages are incomplete [Fixed (pg) - branch creation uses `rtCreateRefFromRefShadowV1`, which copies `commit_order` ancestry]
