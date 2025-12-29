@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { APP_NAME } from '@/src/config/app';
 import { submitAccessCode, submitWaitlistRequest } from './actions';
+import { WaitlistSubmitButton } from './WaitlistSubmitButton';
 
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/waitlist';
@@ -69,12 +70,7 @@ export default function WaitlistPage({
               />
             </label>
 
-            <button
-              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-              type="submit"
-            >
-              Request access
-            </button>
+            <WaitlistSubmitButton label="Request access" pendingLabel="Requesting…" />
           </form>
 
           <div className="border-t border-slate-200 pt-4">
@@ -103,12 +99,7 @@ export default function WaitlistPage({
                 />
               </label>
 
-              <button
-                className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                type="submit"
-              >
-                Apply access code
-              </button>
+              <WaitlistSubmitButton label="Apply access code" pendingLabel="Applying…" />
             </form>
           </div>
 

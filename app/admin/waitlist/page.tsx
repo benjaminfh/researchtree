@@ -2,6 +2,7 @@ import { requireAdminUser } from '@/src/server/admin';
 import { listAllowlistedEmails, listWaitlistRequests } from '@/src/server/waitlist';
 import { approveEmailAction, approveEmailWithFeedbackAction, removeAllowlistEmailAction } from './actions';
 import { ApproveEmailForm } from './ApproveEmailForm';
+import { AdminSubmitButton } from './AdminSubmitButton';
 
 export default async function AdminWaitlistPage() {
   await requireAdminUser();
@@ -38,12 +39,7 @@ export default async function AdminWaitlistPage() {
                   </div>
                   <form action={approveEmailAction}>
                     <input type="hidden" name="email" value={req.email} />
-                    <button
-                      className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                      type="submit"
-                    >
-                      Approve
-                    </button>
+                    <AdminSubmitButton label="Approve" pendingLabel="Approving…" />
                   </form>
                 </li>
               ))}
@@ -67,12 +63,7 @@ export default async function AdminWaitlistPage() {
                   </div>
                   <form action={removeAllowlistEmailAction}>
                     <input type="hidden" name="email" value={item.email} />
-                    <button
-                      className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
-                      type="submit"
-                    >
-                      Remove
-                    </button>
+                    <AdminSubmitButton label="Remove" pendingLabel="Removing…" variant="secondary" />
                   </form>
                 </li>
               ))}
