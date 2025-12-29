@@ -29,7 +29,15 @@ function SubmitButton({ label }: { label: string }) {
 
 const initialState = { error: null as string | null };
 
-export function LoginForm({ redirectTo, initialEmail }: { redirectTo: string; initialEmail?: string | null }) {
+export function LoginForm({
+  redirectTo,
+  initialEmail,
+  waitlistEnforced
+}: {
+  redirectTo: string;
+  initialEmail?: string | null;
+  waitlistEnforced: boolean;
+}) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
   const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
@@ -92,13 +100,15 @@ export function LoginForm({ redirectTo, initialEmail }: { redirectTo: string; in
       ) : (
         <form action={signUpAction} className="mt-6 space-y-3">
           <input type="hidden" name="redirectTo" value={redirectTo} />
-          <p className="text-sm text-slate-600">
-            Invite-only for now.{' '}
-            <Link href="/waitlist" className="text-slate-900 underline">
-              Request access
-            </Link>
-            .
-          </p>
+          {waitlistEnforced ? (
+            <p className="text-sm text-slate-600">
+              Invite-only for now.{' '}
+              <Link href="/waitlist" className="text-slate-900 underline">
+                Request access
+              </Link>
+              .
+            </p>
+          ) : null}
           <label className="block">
             <span className="text-sm font-medium text-slate-800">Email</span>
             <input
