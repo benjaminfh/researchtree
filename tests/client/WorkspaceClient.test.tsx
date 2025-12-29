@@ -709,7 +709,10 @@ describe('WorkspaceClient', () => {
 
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
-    // Default on non-trunk branches is to hide shared history.
+    // Default on non-trunk branches is to hide shared history (after shared-count computes).
+    await waitFor(() => {
+      expect(screen.getByText(/Shared 2 messages from upstream/i)).toBeInTheDocument();
+    });
     expect(screen.queryByText('How is progress going?')).not.toBeInTheDocument();
     expect(screen.getByText('Branch-only follow-up.')).toBeInTheDocument();
 

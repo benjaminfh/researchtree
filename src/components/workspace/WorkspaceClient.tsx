@@ -34,7 +34,6 @@ import {
   CheckIcon,
   HomeIcon,
   PaperClipIcon,
-  PencilIcon,
   QuestionMarkCircleIcon,
   SearchIcon,
   Square2StackIcon,
@@ -124,6 +123,9 @@ const NodeBubble: FC<{
   const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
   const hasThinking = isAssistant && thinkingText.trim().length > 0;
+  const showThinkingBox = isAssistantPending || hasThinking;
+  const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
+  const containerWidth = isAssistant ? 'w-full' : '';
   const width = isUser ? 'min-w-[14rem] max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
   const palette = muted
@@ -168,26 +170,33 @@ const NodeBubble: FC<{
   }, []);
 
   return (
-    <article className={`flex flex-col gap-1 ${align}`}>
+    <article className={`flex flex-col gap-1 ${align} ${containerWidth}`}>
       <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
-        {hasThinking ? (
+        {showThinkingBox ? (
           <div
-            className={`mb-3 rounded-xl border border-slate-200/70 bg-slate-50 ${
+            className={`mb-3 w-full rounded-xl border border-slate-200/70 bg-slate-50 ${
               showThinking ? 'p-3' : 'px-3 py-2'
             }`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-              <span className="font-semibold text-slate-700">Thinking</span>
-              <button
-                type="button"
-                onClick={() => setShowThinking((prev) => !prev)}
-                className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
-                aria-label={showThinking ? 'Hide thinking' : 'Show thinking'}
-              >
-                {showThinking ? 'Hide' : 'Show'}
-              </button>
+              <span className="flex items-center gap-2 font-semibold text-slate-700">
+                {thinkingInProgress ? (
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
+                ) : null}
+                Thinking
+              </span>
+              {hasThinking ? (
+                <button
+                  type="button"
+                  onClick={() => setShowThinking((prev) => !prev)}
+                  className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
+                  aria-label={showThinking ? 'Hide thinking' : 'Show thinking'}
+                >
+                  {showThinking ? 'Hide' : 'Show'}
+                </button>
+              ) : null}
             </div>
-            {showThinking ? (
+            {showThinking && hasThinking ? (
               <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">{thinkingText}</p>
             ) : null}
           </div>
@@ -200,12 +209,6 @@ const NodeBubble: FC<{
           ) : (
             <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{messageText}</p>
           )
-        ) : null}
-        {isAssistantPending ? (
-          <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
-            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
-            <span>Thinking…</span>
-          </div>
         ) : null}
         {node.type === 'state' ? <p className="mt-2 text-sm font-medium text-slate-700">Canvas updated</p> : null}
         {node.type === 'merge' ? (
@@ -359,14 +362,17 @@ const NodeBubble: FC<{
               {copyFeedback ? <CheckIcon className="h-4 w-4" /> : <Square2StackIcon className="h-4 w-4" />}
             </button>
           ) : null}
-          {node.type === 'message' && onEdit && (node.role === 'user' || features.uiEditAnyMessage) ? (
+          {node.type === 'message' &&
+          onEdit &&
+          (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage) ? (
             <button
               type="button"
+              data-branch-trigger={node.role === 'assistant' ? 'true' : undefined}
               onClick={() => onEdit(node)}
               className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none"
-              aria-label="Edit message"
+              aria-label={node.role === 'assistant' ? 'Create branch from message' : 'Edit message'}
             >
-              <PencilIcon className="h-4 w-4" />
+              <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
             </button>
           ) : null}
           {!isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
@@ -389,6 +395,7 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
+  showBranchSplit?: boolean;
 }> = ({
   node,
   trunkName,
@@ -401,7 +408,8 @@ const ChatNodeRow: FC<{
   onEdit,
   isCanvasDiffPinned,
   onPinCanvasDiff,
-  highlighted
+  highlighted,
+  showBranchSplit
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
@@ -418,17 +426,26 @@ const ChatNodeRow: FC<{
       <div
         className={`min-w-0 py-2 ${messageInsetClassName ?? ''} ${isUser ? 'flex justify-end' : 'flex justify-start'}`}
       >
-        <NodeBubble
-          node={node}
-          muted={muted}
-          subtitle={subtitle}
-          isStarred={isStarred}
-          onToggleStar={onToggleStar}
-          onEdit={onEdit}
-          isCanvasDiffPinned={isCanvasDiffPinned}
-          onPinCanvasDiff={onPinCanvasDiff}
-          highlighted={!!highlighted}
-        />
+        <div className="flex w-full flex-col">
+          <NodeBubble
+            node={node}
+            muted={muted}
+            subtitle={subtitle}
+            isStarred={isStarred}
+            onToggleStar={onToggleStar}
+            onEdit={onEdit}
+            isCanvasDiffPinned={isCanvasDiffPinned}
+            onPinCanvasDiff={onPinCanvasDiff}
+            highlighted={!!highlighted}
+          />
+          {showBranchSplit ? (
+            <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+              <span className="flex-1 border-t border-dashed border-slate-200" />
+              <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Branch point</span>
+              <span className="flex-1 border-t border-dashed border-slate-200" />
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -460,6 +477,7 @@ export function WorkspaceClient({
   const [mergeTargetBranch, setMergeTargetBranch] = useState<string>('main');
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingNode, setEditingNode] = useState<MessageNode | null>(null);
+  const [branchSplitNodeId, setBranchSplitNodeId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [editBranchName, setEditBranchName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
@@ -513,6 +531,19 @@ export function WorkspaceClient({
   const SPLIT_GAP = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
   const openEditModal = (node: MessageNode) => {
+    if (node.role === 'assistant') {
+      if (showNewBranchPopover && branchSplitNodeId === node.id) {
+        setShowNewBranchPopover(false);
+        setBranchSplitNodeId(null);
+        return;
+      }
+      setBranchActionError(null);
+      setNewBranchName('');
+      setBranchSplitNodeId(node.id);
+      setShowNewBranchPopover(true);
+      return;
+    }
+    setBranchSplitNodeId(null);
     setEditingNode(node);
     setEditDraft(node.content);
     setEditBranchName('');
@@ -595,6 +626,7 @@ export function WorkspaceClient({
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
+  const streamPreviewRef = useRef('');
   const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
   const branchProvider = useMemo(
     () => activeBranch?.provider ?? defaultProvider,
@@ -637,17 +669,18 @@ export function WorkspaceClient({
       }
       if (chunk.type === 'thinking') {
         setStreamBlocks((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
+          const last = prev[prev.length - 1];
           if (chunk.append && last?.type === 'thinking' && typeof (last as { thinking?: unknown }).thinking === 'string') {
-            (last as { thinking: string }).thinking += chunk.content;
-            return next;
+            const updated = { ...last, thinking: `${(last as { thinking: string }).thinking}${chunk.content}` };
+            return [...prev.slice(0, -1), updated];
           }
-          next.push({
-            type: 'thinking',
-            thinking: chunk.content
-          });
-          return next;
+          return [
+            ...prev,
+            {
+              type: 'thinking',
+              thinking: chunk.content
+            }
+          ];
         });
         return;
       }
@@ -662,20 +695,24 @@ export function WorkspaceClient({
         return;
       }
       setStreamBlocks((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
+        const last = prev[prev.length - 1];
         if (last?.type === 'text' && typeof (last as { text?: unknown }).text === 'string') {
-          (last as { text: string }).text += chunk.content;
-          return next;
+          const updated = { ...last, text: `${(last as { text: string }).text}${chunk.content}` };
+          return [...prev.slice(0, -1), updated];
         }
-        next.push({ type: 'text', text: chunk.content });
+        return [...prev, { type: 'text', text: chunk.content }];
+      });
+      setStreamPreview((prev) => {
+        const incoming = chunk.content ?? '';
+        const next = prev + incoming;
+        streamPreviewRef.current = next;
         return next;
       });
-      setStreamPreview((prev) => prev + chunk.content);
     },
     onComplete: async () => {
       await Promise.all([refreshHistory(), mutateArtefact()]);
       setStreamPreview('');
+      streamPreviewRef.current = '';
       setStreamBlocks([]);
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
@@ -724,6 +761,7 @@ export function WorkspaceClient({
     optimisticDraftRef.current = sent;
     setDraft('');
     setStreamBlocks([]);
+    setThinkingSnippet('');
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -1286,15 +1324,18 @@ export function WorkspaceClient({
     if (!showNewBranchPopover) return;
 
     function onPointerDown(event: MouseEvent | TouchEvent) {
-      const target = event.target as Node | null;
+      const target = event.target as HTMLElement | null;
       if (!target) return;
+      if (target.closest('[data-branch-trigger="true"]')) return;
       if (newBranchPopoverRef.current?.contains(target)) return;
       setShowNewBranchPopover(false);
+      setBranchSplitNodeId(null);
     }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setShowNewBranchPopover(false);
+        setBranchSplitNodeId(null);
       }
     }
 
@@ -1703,16 +1744,22 @@ export function WorkspaceClient({
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span
-                            className={`truncate ${
-                              branch.isTrunk
-                                ? branchName === branch.name
-                                  ? 'font-semibold text-primary'
-                                  : 'font-semibold text-slate-900'
-                                : ''
-                            }`}
-                          >
-                            {displayBranchName(branch.name)}
+                          <span className="inline-flex min-w-0 items-center gap-2">
+                            <span
+                              className="inline-flex h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: getBranchColor(branch.name, trunkName, branchColorMap) }}
+                            />
+                            <span
+                              className={`truncate ${
+                                branch.isTrunk
+                                  ? branchName === branch.name
+                                    ? 'font-semibold text-primary'
+                                    : 'font-semibold text-slate-900'
+                                  : ''
+                              }`}
+                            >
+                              {displayBranchName(branch.name)}
+                            </span>
                           </span>
                         </div>
                       </button>
@@ -1802,6 +1849,7 @@ export function WorkspaceClient({
                     </div>
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                       <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                      <li>⌘ + B to toggle the rail.</li>
                       <li>← Thred graph · → Canvas.</li>
                       <li>↑ show graph/canvas · ↓ hide panel.</li>
                       <li>Branch to try edits without losing the trunk.</li>
@@ -1841,11 +1889,12 @@ export function WorkspaceClient({
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-semibold text-slate-900">Session tips</p>
                       </div>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                        <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                        <li>← Thred graph · → Canvas.</li>
-                        <li>↑ show graph/canvas · ↓ hide panel.</li>
-                        <li>Branch to try edits without losing the trunk.</li>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                      <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                      <li>⌘ + B to toggle the rail.</li>
+                      <li>← Thred graph · → Canvas.</li>
+                      <li>↑ show graph/canvas · ↓ hide panel.</li>
+                      <li>Branch to try edits without losing the trunk.</li>
                         <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                       </ul>
                     </RailPopover>
@@ -1978,6 +2027,7 @@ export function WorkspaceClient({
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
                           onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToCurrentBranch : undefined}
                           highlighted={highlightedNodeId === node.id}
+                          showBranchSplit={showNewBranchPopover && branchSplitNodeId === node.id}
                         />
                       ))}
                     </div>
@@ -2014,7 +2064,10 @@ export function WorkspaceClient({
                             <div className="absolute bottom-0 right-0 z-30 w-[420px] overflow-hidden rounded-2xl border border-divider/80 bg-white shadow-lg">
                               <button
                                 type="button"
-                                onClick={() => setShowNewBranchPopover(false)}
+                                onClick={() => {
+                                  setShowNewBranchPopover(false);
+                                  setBranchSplitNodeId(null);
+                                }}
                                 className="flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-primary/10"
                                 aria-label="Hide branch creator"
                               >
@@ -2032,6 +2085,7 @@ export function WorkspaceClient({
                                     const ok = await createBranch();
                                     if (ok) {
                                       setShowNewBranchPopover(false);
+                                      setBranchSplitNodeId(null);
                                     }
                                   }}
                                   disabled={isSwitching}
