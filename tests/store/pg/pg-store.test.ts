@@ -47,7 +47,8 @@ describe('pg store RPC wrappers', () => {
     expect(mocks.rpc).toHaveBeenCalledWith('rt_get_history_v1', {
       p_project_id: 'p1',
       p_ref_name: 'main',
-      p_limit: 200
+      p_limit: 200,
+      p_include_raw_response: false
     });
     expect(result).toEqual([{ ordinal: 1, nodeJson: { id: 'n1' } }]);
   });
@@ -182,6 +183,8 @@ describe('pg store RPC wrappers', () => {
       p_node_id: 'n1',
       p_commit_message: null,
       p_attach_draft: false,
+      p_artefact_kind: 'canvas_md',
+      p_lock_timeout_ms: 3000,
       p_raw_response: null
     });
     expect(result).toEqual({
