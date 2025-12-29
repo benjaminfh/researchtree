@@ -1,6 +1,9 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { forbidden } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { assertLocalPgModeConfig, isLocalPgMode } from '@/src/server/pgMode';
 
 export interface ProjectForAuthz {
   id: string;
@@ -9,6 +12,10 @@ export interface ProjectForAuthz {
 }
 
 export async function requireProjectAccess(project: ProjectForAuthz): Promise<void> {
+  if (isLocalPgMode()) {
+    assertLocalPgModeConfig();
+    return;
+  }
   await requireUser();
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.from('projects').select('id').eq('id', project.id).maybeSingle();

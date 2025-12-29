@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updateUser = vi.fn();

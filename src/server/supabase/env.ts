@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 function readEnv(name: string): string | null {
   const value = process.env[name];
   return value && value.trim().length > 0 ? value : null;

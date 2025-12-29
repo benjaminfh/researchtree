@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 const projectLocks = new Map<string, Promise<void>>();
 const projectRefLocks = new Map<string, Promise<void>>();
 

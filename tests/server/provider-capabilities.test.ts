@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getProviderTokenLimit, __resetProviderCapabilitiesCache } from '@/src/server/providerCapabilities';
 

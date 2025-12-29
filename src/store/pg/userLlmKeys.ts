@@ -1,6 +1,7 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { LLMProvider } from '@/src/server/llm';
-import { createSupabaseAdminClient } from '@/src/server/supabase/admin';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 type KeyedProvider = Exclude<LLMProvider, 'mock'>;
 
@@ -36,8 +37,8 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
   hasAnthropic: boolean;
   updatedAt: string | null;
 }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_user_llm_key_status_v1');
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_user_llm_key_status_v1');
   if (error) {
     throw new Error(formatRpcError(error));
   }
@@ -56,8 +57,8 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
 }
 
 export async function rtSetUserLlmKeyV1(input: { provider: KeyedProvider; secret: string | null }): Promise<void> {
-  const supabase = createSupabaseServerClient();
-  const { error } = await supabase.rpc('rt_set_user_llm_key_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { error } = await rpc('rt_set_user_llm_key_v1', {
     p_provider: input.provider,
     p_secret: input.secret
   });
@@ -69,8 +70,8 @@ export async function rtSetUserLlmKeyV1(input: { provider: KeyedProvider; secret
 export async function rtGetUserLlmKeyServerV1(input: { userId: string; provider: LLMProvider }): Promise<string | null> {
   const normalized = normalizeKeyedProvider(input.provider);
   assertKeyedProvider(normalized);
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.rpc('rt_get_user_llm_key_server_v1', {
+  const { adminRpc } = getPgStoreAdapter();
+  const { data, error } = await adminRpc('rt_get_user_llm_key_server_v1', {
     p_user_id: input.userId,
     p_provider: normalized
   });

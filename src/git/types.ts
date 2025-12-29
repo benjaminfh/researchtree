@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { ThinkingContentBlock, ThinkingTrace } from '@/src/shared/thinkingTraces';
 import type { LLMProvider } from '@/src/shared/llmProvider';
 
@@ -18,6 +20,7 @@ export interface MessageNode extends BaseNode {
   type: 'message';
   role: 'system' | 'user' | 'assistant';
   content: string;
+  uiHidden?: boolean;
   interrupted?: boolean;
   pinnedFromMergeId?: string;
   responseId?: string;
@@ -50,6 +53,7 @@ export type MessageNodeInput = Pick<
   | 'type'
   | 'role'
   | 'content'
+  | 'uiHidden'
   | 'interrupted'
   | 'pinnedFromMergeId'
   | 'responseId'

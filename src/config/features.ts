@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 export const features = {
   uiEditAnyMessage: process.env.NEXT_PUBLIC_RT_UI_EDIT_ANY_MESSAGE === 'true',
   uiAttachments: process.env.NEXT_PUBLIC_RT_UI_ATTACHMENTS === 'true',

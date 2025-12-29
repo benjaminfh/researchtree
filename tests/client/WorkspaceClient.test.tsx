@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import React, { act } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -39,6 +41,10 @@ vi.mock('@/src/hooks/useProjectData', () => ({
 
 vi.mock('@/src/hooks/useChatStream', () => ({
   useChatStream: vi.fn()
+}));
+
+vi.mock('@/src/components/auth/AuthRailStatus', () => ({
+  AuthRailStatus: () => null
 }));
 
 const mockUseProjectData = vi.mocked(useProjectData);
@@ -429,7 +435,7 @@ describe('WorkspaceClient', () => {
     expect(interruptMock).toHaveBeenCalledTimes(1);
   });
 
-  it('renders loading and error states from the history hook', () => {
+  it('renders loading and error states from the history hook', async () => {
     // This component re-renders quickly (SWR + effects); keep the mocked state stable across renders.
     let currentProjectData: ReturnType<typeof useProjectData> = {
       nodes: [],
@@ -443,8 +449,12 @@ describe('WorkspaceClient', () => {
 
     mockUseProjectData.mockImplementation(() => currentProjectData);
 
-    const { rerender } = render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
-    expect(screen.getByText('Loading history…')).toBeInTheDocument();
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Loading history…')).toBeInTheDocument();
+    });
 
     currentProjectData = {
       nodes: [],
@@ -456,8 +466,12 @@ describe('WorkspaceClient', () => {
       mutateArtefact: mutateArtefactMock
     } as ReturnType<typeof useProjectData>;
 
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
-    expect(screen.getByText('Failed to load history.')).toBeInTheDocument();
+    rerender(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load history.')).toBeInTheDocument();
+    });
   });
 
   it('uses the branch provider for chat streaming', async () => {
@@ -466,10 +480,12 @@ describe('WorkspaceClient', () => {
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
     ];
     render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
-    expect(capturedChatOptions?.provider).toBe('gemini');
+    await waitFor(() => {
+      expect(capturedChatOptions?.provider).toBe('gemini');
+    });
   });
 
-  it('renders assistant messages with a wider bubble', () => {
+  it('renders assistant messages with a wider bubble', async () => {
     render(
       <WorkspaceClient
         project={{ ...baseProject, branchName: 'main' }}
@@ -478,9 +494,11 @@ describe('WorkspaceClient', () => {
         providerOptions={providerOptions} openAIUseResponses={false}
       />
     );
-    const assistantMessage = screen.getByText('All tasks queued.');
-    const bubble = assistantMessage.closest('article')?.querySelector('div');
-    expect(bubble?.className).toContain('max-w-[85%]');
+    await waitFor(() => {
+      const assistantMessage = screen.getByText('All tasks queued.');
+      const bubble = assistantMessage.closest('article')?.querySelector('div');
+      expect(bubble?.className).toContain('max-w-[85%]');
+    });
   });
 
   it('keeps provider/thinking pinned to branch when switching branches', async () => {
@@ -693,7 +711,10 @@ describe('WorkspaceClient', () => {
 
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
-    // Default on non-trunk branches is to hide shared history.
+    // Default on non-trunk branches is to hide shared history (after shared-count computes).
+    await waitFor(() => {
+      expect(screen.getByText(/Shared 2 messages from upstream/i)).toBeInTheDocument();
+    });
     expect(screen.queryByText('How is progress going?')).not.toBeInTheDocument();
     expect(screen.getByText('Branch-only follow-up.')).toBeInTheDocument();
 

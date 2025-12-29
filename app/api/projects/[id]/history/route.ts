@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { handleRouteError, notFound } from '@/src/server/http';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
@@ -7,6 +9,17 @@ import { requireProjectAccess } from '@/src/server/authz';
 
 interface RouteContext {
   params: { id: string };
+}
+
+function isHiddenMessage(node: NodeRecord): boolean {
+  return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
+}
+
+// History payloads omit rawResponse to keep UI fetches lightweight.
+function stripRawResponse(node: NodeRecord): NodeRecord {
+  if (node.type !== 'message') return node;
+  const { rawResponse: _rawResponse, ...rest } = node as NodeRecord & { rawResponse?: unknown };
+  return rest as NodeRecord;
 }
 
 export async function GET(request: Request, { params }: RouteContext) {
@@ -27,8 +40,9 @@ export async function GET(request: Request, { params }: RouteContext) {
         refParam?.trim() || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
       const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName, limit: effectiveLimit });
       const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
-      const nonStateNodes = pgNodes.filter((node) => node.type !== 'state');
-      return Response.json({ nodes: nonStateNodes });
+      const nonStateNodes = pgNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
+      const sanitizedNodes = nonStateNodes.map(stripRawResponse);
+      return Response.json({ nodes: sanitizedNodes });
     }
 
     const { getProject } = await import('@git/projects');
@@ -43,7 +57,7 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     // Canvas saves create `state` nodes in the git backend; those are not user-facing chat turns.
     // Keep them out of the history API response to avoid flooding the chat UI.
-    const nonStateNodes = nodes.filter((node) => node.type !== 'state');
+    const nonStateNodes = nodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
 
     let result = nonStateNodes;
     if (limitParam) {
@@ -52,7 +66,8 @@ export async function GET(request: Request, { params }: RouteContext) {
       }
     }
 
-    return Response.json({ nodes: result });
+    const sanitizedNodes = result.map(stripRawResponse);
+    return Response.json({ nodes: sanitizedNodes });
   } catch (error) {
     return handleRouteError(error);
   }

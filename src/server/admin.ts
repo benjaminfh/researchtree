@@ -1,5 +1,8 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { forbidden } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
+import { assertLocalPgModeConfig, isLocalPgMode } from '@/src/server/pgMode';
 
 export function getAdminUserIds(): Set<string> {
   const raw = process.env.RT_ADMIN_USER_IDS ?? '';
@@ -16,6 +19,10 @@ export function isAdminUserId(userId: string | null | undefined): boolean {
 }
 
 export async function requireAdminUser() {
+  if (isLocalPgMode()) {
+    assertLocalPgModeConfig();
+    return requireUser();
+  }
   const user = await requireUser();
   const adminIds = getAdminUserIds();
   if (!adminIds.has(user.id)) {

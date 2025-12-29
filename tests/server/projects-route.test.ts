@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET, POST } from '@/app/api/projects/route';
 
@@ -6,7 +8,9 @@ const mocks = vi.hoisted(() => ({
   initProject: vi.fn(),
   deleteProject: vi.fn(),
   rtCreateProjectShadow: vi.fn(),
-  createSupabaseServerClient: vi.fn()
+  rtListProjectsShadowV1: vi.fn(),
+  rtGetProjectShadowV1: vi.fn(),
+  rtListProjectMemberIdsShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -16,11 +20,13 @@ vi.mock('@git/projects', () => ({
 }));
 
 vi.mock('@/src/store/pg/projects', () => ({
-  rtCreateProjectShadow: mocks.rtCreateProjectShadow
+  rtCreateProjectShadow: mocks.rtCreateProjectShadow,
+  rtListProjectsShadowV1: mocks.rtListProjectsShadowV1,
+  rtGetProjectShadowV1: mocks.rtGetProjectShadowV1
 }));
 
-vi.mock('@/src/server/supabase/server', () => ({
-  createSupabaseServerClient: mocks.createSupabaseServerClient
+vi.mock('@/src/store/pg/members', () => ({
+  rtListProjectMemberIdsShadowV1: mocks.rtListProjectMemberIdsShadowV1
 }));
 
 const baseUrl = 'http://localhost/api/projects';
@@ -39,23 +45,11 @@ describe('/api/projects route', () => {
     mocks.initProject.mockReset();
     mocks.deleteProject.mockReset();
     mocks.rtCreateProjectShadow.mockReset();
-    mocks.createSupabaseServerClient.mockReset();
+    mocks.rtListProjectsShadowV1.mockReset();
+    mocks.rtGetProjectShadowV1.mockReset();
+    mocks.rtListProjectMemberIdsShadowV1.mockReset();
     process.env.RT_STORE = 'git';
-    mocks.createSupabaseServerClient.mockReturnValue({
-      from: vi.fn((table: string) => {
-        if (table !== 'project_members') {
-          throw new Error(`Unexpected table: ${table}`);
-        }
-        return {
-          select: vi.fn(() => ({
-            eq: vi.fn(async () => ({
-              data: [{ project_id: '1' }],
-              error: null
-            }))
-          }))
-        };
-      })
-    });
+    mocks.rtListProjectMemberIdsShadowV1.mockResolvedValue(['1']);
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: '1' });
   });
 
@@ -100,16 +94,15 @@ describe('/api/projects route', () => {
 
   it('lists projects from Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.createSupabaseServerClient.mockReturnValue({
-      from: vi.fn(() => ({
-        select: vi.fn(() => ({
-          order: vi.fn(async () => ({
-            data: [{ id: 'p1', name: 'PG', description: null, created_at: '2025-01-01T00:00:00Z' }],
-            error: null
-          }))
-        }))
-      }))
-    });
+    mocks.rtListProjectsShadowV1.mockResolvedValue([
+      {
+        id: 'p1',
+        name: 'PG',
+        description: null,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-02T00:00:00.000Z'
+      }
+    ]);
 
     const response = await GET();
     expect(response.status).toBe(200);
@@ -128,17 +121,12 @@ describe('/api/projects route', () => {
   it('creates project via Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'p1' });
-    mocks.createSupabaseServerClient.mockReturnValue({
-      from: vi.fn(() => ({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            single: vi.fn(async () => ({
-              data: { id: 'p1', name: 'PG', description: 'd', created_at: '2025-01-01T00:00:00Z' },
-              error: null
-            }))
-          }))
-        }))
-      }))
+    mocks.rtGetProjectShadowV1.mockResolvedValue({
+      id: 'p1',
+      name: 'PG',
+      description: 'd',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-02T00:00:00.000Z'
     });
 
     const response = await POST(createRequest('POST', { name: 'PG', description: 'd' }));

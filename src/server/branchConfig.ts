@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { isSupportedModelForProvider } from '@/src/shared/llmCapabilities';
 import { getDefaultModelForProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';

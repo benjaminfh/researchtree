@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { simpleGit } from 'simple-git';
 import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
 import { createNodeRecord, writeNodeRecord } from './nodes';

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 'use client';
 
 import Link from 'next/link';
@@ -27,6 +29,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-GB', {
 export function HomePageContent({ projects, providerOptions, defaultProvider }: HomePageContentProps) {
   const [archived, setArchived] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState<Set<string>>(new Set());
+  const [showTokenPrompt, setShowTokenPrompt] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -39,6 +42,37 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
         setArchived(new Set());
       }
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProfile() {
+      try {
+        const res = await fetch('/api/profile');
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          llmTokens?: {
+            openai?: { configured?: boolean };
+            gemini?: { configured?: boolean };
+            anthropic?: { configured?: boolean };
+          };
+        };
+        if (cancelled) return;
+        const configured =
+          body?.llmTokens?.openai?.configured ||
+          body?.llmTokens?.gemini?.configured ||
+          body?.llmTokens?.anthropic?.configured;
+        if (!configured) {
+          setShowTokenPrompt(true);
+        }
+      } catch {
+        // Ignore profile fetch errors; we only prompt when the status is known.
+      }
+    }
+    void loadProfile();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const persistArchive = (next: Set<string>) => {
@@ -74,138 +108,160 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
   };
 
   return (
-    <RailPageLayout
-      renderRail={({ railCollapsed, toggleRail }) =>
-        !railCollapsed ? (
-          <div className="mt-6 flex flex-1 flex-col gap-3">
-            <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
-              Workspaces
-            </div>
-            <div className="flex-1 overflow-y-auto pr-1">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Recent</div>
-                  {recentProjects.length === 0 ? (
-                    <p className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 text-xs text-muted shadow-sm">
-                      No workspaces yet. Create one to get started.
-                    </p>
-                  ) : (
-                    <ul className="grid min-w-0 grid-cols-1 gap-2">
-                      {recentProjects.map((project) => {
-                        const isConfirming = confirming.has(project.id);
-                        return (
-                          <li
-                            key={project.id}
-                            className="group w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
-                            title={project.name}
-                          >
-                            <div className="flex min-w-0 items-center justify-between gap-3">
-                              <Link href={`/projects/${project.id}`} className="min-w-0 flex-1" title={project.name}>
-                                <div className="truncate text-sm font-semibold text-slate-900" title={project.name}>
-                                  {project.name}
-                                </div>
-                                <div className="text-xs text-muted">{dateFormatter.format(new Date(project.lastModified))}</div>
-                              </Link>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (isConfirming) {
-                                    handleArchive(project.id);
-                                  } else {
-                                    setConfirming((prev) => new Set(prev).add(project.id));
-                                  }
-                                }}
-                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
-                                  isConfirming
-                                    ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                                    : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
-                                }`}
-                                aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
-                              >
-                                {isConfirming ? '!' : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
-                              </button>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-                {archivedProjects.length > 0 ? (
+    <>
+      <RailPageLayout
+        renderRail={({ railCollapsed, toggleRail }) =>
+          !railCollapsed ? (
+            <div className="mt-6 flex flex-1 flex-col gap-3">
+              <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
+                Workspaces
+              </div>
+              <div className="flex-1 overflow-y-auto pr-1">
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Archived</div>
-                    <ul className="grid min-w-0 grid-cols-1 gap-2">
-                      {archivedProjects.map((project) => {
-                        const isConfirming = confirming.has(project.id);
-                        return (
-                          <li
-                            key={project.id}
-                            className="w-full min-w-0 rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm"
-                            title={project.name}
-                          >
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span
-                                className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
-                                title={project.name}
-                              >
-                                {project.name}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (isConfirming) {
-                                    handleUnarchive(project.id);
-                                  } else {
-                                    setConfirming((prev) => new Set(prev).add(project.id));
-                                  }
-                                }}
-                                className={`ml-auto shrink-0 rounded-full px-3 py-1 text-xs font-semibold shadow-sm transition ${
-                                  isConfirming
-                                    ? 'border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
-                                    : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
-                                }`}
-                              >
-                                {isConfirming ? 'Confirm' : 'Unarchive'}
-                              </button>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Recent</div>
+                    {recentProjects.length === 0 ? (
+                      <p className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 text-xs text-muted shadow-sm">
+                        No workspaces yet. Create one to get started.
+                      </p>
+                    ) : (
+                      <ul className="grid min-w-0 grid-cols-1 gap-2">
+                        {recentProjects.map((project) => {
+                          const isConfirming = confirming.has(project.id);
+                          return (
+                            <li
+                              key={project.id}
+                              className="group w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
+                              title={project.name}
+                            >
+                              <div className="flex min-w-0 items-center justify-between gap-3">
+                                <Link href={`/projects/${project.id}`} className="min-w-0 flex-1" title={project.name}>
+                                  <div className="truncate text-sm font-semibold text-slate-900" title={project.name}>
+                                    {project.name}
+                                  </div>
+                                  <div className="text-xs text-muted">{dateFormatter.format(new Date(project.lastModified))}</div>
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isConfirming) {
+                                      handleArchive(project.id);
+                                    } else {
+                                      setConfirming((prev) => new Set(prev).add(project.id));
+                                    }
+                                  }}
+                                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
+                                    isConfirming
+                                      ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                                      : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
+                                  }`}
+                                  aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
+                                >
+                                  {isConfirming ? '!' : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </div>
-                ) : null}
+                  {archivedProjects.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Archived</div>
+                      <ul className="grid min-w-0 grid-cols-1 gap-2">
+                        {archivedProjects.map((project) => {
+                          const isConfirming = confirming.has(project.id);
+                          return (
+                            <li
+                              key={project.id}
+                              className="w-full min-w-0 rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm"
+                              title={project.name}
+                            >
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span
+                                  className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
+                                  title={project.name}
+                                >
+                                  {project.name}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isConfirming) {
+                                      handleUnarchive(project.id);
+                                    } else {
+                                      setConfirming((prev) => new Set(prev).add(project.id));
+                                    }
+                                  }}
+                                  className={`ml-auto shrink-0 rounded-full px-3 py-1 text-xs font-semibold shadow-sm transition ${
+                                    isConfirming
+                                      ? 'border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
+                                      : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
+                                  }`}
+                                >
+                                  {isConfirming ? 'Confirm' : 'Unarchive'}
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-auto flex items-start pb-2">
+                <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
               </div>
             </div>
-
+          ) : (
             <div className="mt-auto flex items-start pb-2">
               <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
             </div>
-          </div>
-        ) : (
-          <div className="mt-auto flex items-start pb-2">
-            <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
-          </div>
-        )
-      }
-      renderMain={() => (
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-5xl px-6 py-12 space-y-8">
-            <header className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-6 py-2 text-base font-semibold text-primary">
-                <span>{APP_NAME}</span>
-              </div>
-              <div className="space-y-2">
-                <h1 className="text-3xl font-semibold text-slate-900">Branchable Chat for Deep Research Sessions</h1>
-                <p className="text-base text-muted">
-                  Spin up a workspace, branch your train of thought and context, and work on a canvas.
-                </p>
-              </div>
-            </header>
+          )
+        }
+        renderMain={() => (
+          <div className="flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-5xl px-6 py-12 space-y-8">
+              <header className="space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-6 py-2 text-base font-semibold text-primary">
+                  <span>{APP_NAME}</span>
+                </div>
+                <div className="space-y-2">
+                  <h1 className="text-3xl font-semibold text-slate-900">Branchable Chat for Deep Research Sessions</h1>
+                  <p className="text-base text-muted">
+                    Spin up a workspace, branch your train of thought and context, and work on a canvas.
+                  </p>
+                </div>
+              </header>
 
-            <CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />
+              <CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />
+            </div>
+          </div>
+        )}
+      />
+
+      {showTokenPrompt ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-semibold text-slate-900">Add your first API token</h2>
+            <p className="mt-2 text-sm text-muted">
+              You have not saved any provider tokens yet. Add one in Profile to start chatting.
+            </p>
+            <div className="mt-4 flex justify-end">
+              <Link
+                href="/profile"
+                className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90"
+                onClick={() => setShowTokenPrompt(false)}
+              >
+                Go to Profile
+              </Link>
+            </div>
           </div>
         </div>
-      )}
-    />
+      ) : null}
+    </>
   );
 }

@@ -1,7 +1,9 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtGetCurrentRefShadowV1(input: { projectId: string; defaultRefName?: string }): Promise<{ refName: string }> {
-  const supabase = createSupabaseServerClient();
+  const { rpc } = getPgStoreAdapter();
   // PostgREST can be sensitive to function signatures when defaults are involved.
   // Prefer omitting optional/default params unless we truly need them.
   const params: Record<string, unknown> = { p_project_id: input.projectId };
@@ -9,7 +11,7 @@ export async function rtGetCurrentRefShadowV1(input: { projectId: string; defaul
     params.p_default_ref_name = input.defaultRefName;
   }
 
-  const { data, error } = await supabase.rpc('rt_get_current_ref_v1', params);
+  const { data, error } = await rpc('rt_get_current_ref_v1', params);
   if (error) {
     throw new Error(error.message);
   }
@@ -17,8 +19,8 @@ export async function rtGetCurrentRefShadowV1(input: { projectId: string; defaul
 }
 
 export async function rtSetCurrentRefShadowV1(input: { projectId: string; refName: string }): Promise<void> {
-  const supabase = createSupabaseServerClient();
-  const { error } = await supabase.rpc('rt_set_current_ref_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { error } = await rpc('rt_set_current_ref_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
     // Always pass this to avoid schema-cache signature mismatches for default args.

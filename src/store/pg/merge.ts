@@ -1,4 +1,6 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtMergeOursShadowV1(input: {
   projectId: string;
@@ -8,8 +10,8 @@ export async function rtMergeOursShadowV1(input: {
   mergeNodeJson: unknown;
   commitMessage?: string;
 }): Promise<{ newCommitId: string; nodeId: string; ordinal: number }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_merge_ours_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_merge_ours_v1', {
     p_project_id: input.projectId,
     p_target_ref_name: input.targetRefName,
     p_source_ref_name: input.sourceRefName,
@@ -33,4 +35,3 @@ export async function rtMergeOursShadowV1(input: {
     ordinal: Number(row.ordinal)
   };
 }
-

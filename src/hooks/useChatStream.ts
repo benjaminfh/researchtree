@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { useCallback, useRef, useState } from 'react';
 import type { LLMProvider } from '@/src/server/llm';
 import type { ThinkingSetting } from '@/src/shared/thinking';
@@ -30,11 +32,32 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
   const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
   const activeRequest = useRef<AbortController | null>(null);
   const activeRequestId = useRef<string | null>(null);
+  const streamDebugStateRef = useRef({
+    seq: 0,
+    totalChars: 0,
+    lastType: '',
+    lastContent: ''
+  });
+
+  const streamDebugEnabled =
+    (typeof window !== 'undefined' && (window as any).__RT_STREAM_DEBUG === true) ||
+    process.env.NEXT_PUBLIC_STREAM_DEBUG === 'true';
 
   const sendMessage = useCallback(
     async (message: string) => {
       if (!message.trim()) {
         return;
+      }
+      if (streamDebugEnabled) {
+        streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
+        console.debug('[stream][start]', {
+          projectId,
+          ref,
+          provider,
+          thinking,
+          webSearch,
+          messageLength: message.length
+        });
       }
       setState({ isStreaming: true, error: null });
       activeRequest.current = new AbortController();
@@ -85,6 +108,27 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
                   break;
                 }
                 if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
+                  if (streamDebugEnabled) {
+                    const content = parsed.content ?? '';
+                    const sameAsLast =
+                      parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
+                    const sample = content
+                      ? content.replace(/\s+/g, ' ').slice(0, 60)
+                      : '';
+                    streamDebugStateRef.current.seq += 1;
+                    streamDebugStateRef.current.totalChars += content.length;
+                    console.debug('[stream][chunk]', {
+                      seq: streamDebugStateRef.current.seq,
+                      type: parsed.type,
+                      append: parsed.append,
+                      length: content.length,
+                      totalChars: streamDebugStateRef.current.totalChars,
+                      sameAsLast,
+                      sample
+                    });
+                    streamDebugStateRef.current.lastType = parsed.type;
+                    streamDebugStateRef.current.lastContent = content;
+                  }
                   onChunk?.(parsed);
                 }
               } catch {
@@ -113,6 +157,27 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
               return;
             }
             if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
+              if (streamDebugEnabled) {
+                const content = parsed.content ?? '';
+                const sameAsLast =
+                  parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
+                const sample = content
+                  ? content.replace(/\s+/g, ' ').slice(0, 60)
+                  : '';
+                streamDebugStateRef.current.seq += 1;
+                streamDebugStateRef.current.totalChars += content.length;
+                console.debug('[stream][chunk]', {
+                  seq: streamDebugStateRef.current.seq,
+                  type: parsed.type,
+                  append: parsed.append,
+                  length: content.length,
+                  totalChars: streamDebugStateRef.current.totalChars,
+                  sameAsLast,
+                  sample
+                });
+                streamDebugStateRef.current.lastType = parsed.type;
+                streamDebugStateRef.current.lastContent = content;
+              }
               onChunk?.(parsed);
             }
           } catch {
@@ -121,6 +186,13 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
         }
 
         onComplete?.();
+        if (streamDebugEnabled) {
+          console.debug('[stream][complete]', {
+            requestId: activeRequestId.current,
+            totalChunks: streamDebugStateRef.current.seq,
+            totalChars: streamDebugStateRef.current.totalChars
+          });
+        }
         setState({ isStreaming: false, error: null });
       } catch (error) {
         if ((error as DOMException).name === 'AbortError') {

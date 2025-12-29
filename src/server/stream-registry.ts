@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 const controllers = new Map<string, AbortController>();
 
 function key(projectId: string, ref?: string): string {

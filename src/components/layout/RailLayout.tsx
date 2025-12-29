@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -45,6 +47,21 @@ export function RailLayout({
       return next;
     });
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'b') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+      event.preventDefault();
+      toggleRail();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const pathname = usePathname();
   const ctx: RailLayoutContext = { railCollapsed, toggleRail };

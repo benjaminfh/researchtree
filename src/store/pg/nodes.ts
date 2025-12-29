@@ -1,4 +1,6 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtAppendNodeToRefShadowV1(input: {
   projectId: string;
@@ -11,8 +13,8 @@ export async function rtAppendNodeToRefShadowV1(input: {
   attachDraft?: boolean;
   rawResponse?: unknown;
 }): Promise<{ newCommitId: string; nodeId: string; ordinal: number; artefactId: string | null; artefactContentHash: string | null }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_append_node_to_ref_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_append_node_to_ref_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
     p_kind: input.kind,
@@ -21,6 +23,8 @@ export async function rtAppendNodeToRefShadowV1(input: {
     p_node_id: input.nodeId,
     p_commit_message: input.commitMessage ?? null,
     p_attach_draft: input.attachDraft ?? false,
+    p_artefact_kind: 'canvas_md',
+    p_lock_timeout_ms: 3000,
     p_raw_response: input.rawResponse ?? null
   });
 
@@ -40,4 +44,19 @@ export async function rtAppendNodeToRefShadowV1(input: {
     artefactId: row.artefact_id ? String(row.artefact_id) : null,
     artefactContentHash: row.artefact_content_hash ? String(row.artefact_content_hash) : null
   };
+}
+
+export async function rtGetNodeContentShadowV1(input: {
+  projectId: string;
+  nodeId: string;
+}): Promise<unknown | null> {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_node_content_json_v1', {
+    p_project_id: input.projectId,
+    p_node_id: input.nodeId
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data ?? null;
 }

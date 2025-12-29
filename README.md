@@ -1,152 +1,170 @@
+<!-- Copyright (c) 2025 Benjamin F. Hall. All rights reserved. -->
+
 # ResearchTree Developer Guide
 
-ResearchTree is a git-backed reasoning workspace. Each project is its own git repository containing:
+ResearchTree (aka Threds) is a branchable research workspace: each project is a versioned reasoning thread (chat + canvas) with explicit branch/merge semantics.
+The UI is built for exploring multiple lines of thought without losing context, while keeping an audit trail of every message, branch, and merge.
 
-- `nodes.jsonl` — append-only reasoning history (messages, state checkpoints, merge events)
-- `artefact.md` — the “Canvas” markdown for the selected ref (branch-local, editable on any branch)
-- `project.json` and `README.md` — metadata seeded at project creation
+## Product Tour (UI-First)
 
-The TypeScript helpers under `src/git` provide all project, node, branch, and artefact operations with git as the single source of truth.
-For a deeper dive into the ref-safe/no-checkout write path used by streaming, see `MVP_GIT_ARCH_README.md`.
+Start here to understand the app from the user's perspective.
 
-## Prerequisites
+- Home (`/`)
+  - Create a new workspace with a name + optional description.
+  - Choose the default LLM provider for that workspace.
+  - See recent workspaces, node counts, last touched time, and archive/unarchive to declutter the list.
+- Workspace (`/projects/<id>`)
+  - Chat stream with branch-aware history and a per-branch Canvas (editable markdown).
+  - Branch controls: switch branches, create new ones, or branch directly from a message.
+  - Merge flow: summarize what should come back to the target branch and preview the Canvas diff before merging.
+  - Graph view: explore the reasoning DAG, jump to nodes, and pin Canvas diffs into context.
+  - Stars: pin important messages; star filtering is supported in the graph view.
+  - Thinking traces: show/hide model thinking content per message when available.
+  - Provider controls: per-branch provider + model selection, plus a thinking mode selector.
+  - Web search toggle (OpenAI search preview models) when enabled.
+- Profile (`/profile`)
+  - Store provider API keys for local use.
+- Waitlist Admin (`/admin/waitlist`)
+  - Review requests and approve emails when the invite gate is enabled.
 
+## Conceptual Model
+
+A workspace is a project with a versioned trail of nodes plus a per-branch Canvas.
+
+- Nodes
+  - Message nodes: user/assistant/system messages with optional thinking blocks and raw model payload.
+  - State nodes: Canvas checkpoints.
+  - Merge nodes: record source branch, summary, source commits, and Canvas diffs.
+- Branches
+  - Every message is tagged with the branch it was created on.
+  - Branches carry their own provider/model/thinking defaults.
+- Canvas
+  - The markdown canvas is branch-local and never auto-merged.
+  - Merges compute a diff; you can pin the diff into context intentionally.
+
+## Storage Modes
+
+ResearchTree supports two provenance backends, selected via `RT_STORE`:
+
+- `git`
+  - Each project is a git repo under `RESEARCHTREE_PROJECTS_ROOT`.
+  - Files per project:
+    - `nodes.jsonl` for the append-only message/merge/state log.
+    - `artefact.md` for the Canvas.
+    - `project.json` and `README.md` for metadata.
+  - Git helpers live in `src/git` and are the canonical implementation for node + branch operations.
+- `pg`
+  - Uses Postgres for provenance, with Supabase PostgREST or a local adapter.
+  - Supabase RPCs live under `src/store/pg` with migrations in `supabase/migrations`.
+  - Local mode (`RT_PG_ADAPTER=local`) connects directly to Postgres and auto-bootstraps migrations on first call.
+
+## LLM Providers and Capabilities
+
+Supported providers are OpenAI (chat or responses), Gemini, Anthropic, and Mock.
+
+- Provider enablement and defaults are controlled via `LLM_ENABLE_*`, `LLM_DEFAULT_PROVIDER`, and model env vars.
+- Thinking modes are validated per provider/model based on shared capability metadata.
+- Web search is currently routed via OpenAI search-preview models when enabled.
+- Optional server-side Canvas tool loop can be toggled with `RT_CANVAS_TOOLS`.
+
+## Repository Map
+
+- `app/` Next.js route handlers and pages.
+- `src/components/` UI components (workspace, graph, canvas, layout).
+- `src/hooks/` data streaming and workspace state hooks.
+- `src/git/` git-backed project store and node/branch helpers.
+- `src/store/pg/` Postgres/Supabase store adapters and RPC access.
+- `src/server/` auth, LLM streaming, request context, and utilities.
+- `desktop/` Electron shell that hosts the Next.js app.
+- `supabase/` database migrations for the Postgres store.
+- `tests/` Vitest suites for git, store, and UI logic.
+
+## Quick Start (Local Dev)
+
+Prerequisites:
 - Node.js 20+
 - npm 10+
-- git available on your PATH
+- git on PATH
 
-## Installation
-
+Install:
 ```bash
 npm install
 ```
 
-This pulls in `simple-git`, `uuid`, and the development toolchain (TypeScript + Vitest).
+### Configuration
 
-## Running the Test Suite
+`RT_STORE` is required. Choose one of the setups below and place it in `.env.local`.
 
-Vitest writes throwaway repositories under `.test-projects/<suite-name>`. To run everything:
+Git-backed mode (lightweight, file-based):
+```bash
+RT_STORE=git
+RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/data/projects
+LLM_DEFAULT_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+```
+
+Postgres mode (Supabase):
+```bash
+RT_STORE=pg
+RT_PG_ADAPTER=supabase
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+RT_APP_ORIGIN=http://localhost:3000
+LLM_DEFAULT_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+```
+
+Postgres mode (local adapter):
+```bash
+RT_STORE=pg
+RT_PG_ADAPTER=local
+LOCAL_PG_URL=postgresql://localhost:5432/youruser
+RT_PG_BOOTSTRAP=1
+LLM_DEFAULT_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+```
+
+Notes:
+- `RT_PG_ADAPTER=local` must be used without Supabase env vars present.
+- See `env.example` for the full list of optional toggles and defaults.
+
+### Run the app
 
 ```bash
-npm test
+npm run dev
 ```
 
-If you only want a subset of suites, use `npm test -- tests/git/branches.test.ts`.
+Then open http://localhost:3000.
 
-To clean local branches that no longer exist on the remote (for example, `git branch -vv` shows `[origin/...: gone]`), run:
+## Desktop App (Electron)
 
-```bash
-git fetch --prune
-git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads \
-  | awk '$2 == "" { print $1 }' \
-  | xargs -r git branch -D
-```
+The Electron shell boots a local Next.js server and opens a native window.
 
-A branch will be deleted only if it lacks an upstream entry; tracked branches are left untouched. Replace `-D` with `-d` if you prefer Git’s “safely delete only if merged” behavior.
+- Dev mode: `npm run desktop:dev`
+- Package: `npm run desktop:package`
+- Build installers: `npm run desktop:make`
 
-## Playing with the Git Helpers
+Desktop loads `.env.desktop` and then `.env.local` (excluding Supabase keys), so local Postgres is the default path.
 
-Set a workspace root (defaults to `<repo>/data/projects`) with `RESEARCHTREE_PROJECTS_ROOT` and drive the helpers through `ts-node`:
+## Tests and Scripts
 
-```bash
-RESEARCHTREE_PROJECTS_ROOT=~/tmp/researchtree-playground \
-npx ts-node --esm ./scripts/playground.ts
-```
+- `npm test` - run Vitest suites
+- `npm run test:watch` - watch mode
+- `npm run test:ui` - Vitest UI
+- `npm run lint` - type-check and Supabase usage validation
+- `npm run local:pg:bootstrap` - run local Postgres migrations manually
 
-Example `scripts/playground.ts`:
+## Auth and Waitlist
 
-```ts
-import { initProject, appendNode, updateArtefact, createBranch, listBranches } from '../src/git/index.js';
+Invite-gated auth is controlled by `RT_WAITLIST_ENFORCE`.
 
-const run = async () => {
-  const project = await initProject('Demo Project', 'CLI walkthrough');
-  await appendNode(project.id, { type: 'message', role: 'system', content: 'Kickoff' });
-  await appendNode(project.id, { type: 'message', role: 'user', content: 'What should we build?' });
-  await updateArtefact(project.id, '# Demo Artefact\n\nInitial trunk draft.');
+- When enabled, only allowlisted emails can sign up/sign in.
+- `/admin/waitlist` is restricted to users listed in `RT_ADMIN_USER_IDS`.
 
-  await createBranch(project.id, 'research');
-  console.log(await listBranches(project.id));
-};
+## Troubleshooting
 
-run().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
-```
+- `RT_STORE must be set to "git" or "pg"` means the env var is missing or misspelled.
+- `RT_PG_ADAPTER=local cannot be used with Supabase env vars present` means you need to remove Supabase keys when using local mode.
+- Provider errors usually indicate missing API keys; update them in `/profile`.
 
-This script shows how to initialize a project, append reasoning nodes, update the artefact on trunk, and branch for exploratory work. Clean up with `rm -rf ~/tmp/researchtree-playground`.
-
-## ASCII AST: `src/git` Interactions
-
-```
-src/git/index.ts ──┬─> projects.ts ──┬─> utils.ts ──┬─> constants.ts
-                   │                 │              └─> types.ts
-                   │                 └─> types.ts
-                   │
-                   ├─> nodes.ts ─────┬─> utils.ts ──┬─> constants.ts
-                   │                 │              └─> types.ts
-                   │                 └─> types.ts
-                   │
-                   ├─> branches.ts ──┬─> nodes.ts
-                   │                 └─> utils.ts ──> constants.ts/types.ts
-                   │
-                   └─> artefact.ts ──┬─> nodes.ts
-                                     └─> utils.ts ──> constants.ts/types.ts
-```
-
-- `constants.ts` centralizes project locations, filenames, and default git config.
-- `types.ts` defines all shared TypeScript types.
-- `utils.ts` provides reusable helpers (project paths, git config enforcement, node parsing).
-- Feature modules (`projects`, `nodes`, `branches`, `artefact`) compose those helpers to implement domain logic.
-- `index.ts` re-exports everything so callers can simply `import { initProject } from './src/git/index.js';`.
-
-## Common Scripts
-
-- `npm run build` — compile TypeScript to `dist/`
-- `npm run lint` — type-check the code with `tsc --noEmit`
-- `npm test` — run Vitest across `tests/git/*.test.ts`
-
-## Running the Dev Environment
-
-The Next.js workspace lets you try the git-backed chat UI locally.
-
-1. **Set environment variables** (create `.env.local`):
-   ```
-   LLM_DEFAULT_PROVIDER=openai        # openai / gemini / anthropic / mock
-   OPENAI_API_KEY=sk-...      # required if using OpenAI
-   GEMINI_API_KEY=xxx...      # required if using Gemini (Generative Language API)
-   RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/data/projects
-   ```
-   Optional overrides:
-   - `OPENAI_MODEL` (default `gpt-5.2`)
-   - `GEMINI_MODEL` (default `gemini-3-pro-preview`; pick a model available to your API key)
-
-   If you don't have API keys handy, set `LLM_DEFAULT_PROVIDER=mock` to use the built-in echo responder.
-
-2. **Install dependencies** (once):
-   ```bash
-   npm install
-   ```
-
-3. **Launch the dev server**:
-   ```bash
-   npm run dev
-   ```
-   Next.js serves at http://localhost:3000 by default. The dashboard lists projects backed by git repos under `RESEARCHTREE_PROJECTS_ROOT`.
-
-4. **Create or open a project**:
-   - Visit `http://localhost:3000/` and use the **Create Project** form to spin up a git-backed workspace instantly. Projects appear in the list as soon as they’re created.
-   - Prefer the CLI? `scripts/playground.ts` still works for scripted demos.
-   - Open `/projects/<id>` to chat, stream responses, and view the artefact pane. The composer supports `⌘+Enter` to send plus `Shift+Enter` or `Option+Enter` for multi-line drafts, and the Stop button aborts long generations.
-   - The Canvas (`artefact.md`) is edited per-branch (the UI autosaves to `?ref=<branch>`). Merges record a Canvas diff but do not auto-apply it; you can optionally “Add diff to context” on the merge node to persist the diff as an assistant message for future prompts.
-   - Use **Quest graph** (Canvas/Graph toggle) to navigate the reasoning DAG:
-     - Click a node to open the detail strip (with **Copy**, **Jump to message**, and merge-specific actions).
-     - For merge nodes with Canvas changes, use **Add canvas changes** (then confirm) to pin the diff into chat context.
-     - Press `Esc` or click empty graph space to clear the current selection.
-   - Use the provider selector in the workspace header to switch between providers. The `LLM_DEFAULT_PROVIDER` env var sets the default. Provider choices persist per branch.
-   - Branch UI: create/switch branches from the workspace header. When you’re on a non-trunk branch, the conversation shows shared history collapsed by default; expand to reveal upstream messages (muted) with a divider at the split.
-   - Project list: each entry shows branch + node counts and a soft “Hide/Unhide” toggle (stored in localStorage) so you can temporarily remove noisy workspaces without deleting the repo.
-
-Hot reload is enabled; API changes and UI tweaks are reflected immediately. Stop the server with `Ctrl+C`.
-
-You now have everything needed to extend ResearchTree or embed the git helpers into another application. Happy hacking! 

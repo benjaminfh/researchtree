@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { promises as fs } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
@@ -24,7 +26,7 @@ describe('auth gating', () => {
     const routeFiles = await listRouteFiles(apiRoot);
     expect(routeFiles.length).toBeGreaterThan(0);
 
-    const allowUnauthed: string[] = [];
+    const allowUnauthed: string[] = ['app/api/health/route.ts'];
 
     const missing: string[] = [];
     for (const filePath of routeFiles) {
@@ -39,4 +41,3 @@ describe('auth gating', () => {
     expect(missing).toEqual([]);
   });
 });
-

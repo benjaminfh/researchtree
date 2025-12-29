@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { LoginForm } from './LoginForm';
 import { APP_NAME } from '@/src/config/app';
 import BranchingTracesBackground from '@/src/components/login/BranchingTracesBackground';

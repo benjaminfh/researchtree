@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { NodeRecord } from '@git/types';
 import {
   deriveTextFromBlocks,
@@ -42,21 +44,16 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   const resolvedRef = options?.ref?.trim() || null;
 
   let nodes: NodeRecord[];
-  let artefact: string;
 
   if (store.mode === 'pg') {
     const refName = resolvedRef ?? 'main';
-    const { rtGetHistoryShadowV1, rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
-    const rows = await rtGetHistoryShadowV1({ projectId, refName, limit });
+    const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
+    const rows = await rtGetHistoryShadowV1({ projectId, refName, limit, includeRawResponse: true });
     nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
-    const canvas = await rtGetCanvasShadowV1({ projectId, refName });
-    artefact = canvas.content ?? '';
   } else {
     const { getNodes } = await import('@git/nodes');
-    const { getArtefact, getArtefactFromRef } = await import('@git/artefact');
     const { readNodesFromRef } = await import('@git/utils');
     nodes = resolvedRef ? await readNodesFromRef(projectId, resolvedRef) : await getNodes(projectId);
-    artefact = resolvedRef ? await getArtefactFromRef(projectId, resolvedRef) : await getArtefact(projectId);
   }
 
   const trimmed = nodes.slice(-limit);
@@ -67,7 +64,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
     branchConfigMap[refName] = currentConfig;
   }
   const useCanonicalByIndex = buildCanonicalMask(trimmed, branchConfigMap, currentConfig);
-  const systemPrompt = buildSystemPrompt(artefact);
+  const systemPrompt = buildSystemPrompt();
   const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
   const mergeUserRole = getMergeUserRole();
 
@@ -135,7 +132,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   };
 }
 
-function buildSystemPrompt(artefact: string): string {
+function buildSystemPrompt(): string {
   return [
     'You are an insightful, encouraging assistant who combines meticulous clarity with genuine enthusiasm and gentle humor.',
     'Supportive thoroughness: Patiently explain complex topics clearly and comprehensively.',
@@ -145,8 +142,12 @@ function buildSystemPrompt(artefact: string): string {
     'Do **not** say the following: would you like me to; want me to do that; do you want me to; if you want, I can; let me know if you would like me to; should I; shall I.',
     'Ask at most one necessary clarifying question at the start, not the end.',
     'If the next step is obvious, do it. Example of bad: I can write playful examples. would you like me to? Example of good: Here are three playful examples:..',
+    'Canvas tools are available: canvas_grep, canvas_read_lines, canvas_read_all, canvas_apply_patch.',
+    'Canvas tools require: locate -> inspect -> edit. Never retype target text from memory.',
+    'Line indices are 1-based. Patches must be unified diff format and apply cleanly.',
+    'Some user messages are hidden canvas updates; treat them as authoritative canvas changes.',
     '---',
-    artefact || '(empty artefact)',
+    'System prompt is fixed. Canvas state is provided via tool calls or hidden canvas update messages.',
     '---'
   ].join('\n');
 }

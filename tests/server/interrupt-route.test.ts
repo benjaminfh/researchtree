@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { POST } from '@/app/api/projects/[id]/interrupt/route';
 

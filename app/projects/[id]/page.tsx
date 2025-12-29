@@ -1,10 +1,11 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
 
 interface ProjectPageProps {
@@ -21,15 +22,8 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
 
   if (store.mode === 'pg') {
     await requireUser();
-    const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from('projects')
-      .select('id,name,description,created_at')
-      .eq('id', params.id)
-      .maybeSingle();
-    if (error) {
-      throw new Error(error.message);
-    }
+    const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
+    const data = await rtGetProjectShadowV1({ projectId: params.id });
     if (!data) {
       notFound();
     }
@@ -41,10 +35,10 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
     }));
 
     project = {
-      id: String((data as any).id),
-      name: String((data as any).name),
-      description: (data as any).description ?? undefined,
-      createdAt: new Date((data as any).created_at).toISOString(),
+      id: data.id,
+      name: data.name,
+      description: data.description ?? undefined,
+      createdAt: data.createdAt,
       branchName: current.refName
     };
     branches = await rtListRefsShadowV1({ projectId: params.id });

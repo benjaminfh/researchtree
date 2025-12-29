@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { handleRouteError, notFound, badRequest } from '@/src/server/http';
 import { createBranchSchema, switchBranchSchema } from '@/src/server/schemas';
 import { withProjectLock } from '@/src/server/locks';

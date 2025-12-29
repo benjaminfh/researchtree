@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { resolveLLMProvider } from '@/src/server/llm';
 

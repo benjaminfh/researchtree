@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, expect, it } from 'vitest';
 import { buildContentBlocksForProvider } from '@/src/server/llmContentBlocks';
 
@@ -81,6 +83,51 @@ describe('Anthropic streaming reconstruction', () => {
         name: 'get_weather',
         input: { location: 'San Francisco' }
       }
+    ]);
+  });
+
+  it('treats text_delta inside thinking blocks as thinking content', () => {
+    const rawEvents = [
+      makeEvent('content_block_start', {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'thinking', thinking: '' }
+      }),
+      makeEvent('content_block_delta', {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'Streaming thought' }
+      }),
+      makeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+    ];
+
+    const blocks = buildContentBlocksForProvider({
+      provider: 'anthropic',
+      rawResponse: rawEvents
+    });
+
+    expect(blocks).toEqual([{ type: 'thinking', thinking: 'Streaming thought' }]);
+  });
+
+  it('builds thinking blocks from non-stream payload content', () => {
+    const payload = {
+      id: 'msg_123',
+      role: 'assistant',
+      type: 'message',
+      content: [
+        { type: 'thinking', thinking: 'Let me think', signature: 'sig-1' },
+        { type: 'text', text: 'Hello there.' }
+      ]
+    };
+
+    const blocks = buildContentBlocksForProvider({
+      provider: 'anthropic',
+      rawResponse: [payload]
+    });
+
+    expect(blocks).toEqual([
+      { type: 'thinking', thinking: 'Let me think', signature: 'sig-1' },
+      { type: 'text', text: 'Hello there.' }
     ]);
   });
 });

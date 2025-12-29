@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -21,6 +23,7 @@ import { features } from '@/src/config/features';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { ArrowLeftCircleIcon, CpuChipIcon, UserIcon } from './HeroIcons';
+import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 
 interface WorkspaceGraphProps {
   branchHistories: Record<string, NodeRecord[]>;
@@ -120,12 +123,13 @@ const DotNode = ({ data }: NodeProps<DotNodeData>) => (
       className="flex max-w-[360px] items-center gap-2 whitespace-nowrap text-sm font-medium text-slate-800"
       style={{ transform: `translateX(${data.labelTranslateX}px)` }}
     >
-      <span className="truncate">{data.label}</span>
       {data.isActiveHead ? (
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary ring-1 ring-primary/20">
-          Current
+        <span className="truncate rounded-full bg-primary/10 px-2 py-0.5 text-primary ring-1 ring-primary/20">
+          {data.label}
         </span>
-      ) : null}
+      ) : (
+        <span className="truncate">{data.label}</span>
+      )}
     </span>
   </div>
 );
@@ -1139,6 +1143,10 @@ export function WorkspaceGraph({
     const activeHistory = branchHistories[activeBranchName] ?? [];
     return activeHistory[activeHistory.length - 1]?.id ?? null;
   }, [branchHistories, activeBranchName]);
+  const activeHeadNode = useMemo(
+    () => (activeHeadId ? nodes.find((node) => node.id === activeHeadId) ?? null : null),
+    [nodes, activeHeadId]
+  );
 
   const decoratedEdges = useMemo(() => {
     if (edges.length === 0) return edges;
@@ -1189,6 +1197,21 @@ export function WorkspaceGraph({
       };
     });
   }, [nodes, selectedNodeId, activeHeadId]);
+  const [legendCollapsed, setLegendCollapsed] = useState(true);
+  const legendBranches = useMemo(() => {
+    const entries = Object.entries(branchHistories);
+    if (entries.length === 0) return [];
+    const ordered = entries.sort(([a], [b]) => {
+      if (a === trunkName && b !== trunkName) return -1;
+      if (a !== trunkName && b === trunkName) return 1;
+      return a.localeCompare(b);
+    });
+    return ordered.map(([branchName]) => ({
+      id: branchName,
+      label: branchName,
+      color: getBranchColor(branchName, trunkName, branchColors)
+    }));
+  }, [branchHistories, trunkName, branchColors]);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -1234,6 +1257,14 @@ export function WorkspaceGraph({
   }, [viewportHeight, nodes.length, contentBounds.maxY, contentBounds.minY]);
 
   const computePreferredViewport = () => {
+    if (activeHeadNode && viewportHeight > 0) {
+      const targetScreenY = viewportHeight * 0.75;
+      return {
+        x: DEFAULT_VIEWPORT.x,
+        y: targetScreenY - activeHeadNode.position.y,
+        zoom: 1
+      } satisfies Viewport;
+    }
     if (viewportHeight > 0 && contentBounds.height < viewportHeight * CENTER_VIEWPORT_THRESHOLD) {
       const centerY = viewportHeight / 2 - (contentBounds.minY + contentBounds.maxY) / 2;
       return {
@@ -1406,6 +1437,54 @@ export function WorkspaceGraph({
             </ReactFlow>
           )}
         </div>
+        {legendBranches.length > 0 ? (
+          <div className="pointer-events-none absolute bottom-3 right-3 z-10 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setLegendCollapsed((prev) => !prev)}
+              className={`pointer-events-auto text-left shadow-lg transition hover:bg-slate-50 ${
+                legendCollapsed
+                  ? 'inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-800'
+                  : 'w-52 rounded-2xl border border-slate-200 bg-white/95'
+              }`}
+              aria-label={legendCollapsed ? 'Show branch legend' : 'Hide branch legend'}
+            >
+              {legendCollapsed ? (
+                <>
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                    <BlueprintIcon icon="git-branch" className="h-4 w-4" />
+                  </span>
+                  <span>Branches</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                    {legendBranches.length}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3 text-xs font-semibold text-slate-800">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                        <BlueprintIcon icon="git-branch" className="h-4 w-4" />
+                      </span>
+                      <span>Branches</span>
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                      {legendBranches.length}
+                    </span>
+                  </div>
+                  <div className="space-y-2 px-4 py-3 text-xs text-slate-700">
+                    {legendBranches.map((branch) => (
+                      <div key={branch.id} className="flex items-center gap-2">
+                        <span className="inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: branch.color }} />
+                        <span className="truncate">{branch.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </button>
+          </div>
+        ) : null}
       </InsightFrame>
     </div>
   );

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { buildChatContext } from '@/src/server/context';
 import { flattenMessageContent } from '@/src/shared/thinkingTraces';
@@ -9,7 +11,6 @@ const mocks = vi.hoisted(() => {
     getArtefactFromRef: vi.fn(),
     readNodesFromRef: vi.fn(),
     rtGetHistoryShadowV1: vi.fn(),
-    rtGetCanvasShadowV1: vi.fn(),
     rtListRefsShadowV1: vi.fn(),
     getProjectPath: vi.fn(),
     pathExists: vi.fn(),
@@ -35,7 +36,6 @@ vi.mock('@git/utils', () => ({
 
 vi.mock('@/src/store/pg/reads', () => ({
   rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
-  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1,
   rtListRefsShadowV1: mocks.rtListRefsShadowV1
 }));
 
@@ -46,7 +46,6 @@ describe('buildChatContext', () => {
     mocks.getArtefactFromRef.mockReset();
     mocks.readNodesFromRef.mockReset();
     mocks.rtGetHistoryShadowV1.mockReset();
-    mocks.rtGetCanvasShadowV1.mockReset();
     mocks.rtListRefsShadowV1.mockReset();
     mocks.getProjectPath.mockReset();
     mocks.pathExists.mockReset();
@@ -58,7 +57,7 @@ describe('buildChatContext', () => {
     mocks.rtListRefsShadowV1.mockResolvedValue([{ name: 'main', provider: 'openai', model: 'gpt-5.2' }]);
   });
 
-  it('includes artefact snapshot and recent messages', async () => {
+  it('includes recent messages and uses a fixed system prompt', async () => {
     mocks.getNodes.mockResolvedValue([
       {
         id: '1',
@@ -74,7 +73,7 @@ describe('buildChatContext', () => {
     const context = await buildChatContext('project-1');
 
     expect(context.messages[0].role).toBe('system');
-    expect(context.messages[0].content).toContain('Artefact v1');
+    expect(context.messages[0].content).toContain('System prompt is fixed.');
     expect(context.messages.some((msg) => flattenMessageContent(msg.content).includes('Hello'))).toBe(true);
   });
 
@@ -184,12 +183,10 @@ describe('buildChatContext', () => {
     mocks.rtGetHistoryShadowV1.mockResolvedValue([
       { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null } }
     ]);
-    mocks.rtGetCanvasShadowV1.mockResolvedValue({ content: 'Canvas PG', contentHash: 'x', updatedAt: null, source: 'draft' });
 
     const context = await buildChatContext('project-1', { ref: 'main' });
     expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
-    expect(mocks.rtGetCanvasShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'main' });
-    expect(context.messages[0].content).toContain('Canvas PG');
+    expect(context.messages[0].content).toContain('System prompt is fixed.');
     expect(context.messages.some((m) => m.role === 'user' && flattenMessageContent(m.content) === 'Hello')).toBe(true);
   });
 
