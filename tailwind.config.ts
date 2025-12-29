@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { Config } from 'tailwindcss';
 import typography from '@tailwindcss/typography';
 

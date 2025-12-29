@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { createSupabaseAdminClient } from '@/src/server/supabase/admin';
 import { maybeBootstrapLocalPg } from '@/src/server/localPgBootstrap';

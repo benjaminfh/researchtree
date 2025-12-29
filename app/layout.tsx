@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { APP_NAME } from '@/src/config/app';

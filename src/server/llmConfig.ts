@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { LLM_ENDPOINTS } from '@/src/shared/llmCapabilities';
 

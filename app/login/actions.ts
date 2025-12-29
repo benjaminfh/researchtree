@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 'use server';
 
 import { redirect } from 'next/navigation';

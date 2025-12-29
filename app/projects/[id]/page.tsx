@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';

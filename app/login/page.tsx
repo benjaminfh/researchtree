@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { LoginForm } from './LoginForm';
 import { APP_NAME } from '@/src/config/app';
 import BranchingTracesBackground from '@/src/components/login/BranchingTracesBackground';
@@ -19,9 +21,16 @@ function sanitizePrefillEmail(input: string | null): string | null {
   return trimmed;
 }
 
+function isWaitlistEnforced(): boolean {
+  const raw = process.env.RT_WAITLIST_ENFORCE?.trim().toLowerCase();
+  if (!raw) return false;
+  return !['0', 'false', 'off', 'no'].includes(raw);
+}
+
 export default function LoginPage({ searchParams }: { searchParams?: { redirectTo?: string; email?: string } }) {
   const redirectTo = sanitizeRedirectTo(searchParams?.redirectTo ?? null);
   const prefillEmail = sanitizePrefillEmail(searchParams?.email ?? null);
+  const waitlistEnforced = isWaitlistEnforced();
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(226,232,255,0.7),_rgba(248,250,252,0.95)_48%,_rgba(255,255,255,1)_100%)] px-6 py-12">
       <BranchingTracesBackground className="absolute inset-0" />
@@ -34,7 +43,7 @@ export default function LoginPage({ searchParams }: { searchParams?: { redirectT
           </p>
         </div>
         <div className="w-full max-w-sm">
-          <LoginForm redirectTo={redirectTo} initialEmail={prefillEmail} />
+          <LoginForm redirectTo={redirectTo} initialEmail={prefillEmail} waitlistEnforced={waitlistEnforced} />
         </div>
       </div>
     </main>

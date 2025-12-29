@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 export function isGeminiThoughtPart(part: any): boolean {
   const value = part?.thought;
   if (value === true) return true;

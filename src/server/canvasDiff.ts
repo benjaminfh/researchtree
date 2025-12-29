@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 export function buildUnifiedDiff(oldText: string, newText: string, options?: { contextLines?: number }): string {
   if (oldText === newText) return '';
   const context = options?.contextLines ?? 3;

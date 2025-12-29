@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
   month: '2-digit',

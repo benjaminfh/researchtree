@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import React, { type FormEvent } from 'react';
 
 export function NewBranchFormCard({
@@ -58,7 +60,14 @@ export function NewBranchFormCard({
           disabled={isDisabled || !value.trim()}
           className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {submitting ? 'Creating…' : 'Create'}
+          {submitting ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+              <span>Creating…</span>
+            </span>
+          ) : (
+            'Create'
+          )}
         </button>
       </div>
       {providerSelector ? <div>{providerSelector}</div> : null}

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import OpenAI from 'openai';
 import {
   GoogleGenerativeAI,
@@ -1016,6 +1018,11 @@ async function* streamFromAnthropic(
           continue;
         }
         if (delta?.type === 'text_delta' && typeof delta?.text === 'string') {
+          const cached = Number.isFinite(index) ? contentBlocks.get(index) : null;
+          if (cached?.type === 'thinking') {
+            yield { type: 'thinking', content: delta.text, append: true } satisfies LLMStreamChunk;
+            continue;
+          }
           yield { type: 'text', content: delta.text } satisfies LLMStreamChunk;
         }
       }

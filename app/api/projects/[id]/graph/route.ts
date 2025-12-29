@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { handleRouteError, notFound } from '@/src/server/http';
 import { INITIAL_BRANCH } from '@git/constants';
 import type { NodeRecord } from '@git/types';

@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 import { NextResponse } from 'next/server';
 

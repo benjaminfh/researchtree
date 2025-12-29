@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 function slugify(input: string): string {
   return input
     .trim()
@@ -9,6 +11,7 @@ function slugify(input: string): string {
 const DEFAULT_APP_NAME = 'threds';
 
 export const APP_NAME = (process.env.NEXT_PUBLIC_APP_NAME ?? DEFAULT_APP_NAME).trim() || DEFAULT_APP_NAME;
+export const TRUNK_LABEL = (process.env.NEXT_PUBLIC_RT_TRUNK_LABEL ?? 'main').trim() || 'main';
 
 // Used for things like localStorage key prefixes. Defaults to APP_NAME, but can be set explicitly.
 export const APP_ID = (process.env.NEXT_PUBLIC_APP_ID ?? APP_NAME).trim() || APP_NAME;

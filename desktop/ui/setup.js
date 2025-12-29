@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 const form = document.getElementById('config-form');
 const input = document.getElementById('pg-url');
 const errorEl = document.getElementById('error');

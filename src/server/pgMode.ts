@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 function isDesktopRuntime(): boolean {
   if (process.env.RT_DESKTOP !== '1') return false;
   const origin = process.env.RT_APP_ORIGIN ?? '';

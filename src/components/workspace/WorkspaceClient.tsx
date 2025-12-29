@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -10,7 +12,7 @@ import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import { storageKey } from '@/src/config/app';
+import { storageKey, TRUNK_LABEL } from '@/src/config/app';
 import {
   deriveTextFromBlocks,
   deriveThinkingFromBlocks,
@@ -92,6 +94,7 @@ const NodeBubble: FC<{
   muted?: boolean;
   subtitle?: string;
   isStarred?: boolean;
+  isStarPending?: boolean;
   onToggleStar?: () => void;
   onEdit?: (node: MessageNode) => void;
   isCanvasDiffPinned?: boolean;
@@ -102,6 +105,7 @@ const NodeBubble: FC<{
   muted = false,
   subtitle,
   isStarred = false,
+  isStarPending = false,
   onToggleStar,
   onEdit,
   isCanvasDiffPinned = false,
@@ -289,7 +293,14 @@ const NodeBubble: FC<{
                       className="rounded-full bg-primary px-3 py-1 font-semibold text-white transition hover:bg-primary/90 disabled:opacity-60"
                       aria-label="Confirm add canvas diff to context"
                     >
-                      {isPinningCanvasDiff ? 'Adding…' : 'Confirm'}
+                      {isPinningCanvasDiff ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                          <span>Adding…</span>
+                        </span>
+                      ) : (
+                        'Confirm'
+                      )}
                     </button>
                     <button
                       type="button"
@@ -333,10 +344,15 @@ const NodeBubble: FC<{
             <button
               type="button"
               onClick={onToggleStar}
-              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none"
+              disabled={isStarPending}
+              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none disabled:opacity-60"
               aria-label={isStarred ? 'Unstar node' : 'Star node'}
             >
-              {isStarred ? '★' : '☆'}
+              {isStarPending ? (
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+              ) : (
+                (isStarred ? '★' : '☆')
+              )}
             </button>
           ) : null}
           {canCopy ? (
@@ -390,6 +406,7 @@ const ChatNodeRow: FC<{
   subtitle?: string;
   messageInsetClassName?: string;
   isStarred?: boolean;
+  isStarPending?: boolean;
   onToggleStar?: () => void;
   onEdit?: (node: MessageNode) => void;
   isCanvasDiffPinned?: boolean;
@@ -404,6 +421,7 @@ const ChatNodeRow: FC<{
   subtitle,
   messageInsetClassName,
   isStarred,
+  isStarPending,
   onToggleStar,
   onEdit,
   isCanvasDiffPinned,
@@ -432,6 +450,7 @@ const ChatNodeRow: FC<{
             muted={muted}
             subtitle={subtitle}
             isStarred={isStarred}
+            isStarPending={isStarPending}
             onToggleStar={onToggleStar}
             onEdit={onEdit}
             isCanvasDiffPinned={isCanvasDiffPinned}
@@ -562,8 +581,10 @@ export function WorkspaceClient({
   const starredKey = useMemo(() => [...new Set(starredNodeIds)].sort().join('|'), [starredNodeIds]);
   const stableStarredNodeIds = useMemo(() => (starredKey ? starredKey.split('|') : []), [starredKey]);
   const starredSet = useMemo(() => new Set(stableStarredNodeIds), [stableStarredNodeIds]);
+  const [pendingStarIds, setPendingStarIds] = useState<Set<string>>(new Set());
 
   const toggleStar = async (nodeId: string) => {
+    setPendingStarIds((prev) => new Set(prev).add(nodeId));
     const prev = stableStarredNodeIds;
     const next = starredSet.has(nodeId) ? prev.filter((id) => id !== nodeId) : [...prev, nodeId];
     const optimistic = [...new Set(next)].sort();
@@ -584,6 +605,12 @@ export function WorkspaceClient({
       }
     } catch {
       await mutateStars({ starredNodeIds: prev }, false);
+    } finally {
+      setPendingStarIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(nodeId);
+        return nextSet;
+      });
     }
   };
 
@@ -823,6 +850,7 @@ export function WorkspaceClient({
           interrupted: state.error !== null
         }
       : null;
+  const isSending = state.isStreaming || assistantPending;
 
   useEffect(() => {
     if (!state.error || !optimisticDraftRef.current) return;
@@ -1027,7 +1055,7 @@ export function WorkspaceClient({
   }, [artefact]);
 
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
-  const displayBranchName = (name: string) => (name === trunkName ? 'trunk' : name);
+  const displayBranchName = (name: string) => (name === trunkName ? TRUNK_LABEL : name);
   const sortedBranches = branches;
   const branchColorMap = useMemo(
     () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
@@ -1738,7 +1766,10 @@ export function WorkspaceClient({
                 <div className="space-y-3 overflow-hidden">
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
                     <span>Branches</span>
-                    <span className="rounded-full bg-white/70 px-2 py-1 text-xs font-medium text-slate-700">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-2 py-1 text-xs font-medium text-slate-700">
+                      {isSwitching || isCreating ? (
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                      ) : null}
                       {sortedBranches.length}
                     </span>
                   </div>
@@ -1864,7 +1895,7 @@ export function WorkspaceClient({
                       <li>⌘ + B to toggle the rail.</li>
                       <li>← Thred graph · → Canvas.</li>
                       <li>↑ show graph/canvas · ↓ hide panel.</li>
-                      <li>Branch to try edits without losing the trunk.</li>
+                      <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
                       <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                     </ul>
                   </RailPopover>
@@ -1906,7 +1937,7 @@ export function WorkspaceClient({
                       <li>⌘ + B to toggle the rail.</li>
                       <li>← Thred graph · → Canvas.</li>
                       <li>↑ show graph/canvas · ↓ hide panel.</li>
-                      <li>Branch to try edits without losing the trunk.</li>
+                      <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
                         <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                       </ul>
                     </RailPopover>
@@ -1929,7 +1960,7 @@ export function WorkspaceClient({
         renderMain={(ctx) => (
           <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
             <div
-              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-12"
+              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-3"
               style={{ paddingBottom: composerPadding }}
             >
               <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
@@ -1982,7 +2013,13 @@ export function WorkspaceClient({
                   onScroll={handleMessageListScroll}
                 >
                   {isLoading ? (
-                    <p className="text-sm text-muted">Loading history…</p>
+                    <div className="flex flex-col gap-3 animate-pulse" role="status" aria-live="polite">
+                      <span className="sr-only">Loading history…</span>
+                      <div className="ml-auto h-10 w-2/3 rounded-2xl bg-slate-100" />
+                      <div className="h-16 w-full rounded-2xl bg-slate-100" />
+                      <div className="ml-auto h-8 w-1/2 rounded-2xl bg-slate-100" />
+                      <div className="h-14 w-5/6 rounded-2xl bg-slate-100" />
+                    </div>
                   ) : error ? (
                     <p className="text-sm text-red-600">Failed to load history.</p>
                   ) : visibleNodes.length === 0 ? (
@@ -2003,6 +2040,7 @@ export function WorkspaceClient({
                                 messageInsetClassName="pr-3"
                                 subtitle={node.createdOnBranch ? `from ${node.createdOnBranch}` : undefined}
                                 isStarred={starredSet.has(node.id)}
+                                isStarPending={pendingStarIds.has(node.id)}
                                 onToggleStar={() => void toggleStar(node.id)}
                                 onEdit={
                                   node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
@@ -2030,6 +2068,7 @@ export function WorkspaceClient({
                           branchColors={branchColorMap}
                           messageInsetClassName="pr-3"
                           isStarred={starredSet.has(node.id)}
+                          isStarPending={pendingStarIds.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
                             node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
@@ -2276,7 +2315,9 @@ export function WorkspaceClient({
                     {insightTab === 'graph' ? (
                       <div className="flex-1 min-h-0">
                         {graphHistoryLoading ? (
-                          <div className="flex h-full items-center justify-center text-sm text-muted">Loading graph…</div>
+                          <div className="flex h-full items-center justify-center">
+                            <div className="h-full w-full animate-pulse rounded-2xl bg-slate-100" />
+                          </div>
                         ) : graphHistoryError ? (
                           <div className="flex h-full items-center justify-center text-sm text-red-600">{graphHistoryError}</div>
                         ) : (
@@ -2490,7 +2531,14 @@ export function WorkspaceClient({
                                                   })();
                                                 }}
                                               >
-                                                {isGraphDetailBusy ? 'Adding…' : 'Confirm'}
+                                                {isGraphDetailBusy ? (
+                                                  <span className="inline-flex items-center gap-2">
+                                                    <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                                                    <span>Adding…</span>
+                                                  </span>
+                                                ) : (
+                                                  'Confirm'
+                                                )}
                                               </button>
                                               <button
                                                 type="button"
@@ -2542,31 +2590,43 @@ export function WorkspaceClient({
                     ) : (
 		                      <div className="flex flex-1 min-h-0 flex-col gap-3">
 		                        <InsightFrame className="relative flex-1 min-h-0" innerClassName="relative">
-                              <div className="relative h-full">
-                                <textarea
-                                  value={artefactDraft}
-                                  onChange={(event) => setArtefactDraft(event.target.value)}
-                                  onFocus={() => setIsCanvasFocused(true)}
-                                  onBlur={() => setIsCanvasFocused(false)}
-                                  className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
-                                />
-                                {!isCanvasFocused && artefactDraft.length === 0 ? (
-                                  <div className="pointer-events-none absolute left-4 top-4 text-sm text-slate-400">
-                                    Add notes to the canvas…
-                                  </div>
-                                ) : null}
-                                {isSavingArtefact || artefactError ? (
-                                  <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
-                                    {isSavingArtefact ? (
-                                      <>
-                                        <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
-                                        <span>Saving…</span>
-                                      </>
-                                    ) : null}
-                                    {!isSavingArtefact && artefactError ? <span className="text-red-600">{artefactError}</span> : null}
-                                  </div>
-                                ) : null}
-                              </div>
+                              {isLoading ? (
+                                <div className="flex h-full flex-col gap-3 p-4 animate-pulse">
+                                  <div className="h-4 w-3/4 rounded-full bg-slate-100" />
+                                  <div className="h-4 w-5/6 rounded-full bg-slate-100" />
+                                  <div className="h-4 w-2/3 rounded-full bg-slate-100" />
+                                  <div className="h-4 w-4/5 rounded-full bg-slate-100" />
+                                  <div className="mt-auto h-4 w-1/3 rounded-full bg-slate-100" />
+                                </div>
+                              ) : (
+                                <div className="relative h-full">
+                                  <textarea
+                                    value={artefactDraft}
+                                    onChange={(event) => setArtefactDraft(event.target.value)}
+                                    onFocus={() => setIsCanvasFocused(true)}
+                                    onBlur={() => setIsCanvasFocused(false)}
+                                    className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
+                                  />
+                                  {!isCanvasFocused && artefactDraft.length === 0 ? (
+                                    <div className="pointer-events-none absolute left-4 top-4 text-sm text-slate-400">
+                                      Add notes to the canvas…
+                                    </div>
+                                  ) : null}
+                                  {isSavingArtefact || artefactError ? (
+                                    <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                                      {isSavingArtefact ? (
+                                        <>
+                                          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
+                                          <span>Saving…</span>
+                                        </>
+                                      ) : null}
+                                      {!isSavingArtefact && artefactError ? (
+                                        <span className="text-red-600">{artefactError}</span>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
 		                        </InsightFrame>
 		                      </div>
 	                    )}
@@ -2710,13 +2770,17 @@ export function WorkspaceClient({
                       <XMarkIcon className="h-5 w-5" />
                     </button>
                   ) : null}
-	                  <button
-	                    type="submit"
-	                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+                  <button
+                    type="submit"
+                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
                     className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-	                    aria-label="Send message"
-	                  >
-                    <ArrowUpIcon className="h-5 w-5" />
+                    aria-label="Send message"
+                  >
+                    {isSending ? (
+                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                    ) : (
+                      <ArrowUpIcon className="h-5 w-5" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -2841,7 +2905,12 @@ export function WorkspaceClient({
               </div>
               <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-divider/80 bg-slate-50 font-mono text-xs text-slate-800">
                 {isMergePreviewLoading ? (
-                  <p className="px-3 py-2 text-sm text-muted">Loading Canvas diff…</p>
+                  <div className="space-y-2 px-3 py-3 animate-pulse">
+                    <div className="h-3 w-5/6 rounded-full bg-slate-200" />
+                    <div className="h-3 w-2/3 rounded-full bg-slate-200" />
+                    <div className="h-3 w-4/5 rounded-full bg-slate-200" />
+                    <div className="h-3 w-1/2 rounded-full bg-slate-200" />
+                  </div>
                 ) : mergePreviewError ? (
                   <p className="px-3 py-2 text-sm text-red-600">{mergePreviewError}</p>
                 ) : mergePreview ? (
@@ -2934,7 +3003,14 @@ export function WorkspaceClient({
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={isMerging || isMergePreviewLoading || !selectedMergePayload}
               >
-                {isMerging ? 'Merging…' : `Merge into ${displayBranchName(mergeTargetBranch)}`}
+                {isMerging ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                    <span>Merging…</span>
+                  </span>
+                ) : (
+                  `Merge into ${displayBranchName(mergeTargetBranch)}`
+                )}
               </button>
             </div>
           </div>
@@ -3084,7 +3160,14 @@ export function WorkspaceClient({
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={isEditing}
               >
-                {isEditing ? 'Creating branch…' : 'Save & switch'}
+                {isEditing ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                    <span>Creating branch…</span>
+                  </span>
+                ) : (
+                  'Save & switch'
+                )}
               </button>
             </div>
           </div>

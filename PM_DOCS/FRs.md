@@ -2,7 +2,7 @@
 [ ] [waitlist via code] Right now a user has to apply to be whitelisted. We should also have a "apply with access code" route. I can supply some people with N-time access code. N can probably be 5 to limit chaos but to allow people to share if they want. 
 
 # OVERALL
-[ ] We need a spinner or "loading text" visual indicator rectangles to indicate to the user that requests are still running after an action (navigation, form submit etc). It is context dependent whether it should be a spinner or other visual.
+[x] We need a spinner or "loading text" visual indicator rectangles to indicate to the user that requests are still running after an action (navigation, form submit etc). It is context dependent whether it should be a spinner or other visual.
 
 # HOME PAGE
 ## ONBOARDING
@@ -45,11 +45,13 @@
 ## Canvas
 [...] LLM Agent has no way to edit the canvas currently - we need to give it tools [Open - system prompt includes canvas content, but no tool/function pathway for the model to write canvas updates]
 [ ] [streaming tool use] LLM canvas tools currently run via non-streamed tool loop; add streaming tool-use support once tool calls are stable across providers [Planned - use streamed tool_call/tool_use events to preserve chat UX]
+    - Plan: `PM_DOCS/STREAMING_TOOL_LOOPS_PLAN.md`
 
 ## Graph
 [x] branch labels on graph view
 [x] graph should autoscroll to posistion "current" at 1/4 height (from bottom)
-[x] rather than "current" UI pill, simply place "current" node inside a pill 
+[x] rather than "current" UI pill, simply place "current" node inside a pill
+[ ] double-click or cmd-click on a node navigates to branch/message 
 
 # USER PROFILE
 [x] [User profile] A user profile page. MVP shows registered email, plus 3 fields for LLM provider keys. We must store these keys securely using supabase vault!! [Partial - profile page + token storage via Supabase Vault exists; no change-password flow found]
@@ -64,5 +66,4 @@
 # DESKTOP
 [ ] Store LLM provider keys in macOS Keychain instead of local PG vault (use Electron IPC + native keychain bridge).
 [x] Hide password change profile section when we are in desktop env
-
 
