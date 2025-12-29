@@ -9,6 +9,7 @@ import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 import { getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
+import { TRUNK_LABEL } from '@/src/config/app';
 
 type CapturedWorkspaceGraphProps = {
   mode?: 'nodes' | 'collapsed' | 'starred';
@@ -529,7 +530,7 @@ describe('WorkspaceClient', () => {
         expect(badge).toHaveTextContent('Gemini');
       });
 
-      await user.click(screen.getByRole('button', { name: 'trunk' }));
+      await user.click(screen.getByRole('button', { name: TRUNK_LABEL }));
 
       await waitFor(() => {
         const badge = screen.getByText('Provider').parentElement;
@@ -620,7 +621,7 @@ describe('WorkspaceClient', () => {
       return 0;
     }) as unknown as typeof globalThis.requestAnimationFrame;
 
-    await user.click(screen.getByRole('button', { name: 'trunk' }));
+    await user.click(screen.getByRole('button', { name: TRUNK_LABEL }));
 
     await waitFor(() => {
       expect(listEl.scrollTop).toBe(2000);
