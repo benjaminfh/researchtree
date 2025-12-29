@@ -5,9 +5,10 @@
 # FRONT END
 ## HOME
 ### RAIL
-[ ] (home) rail does not always pick up new workspaces on load [Open - home rail is server-rendered from `app/page.tsx`; likely Next router cache on back nav without a refresh]
+[x] (home) rail does not always pick up new workspaces on load [Open - home rail is server-rendered from `app/page.tsx`; likely Next router cache on back nav without a refresh]
 
 [x] models are now pinned immutably to branches - this means that a user now has no opportunity to choose provider for the main/trunk branch when creating a new project. 
+[ ] on page load (home, workspace) rail renders as open and then closes, causing a flicker.
 
 ## WORKSPACE / PROJECT
 ### CHAT
@@ -19,9 +20,10 @@
 [ ] (todo) non-stream tool loop responses can drop thinking blocks in UI (Anthropic non-stream `content` arrays are not parsed unless we handle them explicitly). Added parser for Anthropic; check OpenAI/OpenAI Responses parity if thinking content becomes applicable.
 [ ] after sending a new message, the 'scroll to bottom' initially updates to include the optimistic user message + pending assistant stream, but then blinks and scrolls back up.
 [ ] after sending a mesage, the assistant message's coloured branch indicator stripe initially adopts the master branch colour (black)
-[ ] (optimization) history fetches for shared-count currently query all branches; if "upstream" only means trunk path, we can streamline to trunk-only (or server-side merge-base) and reduce API load. [Exploration]
+[o] (optimization) history fetches for shared-count currently query all branches; if "upstream" only means trunk path, we can streamline to trunk-only (or server-side merge-base) and reduce API load. [Exploration]
 [x] if a user has entered provider API token but hits a quota issue with the provider, we surface a generic errors. We need to detect this response for each provider and surface a clear user facing error.
 [x] double check that we surface a clear user facing error if user tries a provider and has not entered an api token for that provider.
+[x] excess horizontal padding around the chat/graph container <div class="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
 
 ### Branches
 [x] LLM config should be pinned to branch [Fixed - provider/thinking persisted per `projectId + branchName` storage keys]
