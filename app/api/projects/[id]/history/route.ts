@@ -13,6 +13,13 @@ function isHiddenMessage(node: NodeRecord): boolean {
   return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
 }
 
+// History payloads omit rawResponse to keep UI fetches lightweight.
+function stripRawResponse(node: NodeRecord): NodeRecord {
+  if (node.type !== 'message') return node;
+  const { rawResponse: _rawResponse, ...rest } = node as NodeRecord & { rawResponse?: unknown };
+  return rest as NodeRecord;
+}
+
 export async function GET(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -32,7 +39,8 @@ export async function GET(request: Request, { params }: RouteContext) {
       const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName, limit: effectiveLimit });
       const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
       const nonStateNodes = pgNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
-      return Response.json({ nodes: nonStateNodes });
+      const sanitizedNodes = nonStateNodes.map(stripRawResponse);
+      return Response.json({ nodes: sanitizedNodes });
     }
 
     const { getProject } = await import('@git/projects');
@@ -56,7 +64,8 @@ export async function GET(request: Request, { params }: RouteContext) {
       }
     }
 
-    return Response.json({ nodes: result });
+    const sanitizedNodes = result.map(stripRawResponse);
+    return Response.json({ nodes: sanitizedNodes });
   } catch (error) {
     return handleRouteError(error);
   }

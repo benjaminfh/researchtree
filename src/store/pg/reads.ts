@@ -13,12 +13,14 @@ export async function rtGetHistoryShadowV1(input: {
   projectId: string;
   refName: string;
   limit?: number;
+  includeRawResponse?: boolean;
 }): Promise<{ ordinal: number; nodeJson: unknown }[]> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_get_history_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
-    p_limit: input.limit ?? 200
+    p_limit: input.limit ?? 200,
+    p_include_raw_response: input.includeRawResponse ?? false
   });
   if (error) {
     throw new Error(error.message);
