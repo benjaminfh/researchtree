@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import path from 'node:path';
 import net from 'node:net';
 import fs from 'node:fs/promises';
@@ -174,9 +174,10 @@ async function ensureConfigWithDefault(userDataPath) {
 }
 
 async function createMainWindow(port) {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 900,
+    width,
+    height,
     show: false,
     webPreferences: {
       contextIsolation: true
