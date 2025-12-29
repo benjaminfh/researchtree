@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtCreateRefFromNodeParentShadowV1(input: {
   projectId: string;
@@ -9,8 +9,8 @@ export async function rtCreateRefFromNodeParentShadowV1(input: {
   model?: string | null;
   previousResponseId?: string | null;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_create_ref_from_node_parent_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_create_ref_from_node_parent_v1', {
     p_project_id: input.projectId,
     p_source_ref_name: input.sourceRefName,
     p_new_ref_name: input.newRefName,
@@ -43,8 +43,8 @@ export async function rtCreateRefFromRefShadowV1(input: {
   model?: string | null;
   previousResponseId?: string | null;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_create_ref_from_ref_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_create_ref_from_ref_v1', {
     p_project_id: input.projectId,
     p_from_ref_name: input.fromRefName,
     p_new_ref_name: input.newRefName,

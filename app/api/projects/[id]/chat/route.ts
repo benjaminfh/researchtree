@@ -19,6 +19,7 @@ import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmC
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 import { buildUnifiedDiff } from '@/src/server/canvasDiff';
+import { toJsonValue } from '@/src/server/json';
 
 interface RouteContext {
   params: { id: string };
@@ -264,6 +265,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   fallbackBlocks: streamBlocks
                 });
                 const contentText = deriveTextFromBlocks(contentBlocks) || '';
+                const rawResponseForStorage = toJsonValue(rawResponse);
                 if (store.mode === 'pg') {
                   const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
                   const assistantNode = {
@@ -278,7 +280,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                     modelUsed: modelName,
                     responseId: responseId ?? undefined,
                     interrupted: abortController.signal.aborted || streamError !== null,
-                    rawResponse
+                    rawResponse: rawResponseForStorage
                   };
                   await rtAppendNodeToRefShadowV1({
                     projectId: params.id,
@@ -289,7 +291,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                     nodeId: assistantNode.id,
                     commitMessage: 'assistant_message',
                     attachDraft: assistantCanvasDiff.hasChanges,
-                    rawResponse
+                    rawResponse: rawResponseForStorage
                   });
                   if (assistantCanvasDiff.message) {
                     const hiddenNode = {
@@ -538,6 +540,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 fallbackBlocks: streamBlocks
               });
               const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
+              const rawResponseForStorage = toJsonValue(rawResponse);
               if (store.mode === 'pg') {
                 const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
                 const assistantNode = {
@@ -552,7 +555,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   modelUsed: modelName,
                   responseId: responseId ?? undefined,
                   interrupted: abortController.signal.aborted || streamError !== null,
-                  rawResponse
+                  rawResponse: rawResponseForStorage
                 };
                 await rtAppendNodeToRefShadowV1({
                   projectId: params.id,
@@ -563,7 +566,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   nodeId: assistantNode.id,
                   commitMessage: 'assistant_message',
                   attachDraft: assistantCanvasDiff.hasChanges,
-                  rawResponse
+                  rawResponse: rawResponseForStorage
                 });
                 if (assistantCanvasDiff.message) {
                   const hiddenNode = {
@@ -600,7 +603,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   modelUsed: modelName,
                   responseId: responseId ?? undefined,
                   interrupted: abortController.signal.aborted || streamError !== null,
-                  rawResponse
+                  rawResponse: rawResponseForStorage
                 });
               }
               if (provider === 'openai_responses' && responseId) {

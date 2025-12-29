@@ -2,6 +2,8 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 afterEach(() => cleanup());
 
 // Tests should not hit Supabase/PostgREST; default to git mode.
@@ -59,3 +61,9 @@ function ensureStorage(name: 'localStorage' | 'sessionStorage') {
 
 ensureStorage('localStorage');
 ensureStorage('sessionStorage');
+
+const originalSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = ((handler, timeout, ...args) => {
+  const safeTimeout = typeof timeout === 'number' && Number.isFinite(timeout) ? timeout : 0;
+  return originalSetTimeout(handler, safeTimeout, ...args);
+}) as typeof setTimeout;

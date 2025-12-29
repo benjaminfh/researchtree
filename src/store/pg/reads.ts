@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export interface PgBranchSummary {
   name: string;
@@ -15,8 +15,8 @@ export async function rtGetHistoryShadowV1(input: {
   limit?: number;
   includeRawResponse?: boolean;
 }): Promise<{ ordinal: number; nodeJson: unknown }[]> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_history_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_history_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
     p_limit: input.limit ?? 200,
@@ -36,8 +36,8 @@ export async function rtGetCanvasShadowV1(input: {
   projectId: string;
   refName: string;
 }): Promise<{ content: string; contentHash: string; updatedAt: string | null; source: string }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_canvas_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_canvas_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName
   });
@@ -60,8 +60,8 @@ export async function rtGetCanvasHashesShadowV1(input: {
   projectId: string;
   refName: string;
 }): Promise<{ draftHash: string | null; artefactHash: string | null; draftUpdatedAt: string | null; artefactUpdatedAt: string | null }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_canvas_hashes_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_canvas_hashes_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName
   });
@@ -96,8 +96,8 @@ export async function rtGetCanvasPairShadowV1(input: {
   draftUpdatedAt: string | null;
   artefactUpdatedAt: string | null;
 }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_canvas_pair_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_canvas_pair_v1', {
     p_project_id: input.projectId,
     p_ref_name: input.refName
   });
@@ -126,8 +126,8 @@ export async function rtGetCanvasPairShadowV1(input: {
 }
 
 export async function rtListRefsShadowV1(input: { projectId: string }): Promise<PgBranchSummary[]> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_list_refs_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_list_refs_v1', {
     p_project_id: input.projectId
   });
   if (error) {
@@ -144,9 +144,28 @@ export async function rtListRefsShadowV1(input: { projectId: string }): Promise<
   }));
 }
 
+export async function rtGetProjectMainRefUpdatesShadowV1(input: {
+  projectIds: string[];
+}): Promise<Array<{ projectId: string; updatedAt: string }>> {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_project_main_ref_updates_v1', {
+    p_project_ids: input.projectIds
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const rows = Array.isArray(data) ? data : [];
+  return rows
+    .filter((row) => row?.project_id && row?.updated_at)
+    .map((row) => ({
+      projectId: String(row.project_id),
+      updatedAt: new Date(row.updated_at).toISOString()
+    }));
+}
+
 export async function rtGetStarredNodeIdsShadowV1(input: { projectId: string }): Promise<string[]> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_get_starred_node_ids_v1', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_starred_node_ids_v1', {
     p_project_id: input.projectId
   });
   if (error) {

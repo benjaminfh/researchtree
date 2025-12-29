@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/src/server/supabase/server';
+import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export async function rtUpdateArtefactShadow(input: {
   projectId: string;
@@ -14,8 +14,8 @@ export async function rtUpdateArtefactShadow(input: {
   ordinal: number;
   contentHash: string;
 }> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('rt_update_artefact_on_ref', {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_update_artefact_on_ref', {
     p_project_id: input.projectId,
     p_ref_name: input.refName,
     p_content: input.content ?? '',
@@ -43,4 +43,3 @@ export async function rtUpdateArtefactShadow(input: {
     contentHash: String(row.content_hash)
   };
 }
-
