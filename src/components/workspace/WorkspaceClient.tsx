@@ -2010,7 +2010,8 @@ export function WorkspaceClient({
                   onScroll={handleMessageListScroll}
                 >
                   {isLoading ? (
-                    <div className="flex flex-col gap-3 animate-pulse">
+                    <div className="flex flex-col gap-3 animate-pulse" role="status" aria-live="polite">
+                      <span className="sr-only">Loading history…</span>
                       <div className="ml-auto h-10 w-2/3 rounded-2xl bg-slate-100" />
                       <div className="h-16 w-full rounded-2xl bg-slate-100" />
                       <div className="ml-auto h-8 w-1/2 rounded-2xl bg-slate-100" />
