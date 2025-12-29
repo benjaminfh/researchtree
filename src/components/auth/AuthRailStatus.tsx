@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { UserIcon } from '@/src/components/workspace/HeroIcons';
 import { RailPopover } from '@/src/components/layout/RailPopover';
 
@@ -17,6 +18,41 @@ export function AuthRailStatus({ railCollapsed, onRequestExpandRail }: AuthRailS
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+
+  const SignOutButton = () => {
+    const { pending } = useFormStatus();
+    const label = confirmSignOut ? 'Confirm' : 'Sign out';
+    return (
+      <button
+        type="submit"
+        disabled={pending}
+        onClick={(event) => {
+          if (pending) return;
+          if (!confirmSignOut) {
+            event.preventDefault();
+            setConfirmSignOut(true);
+          }
+        }}
+        className={[
+          'inline-flex items-center justify-center gap-2 rounded-full border px-3 py-1 font-semibold transition disabled:opacity-60',
+          pending
+            ? 'border-slate-200 bg-white text-slate-700'
+            : confirmSignOut
+              ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+        ].join(' ')}
+      >
+        {pending ? (
+          <>
+            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+            <span>Signing out…</span>
+          </>
+        ) : (
+          label
+        )}
+      </button>
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -112,23 +148,7 @@ export function AuthRailStatus({ railCollapsed, onRequestExpandRail }: AuthRailS
 
           <div className="grid grid-flow-col auto-cols-max grid-rows-2 content-start gap-2">
             <form action="/auth/signout" method="post" className="contents">
-              <button
-                type="submit"
-                onClick={(event) => {
-                  if (!confirmSignOut) {
-                    event.preventDefault();
-                    setConfirmSignOut(true);
-                  }
-                }}
-                className={[
-                  'rounded-full border px-3 py-1 font-semibold transition',
-                  confirmSignOut
-                    ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-                ].join(' ')}
-              >
-                {confirmSignOut ? 'Confirm' : 'Sign out'}
-              </button>
+              <SignOutButton />
             </form>
             <Link
               href="/profile"
