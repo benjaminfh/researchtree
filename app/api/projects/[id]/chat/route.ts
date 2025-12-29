@@ -130,12 +130,12 @@ export async function POST(request: Request, { params }: RouteContext) {
       registerStream(params.id, abortController, targetRef);
 
       let released = false;
-      const releaseAll = () => {
-        if (released) return;
-        released = true;
-        releaseStream(params.id, targetRef);
-        releaseLock();
-      };
+        const releaseAll = () => {
+          if (released) return;
+          released = true;
+          releaseStream(params.id, targetRef);
+          releaseLock();
+        };
 
       if (canvasToolsEnabled) {
         const stream = new ReadableStream<Uint8Array>({
@@ -146,6 +146,46 @@ export async function POST(request: Request, { params }: RouteContext) {
             const streamBlocks: ThinkingContentBlock[] = [];
             let rawResponse: unknown = null;
             let responseId: string | null = null;
+            let assistantBlocks: ThinkingContentBlock[] = [];
+            let assistantText = '';
+
+            const enqueueContentBlocks = (blocks: ThinkingContentBlock[]) => {
+              for (const block of blocks) {
+                if (!block || typeof block !== 'object') continue;
+                if (block.type === 'thinking') {
+                  const thinking = typeof block.thinking === 'string' ? block.thinking : '';
+                  if (thinking) {
+                    controllerStream.enqueue(
+                      encodeChunk(`${JSON.stringify({ type: 'thinking', content: thinking, append: false })}\n`)
+                    );
+                  }
+                  const signature = typeof block.signature === 'string' ? block.signature : '';
+                  if (signature) {
+                    controllerStream.enqueue(
+                      encodeChunk(`${JSON.stringify({ type: 'thinking_signature', content: signature, append: false })}\n`)
+                    );
+                  }
+                  continue;
+                }
+                if (block.type === 'thinking_signature') {
+                  const signature = typeof block.signature === 'string' ? block.signature : '';
+                  if (signature) {
+                    controllerStream.enqueue(
+                      encodeChunk(`${JSON.stringify({ type: 'thinking_signature', content: signature, append: false })}\n`)
+                    );
+                  }
+                  continue;
+                }
+                if (block.type === 'text') {
+                  const text = typeof block.text === 'string' ? block.text : '';
+                  if (text) {
+                    controllerStream.enqueue(
+                      encodeChunk(`${JSON.stringify({ type: 'text', content: text, append: false })}\n`)
+                    );
+                  }
+                }
+              }
+            };
 
             const ensureUserPersisted = async () => {
               if (persistedUser) return;
@@ -245,12 +285,21 @@ export async function POST(request: Request, { params }: RouteContext) {
               rawResponse = result.rawResponse ?? null;
               responseId = result.responseId ?? null;
 
-              const content = result.text ?? '';
-              if (!content.trim()) {
+              const fallbackText = result.text ?? '';
+              const fallbackBlocks = fallbackText ? buildTextBlock(fallbackText) : [];
+              assistantBlocks = buildContentBlocksForProvider({
+                provider,
+                rawResponse,
+                fallbackText,
+                fallbackBlocks
+              });
+              assistantText = deriveTextFromBlocks(assistantBlocks) || fallbackText;
+              if (!assistantText.trim()) {
                 throw new Error('LLM returned empty response');
               }
-              controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'text', content })}\n`));
-              streamBlocks.push({ type: 'text', text: content });
+              const responseBlocks = assistantBlocks.length > 0 ? assistantBlocks : fallbackBlocks;
+              enqueueContentBlocks(responseBlocks);
+              streamBlocks.push(...responseBlocks);
             } catch (error) {
               streamError = error;
             }
@@ -258,13 +307,16 @@ export async function POST(request: Request, { params }: RouteContext) {
             try {
               if (persistedUser && streamBlocks.length > 0) {
                 const assistantCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
-                const contentBlocks = buildContentBlocksForProvider({
-                  provider,
-                  rawResponse,
-                  fallbackText: deriveTextFromBlocks(streamBlocks),
-                  fallbackBlocks: streamBlocks
-                });
-                const contentText = deriveTextFromBlocks(contentBlocks) || '';
+                const contentBlocks =
+                  assistantBlocks.length > 0
+                    ? assistantBlocks
+                    : buildContentBlocksForProvider({
+                        provider,
+                        rawResponse,
+                        fallbackText: deriveTextFromBlocks(streamBlocks),
+                        fallbackBlocks: streamBlocks
+                      });
+                const contentText = deriveTextFromBlocks(contentBlocks) || assistantText || '';
                 const rawResponseForStorage = toJsonValue(rawResponse);
                 if (store.mode === 'pg') {
                   const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');

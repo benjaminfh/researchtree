@@ -16,6 +16,8 @@
 [x] chat window inherited messages appears to be incomplete in general [Fixed (pg) - `rt_rebuild_commit_order_v1` migration added for corrupted histories + reads join through `commit_order`]
 [x] when the user sends a message, the UI waits until the assistant message is received in full before rendering both. Correct behaviour: we have user message on send, so render immediately (expected behaviour for a chat app) and then once stream first arrices, render assistat box and stream the assistant message in. [Fixed - optimistic user node + streaming preview in `WorkspaceClient`]
 [x] assistant messages are not taking up full (or most of / 85% w) the chat container width - they should  [Fixed - assistant bubbles use `w-full max-w-[85%]`]
+[x] non-stream tool loop responses can drop thinking blocks in UI for Anthropic; parse non-stream `content` arrays and surface thinking blocks. [Fixed]
+[ ] (future-proof) if OpenAI/OpenAI Responses ever emit thinking-like content blocks, ensure non-stream tool loop parsing extracts them consistently.
 [ ] after sending a new message, the 'scroll to bottom' initially updates to include the optimistic user message + pending assistant stream, but then blinks and scrolls back up.
 [ ] after sending a mesage, the assistant message's coloured branch indicator stripe initially adopts the master branch colour (black)
 [ ] (optimization) history fetches for shared-count currently query all branches; if "upstream" only means trunk path, we can streamline to trunk-only (or server-side merge-base) and reduce API load. [Exploration]

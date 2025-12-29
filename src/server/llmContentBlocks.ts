@@ -165,7 +165,11 @@ function buildAnthropicBlocks(rawEvents: AnthropicEvent[]): ThinkingContentBlock
       if (delta.type === 'thinking_delta' && typeof delta.thinking === 'string') {
         state.thinking += delta.thinking;
       } else if (delta.type === 'text_delta' && typeof delta.text === 'string') {
-        state.text += delta.text;
+        if (state.type === 'thinking') {
+          state.thinking += delta.text;
+        } else {
+          state.text += delta.text;
+        }
       } else if (delta.type === 'signature_delta' && typeof delta.signature === 'string') {
         state.signature = `${state.signature ?? ''}${delta.signature}`;
       } else if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
@@ -207,6 +211,48 @@ function buildAnthropicBlocks(rawEvents: AnthropicEvent[]): ThinkingContentBlock
   return blocks;
 }
 
+function isAnthropicEventArray(rawResponse: unknown): rawResponse is AnthropicEvent[] {
+  return (
+    Array.isArray(rawResponse) &&
+    rawResponse.length > 0 &&
+    rawResponse.every((entry) => entry && typeof entry === 'object' && 'event' in entry && 'data' in entry)
+  );
+}
+
+function buildAnthropicBlocksFromPayload(rawResponse: unknown): ThinkingContentBlock[] {
+  const payloads = Array.isArray(rawResponse) ? rawResponse : [rawResponse];
+  let lastBlocks: ThinkingContentBlock[] = [];
+  for (const payload of payloads) {
+    const content = Array.isArray((payload as any)?.content) ? (payload as any).content : [];
+    if (!Array.isArray(content) || content.length === 0) {
+      continue;
+    }
+    const blocks: ThinkingContentBlock[] = [];
+    for (const block of content) {
+      if (block?.type === 'thinking') {
+        const thinking = typeof block.thinking === 'string' ? block.thinking : '';
+        const next: ThinkingContentBlock = { type: 'thinking', thinking };
+        if (typeof block.signature === 'string') {
+          (next as { signature?: string }).signature = block.signature;
+        }
+        blocks.push(next);
+        continue;
+      }
+      if (block?.type === 'text' && typeof block.text === 'string') {
+        blocks.push({ type: 'text', text: block.text });
+        continue;
+      }
+      if (block && typeof block.type === 'string') {
+        blocks.push({ type: block.type, ...(block as Record<string, unknown>) });
+      }
+    }
+    if (blocks.length > 0) {
+      lastBlocks = blocks;
+    }
+  }
+  return lastBlocks;
+}
+
 export function buildRawContentBlocksForProvider(options: {
   provider: LLMProvider;
   rawResponse: unknown;
@@ -219,7 +265,7 @@ export function buildRawContentBlocksForProvider(options: {
   if (provider === 'gemini') {
     blocks = buildGeminiBlocks(rawResponse);
   } else if (provider === 'anthropic') {
-    blocks = buildAnthropicBlocks(Array.isArray(rawResponse) ? (rawResponse as AnthropicEvent[]) : []);
+    blocks = isAnthropicEventArray(rawResponse) ? buildAnthropicBlocks(rawResponse) : buildAnthropicBlocksFromPayload(rawResponse);
   } else if (provider === 'openai' || provider === 'openai_responses') {
     blocks = buildOpenAIBlocksFromRaw(rawResponse);
   } else {

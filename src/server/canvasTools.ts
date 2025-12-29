@@ -91,10 +91,19 @@ export function getCanvasToolsForGemini() {
       functionDeclarations: Object.values(canvasToolsSchema).map((tool) => ({
         name: tool.name,
         description: tool.description,
-        parameters: tool.parameters
+        parameters: stripAdditionalProperties(tool.parameters)
       }))
     }
   ];
+}
+
+function stripAdditionalProperties<T extends Record<string, unknown>>(schema: T): T {
+  if (!schema || typeof schema !== 'object') return schema;
+  const copy: Record<string, unknown> = { ...schema };
+  if ('additionalProperties' in copy) {
+    delete copy.additionalProperties;
+  }
+  return copy as T;
 }
 
 function parseQuery(query: string): RegExp | null {
