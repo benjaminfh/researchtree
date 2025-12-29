@@ -24,6 +24,7 @@ export function startNextServer({ appPath, port, env }) {
     env: {
       ...process.env,
       ...env,
+      ELECTRON_RUN_AS_NODE: '1',
       PORT: String(port),
       NEXT_TELEMETRY_DISABLED: process.env.NEXT_TELEMETRY_DISABLED ?? '1'
     },

@@ -231,6 +231,7 @@ async function startApp() {
     const port = await findOpenPort();
     const pgUser = process.env.USER ?? process.env.USERNAME ?? process.env.LOGNAME ?? null;
     const env = {
+      RT_DESKTOP: '1',
       RT_PG_ADAPTER: config.RT_PG_ADAPTER ?? 'local',
       RT_STORE: config.RT_STORE ?? 'pg',
       LOCAL_PG_URL: config.LOCAL_PG_URL,
