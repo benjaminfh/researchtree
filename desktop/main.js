@@ -2,11 +2,12 @@ import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import path from 'node:path';
 import net from 'node:net';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import { readConfig, writeConfig } from './config.js';
 import { startNextServer } from './server.js';
 
 let serverProcess = null;
-let appName = process.env.NEXT_PUBLIC_APP_NAME ?? 'Threds';
+let appName = process.env.NEXT_PUBLIC_APP_NAME ?? 'threds';
 let mainWindow = null;
 let setupWindow = null;
 let isStarting = false;
@@ -226,6 +227,11 @@ async function startApp() {
   await loadLocalEnv(appPath);
   appName = (process.env.NEXT_PUBLIC_APP_NAME ?? appName).trim() || appName;
   const { config: initialConfig, usedDefault } = await ensureConfigWithDefault(userDataPath);
+  const resourceMigrations = path.join(process.resourcesPath, 'migrations');
+  const resourceStandaloneServer = path.join(process.resourcesPath, 'standalone', 'server.js');
+  const appMigrations = path.join(appPath, 'supabase', 'migrations');
+  const migrationsDir =
+    app.isPackaged && fsSync.existsSync(resourceMigrations) ? resourceMigrations : appMigrations;
 
   const runWithConfig = async (config) => {
     const port = await findOpenPort();
@@ -237,6 +243,11 @@ async function startApp() {
       LOCAL_PG_URL: config.LOCAL_PG_URL,
       ...(pgUser ? { PGUSER: pgUser } : {}),
       PGDATABASE: 'threds',
+      RT_USER_DATA_PATH: userDataPath,
+      RT_MIGRATIONS_DIR: migrationsDir,
+      ...(app.isPackaged && fsSync.existsSync(resourceStandaloneServer)
+        ? { DESKTOP_NEXT_SERVER_PATH: resourceStandaloneServer }
+        : {}),
       RESEARCHTREE_PROJECTS_ROOT: config.RESEARCHTREE_PROJECTS_ROOT ?? path.join(userDataPath, 'projects'),
       RT_APP_ORIGIN: `http://127.0.0.1:${port}`
     };
