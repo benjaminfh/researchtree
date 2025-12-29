@@ -46,7 +46,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   if (store.mode === 'pg') {
     const refName = resolvedRef ?? 'main';
     const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-    const rows = await rtGetHistoryShadowV1({ projectId, refName, limit });
+    const rows = await rtGetHistoryShadowV1({ projectId, refName, limit, includeRawResponse: true });
     nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
   } else {
     const { getNodes } = await import('@git/nodes');
