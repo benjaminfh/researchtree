@@ -12,7 +12,7 @@ import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import { storageKey } from '@/src/config/app';
+import { storageKey, TRUNK_LABEL } from '@/src/config/app';
 import {
   deriveTextFromBlocks,
   deriveThinkingFromBlocks,
@@ -1055,7 +1055,7 @@ export function WorkspaceClient({
   }, [artefact]);
 
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
-  const displayBranchName = (name: string) => (name === trunkName ? 'trunk' : name);
+  const displayBranchName = (name: string) => (name === trunkName ? TRUNK_LABEL : name);
   const sortedBranches = branches;
   const branchColorMap = useMemo(
     () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
@@ -1895,7 +1895,7 @@ export function WorkspaceClient({
                       <li>⌘ + B to toggle the rail.</li>
                       <li>← Thred graph · → Canvas.</li>
                       <li>↑ show graph/canvas · ↓ hide panel.</li>
-                      <li>Branch to try edits without losing the trunk.</li>
+                      <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
                       <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                     </ul>
                   </RailPopover>
@@ -1937,7 +1937,7 @@ export function WorkspaceClient({
                       <li>⌘ + B to toggle the rail.</li>
                       <li>← Thred graph · → Canvas.</li>
                       <li>↑ show graph/canvas · ↓ hide panel.</li>
-                      <li>Branch to try edits without losing the trunk.</li>
+                      <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
                         <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                       </ul>
                     </RailPopover>
@@ -1960,7 +1960,7 @@ export function WorkspaceClient({
         renderMain={(ctx) => (
           <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
             <div
-              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-12"
+              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-3"
               style={{ paddingBottom: composerPadding }}
             >
               <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
