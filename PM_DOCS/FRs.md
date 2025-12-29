@@ -4,6 +4,7 @@
 # HOME PAGE
 ## RAIL
 [x] when there are no projects, there should be a low key message under "recent" explaining there are no projects yet [Done - `HomePageContent` renders “No workspaces yet…” when list is empty]
+[ ] add cmd-B as hot key to toggle rail expand/collapse
 
 ## MAIN FRAME
 [x] when creating a project (after clicking create) we need a spinner to communicate to the user that the click was received and things are happening in the background [Done - create button shows “Creating…” spinner while request is in flight]
@@ -14,6 +15,7 @@
 [ ] [web search mode] Add a Search toggle near the chat input that routes requests through provider web search when enabled. Show a subtle note when OpenAI is selected to indicate the model is forced to the search-preview variant.
 [ ] [web search citations] Render OpenAI Responses citations by parsing `message.content[].annotations` from the raw response events (or add `include: ["web_search_call.action.sources"]` to capture sources).
 [ ] [Thinkin traces] currently we don't store thinking traces or bake them into the context. This pattern varies across all three providers - we need best efforts.
+
  
 ### Messages
 [x] when any message is added, the chat container should auto scroll to the bottom [Done - message list scrolls to bottom when `visibleNodes.length` increases]
