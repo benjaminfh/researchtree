@@ -761,7 +761,6 @@ export function WorkspaceClient({
     optimisticDraftRef.current = sent;
     setDraft('');
     setStreamBlocks([]);
-    setThinkingSnippet('');
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
