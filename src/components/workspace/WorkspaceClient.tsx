@@ -1960,7 +1960,7 @@ export function WorkspaceClient({
         renderMain={(ctx) => (
           <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
             <div
-              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 pt-3 md:px-6 lg:px-3"
+              className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-3"
               style={{ paddingBottom: composerPadding }}
             >
               <div ref={paneContainerRef} className="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
