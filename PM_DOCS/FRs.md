@@ -1,11 +1,14 @@
 # LOGIN / REGISTRATION
 [ ] [waitlist via code] Right now a user has to apply to be whitelisted. We should also have a "apply with access code" route. I can supply some people with N-time access code. N can probably be 5 to limit chaos but to allow people to share if they want. 
 
+# OVERALL
+[ ] We need a spinner or "loading text" visual indicator rectangles to indicate to the user that requests are still running after an action (navigation, form submit etc). It is context dependent whether it should be a spinner or other visual.
+
 # HOME PAGE
 ## ONBOARDING
-[ ] if the user has not saved as least one API token successfully, we should prompt them with a modal on homepage - message + one button, which should take them to the profile page
-[ ] new user: if the user has not yet successfully sent at least one message, they are a "new user" for onboarding purposes.
-[ ] new users should be presented with the session tips modal pre-expanded when they land on the projects page
+[x] if the user has not saved as least one API token successfully, we should prompt them with a modal on homepage - message + one button, which should take them to the profile page
+[x] new user: if the user has not yet successfully sent at least one message, they are a "new user" for onboarding purposes.
+[x] new users should be presented with the session tips modal pre-expanded when they land on the projects page
 [ ] we need a more detailed onboarding flow that follows from closing the session tips modal and walks through branching, merging, the graphs, the canvas etc - TBD...
  
 ## RAIL
@@ -60,7 +63,6 @@
 
 # DESKTOP
 [ ] Store LLM provider keys in macOS Keychain instead of local PG vault (use Electron IPC + native keychain bridge).
-[ ] Hide password change profile section when we are in desktop env
-
+[x] Hide password change profile section when we are in desktop env
 
 

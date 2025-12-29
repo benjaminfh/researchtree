@@ -612,6 +612,11 @@ export function WorkspaceClient({
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
     ref: branchName
   });
+  const hasSentMessage = useMemo(
+    () => nodes.some((node) => node.type === 'message' && node.role === 'user'),
+    [nodes]
+  );
+  const isNewUser = !hasSentMessage;
   const [historyEpoch, setHistoryEpoch] = useState(0);
   const refreshHistory = useCallback(async () => {
     await mutateHistory();
@@ -1288,10 +1293,17 @@ export function WorkspaceClient({
   }, [showMergeModal, branchName, mergeTargetBranch, project.id]);
 
   const [showHints, setShowHints] = useState(false);
+  const autoOpenedHintsRef = useRef(false);
   const hintsRef = useRef<HTMLDivElement | null>(null);
   const hintsButtonRef = useRef<HTMLButtonElement | null>(null);
   const [showNewBranchPopover, setShowNewBranchPopover] = useState(false);
   const newBranchPopoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isLoading || !isNewUser || autoOpenedHintsRef.current) return;
+    setShowHints(true);
+    autoOpenedHintsRef.current = true;
+  }, [isLoading, isNewUser]);
 
   useEffect(() => {
     if (!showHints) return;
