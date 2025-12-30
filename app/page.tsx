@@ -6,6 +6,8 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { resolveLLMProvider, type LLMProvider } from '@/src/server/llm';
 import { getEnabledProviders } from '@/src/server/llmConfig';
 
+export const runtime = 'nodejs';
+
 export default async function HomePage() {
   const store = getStoreConfig();
   const normalizeProviderForUi = (provider: LLMProvider) => (provider === 'openai_responses' ? 'openai' : provider);

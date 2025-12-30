@@ -3,6 +3,8 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 
+export const runtime = 'nodejs';
+
 function sanitizeRedirectTo(input: string | null): string | null {
   if (!input) return null;
   if (!input.startsWith('/')) return null;

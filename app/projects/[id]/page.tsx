@@ -8,6 +8,8 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
 
+export const runtime = 'nodejs';
+
 interface ProjectPageProps {
   params: {
     id: string;

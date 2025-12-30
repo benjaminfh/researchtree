@@ -1,6 +1,7 @@
 # BACK END
 [ ] Desktop/local PG mode: app routes to `/login` or throws Supabase env errors when `.env.local` is missing, because several pages and API routes still call `createSupabaseServerClient()` in PG mode. This bypasses the intended local auth failsafe and breaks desktop runs. [Open]
 [ ] (optimization) rawResponse is duplicated in PG (`nodes.content_json` + `nodes.raw_response`); consider de-dupe + a history projection so UI payloads stay small.
+[ ] Build warning: Next.js Edge runtime warnings from `middleware.ts` importing Supabase SSR (`@supabase/ssr` → `@supabase/supabase-js` uses Node APIs). App deploys on Node so runtime is OK; warning persists until middleware avoids Supabase or auth gating moves to Node routes. [Noted]
 
 # FRONT END
 

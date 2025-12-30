@@ -4,6 +4,8 @@ import { requireUser } from '@/src/server/auth';
 import { ProfilePageClient } from '@/src/components/profile/ProfilePageClient';
 import { RailShell } from '@/src/components/layout/RailShell';
 
+export const runtime = 'nodejs';
+
 export default async function ProfilePage() {
   const user = await requireUser();
   return (
