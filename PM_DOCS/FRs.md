@@ -51,7 +51,7 @@
 [x] branch labels on graph view
 [x] graph should autoscroll to posistion "current" at 1/4 height (from bottom)
 [x] rather than "current" UI pill, simply place "current" node inside a pill
-[ ] double-click or cmd-click on a node navigates to branch/message 
+[x] cmd-click on a graph node navigates page to branch/message (+ add note to session tips)
 
 # USER PROFILE
 [x] [User profile] A user profile page. MVP shows registered email, plus 3 fields for LLM provider keys. We must store these keys securely using supabase vault!! [Partial - profile page + token storage via Supabase Vault exists; no change-password flow found]

@@ -27,7 +27,7 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-const initialState = { error: null as string | null };
+const initialState = { error: null as string | null, mode: null as 'signIn' | 'signUp' | null };
 
 export function LoginForm({
   redirectTo,
@@ -48,6 +48,12 @@ export function LoginForm({
       setMode('signIn');
     }
   }, []);
+
+  useEffect(() => {
+    if (signUpState?.mode === 'signIn') {
+      setMode('signIn');
+    }
+  }, [signUpState]);
 
   const activeError = useMemo(() => {
     const signInError = signInState?.error ?? null;
