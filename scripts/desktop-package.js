@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { build } from 'esbuild';
 
 const target = process.argv[2] ?? 'make';
 const allowedTargets = new Set(['make', 'package']);
@@ -27,6 +28,24 @@ async function copyDir(source, destination) {
   await fs.rm(destination, { recursive: true, force: true });
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.cp(source, destination, { recursive: true });
+}
+
+async function minifyStandalone() {
+  const root = process.cwd();
+  const serverEntry = path.join(root, '.next', 'standalone', 'server.js');
+  const source = await fs.readFile(serverEntry, 'utf8');
+  const format = source.includes('import.meta') ? 'esm' : 'cjs';
+  await build({
+    entryPoints: [serverEntry],
+    outfile: serverEntry,
+    platform: 'node',
+    format,
+    target: 'node18',
+    minify: true,
+    sourcemap: false,
+    legalComments: 'none',
+    allowOverwrite: true
+  });
 }
 
 async function ensureStandaloneAssets() {
@@ -59,6 +78,7 @@ async function main() {
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' }
   });
   await ensureStandaloneAssets();
+  await minifyStandalone();
   await runCommand('npx', ['electron-forge', target]);
 }
 
