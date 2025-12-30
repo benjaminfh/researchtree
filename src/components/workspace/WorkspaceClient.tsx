@@ -12,7 +12,7 @@ import { useChatStream } from '@/src/hooks/useChatStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import { storageKey, TRUNK_LABEL } from '@/src/config/app';
+import { AUTO_FOLLOW_RESUME_DELAY_MS, storageKey, TRUNK_LABEL } from '@/src/config/app';
 import {
   deriveTextFromBlocks,
   deriveThinkingFromBlocks,
@@ -100,6 +100,7 @@ const NodeBubble: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
+  showOpenAiThinkingNote?: boolean;
 }> = ({
   node,
   muted = false,
@@ -110,7 +111,8 @@ const NodeBubble: FC<{
   onEdit,
   isCanvasDiffPinned = false,
   onPinCanvasDiff,
-  highlighted = false
+  highlighted = false,
+  showOpenAiThinkingNote = false
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const isAssistantPending = node.type === 'message' && node.role === 'assistant' && node.id === 'assistant-pending';
@@ -127,8 +129,9 @@ const NodeBubble: FC<{
   const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
   const hasThinking = isAssistant && thinkingText.trim().length > 0;
-  const showThinkingBox = isAssistantPending || hasThinking;
+  const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
   const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
+  const showThinkingNote = isAssistant && showOpenAiThinkingNote && !hasThinking && !thinkingInProgress;
   const containerWidth = isAssistant ? 'w-full' : '';
   const width = isUser ? 'min-w-[14rem] max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
@@ -187,7 +190,12 @@ const NodeBubble: FC<{
                 {thinkingInProgress ? (
                   <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
                 ) : null}
-                Thinking
+                {showThinkingNote ? (
+                  <span className="text-[11px] font-medium text-slate-500">
+                    OpenAI does not reveal thinking steps.
+                  </span>
+                ) : null}
+                <span>Thinking</span>
               </span>
               {hasThinking ? (
                 <button
@@ -401,6 +409,9 @@ const NodeBubble: FC<{
 const ChatNodeRow: FC<{
   node: NodeRecord;
   trunkName: string;
+  currentBranchName: string;
+  defaultProvider: LLMProvider;
+  providerByBranch: Record<string, LLMProvider>;
   branchColors?: Record<string, string>;
   muted?: boolean;
   subtitle?: string;
@@ -416,6 +427,9 @@ const ChatNodeRow: FC<{
 }> = ({
   node,
   trunkName,
+  currentBranchName,
+  defaultProvider,
+  providerByBranch,
   branchColors,
   muted,
   subtitle,
@@ -430,6 +444,9 @@ const ChatNodeRow: FC<{
   showBranchSplit
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
+  const nodeBranch = node.createdOnBranch ?? currentBranchName;
+  const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
+  const showOpenAiThinkingNote = nodeProvider === 'openai';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
 
   return (
@@ -456,6 +473,7 @@ const ChatNodeRow: FC<{
             isCanvasDiffPinned={isCanvasDiffPinned}
             onPinCanvasDiff={onPinCanvasDiff}
             highlighted={!!highlighted}
+            showOpenAiThinkingNote={showOpenAiThinkingNote}
           />
           {showBranchSplit ? (
             <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
@@ -639,11 +657,13 @@ export function WorkspaceClient({
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
     ref: branchName
   });
+  const HAS_SENT_MESSAGE_KEY = storageKey('user-has-sent-message');
+  const [hasEverSentMessage, setHasEverSentMessage] = useState(false);
   const hasSentMessage = useMemo(
     () => nodes.some((node) => node.type === 'message' && node.role === 'user'),
     [nodes]
   );
-  const isNewUser = !hasSentMessage;
+  const isNewUser = !hasEverSentMessage;
   const [historyEpoch, setHistoryEpoch] = useState(0);
   const refreshHistory = useCallback(async () => {
     await mutateHistory();
@@ -682,6 +702,29 @@ export function WorkspaceClient({
     [project.id, branchName]
   );
   const [webSearchHydratedKey, setWebSearchHydratedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(HAS_SENT_MESSAGE_KEY);
+    if (stored === 'true') {
+      setHasEverSentMessage(true);
+    }
+  }, [HAS_SENT_MESSAGE_KEY]);
+
+  useEffect(() => {
+    if (!hasSentMessage) return;
+    setHasEverSentMessage(true);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(HAS_SENT_MESSAGE_KEY, 'true');
+    }
+  }, [hasSentMessage, HAS_SENT_MESSAGE_KEY]);
+
+  const markHasEverSentMessage = useCallback(() => {
+    setHasEverSentMessage(true);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(HAS_SENT_MESSAGE_KEY, 'true');
+    }
+  }, [HAS_SENT_MESSAGE_KEY]);
 
   const { sendMessage, interrupt, state } = useChatStream({
     projectId: project.id,
@@ -743,6 +786,7 @@ export function WorkspaceClient({
     },
     onComplete: async () => {
       await Promise.all([refreshHistory(), mutateArtefact()]);
+      markHasEverSentMessage();
       setStreamPreview('');
       streamPreviewRef.current = '';
       setStreamBlocks([]);
@@ -766,6 +810,14 @@ export function WorkspaceClient({
     [providerOptions]
   );
   const branchProviderLabel = activeProvider?.label ?? (branchProvider === 'openai_responses' ? 'OpenAI' : branchProvider);
+  const providerByBranch = useMemo(() => {
+    return branches.reduce<Record<string, LLMProvider>>((acc, branch) => {
+      if (branch.provider) {
+        acc[branch.name] = branch.provider;
+      }
+      return acc;
+    }, {});
+  }, [branches]);
 
   const activeProviderModel = branchModel;
   const allowedThinking = useMemo(
@@ -1390,12 +1442,25 @@ export function WorkspaceClient({
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
+  const ignoreNextScrollRef = useRef(false);
+  const userInterruptedScrollRef = useRef(false);
+  const wasStreamingRef = useRef(false);
+  const resumeFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollFollowThreshold = 72;
   const previousVisibleCountRef = useRef(0);
   const previousVisibleBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scrollToBottom = useCallback(() => {
+    const el = messageListRef.current;
+    if (!el) return;
+    const targetScrollTop = el.scrollHeight - el.clientHeight;
+    if (Math.abs(el.scrollTop - targetScrollTop) < 1) return;
+    ignoreNextScrollRef.current = true;
+    el.scrollTop = el.scrollHeight;
+  }, []);
 
   const combinedNodes = useMemo(() => {
     const out: NodeRecord[] = [...nodes];
@@ -1444,9 +1509,9 @@ export function WorkspaceClient({
     }
     if (visibleNodes.length > previousVisibleCountRef.current) {
       const el = messageListRef.current;
-      if (el) {
+      if (el && shouldScrollToBottomRef.current && !userInterruptedScrollRef.current) {
         requestAnimationFrame(() => {
-          el.scrollTop = el.scrollHeight;
+          scrollToBottom();
         });
       }
     }
@@ -1646,6 +1711,15 @@ export function WorkspaceClient({
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (resumeFollowTimeoutRef.current) {
+        clearTimeout(resumeFollowTimeoutRef.current);
+        resumeFollowTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!pendingScrollTo) return;
     if (branchName !== pendingScrollTo.targetBranch) return;
     if (!nodes.some((node) => node.id === pendingScrollTo.nodeId)) return;
@@ -1683,24 +1757,52 @@ export function WorkspaceClient({
 
   useEffect(() => {
     shouldScrollToBottomRef.current = true;
+    userInterruptedScrollRef.current = false;
   }, [branchName]);
 
-		  useEffect(() => {
-		    if (!shouldScrollToBottomRef.current) return;
-		    if (isLoading) return;
-		    const el = messageListRef.current;
-		    if (!el) return;
-		    // Ensure we scroll after the DOM has painted with the final node list.
-		    requestAnimationFrame(() => {
-		      el.scrollTop = el.scrollHeight;
-		    });
-		  }, [branchName, isLoading, visibleNodes.length, streamPreview]);
+  useEffect(() => {
+    if (!wasStreamingRef.current && state.isStreaming) {
+      userInterruptedScrollRef.current = false;
+    }
+    wasStreamingRef.current = state.isStreaming;
+  }, [state.isStreaming]);
+
+  useEffect(() => {
+    if (!shouldScrollToBottomRef.current) return;
+    if (userInterruptedScrollRef.current) return;
+    if (isLoading) return;
+    // Ensure we scroll after the DOM has painted with the final node list.
+    requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  }, [branchName, isLoading, visibleNodes.length, streamPreview]);
 
   const handleMessageListScroll = () => {
     const el = messageListRef.current;
     if (!el) return;
+    if (ignoreNextScrollRef.current) {
+      ignoreNextScrollRef.current = false;
+      return;
+    }
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     shouldScrollToBottomRef.current = distance <= scrollFollowThreshold;
+    if (!state.isStreaming) {
+      userInterruptedScrollRef.current = false;
+      return;
+    }
+    if (distance > scrollFollowThreshold) {
+      if (resumeFollowTimeoutRef.current) {
+        clearTimeout(resumeFollowTimeoutRef.current);
+        resumeFollowTimeoutRef.current = null;
+      }
+      userInterruptedScrollRef.current = true;
+      return;
+    }
+    if (resumeFollowTimeoutRef.current) return;
+    resumeFollowTimeoutRef.current = setTimeout(() => {
+      userInterruptedScrollRef.current = false;
+      resumeFollowTimeoutRef.current = null;
+    }, AUTO_FOLLOW_RESUME_DELAY_MS);
   };
 
   const switchBranch = async (name: string) => {
@@ -2071,6 +2173,9 @@ export function WorkspaceClient({
                                 key={node.id}
                                 node={node}
                                 trunkName={trunkName}
+                                currentBranchName={branchName}
+                                defaultProvider={defaultProvider}
+                                providerByBranch={providerByBranch}
                                 branchColors={branchColorMap}
                                 muted
                                 messageInsetClassName="pr-3"
@@ -2097,13 +2202,16 @@ export function WorkspaceClient({
                       ) : null}
 
                       {branchNodes.map((node) => (
-                        <ChatNodeRow
-                          key={node.id}
-                          node={node}
-                          trunkName={trunkName}
-                          branchColors={branchColorMap}
-                          messageInsetClassName="pr-3"
-                          isStarred={starredSet.has(node.id)}
+                      <ChatNodeRow
+                        key={node.id}
+                        node={node}
+                        trunkName={trunkName}
+                        currentBranchName={branchName}
+                        defaultProvider={defaultProvider}
+                        providerByBranch={providerByBranch}
+                        branchColors={branchColorMap}
+                        messageInsetClassName="pr-3"
+                        isStarred={starredSet.has(node.id)}
                           isStarPending={pendingStarIds.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
@@ -2732,7 +2840,7 @@ export function WorkspaceClient({
                     <span className="flex-1 text-left">
                       {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
                     </span>
-                    <span className="flex-[2] whitespace-nowrap text-center">
+                    <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
                       ⌘ + Enter to send · Shift + Enter adds a newline.
                     </span>
                     <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
