@@ -88,7 +88,7 @@ describe('/api/projects/[id]/branches', () => {
     const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
     expect(res.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
-      provider: 'openai',
+      provider: 'openai_responses',
       model: 'gpt-5.2',
       previousResponseId: null
     });
@@ -110,7 +110,7 @@ describe('/api/projects/[id]/branches', () => {
       projectId: 'project-1',
       newRefName: 'new-branch',
       fromRefName: 'main',
-      provider: 'openai',
+      provider: 'openai_responses',
       model: 'gpt-5.2',
       previousResponseId: null
     });
