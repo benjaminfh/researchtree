@@ -12,10 +12,12 @@ const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   listBranches: vi.fn(),
   getCurrentBranchName: vi.fn(),
-  rtGetCurrentRefShadowV1: vi.fn(),
-  rtListRefsShadowV1: vi.fn(),
+  rtGetCurrentRefShadowV2: vi.fn(),
+  rtListRefsShadowV2: vi.fn(),
   readNodesFromRef: vi.fn(),
-  rtGetHistoryShadowV1: vi.fn()
+  rtGetHistoryShadowV2: vi.fn(),
+  resolveRefByName: vi.fn(),
+  resolveCurrentRef: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -41,12 +43,17 @@ vi.mock('@git/utils', () => ({
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
-  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1
+  rtGetCurrentRefShadowV2: mocks.rtGetCurrentRefShadowV2
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtListRefsShadowV1: mocks.rtListRefsShadowV1,
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
+  rtListRefsShadowV2: mocks.rtListRefsShadowV2,
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2
+}));
+
+vi.mock('@/src/server/pgRefs', () => ({
+  resolveRefByName: mocks.resolveRefByName,
+  resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
 function normalizeProjects(projects: Array<{ id: string; name: string; description?: string; createdAt: string }>) {
@@ -98,10 +105,10 @@ describe('store parity regression', () => {
       { name: 'feature', headCommit: 'b', nodeCount: 1, isTrunk: false }
     ]);
     mocks.getCurrentBranchName.mockResolvedValue('main');
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
-    mocks.rtListRefsShadowV1.mockResolvedValue([
-      { name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true },
-      { name: 'feature', headCommit: 'b', nodeCount: 1, isTrunk: false }
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true },
+      { id: 'ref-feature', name: 'feature', headCommit: 'b', nodeCount: 1, isTrunk: false }
     ]);
 
     process.env.RT_STORE = 'git';
@@ -125,8 +132,10 @@ describe('store parity regression', () => {
 
     mocks.getProject.mockResolvedValue({ id: 'p1' });
     mocks.readNodesFromRef.mockResolvedValue(nodes);
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
-    mocks.rtGetHistoryShadowV1.mockResolvedValue(nodes.map((node, ordinal) => ({ ordinal, nodeJson: node })));
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.rtGetHistoryShadowV2.mockResolvedValue(nodes.map((node, ordinal) => ({ ordinal, nodeJson: node })));
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
 
     process.env.RT_STORE = 'git';
     const gitRes = await GETHistory(new Request('http://localhost/api/projects/p1/history'), { params: { id: 'p1' } });

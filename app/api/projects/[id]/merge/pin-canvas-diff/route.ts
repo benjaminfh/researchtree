@@ -16,8 +16,8 @@ interface RouteContext {
 async function getPreferredBranch(projectId: string): Promise<string> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
-    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-    return (await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' })).refName;
+    const { resolveCurrentRef } = await import('@/src/server/pgRefs');
+    return (await resolveCurrentRef(projectId, 'main')).name;
   }
   const { getCurrentBranchName } = await import('@git/utils');
   return getCurrentBranchName(projectId).catch(() => 'main');
@@ -40,9 +40,11 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     return await withProjectRefLock(params.id, resolvedTargetBranch, async () => {
       if (store.mode === 'pg') {
-        const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-        const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-        const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName: resolvedTargetBranch, limit: 500 });
+        const { rtGetHistoryShadowV2 } = await import('@/src/store/pg/reads');
+        const { rtAppendNodeToRefShadowV2 } = await import('@/src/store/pg/nodes');
+        const { resolveRefByName } = await import('@/src/server/pgRefs');
+        const targetRef = await resolveRefByName(params.id, resolvedTargetBranch);
+        const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: targetRef.id, limit: 500 });
         const nodes = rows.map((r) => r.nodeJson).filter(Boolean) as any[];
         const mergeNode = nodes.find((node) => node.type === 'merge' && String(node.id) === mergeNodeId);
         if (!mergeNode || mergeNode.type !== 'merge') {
@@ -72,9 +74,9 @@ export async function POST(request: Request, { params }: RouteContext) {
           createdOnBranch: resolvedTargetBranch
         };
 
-        await rtAppendNodeToRefShadowV1({
+        await rtAppendNodeToRefShadowV2({
           projectId: params.id,
-          refName: resolvedTargetBranch,
+          refId: targetRef.id,
           kind: pinnedNode.type,
           role: pinnedNode.role,
           contentJson: pinnedNode,

@@ -200,17 +200,17 @@ export async function executeCanvasTool(options: {
   tool: CanvasToolName;
   args: Record<string, unknown>;
   projectId: string;
-  refName: string;
+  refId: string;
 }): Promise<CanvasToolResult> {
   const store = getStoreConfig();
   if (store.mode !== 'pg') {
     return { ok: false, error: 'Canvas tools are only available in PG mode.' };
   }
 
-  const { rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
-  const { rtSaveArtefactDraft } = await import('@/src/store/pg/drafts');
+  const { rtGetCanvasShadowV2 } = await import('@/src/store/pg/reads');
+  const { rtSaveArtefactDraftV2 } = await import('@/src/store/pg/drafts');
 
-  const canvas = await rtGetCanvasShadowV1({ projectId: options.projectId, refName: options.refName });
+  const canvas = await rtGetCanvasShadowV2({ projectId: options.projectId, refId: options.refId });
   const lines = splitLines(canvas.content ?? '');
 
   if (options.tool === 'canvas_grep') {
@@ -271,9 +271,9 @@ export async function executeCanvasTool(options: {
     if (!applied.ok || applied.text == null) {
       return { ok: false, error: applied.error ?? 'Patch rejected.' };
     }
-    const saved = await rtSaveArtefactDraft({
+    const saved = await rtSaveArtefactDraftV2({
       projectId: options.projectId,
-      refName: options.refName,
+      refId: options.refId,
       content: applied.text
     });
     return {

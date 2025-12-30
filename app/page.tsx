@@ -32,7 +32,7 @@ export default async function HomePage() {
   if (store.mode === 'pg') {
     await requireUser();
     const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
-    const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
+    const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const rows = await rtListProjectsShadowV1();
     const projectIds = rows.map((row) => row.id);
 
@@ -50,7 +50,7 @@ export default async function HomePage() {
 
         let nodeCount = 0;
         try {
-          const refs = await rtListRefsShadowV1({ projectId });
+          const refs = await rtListRefsShadowV2({ projectId });
           nodeCount = refs.find((ref) => ref.name === 'main')?.nodeCount ?? 0;
         } catch {
           nodeCount = 0;

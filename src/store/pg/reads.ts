@@ -3,6 +3,7 @@
 import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 export interface PgBranchSummary {
+  id: string;
   name: string;
   headCommit: string;
   nodeCount: number;
@@ -11,17 +12,19 @@ export interface PgBranchSummary {
   model?: string;
 }
 
-export async function rtGetHistoryShadowV1(input: {
+export async function rtGetHistoryShadowV2(input: {
   projectId: string;
-  refName: string;
+  refId: string;
   limit?: number;
+  beforeOrdinal?: number | null;
   includeRawResponse?: boolean;
 }): Promise<{ ordinal: number; nodeJson: unknown }[]> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_get_history_v1', {
+  const { data, error } = await rpc('rt_get_history_v2', {
     p_project_id: input.projectId,
-    p_ref_name: input.refName,
+    p_ref_id: input.refId,
     p_limit: input.limit ?? 200,
+    p_before_ordinal: input.beforeOrdinal ?? null,
     p_include_raw_response: input.includeRawResponse ?? false
   });
   if (error) {
@@ -34,21 +37,23 @@ export async function rtGetHistoryShadowV1(input: {
   }));
 }
 
-export async function rtGetCanvasShadowV1(input: {
+export async function rtGetCanvasShadowV2(input: {
   projectId: string;
-  refName: string;
+  refId: string;
+  kind?: string;
 }): Promise<{ content: string; contentHash: string; updatedAt: string | null; source: string }> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_get_canvas_v1', {
+  const { data, error } = await rpc('rt_get_canvas_v2', {
     p_project_id: input.projectId,
-    p_ref_name: input.refName
+    p_ref_id: input.refId,
+    p_kind: input.kind ?? 'canvas_md'
   });
   if (error) {
     throw new Error(error.message);
   }
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) {
-    throw new Error('No data returned from rt_get_canvas_v1');
+    throw new Error('No data returned from rt_get_canvas_v2');
   }
   return {
     content: String(row.content ?? ''),
@@ -58,14 +63,16 @@ export async function rtGetCanvasShadowV1(input: {
   };
 }
 
-export async function rtGetCanvasHashesShadowV1(input: {
+export async function rtGetCanvasHashesShadowV2(input: {
   projectId: string;
-  refName: string;
+  refId: string;
+  kind?: string;
 }): Promise<{ draftHash: string | null; artefactHash: string | null; draftUpdatedAt: string | null; artefactUpdatedAt: string | null }> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_get_canvas_hashes_v1', {
+  const { data, error } = await rpc('rt_get_canvas_hashes_v2', {
     p_project_id: input.projectId,
-    p_ref_name: input.refName
+    p_ref_id: input.refId,
+    p_kind: input.kind ?? 'canvas_md'
   });
   if (error) {
     throw new Error(error.message);
@@ -87,9 +94,10 @@ export async function rtGetCanvasHashesShadowV1(input: {
   };
 }
 
-export async function rtGetCanvasPairShadowV1(input: {
+export async function rtGetCanvasPairShadowV2(input: {
   projectId: string;
-  refName: string;
+  refId: string;
+  kind?: string;
 }): Promise<{
   draftContent: string | null;
   draftHash: string | null;
@@ -99,9 +107,10 @@ export async function rtGetCanvasPairShadowV1(input: {
   artefactUpdatedAt: string | null;
 }> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_get_canvas_pair_v1', {
+  const { data, error } = await rpc('rt_get_canvas_pair_v2', {
     p_project_id: input.projectId,
-    p_ref_name: input.refName
+    p_ref_id: input.refId,
+    p_kind: input.kind ?? 'canvas_md'
   });
   if (error) {
     throw new Error(error.message);
@@ -127,9 +136,9 @@ export async function rtGetCanvasPairShadowV1(input: {
   };
 }
 
-export async function rtListRefsShadowV1(input: { projectId: string }): Promise<PgBranchSummary[]> {
+export async function rtListRefsShadowV2(input: { projectId: string }): Promise<PgBranchSummary[]> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_list_refs_v1', {
+  const { data, error } = await rpc('rt_list_refs_v2', {
     p_project_id: input.projectId
   });
   if (error) {
@@ -137,6 +146,7 @@ export async function rtListRefsShadowV1(input: { projectId: string }): Promise<
   }
   const rows = Array.isArray(data) ? data : [];
   return rows.map((row) => ({
+    id: String(row.id),
     name: String(row.name),
     headCommit: String(row.head_commit ?? ''),
     nodeCount: Number(row.node_count ?? 0),

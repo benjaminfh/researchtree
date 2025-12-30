@@ -6,7 +6,9 @@ import { GET } from '@/app/api/projects/[id]/history/route';
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   readNodesFromRef: vi.fn(),
-  rtGetHistoryShadowV1: vi.fn()
+  rtGetHistoryShadowV2: vi.fn(),
+  resolveRefByName: vi.fn(),
+  resolveCurrentRef: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -18,7 +20,12 @@ vi.mock('@git/utils', () => ({
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2
+}));
+
+vi.mock('@/src/server/pgRefs', () => ({
+  resolveRefByName: mocks.resolveRefByName,
+  resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/history';
@@ -27,7 +34,11 @@ describe('/api/projects/[id]/history', () => {
   beforeEach(() => {
     mocks.getProject.mockReset();
     mocks.readNodesFromRef.mockReset();
-    mocks.rtGetHistoryShadowV1.mockReset();
+    mocks.rtGetHistoryShadowV2.mockReset();
+    mocks.resolveRefByName.mockReset();
+    mocks.resolveCurrentRef.mockReset();
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
     process.env.RT_STORE = 'git';
   });
 
@@ -58,7 +69,7 @@ describe('/api/projects/[id]/history', () => {
 
   it('uses Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetHistoryShadowV1.mockResolvedValue([
+    mocks.rtGetHistoryShadowV2.mockResolvedValue([
       { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'A', timestamp: 1, parent: null } },
       { ordinal: 1, nodeJson: { id: '2', type: 'state', artefactSnapshot: 'x', timestamp: 2, parent: '1' } },
       { ordinal: 2, nodeJson: { id: '3', type: 'message', role: 'assistant', content: 'B', timestamp: 3, parent: '1' } }
@@ -68,14 +79,14 @@ describe('/api/projects/[id]/history', () => {
     const res = await GET(req, { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
-    expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+    expect(mocks.rtGetHistoryShadowV2).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refId: 'ref-main' }));
     expect(mocks.readNodesFromRef).not.toHaveBeenCalled();
     expect(data.nodes.map((n: any) => n.id)).toEqual(['1', '3']);
   });
 
   it('returns 500 when Postgres read fails in RT_STORE=pg mode', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetHistoryShadowV1.mockRejectedValue(new Error('pg down'));
+    mocks.rtGetHistoryShadowV2.mockRejectedValue(new Error('pg down'));
 
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
     expect(res.status).toBe(500);
