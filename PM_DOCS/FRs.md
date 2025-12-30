@@ -62,8 +62,8 @@
 
 # TESTING
 [ ] Add a Node-environment test suite for server routes (see `PM_DOCS/NODE_TESTS.md`).
+[ ] Add Playwright E2E smoke test coverage (see `PM_DOCS/E2E_TESTING.md`).
 
 # DESKTOP
 [ ] Store LLM provider keys in macOS Keychain instead of local PG vault (use Electron IPC + native keychain bridge).
 [x] Hide password change profile section when we are in desktop env
-
