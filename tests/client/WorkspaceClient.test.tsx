@@ -565,6 +565,24 @@ describe('WorkspaceClient', () => {
     });
   });
 
+  it('hydrates and persists the web search toggle', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem('researchtree:websearch:proj-1:feature/phase-2', 'true');
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const toggle = await screen.findByRole('button', { name: 'Toggle web search' });
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(capturedChatOptions?.webSearch).toBe(true);
+    });
+
+    await user.click(toggle);
+    expect(window.localStorage.getItem('researchtree:websearch:proj-1:feature/phase-2')).toBe('false');
+    await waitFor(() => {
+      expect(capturedChatOptions?.webSearch).toBe(false);
+    });
+  });
+
   it('patch-updates graph histories when the graph is visible and history changes', async () => {
     const user = userEvent.setup();
     let currentNodes = [...sampleNodes];
