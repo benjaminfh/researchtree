@@ -74,7 +74,7 @@ export function getDefaultProvider(): LLMProvider {
     return candidate;
   }
 
-  for (const fallback of ['openai', 'openai_responses', 'gemini', 'anthropic', 'mock'] as const) {
+  for (const fallback of ['openai_responses', 'openai', 'gemini', 'anthropic', 'mock'] as const) {
     if (enabled.has(fallback)) return fallback;
   }
   // Should be unreachable (dev always includes mock), but keep safe default.
@@ -145,5 +145,5 @@ export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
 }
 
 export function getOpenAIUseResponses(): boolean {
-  return parseBooleanEnv(process.env.OPENAI_USE_RESPONSES, false);
+  return parseBooleanEnv(process.env.OPENAI_USE_RESPONSES, true);
 }
