@@ -63,8 +63,9 @@ ResearchTree supports two provenance backends, selected via `RT_STORE`:
 Supported providers are OpenAI (chat or responses), Gemini, Anthropic, and Mock.
 
 - Provider enablement and defaults are controlled via `LLM_ENABLE_*`, `LLM_DEFAULT_PROVIDER`, and model env vars.
+- `OPENAI_USE_RESPONSES` defaults to true when unset; set it to false to force Chat Completions.
 - Thinking modes are validated per provider/model based on shared capability metadata.
-- Web search is currently routed via OpenAI search-preview models when enabled.
+- Web search uses OpenAI Responses tools when enabled; if Responses is disabled, it falls back to OpenAI search-preview models.
 - Optional server-side Canvas tool loop can be toggled with `RT_CANVAS_TOOLS`.
 
 ## Repository Map
@@ -167,4 +168,3 @@ Invite-gated auth is controlled by `RT_WAITLIST_ENFORCE`.
 - `RT_STORE must be set to "git" or "pg"` means the env var is missing or misspelled.
 - `RT_PG_ADAPTER=local cannot be used with Supabase env vars present` means you need to remove Supabase keys when using local mode.
 - Provider errors usually indicate missing API keys; update them in `/profile`.
-
