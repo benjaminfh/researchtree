@@ -4,6 +4,9 @@
 
 # FRONT END
 
+## REGISTRATION & LOGIN
+[x] if a user attempts to create an account with an email that's already registered, the UI hits a dead end and provides no feedback
+
 
 ## HOME
 ### RAIL

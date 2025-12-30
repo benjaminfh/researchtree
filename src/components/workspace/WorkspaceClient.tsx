@@ -1411,6 +1411,28 @@ export function WorkspaceClient({
     return out;
   }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
+  const resolveGraphNode = useCallback(
+    (nodeId: string) => {
+      const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
+      let record: NodeRecord | null = activeMatch;
+      let targetBranch: string = branchName;
+
+      if (!record && graphHistories) {
+        for (const [b, hist] of Object.entries(graphHistories)) {
+          const found = hist.find((node) => node.id === nodeId);
+          if (found) {
+            record = found;
+            targetBranch = b;
+            break;
+          }
+        }
+      }
+
+      if (!record) return null;
+      return { record, targetBranch };
+    },
+    [visibleNodes, graphHistories, branchName]
+  );
   const persistedNodesRef = useRef<NodeRecord[]>([]);
   persistedNodesRef.current = nodes.filter((node) => node.type !== 'state');
 
@@ -1706,6 +1728,18 @@ export function WorkspaceClient({
     }
   };
 
+  const jumpToGraphNode = useCallback(
+    async (nodeId: string) => {
+      const resolved = resolveGraphNode(nodeId);
+      if (!resolved) return;
+      setPendingScrollTo({ nodeId, targetBranch: resolved.targetBranch });
+      if (resolved.targetBranch !== branchName) {
+        await switchBranch(resolved.targetBranch);
+      }
+    },
+    [resolveGraphNode, branchName, switchBranch]
+  );
+
   const createBranch = async () => {
     if (!newBranchName.trim()) return false;
     setIsCreating(true);
@@ -1893,6 +1927,7 @@ export function WorkspaceClient({
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                       <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
                       <li>⌘ + B to toggle the rail.</li>
+                      <li>⌘ + click a graph node to jump to its message.</li>
                       <li>← Thred graph · → Canvas.</li>
                       <li>↑ show graph/canvas · ↓ hide panel.</li>
                       <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
@@ -1935,6 +1970,7 @@ export function WorkspaceClient({
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                       <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
                       <li>⌘ + B to toggle the rail.</li>
+                      <li>⌘ + click a graph node to jump to its message.</li>
                       <li>← Thred graph · → Canvas.</li>
                       <li>↑ show graph/canvas · ↓ hide panel.</li>
                       <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
@@ -2336,26 +2372,13 @@ export function WorkspaceClient({
                               starredNodeIds={stableStarredNodeIds}
                               selectedNodeId={selectedGraphNodeId}
                               onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
+                              onNavigateNode={(nodeId) => void jumpToGraphNode(nodeId)}
                             />
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
                                 {(() => {
-                                  const activeMatch = visibleNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
-                                  let record: NodeRecord | null = activeMatch;
-                                  let targetBranch: string = branchName;
-
-                                  if (!record && graphHistories) {
-                                    for (const [b, hist] of Object.entries(graphHistories)) {
-                                      const found = hist.find((node) => node.id === selectedGraphNodeId);
-                                      if (found) {
-                                        record = found;
-                                        targetBranch = b;
-                                        break;
-                                      }
-                                    }
-                                  }
-
-                                  if (!record) {
+                                  const resolved = resolveGraphNode(selectedGraphNodeId);
+                                  if (!resolved) {
                                     return (
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="text-muted">Selected node not found in current histories.</div>
@@ -2371,6 +2394,7 @@ export function WorkspaceClient({
                                     );
                                   }
 
+                                  const { record, targetBranch } = resolved;
                                   const title =
                                     record.type === 'merge'
                                       ? `Notes brought in from ${displayBranchName(record.mergeFrom)}`
