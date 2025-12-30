@@ -8,7 +8,7 @@ function slugify(input: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-const DEFAULT_APP_NAME = 'Threds';
+const DEFAULT_APP_NAME = 'threds';
 
 export const APP_NAME = (process.env.NEXT_PUBLIC_APP_NAME ?? DEFAULT_APP_NAME).trim() || DEFAULT_APP_NAME;
 export const TRUNK_LABEL = (process.env.NEXT_PUBLIC_RT_TRUNK_LABEL ?? 'main').trim() || 'main';
