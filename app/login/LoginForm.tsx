@@ -134,8 +134,12 @@ export function LoginForm({
               name="password"
               type="password"
               autoComplete="new-password"
+              minLength={10}
               required
             />
+            <span className="mt-1 block text-xs text-slate-600">
+              Minimum 10 characters. Use lowercase and uppercase letters, digits, and symbols.
+            </span>
           </label>
 
           {activeError ? <p className="text-sm text-red-700">{activeError}</p> : null}
