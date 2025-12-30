@@ -18,6 +18,37 @@ Actions:
 - Create a dev fixture dataset (one project, multiple refs, multiple nodes per ref).
   - Include at least: drafts, artefacts, current_ref_name, merge nodes.
 
+Inventory (initial, update as you discover more):
+- Tables: `public.refs`, `public.commit_order`, `public.artefact_drafts`, `public.artefacts`, `public.project_user_prefs`.
+- RPCs (from `src/store/pg/localAdapter.ts`): `rt_get_history_v1`, `rt_get_canvas_v1`, `rt_get_canvas_hashes_v1`,
+  `rt_get_canvas_pair_v1`, `rt_append_node_to_ref_v1`, `rt_create_ref_from_node_parent_v1`, `rt_create_ref_from_ref_v1`,
+  `rt_get_current_ref_v1`, `rt_set_current_ref_v1`, `rt_get_ref_previous_response_id_v1`,
+  `rt_set_ref_previous_response_id_v1`, `rt_update_artefact_on_ref`, `rt_save_artefact_draft`, `rt_merge_ours_v1`.
+- App/server files:
+  - Store/PG: `src/store/pg/branches.ts`, `src/store/pg/reads.ts`, `src/store/pg/nodes.ts`, `src/store/pg/artefacts.ts`,
+    `src/store/pg/drafts.ts`, `src/store/pg/refs.ts`, `src/store/pg/merge.ts`, `src/store/pg/localAdapter.ts`.
+  - Server: `src/server/context.ts`, `src/server/llm.ts`, `src/server/llmState.ts`, `src/server/canvasTools.ts`,
+    `src/server/schemas.ts`.
+  - API routes: `app/api/projects/[id]/branches/route.ts`, `app/api/projects/[id]/history/route.ts`,
+    `app/api/projects/[id]/graph/route.ts`, `app/api/projects/[id]/artefact/route.ts`,
+    `app/api/projects/[id]/merge/route.ts`, `app/api/projects/[id]/merge/pin-canvas-diff/route.ts`,
+    `app/api/projects/[id]/chat/route.ts`, `app/api/projects/[id]/edit/route.ts`.
+  - UI: `app/projects/[id]/page.tsx`, `app/page.tsx`.
+- Tests: `tests/store/pg/local-adapter.test.ts`, `tests/store/pg/local-adapter.integration.test.ts`,
+  `tests/store/pg/pg-store.test.ts`, `tests/server/*.test.ts`.
+- Supabase migrations (current, non-legacy):
+  - `supabase/migrations/20251224075742_remote_schema.sql`
+  - `supabase/migrations/20251224141610_002_rt_refs_llm_config.sql`
+  - `supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql`
+  - `supabase/migrations/20251227080848_canvas_hash_compare.sql`
+  - `supabase/migrations/20251229035316_rt_get_history_strip_raw_response.sql`
+- Legacy migrations (still reference `ref_name`):
+  - `supabase/migrations_legacy/2025-12-19_*.sql` (search for `ref_name`).
+- Hit list (Phase 0 output): `PM_DOCS/ref_name_hits.txt` (keep this file updated if new hits appear).
+
+Fixture dataset:
+- `supabase/fixtures/pg_refs_fixture.sql` (project with 3 refs, multi-node histories, drafts, prefs, artefacts).
+
 Verification:
 - `rg -n "ref_name|refName|refs\\.name" src supabase -S` inventory is complete.
 - Fixture queries return expected counts per ref.
