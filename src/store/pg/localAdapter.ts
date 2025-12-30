@@ -14,9 +14,9 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
     params: ['p_project_id', 'p_ref_id', 'p_limit', 'p_before_ordinal', 'p_include_raw_response'],
     returnType: 'set'
   },
-  rt_get_canvas_v2: { params: ['p_project_id', 'p_ref_id'], returnType: 'set' },
-  rt_get_canvas_hashes_v2: { params: ['p_project_id', 'p_ref_id'], returnType: 'set' },
-  rt_get_canvas_pair_v2: { params: ['p_project_id', 'p_ref_id'], returnType: 'set' },
+  rt_get_canvas_v2: { params: ['p_project_id', 'p_ref_id', 'p_kind'], returnType: 'set' },
+  rt_get_canvas_hashes_v2: { params: ['p_project_id', 'p_ref_id', 'p_kind'], returnType: 'set' },
+  rt_get_canvas_pair_v2: { params: ['p_project_id', 'p_ref_id', 'p_kind'], returnType: 'set' },
   rt_list_refs_v2: { params: ['p_project_id'], returnType: 'set' },
   rt_list_projects_v1: { params: [], returnType: 'set' },
   rt_get_project_v1: { params: ['p_project_id'], returnType: 'set' },
@@ -48,7 +48,8 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
       'p_node_id',
       'p_provider',
       'p_model',
-      'p_previous_response_id'
+      'p_previous_response_id',
+      'p_lock_timeout_ms'
     ],
     returnType: 'set'
   },
@@ -59,7 +60,8 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
       'p_new_ref_name',
       'p_provider',
       'p_model',
-      'p_previous_response_id'
+      'p_previous_response_id',
+      'p_lock_timeout_ms'
     ],
     returnType: 'set'
   },

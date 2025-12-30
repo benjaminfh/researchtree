@@ -50,6 +50,7 @@ describe('pg store RPC wrappers', () => {
       p_project_id: 'p1',
       p_ref_id: 'r1',
       p_limit: 200,
+      p_before_ordinal: null,
       p_include_raw_response: false
     });
     expect(result).toEqual([{ ordinal: 1, nodeJson: { id: 'n1' } }]);
@@ -64,7 +65,8 @@ describe('pg store RPC wrappers', () => {
     const result = await rtGetCanvasShadowV2({ projectId: 'p1', refId: 'r1' });
     expect(mocks.rpc).toHaveBeenCalledWith('rt_get_canvas_v2', {
       p_project_id: 'p1',
-      p_ref_id: 'r1'
+      p_ref_id: 'r1',
+      p_kind: 'canvas_md'
     });
     expect(result).toEqual({ content: 'Hi', contentHash: 'h1', updatedAt: null, source: 'draft' });
 
@@ -247,7 +249,8 @@ describe('pg store RPC wrappers', () => {
       p_node_id: 'n1',
       p_provider: 'openai',
       p_model: 'gpt-5.2',
-      p_previous_response_id: 'r1'
+      p_previous_response_id: 'r1',
+      p_lock_timeout_ms: 3000
     });
     expect(result).toEqual({ baseCommitId: 'c1', baseOrdinal: 4 });
   });
@@ -292,7 +295,8 @@ describe('pg store RPC wrappers', () => {
       p_new_ref_name: 'feat',
       p_provider: null,
       p_model: null,
-      p_previous_response_id: null
+      p_previous_response_id: null,
+      p_lock_timeout_ms: 3000
     });
     expect(result).toEqual({ baseCommitId: null, baseOrdinal: 0 });
   });

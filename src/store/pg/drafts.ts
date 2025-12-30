@@ -6,12 +6,14 @@ export async function rtSaveArtefactDraftV2(input: {
   projectId: string;
   refId: string;
   content: string;
+  lockTimeoutMs?: number;
 }): Promise<{ contentHash: string; updatedAt: string }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_save_artefact_draft_v2', {
     p_project_id: input.projectId,
     p_ref_id: input.refId,
-    p_content: input.content ?? ''
+    p_content: input.content ?? '',
+    p_lock_timeout_ms: input.lockTimeoutMs ?? 3000
   });
 
   if (error) {

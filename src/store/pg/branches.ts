@@ -10,6 +10,7 @@ export async function rtCreateRefFromNodeParentShadowV2(input: {
   provider?: string | null;
   model?: string | null;
   previousResponseId?: string | null;
+  lockTimeoutMs?: number;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_create_ref_from_node_parent_v2', {
@@ -19,7 +20,8 @@ export async function rtCreateRefFromNodeParentShadowV2(input: {
     p_node_id: input.nodeId,
     p_provider: input.provider ?? null,
     p_model: input.model ?? null,
-    p_previous_response_id: input.previousResponseId ?? null
+    p_previous_response_id: input.previousResponseId ?? null,
+    p_lock_timeout_ms: input.lockTimeoutMs ?? 3000
   });
 
   if (error) {
@@ -44,6 +46,7 @@ export async function rtCreateRefFromRefShadowV2(input: {
   provider?: string | null;
   model?: string | null;
   previousResponseId?: string | null;
+  lockTimeoutMs?: number;
 }): Promise<{ baseCommitId: string | null; baseOrdinal: number }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_create_ref_from_ref_v2', {
@@ -52,7 +55,8 @@ export async function rtCreateRefFromRefShadowV2(input: {
     p_new_ref_name: input.newRefName,
     p_provider: input.provider ?? null,
     p_model: input.model ?? null,
-    p_previous_response_id: input.previousResponseId ?? null
+    p_previous_response_id: input.previousResponseId ?? null,
+    p_lock_timeout_ms: input.lockTimeoutMs ?? 3000
   });
 
   if (error) {

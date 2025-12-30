@@ -43,12 +43,12 @@ export async function GET(_request: Request, { params }: RouteContext) {
         Promise.all(
           branches.map(async (branch) => {
             if (!branch.id) {
-              return [branch.name, []] as const;
+              return [branch.name, [] as NodeRecord[]] as [string, NodeRecord[]];
             }
             const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: branch.id, limit: MAX_PER_BRANCH });
             const nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
             const visible = nodes.filter((node) => !isHiddenMessage(node));
-            return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as const;
+            return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
           })
         ),
         rtGetStarredNodeIdsShadowV1({ projectId: params.id })
@@ -86,7 +86,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
         branches.map(async (branch) => {
           const nodes = await readNodesFromRef(project.id, branch.name);
           const visible = nodes.filter((node) => !isHiddenMessage(node));
-          return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as const;
+          return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
         })
       ),
       getStarredNodeIds(project.id)

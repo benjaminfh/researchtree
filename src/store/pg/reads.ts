@@ -16,6 +16,7 @@ export async function rtGetHistoryShadowV2(input: {
   projectId: string;
   refId: string;
   limit?: number;
+  beforeOrdinal?: number | null;
   includeRawResponse?: boolean;
 }): Promise<{ ordinal: number; nodeJson: unknown }[]> {
   const { rpc } = getPgStoreAdapter();
@@ -23,6 +24,7 @@ export async function rtGetHistoryShadowV2(input: {
     p_project_id: input.projectId,
     p_ref_id: input.refId,
     p_limit: input.limit ?? 200,
+    p_before_ordinal: input.beforeOrdinal ?? null,
     p_include_raw_response: input.includeRawResponse ?? false
   });
   if (error) {
@@ -38,11 +40,13 @@ export async function rtGetHistoryShadowV2(input: {
 export async function rtGetCanvasShadowV2(input: {
   projectId: string;
   refId: string;
+  kind?: string;
 }): Promise<{ content: string; contentHash: string; updatedAt: string | null; source: string }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_get_canvas_v2', {
     p_project_id: input.projectId,
-    p_ref_id: input.refId
+    p_ref_id: input.refId,
+    p_kind: input.kind ?? 'canvas_md'
   });
   if (error) {
     throw new Error(error.message);
@@ -62,11 +66,13 @@ export async function rtGetCanvasShadowV2(input: {
 export async function rtGetCanvasHashesShadowV2(input: {
   projectId: string;
   refId: string;
+  kind?: string;
 }): Promise<{ draftHash: string | null; artefactHash: string | null; draftUpdatedAt: string | null; artefactUpdatedAt: string | null }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_get_canvas_hashes_v2', {
     p_project_id: input.projectId,
-    p_ref_id: input.refId
+    p_ref_id: input.refId,
+    p_kind: input.kind ?? 'canvas_md'
   });
   if (error) {
     throw new Error(error.message);
@@ -91,6 +97,7 @@ export async function rtGetCanvasHashesShadowV2(input: {
 export async function rtGetCanvasPairShadowV2(input: {
   projectId: string;
   refId: string;
+  kind?: string;
 }): Promise<{
   draftContent: string | null;
   draftHash: string | null;
@@ -102,7 +109,8 @@ export async function rtGetCanvasPairShadowV2(input: {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_get_canvas_pair_v2', {
     p_project_id: input.projectId,
-    p_ref_id: input.refId
+    p_ref_id: input.refId,
+    p_kind: input.kind ?? 'canvas_md'
   });
   if (error) {
     throw new Error(error.message);

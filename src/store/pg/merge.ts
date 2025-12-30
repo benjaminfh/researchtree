@@ -9,6 +9,7 @@ export async function rtMergeOursShadowV2(input: {
   mergeNodeId: string;
   mergeNodeJson: unknown;
   commitMessage?: string;
+  lockTimeoutMs?: number;
 }): Promise<{ newCommitId: string; nodeId: string; ordinal: number }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_merge_ours_v2', {
@@ -17,7 +18,8 @@ export async function rtMergeOursShadowV2(input: {
     p_source_ref_id: input.sourceRefId,
     p_merge_node_json: input.mergeNodeJson,
     p_merge_node_id: input.mergeNodeId,
-    p_commit_message: input.commitMessage ?? null
+    p_commit_message: input.commitMessage ?? null,
+    p_lock_timeout_ms: input.lockTimeoutMs ?? 3000
   });
 
   if (error) {
