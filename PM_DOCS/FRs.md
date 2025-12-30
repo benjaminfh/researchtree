@@ -40,6 +40,7 @@
 [x] [model selection] we currently allow the user to select a branch when branching via edit message button. The branch button at the bottom of the chat is not at parity. need to mirror the provider and thinking mode selectors (they should mirror current branch selections.) 
 [x] allow user to branch from assistant message
 [x] branching from assistant message flow: should be the same flow/ui as dedicated branch button (bottom right) since the branch happens "after" the assistant message, *at* the user message. In this specific flow, we assume the following user message is nulled and will be defined on the new branch chat. (We could even simply expand that existing branch modal on assistant message branch click?)
+[ ] retrospective branching / "move to branch". Often a user asks a follow up question (as a user message) BEFORE realising that it was a tangent which might deteriorate the parent branch context. A desireable action thereofre is to be able to "move downstream nodes" to a new branch. 
 
 ### Merge
 [x] [descoped] Merge modal includes **Provider** and **Thinking** selectors used for merge-assist actions (kept independent from the main chat composer settings). [Open - merge modal only has summary + payload picker; no independent provider/thinking inputs]
