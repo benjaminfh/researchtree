@@ -1403,7 +1403,7 @@ export function WorkspaceGraph({
               nodesConnectable={false}
               defaultViewport={DEFAULT_VIEWPORT}
               onNodeClick={(event, node) => {
-                if (event.metaKey) {
+                if (event?.metaKey) {
                   onNavigateNode?.(node.id);
                   return;
                 }
