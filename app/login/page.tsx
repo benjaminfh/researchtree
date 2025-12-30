@@ -4,6 +4,8 @@ import { LoginForm } from './LoginForm';
 import { APP_NAME } from '@/src/config/app';
 import BranchingTracesBackground from '@/src/components/login/BranchingTracesBackground';
 
+export const runtime = 'nodejs';
+
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/';
   if (!input.startsWith('/')) return '/';

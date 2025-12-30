@@ -5,6 +5,8 @@ import { APP_NAME } from '@/src/config/app';
 import { submitAccessCode, submitWaitlistRequest } from './actions';
 import { WaitlistSubmitButton } from './WaitlistSubmitButton';
 
+export const runtime = 'nodejs';
+
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/waitlist';
   if (!input.startsWith('/')) return '/waitlist';
