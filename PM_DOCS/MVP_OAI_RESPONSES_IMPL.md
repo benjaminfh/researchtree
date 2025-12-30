@@ -32,7 +32,7 @@ Key isolation points:
 
 ## Feature flags and config
 Add env flag:
-- `OPENAI_USE_RESPONSES=true|false` (default false for safe rollout)
+- `OPENAI_USE_RESPONSES=true|false` (default true; set false to rollback)
 
 MVP default:
 - Statefulness enabled when `previous_response_id` is available; stateless fallback when it is not.
@@ -156,7 +156,7 @@ Responses is a separate provider: openai_responses will be its own provider path
 Statefulness is required: we must use previous_response_id to preserve branching parity.
 System prompt mapping: system messages must be sent via Responses instructions argument.
 Logging: log all non-text event types in Responses streaming.
-Feature flag: OPENAI_USE_RESPONSES=true|false toggles between OpenAI Chat Completions and Responses.
+Feature flag: OPENAI_USE_RESPONSES=true|false toggles between OpenAI Chat Completions and Responses (defaults true).
 Already Changed (in researchtree_codex)
 These changes were made via python edits and are present locally:
 
@@ -338,5 +338,5 @@ Update chat + edit routes to use previousResponseId and persist responseId
 Add logging for non-text events
 Verify Typescript + run lint
 Rollback Plan
-Feature flag: OPENAI_USE_RESPONSES=false
+Feature flag: OPENAI_USE_RESPONSES=false (set to roll back)
 All changes isolated to openai_responses provider path, so Chat Completions path untouched.
