@@ -7,7 +7,7 @@ import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
 import { getRequestOrigin } from '@/src/server/requestOrigin';
 
-type AuthActionState = { error: string | null };
+type AuthActionState = { error: string | null; mode?: 'signIn' | 'signUp' | null };
 
 function sanitizeRedirectTo(input: string | null): string | null {
   if (!input) return null;
@@ -69,6 +69,10 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
       options: emailRedirectTo ? { emailRedirectTo } : undefined
     });
     if (error) {
+      const normalized = error.message.toLowerCase();
+      if (normalized.includes('already') && normalized.includes('registered')) {
+        return { error: 'That email already has an account. Sign in instead.', mode: 'signIn' };
+      }
       return { error: error.message };
     }
 
@@ -79,7 +83,7 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
     // Supabase may return a user with no identities when the email is already registered.
     // Avoid redirecting to the "check email" screen in that case (often no email is sent).
     if ((data.user.identities ?? []).length === 0) {
-      return { error: 'Unable to create an account with that email. Try signing in instead.' };
+      return { error: 'That email already has an account. Sign in instead.', mode: 'signIn' };
     }
 
     // If email confirmations are disabled, a session may be returned immediately.

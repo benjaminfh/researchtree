@@ -1,6 +1,22 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
-export const branchPalette = ['#8b5cf6', '#0ea5e9', '#ec4899', '#f97316', '#10b981', '#facc15', '#94a3b8'];
+export const branchPalette = [
+  '#4f94ff',
+  '#5bc0ee',
+  '#7ad0c9',
+  '#8fcb7f',
+  '#c4b86e',
+  '#e0b15c',
+  '#f2a254',
+  '#f08a5b',
+  '#ec6a6a',
+  '#dd6fb1',
+  '#c979e6',
+  '#a785ff',
+  '#7aa1ff',
+  '#5f9ec8',
+  '#7a8da8'
+];
 export const trunkColor = '#0f172a';
 
 function hashBranchName(value: string) {

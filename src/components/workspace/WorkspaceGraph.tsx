@@ -35,6 +35,7 @@ interface WorkspaceGraphProps {
   onModeChange?: (mode: 'nodes' | 'collapsed' | 'starred') => void;
   selectedNodeId?: string | null;
   onSelectNode?: (nodeId: string | null) => void;
+  onNavigateNode?: (nodeId: string) => void;
 }
 
 interface DotNodeData {
@@ -1122,7 +1123,8 @@ export function WorkspaceGraph({
   starredNodeIds = [],
   onModeChange,
   selectedNodeId,
-  onSelectNode
+  onSelectNode,
+  onNavigateNode
 }: WorkspaceGraphProps) {
   const graphNodes = useMemo(
     () =>
@@ -1400,7 +1402,11 @@ export function WorkspaceGraph({
               nodesDraggable={false}
               nodesConnectable={false}
               defaultViewport={DEFAULT_VIEWPORT}
-              onNodeClick={(_event, node) => {
+              onNodeClick={(event, node) => {
+                if (event.metaKey) {
+                  onNavigateNode?.(node.id);
+                  return;
+                }
                 onSelectNode?.(node.id);
               }}
               onPaneClick={() => {
