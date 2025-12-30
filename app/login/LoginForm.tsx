@@ -27,7 +27,7 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-const initialState = { error: null as string | null };
+const initialState = { error: null as string | null, mode: null as 'signIn' | 'signUp' | null };
 
 export function LoginForm({
   redirectTo,
