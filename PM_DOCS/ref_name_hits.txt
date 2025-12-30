@@ -1,0 +1,474 @@
+src/store/pg/merge.ts:16:    p_target_ref_name: input.targetRefName,
+src/store/pg/merge.ts:17:    p_source_ref_name: input.sourceRefName,
+supabase/fixtures/pg_refs_fixture.sql:58:insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/fixtures/pg_refs_fixture.sql:81:insert into public.artefact_drafts (project_id, ref_name, user_id, content, content_hash)
+supabase/fixtures/pg_refs_fixture.sql:86:insert into public.project_user_prefs (project_id, user_id, current_ref_name)
+tests/store/pg/local-adapter.test.ts:8:  p_ref_name: 'main',
+tests/store/pg/local-adapter.test.ts:41:      'Missing parameter p_ref_name for rt_get_history_v1'
+tests/store/pg/local-adapter.test.ts:67:      p_ref_name: 'main',
+tests/server/merge-route.test.ts:113:    mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
+tests/server/merge-route.test.ts:114:      if (refName === 'main') return [];
+src/store/pg/localAdapter.ts:13:  rt_get_history_v1: { params: ['p_project_id', 'p_ref_name', 'p_limit'], returnType: 'set' },
+src/store/pg/localAdapter.ts:14:  rt_get_canvas_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
+src/store/pg/localAdapter.ts:15:  rt_get_canvas_hashes_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
+src/store/pg/localAdapter.ts:16:  rt_get_canvas_pair_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
+src/store/pg/localAdapter.ts:27:      'p_ref_name',
+src/store/pg/localAdapter.ts:43:      'p_source_ref_name',
+src/store/pg/localAdapter.ts:44:      'p_new_ref_name',
+src/store/pg/localAdapter.ts:55:      'p_from_ref_name',
+src/store/pg/localAdapter.ts:56:      'p_new_ref_name',
+src/store/pg/localAdapter.ts:64:  rt_get_current_ref_v1: { params: ['p_project_id', 'p_default_ref_name'], returnType: 'scalar' },
+src/store/pg/localAdapter.ts:65:  rt_set_current_ref_v1: { params: ['p_project_id', 'p_ref_name', 'p_lock_timeout_ms'], returnType: 'void' },
+src/store/pg/localAdapter.ts:66:  rt_get_ref_previous_response_id_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'scalar' },
+src/store/pg/localAdapter.ts:67:  rt_set_ref_previous_response_id_v1: { params: ['p_project_id', 'p_ref_name', 'p_previous_response_id'], returnType: 'void' },
+src/store/pg/localAdapter.ts:71:      'p_ref_name',
+src/store/pg/localAdapter.ts:81:  rt_save_artefact_draft: { params: ['p_project_id', 'p_ref_name', 'p_content'], returnType: 'set' },
+src/store/pg/localAdapter.ts:85:      'p_target_ref_name',
+src/store/pg/localAdapter.ts:86:      'p_source_ref_name',
+app/page.tsx:54:          nodeCount = refs.find((ref) => ref.name === 'main')?.nodeCount ?? 0;
+supabase/migrations_legacy/2025-12-19_0002_rt_provenance_rpc.sql:38:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0002_rt_provenance_rpc.sql:75:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0002_rt_provenance_rpc.sql:85:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations_legacy/2025-12-19_0002_rt_provenance_rpc.sql:99:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0002_rt_provenance_rpc.sql:100:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations_legacy/2025-12-19_0002_rt_provenance_rpc.sql:104:  where project_id = p_project_id and name = p_ref_name;
+src/store/pg/artefacts.ts:7:  refName: string;
+src/store/pg/artefacts.ts:22:    p_ref_name: input.refName,
+tests/store/pg/local-adapter.integration.test.ts:89:      refName: 'main',
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:5:  p_from_ref_name text,
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:6:  p_new_ref_name text,
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:29:  if p_new_ref_name is null or btrim(p_new_ref_name) = '' then
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:32:  if p_from_ref_name is null or btrim(p_from_ref_name) = '' then
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:40:  values (p_project_id, btrim(p_from_ref_name), null)
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:46:    where r.project_id = p_project_id and r.name = btrim(p_new_ref_name)
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:55:  where r.project_id = p_project_id and r.name = btrim(p_from_ref_name)
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:61:  where co.project_id = p_project_id and co.ref_name = btrim(p_from_ref_name);
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:64:  values (p_project_id, btrim(p_new_ref_name), v_tip);
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:67:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:68:  select co.project_id, btrim(p_new_ref_name), co.ordinal, co.commit_id
+supabase/migrations_legacy/2025-12-19_0018_rt_create_ref_from_ref_v1.sql:71:    and co.ref_name = btrim(p_from_ref_name)
+tests/server/edit-route.test.ts:126:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+tests/server/edit-route.test.ts:215:    mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
+tests/server/edit-route.test.ts:216:      if (refName === 'edit-123') {
+tests/server/edit-route.test.ts:244:    expect(mocks.rtSetCurrentRefShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'edit-123' });
+tests/server/edit-route.test.ts:246:      expect.objectContaining({ projectId: 'project-1', refName: 'edit-123', attachDraft: true })
+tests/server/edit-route.test.ts:249:      expect.objectContaining({ projectId: 'project-1', refName: 'edit-123', attachDraft: false })
+supabase/migrations_legacy/2025-12-19_0001_rt_provenance_schema.sql:92:  ref_name text not null,
+supabase/migrations_legacy/2025-12-19_0001_rt_provenance_schema.sql:96:  primary key (project_id, ref_name, ordinal),
+supabase/migrations_legacy/2025-12-19_0001_rt_provenance_schema.sql:97:  unique (project_id, ref_name, commit_id)
+tests/store/pg/pg-store.test.ts:48:    const result = await rtGetHistoryShadowV1({ projectId: 'p1', refName: 'main' });
+tests/store/pg/pg-store.test.ts:51:      p_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:64:    const result = await rtGetCanvasShadowV1({ projectId: 'p1', refName: 'main' });
+tests/store/pg/pg-store.test.ts:67:      p_ref_name: 'main'
+tests/store/pg/pg-store.test.ts:72:    await expect(rtGetCanvasShadowV1({ projectId: 'p1', refName: 'main' })).rejects.toThrow(
+tests/store/pg/pg-store.test.ts:172:      refName: 'main',
+tests/store/pg/pg-store.test.ts:181:      p_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:206:        refName: 'main',
+tests/store/pg/pg-store.test.ts:218:        refName: 'main',
+tests/store/pg/pg-store.test.ts:245:      p_source_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:246:      p_new_ref_name: 'feat',
+tests/store/pg/pg-store.test.ts:291:      p_from_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:292:      p_new_ref_name: 'feat',
+tests/store/pg/pg-store.test.ts:344:    expect(result).toEqual({ refName: 'main' });
+tests/store/pg/pg-store.test.ts:354:    await rtSetCurrentRefShadowV1({ projectId: 'p1', refName: 'main' });
+tests/store/pg/pg-store.test.ts:357:      p_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:364:    await expect(rtSetCurrentRefShadowV1({ projectId: 'p1', refName: 'main' })).rejects.toThrow('fail');
+tests/store/pg/pg-store.test.ts:369:    expect(await rtGetRefPreviousResponseIdV1({ projectId: 'p1', refName: 'main' })).toBe('prev-1');
+tests/store/pg/pg-store.test.ts:372:    expect(await rtGetRefPreviousResponseIdV1({ projectId: 'p1', refName: 'main' })).toBeNull();
+tests/store/pg/pg-store.test.ts:375:    await rtSetRefPreviousResponseIdV1({ projectId: 'p1', refName: 'main', previousResponseId: null });
+tests/store/pg/pg-store.test.ts:378:      p_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:385:    await expect(rtGetRefPreviousResponseIdV1({ projectId: 'p1', refName: 'main' })).rejects.toThrow('fail');
+tests/store/pg/pg-store.test.ts:389:      rtSetRefPreviousResponseIdV1({ projectId: 'p1', refName: 'main', previousResponseId: null })
+tests/store/pg/pg-store.test.ts:399:    const result = await rtUpdateArtefactShadow({ projectId: 'p1', refName: 'main', content: 'hi' });
+tests/store/pg/pg-store.test.ts:402:      p_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:415:    await expect(rtUpdateArtefactShadow({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow('fail');
+tests/store/pg/pg-store.test.ts:418:    await expect(rtUpdateArtefactShadow({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow(
+tests/store/pg/pg-store.test.ts:429:    const result = await rtSaveArtefactDraft({ projectId: 'p1', refName: 'main', content: 'hi' });
+tests/store/pg/pg-store.test.ts:432:      p_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:440:    await expect(rtSaveArtefactDraft({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow('fail');
+tests/store/pg/pg-store.test.ts:443:    await expect(rtSaveArtefactDraft({ projectId: 'p1', refName: 'main', content: 'hi' })).rejects.toThrow(
+tests/store/pg/pg-store.test.ts:465:      p_target_ref_name: 'main',
+tests/store/pg/pg-store.test.ts:466:      p_source_ref_name: 'feat',
+src/store/pg/branches.ts:17:    p_source_ref_name: input.sourceRefName,
+src/store/pg/branches.ts:18:    p_new_ref_name: input.newRefName,
+src/store/pg/branches.ts:51:    p_from_ref_name: input.fromRefName,
+src/store/pg/branches.ts:52:    p_new_ref_name: input.newRefName,
+supabase/migrations_legacy/2025-12-19_0003_rt_rpc_security_definer.sql:52:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0003_rt_rpc_security_definer.sql:91:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0003_rt_rpc_security_definer.sql:101:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations_legacy/2025-12-19_0003_rt_rpc_security_definer.sql:115:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0003_rt_rpc_security_definer.sql:116:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations_legacy/2025-12-19_0003_rt_rpc_security_definer.sql:120:  where project_id = p_project_id and name = p_ref_name;
+tests/server/artefact-route.test.ts:104:    expect(mocks.rtGetCanvasShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'main' });
+supabase/migrations_legacy/2025-12-19_0004_rt_update_artefact_rpc.sql:5:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0004_rt_update_artefact_rpc.sql:47:  values (p_project_id, p_ref_name, null)
+supabase/migrations_legacy/2025-12-19_0004_rt_update_artefact_rpc.sql:53:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0004_rt_update_artefact_rpc.sql:63:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations_legacy/2025-12-19_0004_rt_update_artefact_rpc.sql:83:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0004_rt_update_artefact_rpc.sql:84:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations_legacy/2025-12-19_0004_rt_update_artefact_rpc.sql:88:  where project_id = p_project_id and name = p_ref_name;
+src/store/pg/prefs.ts:5:export async function rtGetCurrentRefShadowV1(input: { projectId: string; defaultRefName?: string }): Promise<{ refName: string }> {
+src/store/pg/prefs.ts:11:    params.p_default_ref_name = input.defaultRefName;
+src/store/pg/prefs.ts:18:  return { refName: String(data ?? input.defaultRefName ?? 'main') };
+src/store/pg/prefs.ts:21:export async function rtSetCurrentRefShadowV1(input: { projectId: string; refName: string }): Promise<void> {
+src/store/pg/prefs.ts:25:    p_ref_name: input.refName,
+tests/server/graph-route.test.ts:112:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'feature/x' });
+tests/server/graph-route.test.ts:132:    mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
+tests/server/graph-route.test.ts:133:      const nodes = refName === 'main' ? mainNodes : refName === 'feature/x' ? featureNodes : [];
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:5:  p_target_ref_name text,
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:6:  p_source_ref_name text,
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:41:  values (p_project_id, p_target_ref_name, null)
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:45:  values (p_project_id, p_source_ref_name, null)
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:52:  where r.project_id = p_project_id and r.name = p_target_ref_name
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:62:  where r.project_id = p_project_id and r.name = p_source_ref_name;
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:71:  where co.project_id = p_project_id and co.ref_name = p_target_ref_name;
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:85:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:86:  values (p_project_id, p_target_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations_legacy/2025-12-19_0013_rt_merge_ours_v1.sql:90:  where project_id = p_project_id and name = p_target_ref_name;
+src/store/pg/drafts.ts:7:  refName: string;
+src/store/pg/drafts.ts:13:    p_ref_name: input.refName,
+tests/server/history-route.test.ts:71:    expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+supabase/migrations_legacy/2025-12-19_0006_rt_save_artefact_draft_rpc.sql:5:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0006_rt_save_artefact_draft_rpc.sql:33:  insert into public.artefact_drafts (project_id, ref_name, user_id, content, content_hash, updated_at)
+supabase/migrations_legacy/2025-12-19_0006_rt_save_artefact_draft_rpc.sql:34:  values (p_project_id, p_ref_name, auth.uid(), coalesce(p_content, ''), v_hash, now())
+supabase/migrations_legacy/2025-12-19_0006_rt_save_artefact_draft_rpc.sql:35:  on conflict (project_id, ref_name, user_id)
+src/store/pg/refs.ts:5:export async function rtGetRefPreviousResponseIdV1(input: { projectId: string; refName: string }): Promise<string | null> {
+src/store/pg/refs.ts:9:    p_ref_name: input.refName
+src/store/pg/refs.ts:20:  refName: string;
+src/store/pg/refs.ts:26:    p_ref_name: input.refName,
+tests/server/branches-route.test.ts:78:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+tests/server/branches-route.test.ts:99:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+tests/server/branches-route.test.ts:122:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+tests/server/branches-route.test.ts:141:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'feature' });
+tests/server/branches-route.test.ts:160:    expect(mocks.rtSetCurrentRefShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'feature' });
+tests/server/context.test.ts:188:    expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+src/store/pg/reads.ts:16:  refName: string;
+src/store/pg/reads.ts:23:    p_ref_name: input.refName,
+src/store/pg/reads.ts:39:  refName: string;
+src/store/pg/reads.ts:44:    p_ref_name: input.refName
+src/store/pg/reads.ts:63:  refName: string;
+src/store/pg/reads.ts:68:    p_ref_name: input.refName
+src/store/pg/reads.ts:92:  refName: string;
+src/store/pg/reads.ts:104:    p_ref_name: input.refName
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:6:  current_ref_name text not null default 'main',
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:48:  p_default_ref_name text default 'main'
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:65:  select pup.current_ref_name
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:70:  return coalesce(v_ref, p_default_ref_name, 'main');
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:80:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:96:  if p_ref_name is null or btrim(p_ref_name) = '' then
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:103:  values (p_project_id, btrim(p_ref_name), null)
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:106:  insert into public.project_user_prefs (project_id, user_id, current_ref_name, updated_at)
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:107:  values (p_project_id, auth.uid(), btrim(p_ref_name), now())
+supabase/migrations_legacy/2025-12-19_0016_rt_project_user_prefs.sql:110:    current_ref_name = excluded.current_ref_name,
+src/store/pg/nodes.ts:7:  refName: string;
+src/store/pg/nodes.ts:19:    p_ref_name: input.refName,
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:6:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:15:  v_ref_name text;
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:27:  v_ref_name := btrim(coalesce(p_ref_name, ''));
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:28:  if v_ref_name = '' then
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:37:  where r.project_id = p_project_id and r.name = v_ref_name
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:45:  where co.project_id = p_project_id and co.ref_name = v_ref_name;
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:65:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0021_rt_rebuild_commit_order_v1.sql:66:  select p_project_id, v_ref_name, o.ordinal, o.commit_id
+app/api/projects/[id]/branches/route.ts:25:      const { refName } = await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' });
+app/api/projects/[id]/branches/route.ts:27:      return Response.json({ branches, currentBranch: refName });
+app/api/projects/[id]/branches/route.ts:66:          (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' })).refName ??
+app/api/projects/[id]/branches/route.ts:96:        await rtSetCurrentRefShadowV1({ projectId: params.id, refName: parsed.data.name });
+app/api/projects/[id]/branches/route.ts:158:        await rtSetCurrentRefShadowV1({ projectId: params.id, refName: parsed.data.name });
+app/api/projects/[id]/history/route.ts:39:      const refName =
+app/api/projects/[id]/history/route.ts:40:        refParam?.trim() || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
+app/api/projects/[id]/history/route.ts:41:      const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName, limit: effectiveLimit });
+app/api/projects/[id]/history/route.ts:55:    const refName = refParam?.trim() || INITIAL_BRANCH;
+app/api/projects/[id]/history/route.ts:56:    const nodes = await readNodesFromRef(project.id, refName);
+supabase/migrations_legacy/2025-12-19_0017_rt_branches_graph_reads_v1.sql:32:    select co.ref_name, max(co.ordinal) as max_ordinal
+supabase/migrations_legacy/2025-12-19_0017_rt_branches_graph_reads_v1.sql:35:    group by co.ref_name
+supabase/migrations_legacy/2025-12-19_0017_rt_branches_graph_reads_v1.sql:36:  ) mx on mx.ref_name = r.name
+tests/server/store-parity.test.ts:101:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+tests/server/store-parity.test.ts:128:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+tests/server/merge-pin-canvas-diff-route.test.ts:187:    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+app/api/projects/[id]/edit/route.ts:31:    return (await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' })).refName;
+app/api/projects/[id]/edit/route.ts:104:          await rtSetCurrentRefShadowV1({ projectId: params.id, refName: targetBranch });
+app/api/projects/[id]/edit/route.ts:107:          const lastTargetRows = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetBranch, limit: 1 }).catch(() => []);
+app/api/projects/[id]/edit/route.ts:124:            refName: targetBranch,
+app/api/projects/[id]/edit/route.ts:215:                  refName: targetBranch,
+supabase/migrations_legacy/2025-12-19_0015_rt_reads_v1.sql:6:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0015_rt_reads_v1.sql:36:      and co.ref_name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0015_rt_reads_v1.sql:50:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0015_rt_reads_v1.sql:81:    and d.ref_name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0015_rt_reads_v1.sql:97:    and co.ref_name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0005_rt_artefact_drafts.sql:5:  ref_name text not null,
+supabase/migrations_legacy/2025-12-19_0005_rt_artefact_drafts.sql:10:  primary key (project_id, ref_name, user_id)
+supabase/migrations_legacy/2025-12-19_0005_rt_artefact_drafts.sql:14:on public.artefact_drafts(project_id, ref_name, updated_at desc);
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:6:  p_source_ref_name text,
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:7:  p_new_ref_name text,
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:36:  values (p_project_id, p_source_ref_name, null)
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:52:    and co.ref_name = p_source_ref_name
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:67:  values (p_project_id, p_new_ref_name, v_base_commit_id)
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:74:  where co.project_id = p_project_id and co.ref_name = p_new_ref_name;
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:77:    insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:78:    select co.project_id, p_new_ref_name, co.ordinal, co.commit_id
+supabase/migrations_legacy/2025-12-19_0014_rt_create_ref_from_node_parent_v1.sql:81:      and co.ref_name = p_source_ref_name
+tests/server/chat-route.test.ts:104:    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+tests/server/chat-route.test.ts:167:        refName: 'main',
+tests/server/chat-route.test.ts:176:        refName: 'main',
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:6:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:52:  values (p_project_id, p_ref_name, null)
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:58:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:68:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:87:      and d.ref_name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:98:        and co.ref_name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:111:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:112:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations_legacy/2025-12-19_0012_rt_append_node_to_ref_v1.sql:116:  where project_id = p_project_id and name = p_ref_name;
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:5:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:33:  insert into public.artefact_drafts (project_id, ref_name, user_id, content, content_hash, updated_at)
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:34:  values (p_project_id, p_ref_name, auth.uid(), coalesce(p_content, ''), v_hash, now())
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:35:  on conflict (project_id, ref_name, user_id)
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:48:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:88:  values (p_project_id, p_ref_name, null)
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:94:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:104:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:124:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:125:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations_legacy/2025-12-19_0007_rt_digest_text_fix.sql:129:  where project_id = p_project_id and name = p_ref_name;
+app/api/projects/[id]/graph/route.ts:40:      const currentBranch = (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: trunkName })).refName;
+app/api/projects/[id]/graph/route.ts:45:            const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName: branch.name, limit: MAX_PER_BRANCH });
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:6:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:34:  insert into public.artefact_drafts (project_id, ref_name, user_id, content, content_hash, updated_at)
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:35:  values (p_project_id, p_ref_name, auth.uid(), coalesce(p_content, ''), v_hash, now())
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:36:  on conflict (project_id, ref_name, user_id)
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:49:  p_ref_name text,
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:89:  values (p_project_id, p_ref_name, null)
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:95:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:105:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:125:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:126:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations_legacy/2025-12-19_0008_rt_pgcrypto_schema_fix.sql:130:  where project_id = p_project_id and name = p_ref_name;
+PM_DOCS/MVP_OAI_RESPONSES_IMPL.md:219:rt_get_ref_previous_response_id_v1(p_project_id, p_ref_name) -> text|null
+PM_DOCS/MVP_OAI_RESPONSES_IMPL.md:220:rt_set_ref_previous_response_id_v1(p_project_id, p_ref_name, p_previous_response_id) -> void
+app/api/projects/[id]/artefact/route.ts:27:      const refName =
+app/api/projects/[id]/artefact/route.ts:28:        ref?.trim() || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
+app/api/projects/[id]/artefact/route.ts:29:      const canvas = await rtGetCanvasShadowV1({ projectId: params.id, refName });
+app/api/projects/[id]/artefact/route.ts:82:        const refName = ref || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
+app/api/projects/[id]/artefact/route.ts:83:        await rtSaveArtefactDraft({ projectId: params.id, refName, content: parsed.data.content ?? '' });
+app/api/projects/[id]/artefact/route.ts:84:        const canvas = await rtGetCanvasShadowV1({ projectId: params.id, refName });
+PM_DOCS/PG_REFS_MIGRATION.md:14:- Build an inventory of every schema object and code path that uses `ref_name` or `refs.name`.
+PM_DOCS/PG_REFS_MIGRATION.md:16:  - RPCs: all `rt_*` functions that accept or join on `ref_name`.
+PM_DOCS/PG_REFS_MIGRATION.md:17:  - App/server: all `refName` fields in `src/store/pg/*`, API routes, UI state, local adapter, tests.
+PM_DOCS/PG_REFS_MIGRATION.md:19:  - Include at least: drafts, artefacts, current_ref_name, merge nodes.
+PM_DOCS/PG_REFS_MIGRATION.md:43:- Legacy migrations (still reference `ref_name`):
+PM_DOCS/PG_REFS_MIGRATION.md:44:  - `supabase/migrations_legacy/2025-12-19_*.sql` (search for `ref_name`).
+PM_DOCS/PG_REFS_MIGRATION.md:50:- `rg -n "ref_name|refName|refs\\.name" src supabase -S` inventory is complete.
+PM_DOCS/PG_REFS_MIGRATION.md:54:- Missing a call site or SQL function leads to mixed ref_name/ref_id usage.
+PM_DOCS/PG_REFS_MIGRATION.md:65:   - `update <table> t set ref_id = r.id from public.refs r where t.project_id = r.project_id and t.ref_name = r.name;`
+PM_DOCS/PG_REFS_MIGRATION.md:66:4) Add indexes for `(project_id, ref_id, ...)` where they mirror existing `(project_id, ref_name, ...)` indexes.
+PM_DOCS/PG_REFS_MIGRATION.md:71:  - `select count(*) from <table> where ref_id is null and ref_name is not null` -> 0
+PM_DOCS/PG_REFS_MIGRATION.md:84:   - For writes, set both `ref_id` and legacy `ref_name` during the transition.
+PM_DOCS/PG_REFS_MIGRATION.md:87:   - Any API routes or UI state that still use `refName`.
+PM_DOCS/PG_REFS_MIGRATION.md:93:- `rg -n "p_ref_name|refName|ref_name" src -S` returns only legacy helpers or migration code.
+PM_DOCS/PG_REFS_MIGRATION.md:98:- Mixed writes: some paths still using legacy `ref_name`.
+PM_DOCS/PG_REFS_MIGRATION.md:100:## Phase 3: Cleanup (ref_name Removal + Canonical ref_id)
+PM_DOCS/PG_REFS_MIGRATION.md:103:1) Drop legacy `ref_name` columns from side-car tables.
+PM_DOCS/PG_REFS_MIGRATION.md:106:4) Keep `refs.name` as the mutable label; all joins use `ref_id`.
+PM_DOCS/PG_REFS_MIGRATION.md:110:- Schema has no `ref_name` columns in side-cars.
+PM_DOCS/PG_REFS_MIGRATION.md:123:- Keep `refs.name` as display label; do not rely on it for joins after cutover.
+PM_DOCS/PG_REFS_MIGRATION.md:129:- `rg -n "ref_name|refName" src app -S` shows no production paths.
+app/api/projects/[id]/merge/route.ts:21:    return (await rtGetCurrentRefShadowV1({ projectId, defaultRefName: INITIAL_BRANCH })).refName;
+app/api/projects/[id]/merge/route.ts:110:            rtGetHistoryShadowV1({ projectId: params.id, refName: targetName, limit: 500 }),
+app/api/projects/[id]/merge/route.ts:111:            rtGetHistoryShadowV1({ projectId: params.id, refName: sourceBranch, limit: 500 })
+app/api/projects/[id]/merge/route.ts:149:            rtGetCanvasShadowV1({ projectId: params.id, refName: targetName }),
+app/api/projects/[id]/merge/route.ts:150:            rtGetCanvasShadowV1({ projectId: params.id, refName: sourceBranch })
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:11:  p_from_ref_name text,
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:12:  p_new_ref_name text,
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:40:  if p_new_ref_name is null or btrim(p_new_ref_name) = '' then
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:43:  if p_from_ref_name is null or btrim(p_from_ref_name) = '' then
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:51:  values (p_project_id, btrim(p_from_ref_name), null)
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:57:    where r.project_id = p_project_id and r.name = btrim(p_new_ref_name)
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:66:  where r.project_id = p_project_id and r.name = btrim(p_from_ref_name)
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:72:  where co.project_id = p_project_id and co.ref_name = btrim(p_from_ref_name);
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:77:    btrim(p_new_ref_name),
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:85:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:86:  select co.project_id, btrim(p_new_ref_name), co.ordinal, co.commit_id
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:89:    and co.ref_name = btrim(p_from_ref_name)
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:101:  p_source_ref_name text,
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:102:  p_new_ref_name text,
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:136:  values (p_project_id, p_source_ref_name, null)
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:142:  where r.project_id = p_project_id and r.name = p_source_ref_name;
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:157:    and co.ref_name = p_source_ref_name
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:174:    p_new_ref_name,
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:189:  where co.project_id = p_project_id and co.ref_name = p_new_ref_name;
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:192:    insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:193:    select co.project_id, p_new_ref_name, co.ordinal, co.commit_id
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:196:      and co.ref_name = p_source_ref_name
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:210:  p_ref_name text
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:230:  where r.project_id = p_project_id and r.name = p_ref_name;
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:241:  p_ref_name text,
+supabase/migrations/20251225606420_001_rt_refs_previous_response_id.sql:259:  where project_id = p_project_id and name = p_ref_name;
+PM_DOCS/MVP_PG_IMPL_PLAN.md:180:   - Store them in a draft table (`artefact_drafts`) keyed by `(project_id, ref_name, user_id)` (upsert).
+PM_DOCS/MVP_PG_IMPL_PLAN.md:600:`rt_create_ref_from_base_v1(project_id, new_ref_name, source_ref_id, base_commit_id, base_ordinal) -> { new_ref_id }`
+PM_DOCS/MVP_PG_IMPL_PLAN.md:645:1. the current user’s draft for `(project_id, ref_name)` if present (fast autosave UX), else
+app/api/projects/[id]/merge/pin-canvas-diff/route.ts:20:    return (await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' })).refName;
+app/api/projects/[id]/merge/pin-canvas-diff/route.ts:45:        const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName: resolvedTargetBranch, limit: 500 });
+app/api/projects/[id]/merge/pin-canvas-diff/route.ts:77:          refName: resolvedTargetBranch,
+app/projects/[id]/page.tsx:36:      refName: 'main'
+app/projects/[id]/page.tsx:44:      branchName: current.refName
+supabase/migrations/20251229035316_rt_get_history_strip_raw_response.sql:7:  p_ref_name text,
+supabase/migrations/20251229035316_rt_get_history_strip_raw_response.sql:40:      and co.ref_name = p_ref_name
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:58:  p_from_ref_name text,
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:59:  p_new_ref_name text,
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:86:  if p_new_ref_name is null or btrim(p_new_ref_name) = '' then
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:89:  if p_from_ref_name is null or btrim(p_from_ref_name) = '' then
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:97:  values (p_project_id, btrim(p_from_ref_name), null)
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:103:    where r.project_id = p_project_id and r.name = btrim(p_new_ref_name)
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:112:  where r.project_id = p_project_id and r.name = btrim(p_from_ref_name)
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:118:  where co.project_id = p_project_id and co.ref_name = btrim(p_from_ref_name);
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:123:    btrim(p_new_ref_name),
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:130:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:131:  select co.project_id, btrim(p_new_ref_name), co.ordinal, co.commit_id
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:134:    and co.ref_name = btrim(p_from_ref_name)
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:146:  p_source_ref_name text,
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:147:  p_new_ref_name text,
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:180:  values (p_project_id, p_source_ref_name, null)
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:186:  where r.project_id = p_project_id and r.name = p_source_ref_name;
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:201:    and co.ref_name = p_source_ref_name
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:218:    p_new_ref_name,
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:231:  where co.project_id = p_project_id and co.ref_name = p_new_ref_name;
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:234:    insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:235:    select co.project_id, p_new_ref_name, co.ordinal, co.commit_id
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:238:      and co.ref_name = p_source_ref_name
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:285:    select co.ref_name, max(co.ordinal) as max_ordinal
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:288:    group by co.ref_name
+supabase/migrations/20251224141610_002_rt_refs_llm_config.sql:289:  ) mx on mx.ref_name = r.name
+app/api/projects/[id]/chat/route.ts:34:    const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' });
+app/api/projects/[id]/chat/route.ts:35:    return refName;
+app/api/projects/[id]/chat/route.ts:110:        const hashes = await rtGetCanvasHashesShadowV1({ projectId: params.id, refName: targetRef });
+app/api/projects/[id]/chat/route.ts:118:        const pair = await rtGetCanvasPairShadowV1({ projectId: params.id, refName: targetRef });
+app/api/projects/[id]/chat/route.ts:198:                const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+app/api/projects/[id]/chat/route.ts:218:                    refName: targetRef,
+app/api/projects/[id]/chat/route.ts:244:                  refName: targetRef,
+app/api/projects/[id]/chat/route.ts:285:                refName: targetRef
+app/api/projects/[id]/chat/route.ts:341:                    refName: targetRef,
+app/api/projects/[id]/chat/route.ts:366:                      refName: targetRef,
+app/api/projects/[id]/chat/route.ts:443:              const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+app/api/projects/[id]/chat/route.ts:466:                  refName: targetRef,
+app/api/projects/[id]/chat/route.ts:490:                refName: targetRef,
+app/api/projects/[id]/chat/route.ts:616:                  refName: targetRef,
+app/api/projects/[id]/chat/route.ts:641:                    refName: targetRef,
+PM_DOCS/BUGS.md:51:- Likely root cause for “inherited messages are incomplete”: the ref’s `refs.tip_commit_id` points into an older history, but `commit_order` for that `ref_name` is missing the inherited prefix (only contains nodes appended after the branch was created). Reads use `commit_order → nodes` joins, so missing rows look like missing ancestry in the UI even though the commit DAG has the parent chain.
+PM_DOCS/MVP_GIT_ARCH_DESIGN.md:158:  - `git update-ref <refName> <newCommit> <expectedOldCommit>`
+supabase/migrations/20251224075742_remote_schema.sql:17:    "ref_name" text not null,
+supabase/migrations/20251224075742_remote_schema.sql:44:    "ref_name" text not null,
+supabase/migrations/20251224075742_remote_schema.sql:107:    "current_ref_name" text not null default 'main'::text,
+supabase/migrations/20251224075742_remote_schema.sql:179:CREATE UNIQUE INDEX artefact_drafts_pkey ON public.artefact_drafts USING btree (project_id, ref_name, user_id);
+supabase/migrations/20251224075742_remote_schema.sql:181:CREATE INDEX artefact_drafts_project_ref_updated_idx ON public.artefact_drafts USING btree (project_id, ref_name, updated_at DESC);
+supabase/migrations/20251224075742_remote_schema.sql:191:CREATE UNIQUE INDEX commit_order_pkey ON public.commit_order USING btree (project_id, ref_name, ordinal);
+supabase/migrations/20251224075742_remote_schema.sql:193:CREATE UNIQUE INDEX commit_order_project_id_ref_name_commit_id_key ON public.commit_order USING btree (project_id, ref_name, commit_id);
+supabase/migrations/20251224075742_remote_schema.sql:285:alter table "public"."commit_order" add constraint "commit_order_project_id_ref_name_commit_id_key" UNIQUE using index "commit_order_project_id_ref_name_commit_id_key";
+supabase/migrations/20251224075742_remote_schema.sql:329:CREATE OR REPLACE FUNCTION public.rt_append_node_to_ref(p_project_id uuid, p_ref_name text, p_kind text, p_role text, p_content_json jsonb, p_commit_message text DEFAULT NULL::text, p_node_id uuid DEFAULT NULL::uuid, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:357:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:367:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:381:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224075742_remote_schema.sql:382:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations/20251224075742_remote_schema.sql:386:  where project_id = p_project_id and name = p_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:393:CREATE OR REPLACE FUNCTION public.rt_append_node_to_ref_v1(p_project_id uuid, p_ref_name text, p_kind text, p_role text, p_content_json jsonb, p_node_id uuid DEFAULT NULL::uuid, p_commit_message text DEFAULT NULL::text, p_attach_draft boolean DEFAULT false, p_artefact_kind text DEFAULT 'canvas_md'::text, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:424:  values (p_project_id, p_ref_name, null)
+supabase/migrations/20251224075742_remote_schema.sql:430:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:440:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:459:      and d.ref_name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:470:        and co.ref_name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:483:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224075742_remote_schema.sql:484:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations/20251224075742_remote_schema.sql:488:  where project_id = p_project_id and name = p_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:538:CREATE OR REPLACE FUNCTION public.rt_create_ref_from_node_parent_v1(p_project_id uuid, p_source_ref_name text, p_new_ref_name text, p_node_id uuid, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:561:  values (p_project_id, p_source_ref_name, null)
+supabase/migrations/20251224075742_remote_schema.sql:577:    and co.ref_name = p_source_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:592:  values (p_project_id, p_new_ref_name, v_base_commit_id)
+supabase/migrations/20251224075742_remote_schema.sql:599:  where co.project_id = p_project_id and co.ref_name = p_new_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:602:    insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224075742_remote_schema.sql:603:    select co.project_id, p_new_ref_name, co.ordinal, co.commit_id
+supabase/migrations/20251224075742_remote_schema.sql:606:      and co.ref_name = p_source_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:616:CREATE OR REPLACE FUNCTION public.rt_create_ref_from_ref_v1(p_project_id uuid, p_from_ref_name text, p_new_ref_name text, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:634:  if p_new_ref_name is null or btrim(p_new_ref_name) = '' then
+supabase/migrations/20251224075742_remote_schema.sql:637:  if p_from_ref_name is null or btrim(p_from_ref_name) = '' then
+supabase/migrations/20251224075742_remote_schema.sql:645:  values (p_project_id, btrim(p_from_ref_name), null)
+supabase/migrations/20251224075742_remote_schema.sql:651:    where r.project_id = p_project_id and r.name = btrim(p_new_ref_name)
+supabase/migrations/20251224075742_remote_schema.sql:660:  where r.project_id = p_project_id and r.name = btrim(p_from_ref_name)
+supabase/migrations/20251224075742_remote_schema.sql:666:  where co.project_id = p_project_id and co.ref_name = btrim(p_from_ref_name);
+supabase/migrations/20251224075742_remote_schema.sql:669:  values (p_project_id, btrim(p_new_ref_name), v_tip);
+supabase/migrations/20251224075742_remote_schema.sql:672:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224075742_remote_schema.sql:673:  select co.project_id, btrim(p_new_ref_name), co.ordinal, co.commit_id
+supabase/migrations/20251224075742_remote_schema.sql:676:    and co.ref_name = btrim(p_from_ref_name)
+supabase/migrations/20251224075742_remote_schema.sql:684:CREATE OR REPLACE FUNCTION public.rt_get_canvas_v1(p_project_id uuid, p_ref_name text, p_kind text DEFAULT 'canvas_md'::text)
+supabase/migrations/20251224075742_remote_schema.sql:708:    and d.ref_name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:724:    and co.ref_name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:739:CREATE OR REPLACE FUNCTION public.rt_get_current_ref_v1(p_project_id uuid, p_default_ref_name text DEFAULT 'main'::text)
+supabase/migrations/20251224075742_remote_schema.sql:755:  select pup.current_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:760:  return coalesce(v_ref, p_default_ref_name, 'main');
+supabase/migrations/20251224075742_remote_schema.sql:765:CREATE OR REPLACE FUNCTION public.rt_get_history_v1(p_project_id uuid, p_ref_name text, p_limit integer DEFAULT 200, p_before_ordinal bigint DEFAULT NULL::bigint)
+supabase/migrations/20251224075742_remote_schema.sql:789:      and co.ref_name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:976:    select co.ref_name, max(co.ordinal) as max_ordinal
+supabase/migrations/20251224075742_remote_schema.sql:979:    group by co.ref_name
+supabase/migrations/20251224075742_remote_schema.sql:980:  ) mx on mx.ref_name = r.name
+supabase/migrations/20251224075742_remote_schema.sql:987:CREATE OR REPLACE FUNCTION public.rt_merge_ours_v1(p_project_id uuid, p_target_ref_name text, p_source_ref_name text, p_merge_node_json jsonb, p_merge_node_id uuid DEFAULT NULL::uuid, p_commit_message text DEFAULT NULL::text, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:1013:  values (p_project_id, p_target_ref_name, null)
+supabase/migrations/20251224075742_remote_schema.sql:1017:  values (p_project_id, p_source_ref_name, null)
+supabase/migrations/20251224075742_remote_schema.sql:1024:  where r.project_id = p_project_id and r.name = p_target_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:1034:  where r.project_id = p_project_id and r.name = p_source_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:1043:  where co.project_id = p_project_id and co.ref_name = p_target_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:1057:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224075742_remote_schema.sql:1058:  values (p_project_id, p_target_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations/20251224075742_remote_schema.sql:1062:  where project_id = p_project_id and name = p_target_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:1113:CREATE OR REPLACE FUNCTION public.rt_save_artefact_draft(p_project_id uuid, p_ref_name text, p_content text, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:1135:  insert into public.artefact_drafts (project_id, ref_name, user_id, content, content_hash, updated_at)
+supabase/migrations/20251224075742_remote_schema.sql:1136:  values (p_project_id, p_ref_name, auth.uid(), coalesce(p_content, ''), v_hash, now())
+supabase/migrations/20251224075742_remote_schema.sql:1137:  on conflict (project_id, ref_name, user_id)
+supabase/migrations/20251224075742_remote_schema.sql:1149:CREATE OR REPLACE FUNCTION public.rt_set_current_ref_v1(p_project_id uuid, p_ref_name text, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:1163:  if p_ref_name is null or btrim(p_ref_name) = '' then
+supabase/migrations/20251224075742_remote_schema.sql:1170:  values (p_project_id, btrim(p_ref_name), null)
+supabase/migrations/20251224075742_remote_schema.sql:1173:  insert into public.project_user_prefs (project_id, user_id, current_ref_name, updated_at)
+supabase/migrations/20251224075742_remote_schema.sql:1174:  values (p_project_id, auth.uid(), btrim(p_ref_name), now())
+supabase/migrations/20251224075742_remote_schema.sql:1177:    current_ref_name = excluded.current_ref_name,
+supabase/migrations/20251224075742_remote_schema.sql:1367:CREATE OR REPLACE FUNCTION public.rt_update_artefact_on_ref(p_project_id uuid, p_ref_name text, p_content text, p_kind text DEFAULT 'canvas_md'::text, p_state_node_id uuid DEFAULT NULL::uuid, p_state_node_json jsonb DEFAULT NULL::jsonb, p_commit_message text DEFAULT NULL::text, p_lock_timeout_ms integer DEFAULT 3000)
+supabase/migrations/20251224075742_remote_schema.sql:1394:  values (p_project_id, p_ref_name, null)
+supabase/migrations/20251224075742_remote_schema.sql:1400:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations/20251224075742_remote_schema.sql:1410:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations/20251224075742_remote_schema.sql:1430:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224075742_remote_schema.sql:1431:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations/20251224075742_remote_schema.sql:1435:  where project_id = p_project_id and name = p_ref_name;
+supabase/migrations/20251227080848_canvas_hash_compare.sql:3:  p_ref_name text,
+supabase/migrations/20251227080848_canvas_hash_compare.sql:34:    and d.ref_name = p_ref_name
+supabase/migrations/20251227080848_canvas_hash_compare.sql:44:    and co.ref_name = p_ref_name
+supabase/migrations/20251227080848_canvas_hash_compare.sql:56:  p_ref_name text,
+supabase/migrations/20251227080848_canvas_hash_compare.sql:91:    and d.ref_name = p_ref_name
+supabase/migrations/20251227080848_canvas_hash_compare.sql:101:    and co.ref_name = p_ref_name
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:8:  p_ref_name text,
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:55:  values (p_project_id, p_ref_name, null)
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:61:  where r.project_id = p_project_id and r.name = p_ref_name
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:71:  where co.project_id = p_project_id and co.ref_name = p_ref_name;
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:90:      and d.ref_name = p_ref_name
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:101:        and co.ref_name = p_ref_name
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:114:  insert into public.commit_order (project_id, ref_name, ordinal, commit_id)
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:115:  values (p_project_id, p_ref_name, v_next_ordinal, v_new_commit_id);
+supabase/migrations/20251224141600_001_rt_nodes_raw_response.sql:119:  where project_id = p_project_id and name = p_ref_name;
+src/server/llmState.ts:7:export async function getPreviousResponseId(projectId: string, refName: string): Promise<string | null> {
+src/server/llmState.ts:11:    return rtGetRefPreviousResponseIdV1({ projectId, refName });
+src/server/llmState.ts:15:  return map[refName]?.previousResponseId ?? null;
+src/server/llmState.ts:18:export async function setPreviousResponseId(projectId: string, refName: string, responseId: string | null): Promise<void> {
+src/server/llmState.ts:22:    await rtSetRefPreviousResponseIdV1({ projectId, refName, previousResponseId: responseId ?? null });
+src/server/llmState.ts:27:  const existing = map[refName];
+src/server/llmState.ts:29:    map[refName] = { ...existing, previousResponseId: responseId ?? null };
+src/server/llmState.ts:32:    map[refName] = {
+src/server/context.ts:49:    const refName = resolvedRef ?? 'main';
+src/server/context.ts:51:    const rows = await rtGetHistoryShadowV1({ projectId, refName, limit, includeRawResponse: true });
+src/server/context.ts:60:  const refName = resolvedRef ?? 'main';
+src/server/context.ts:62:  const currentConfig = branchConfigMap[refName] ?? resolveBranchConfig();
+src/server/context.ts:63:  if (!branchConfigMap[refName]) {
+src/server/context.ts:64:    branchConfigMap[refName] = currentConfig;
+src/server/llm.ts:56:  refName: string;
+src/server/llm.ts:1104:        refName: options.refName
+src/server/llm.ts:1195:        refName: options.refName
+src/server/llm.ts:1283:        refName: options.refName
+src/server/llm.ts:1380:        refName: options.refName
+src/server/canvasTools.ts:203:  refName: string;
+src/server/canvasTools.ts:213:  const canvas = await rtGetCanvasShadowV1({ projectId: options.projectId, refName: options.refName });
+src/server/canvasTools.ts:276:      refName: options.refName,

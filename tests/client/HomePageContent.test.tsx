@@ -85,6 +85,9 @@ describe('HomePageContent archive behavior', () => {
     const confirmButton = within(alphaItem as HTMLElement).getByRole('button', { name: 'Confirm archive' });
     await user.click(confirmButton);
 
+    const archivedToggle = screen.getByRole('button', { name: 'Archived' });
+    await user.click(archivedToggle);
+
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: /Alpha Workspace/ })).toBeNull();
       expect(screen.getByText('Archived')).toBeInTheDocument();
@@ -107,9 +110,12 @@ describe('HomePageContent archive behavior', () => {
       expect(screen.getByText('Archived')).toBeInTheDocument();
     });
 
-    const unarchiveButton = screen.getByRole('button', { name: 'Unarchive' });
+    const archivedToggle = screen.getByRole('button', { name: 'Archived' });
+    await user.click(archivedToggle);
+
+    const unarchiveButton = screen.getByRole('button', { name: 'Unarchive workspace' });
     await user.click(unarchiveButton);
-    const confirmButton = screen.getByRole('button', { name: 'Confirm' });
+    const confirmButton = screen.getByRole('button', { name: 'Confirm unarchive' });
     await user.click(confirmButton);
 
     await waitFor(() => {

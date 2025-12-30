@@ -14,6 +14,7 @@
 ## RAIL
 [x] when there are no projects, there should be a low key message under "recent" explaining there are no projects yet [Done - `HomePageContent` renders “No workspaces yet…” when list is empty]
 [x] add cmd-B as hot key to toggle rail expand/collapse
+[ ] On the home page rail, the archived section should be collapsed by default (contents hidden). Both archive and recent sections should scroll when full.
 
 ## MAIN FRAME
 [x] when creating a project (after clicking create) we need a spinner to communicate to the user that the click was received and things are happening in the background [Done - create button shows “Creating…” spinner while request is in flight]
@@ -29,6 +30,9 @@
  
 ### Messages
 [x] when any message is added, the chat container should auto scroll to the bottom [Done - message list scrolls to bottom when `visibleNodes.length` increases]
+[x] Composer hint should fade to 10% opacity once the draft is non-empty. [Done - hint opacity drops when input has content]
+[x] Streaming autoscroll should stop when the user scrolls away, and resume when they return near the bottom. [Done - follow breaks on user scroll, resumes at threshold]
+[ ] thinking bar in the chat window should not extend beyond the user chat bubble max width; default width aligns with shared history bar (slightly wider than current); both shrink when squashed
 
 ### Branch
 
@@ -36,6 +40,7 @@
 [x] [model selection] we currently allow the user to select a branch when branching via edit message button. The branch button at the bottom of the chat is not at parity. need to mirror the provider and thinking mode selectors (they should mirror current branch selections.) 
 [x] allow user to branch from assistant message
 [x] branching from assistant message flow: should be the same flow/ui as dedicated branch button (bottom right) since the branch happens "after" the assistant message, *at* the user message. In this specific flow, we assume the following user message is nulled and will be defined on the new branch chat. (We could even simply expand that existing branch modal on assistant message branch click?)
+[ ] retrospective branching / "move to branch". Often a user asks a follow up question (as a user message) BEFORE realising that it was a tangent which might deteriorate the parent branch context. A desireable action thereofre is to be able to "move downstream nodes" to a new branch. 
 
 ### Merge
 [x] [descoped] Merge modal includes **Provider** and **Thinking** selectors used for merge-assist actions (kept independent from the main chat composer settings). [Open - merge modal only has summary + payload picker; no independent provider/thinking inputs]
