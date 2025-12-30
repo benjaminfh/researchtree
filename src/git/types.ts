@@ -94,6 +94,7 @@ export interface ProjectMetadata {
 }
 
 export interface BranchSummary {
+  id?: string;
   name: string;
   headCommit: string;
   nodeCount: number;

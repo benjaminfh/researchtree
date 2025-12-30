@@ -32,17 +32,20 @@ export async function GET(_request: Request, { params }: RouteContext) {
     await requireProjectAccess({ id: params.id });
 
     if (store.mode === 'pg') {
-      const { rtListRefsShadowV1, rtGetHistoryShadowV1, rtGetStarredNodeIdsShadowV1 } = await import('@/src/store/pg/reads');
-      const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
+      const { rtListRefsShadowV2, rtGetHistoryShadowV2, rtGetStarredNodeIdsShadowV1 } = await import('@/src/store/pg/reads');
+      const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
 
-      const branches = await rtListRefsShadowV1({ projectId: params.id });
+      const branches = await rtListRefsShadowV2({ projectId: params.id });
       const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
-      const currentBranch = (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: trunkName })).refName;
+      const currentBranch = (await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: trunkName })).refName;
 
       const [branchHistoriesEntries, starredNodeIds] = await Promise.all([
         Promise.all(
           branches.map(async (branch) => {
-            const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName: branch.name, limit: MAX_PER_BRANCH });
+            if (!branch.id) {
+              return [branch.name, []] as const;
+            }
+            const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: branch.id, limit: MAX_PER_BRANCH });
             const nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
             const visible = nodes.filter((node) => !isHiddenMessage(node));
             return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as const;

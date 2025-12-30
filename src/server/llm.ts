@@ -53,7 +53,7 @@ export interface LLMStreamOptions {
 
 export interface LLMToolLoopOptions extends LLMStreamOptions {
   projectId: string;
-  refName: string;
+  refId: string;
   maxSteps?: number;
 }
 
@@ -1101,7 +1101,7 @@ async function completeWithOpenAIChatTools(options: LLMToolLoopOptions): Promise
         tool: toolName,
         args,
         projectId: options.projectId,
-        refName: options.refName
+        refId: options.refId
       });
       formattedMessages.push({
         role: 'tool',
@@ -1192,7 +1192,7 @@ async function completeWithOpenAIResponsesTools(options: LLMToolLoopOptions): Pr
         tool: call.name as CanvasToolName,
         args: (call.arguments ?? {}) as Record<string, unknown>,
         projectId: options.projectId,
-        refName: options.refName
+        refId: options.refId
       });
       toolOutputs.push({
         type: 'function_call_output',
@@ -1280,7 +1280,7 @@ async function completeWithGeminiTools(options: LLMToolLoopOptions): Promise<LLM
         tool: call.name as CanvasToolName,
         args: (call.args ?? {}) as Record<string, unknown>,
         projectId: options.projectId,
-        refName: options.refName
+        refId: options.refId
       });
       toolParts.push({
         functionResponse: {
@@ -1377,7 +1377,7 @@ async function completeWithAnthropicTools(options: LLMToolLoopOptions): Promise<
         tool: String(toolUse.name ?? '') as CanvasToolName,
         args: (toolUse.input ?? {}) as Record<string, unknown>,
         projectId: options.projectId,
-        refName: options.refName
+        refId: options.refId
       });
       toolResults.push({
         type: 'tool_result',

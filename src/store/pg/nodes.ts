@@ -2,9 +2,9 @@
 
 import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
-export async function rtAppendNodeToRefShadowV1(input: {
+export async function rtAppendNodeToRefShadowV2(input: {
   projectId: string;
-  refName: string;
+  refId: string;
   kind: string;
   role: string | null | undefined;
   contentJson: unknown;
@@ -14,9 +14,9 @@ export async function rtAppendNodeToRefShadowV1(input: {
   rawResponse?: unknown;
 }): Promise<{ newCommitId: string; nodeId: string; ordinal: number; artefactId: string | null; artefactContentHash: string | null }> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_append_node_to_ref_v1', {
+  const { data, error } = await rpc('rt_append_node_to_ref_v2', {
     p_project_id: input.projectId,
-    p_ref_name: input.refName,
+    p_ref_id: input.refId,
     p_kind: input.kind,
     p_role: input.role ?? 'system',
     p_content_json: input.contentJson,
@@ -34,7 +34,7 @@ export async function rtAppendNodeToRefShadowV1(input: {
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) {
-    throw new Error('No data returned from rt_append_node_to_ref_v1');
+    throw new Error('No data returned from rt_append_node_to_ref_v2');
   }
 
   return {

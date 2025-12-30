@@ -22,11 +22,12 @@ export async function GET(request: Request, { params }: RouteContext) {
     const effectiveRef = ref ?? INITIAL_BRANCH;
 
     if (store.mode === 'pg') {
-      const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-      const { rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
-      const refName =
-        ref?.trim() || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
-      const canvas = await rtGetCanvasShadowV1({ projectId: params.id, refName });
+      const { rtGetCanvasShadowV2 } = await import('@/src/store/pg/reads');
+      const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
+      const resolved = ref?.trim()
+        ? await resolveRefByName(params.id, ref)
+        : await resolveCurrentRef(params.id, INITIAL_BRANCH);
+      const canvas = await rtGetCanvasShadowV2({ projectId: params.id, refId: resolved.id });
       const updatedAtMs = canvas.updatedAt ? Date.parse(canvas.updatedAt) : null;
       return Response.json({
         artefact: canvas.content,
@@ -76,12 +77,14 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     return await withProjectLockAndRefLock(params.id, ref, async () => {
       if (store.mode === 'pg') {
-        const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-        const { rtSaveArtefactDraft } = await import('@/src/store/pg/drafts');
-        const { rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
-        const refName = ref || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
-        await rtSaveArtefactDraft({ projectId: params.id, refName, content: parsed.data.content ?? '' });
-        const canvas = await rtGetCanvasShadowV1({ projectId: params.id, refName });
+        const { rtSaveArtefactDraftV2 } = await import('@/src/store/pg/drafts');
+        const { rtGetCanvasShadowV2 } = await import('@/src/store/pg/reads');
+        const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
+        const resolved = ref?.trim()
+          ? await resolveRefByName(params.id, ref)
+          : await resolveCurrentRef(params.id, INITIAL_BRANCH);
+        await rtSaveArtefactDraftV2({ projectId: params.id, refId: resolved.id, content: parsed.data.content ?? '' });
+        const canvas = await rtGetCanvasShadowV2({ projectId: params.id, refId: resolved.id });
         const updatedAtMs = canvas.updatedAt ? Date.parse(canvas.updatedAt) : null;
         return Response.json(
           {

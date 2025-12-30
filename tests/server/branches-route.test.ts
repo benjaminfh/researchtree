@@ -9,10 +9,10 @@ const mocks = vi.hoisted(() => ({
   createBranch: vi.fn(),
   switchBranch: vi.fn(),
   getCurrentBranchName: vi.fn(),
-  rtGetCurrentRefShadowV1: vi.fn(),
-  rtSetCurrentRefShadowV1: vi.fn(),
-  rtListRefsShadowV1: vi.fn(),
-  rtCreateRefFromRefShadowV1: vi.fn()
+  rtGetCurrentRefShadowV2: vi.fn(),
+  rtSetCurrentRefShadowV2: vi.fn(),
+  rtListRefsShadowV2: vi.fn(),
+  rtCreateRefFromRefShadowV2: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -30,16 +30,16 @@ vi.mock('@git/utils', () => ({
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
-  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1,
-  rtSetCurrentRefShadowV1: mocks.rtSetCurrentRefShadowV1
+  rtGetCurrentRefShadowV2: mocks.rtGetCurrentRefShadowV2,
+  rtSetCurrentRefShadowV2: mocks.rtSetCurrentRefShadowV2
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtListRefsShadowV1: mocks.rtListRefsShadowV1
+  rtListRefsShadowV2: mocks.rtListRefsShadowV2
 }));
 
 vi.mock('@/src/store/pg/branches', () => ({
-  rtCreateRefFromRefShadowV1: mocks.rtCreateRefFromRefShadowV1
+  rtCreateRefFromRefShadowV2: mocks.rtCreateRefFromRefShadowV2
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/branches';
@@ -71,16 +71,16 @@ describe('/api/projects/[id]/branches', () => {
 
   it('reads branches from Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtListRefsShadowV1.mockResolvedValue([
-      { name: 'main', headCommit: '', nodeCount: 2, isTrunk: true },
-      { name: 'feature', headCommit: '', nodeCount: 0, isTrunk: false }
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: '', nodeCount: 2, isTrunk: true },
+      { id: 'ref-feature', name: 'feature', headCommit: '', nodeCount: 0, isTrunk: false }
     ]);
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
 
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(mocks.rtListRefsShadowV1).toHaveBeenCalledWith({ projectId: 'project-1' });
+    expect(mocks.rtListRefsShadowV2).toHaveBeenCalledWith({ projectId: 'project-1' });
     expect(json.branches).toHaveLength(2);
   });
 
@@ -96,20 +96,20 @@ describe('/api/projects/[id]/branches', () => {
 
   it('creates branch via Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
-    mocks.rtListRefsShadowV1.mockResolvedValue([
-      { name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true },
-      { name: 'feature', headCommit: 'b', nodeCount: 0, isTrunk: false }
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true },
+      { id: 'ref-feature', name: 'feature', headCommit: 'b', nodeCount: 0, isTrunk: false }
     ]);
-    mocks.rtCreateRefFromRefShadowV1.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });
-    mocks.rtSetCurrentRefShadowV1.mockResolvedValue(undefined);
+    mocks.rtCreateRefFromRefShadowV2.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
 
     const res = await POST(createRequest({ name: 'new-branch', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
     expect(res.status).toBe(201);
-    expect(mocks.rtCreateRefFromRefShadowV1).toHaveBeenCalledWith({
+    expect(mocks.rtCreateRefFromRefShadowV2).toHaveBeenCalledWith({
       projectId: 'project-1',
       newRefName: 'new-branch',
-      fromRefName: 'main',
+      fromRefId: 'ref-main',
       provider: 'openai_responses',
       model: 'gpt-5.2',
       previousResponseId: null
@@ -119,8 +119,8 @@ describe('/api/projects/[id]/branches', () => {
 
   it('returns 400 when creating a Postgres branch from a missing base ref', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
-    mocks.rtListRefsShadowV1.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true }]);
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true }]);
 
     const res = await POST(createRequest({ name: 'new-branch', fromRef: 'nope' }, 'POST'), { params: { id: 'project-1' } });
     expect(res.status).toBe(400);
@@ -138,8 +138,8 @@ describe('/api/projects/[id]/branches', () => {
 
   it('prefers per-user current branch when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'feature' });
-    mocks.rtListRefsShadowV1.mockResolvedValue([{ name: 'feature', headCommit: '', nodeCount: 0, isTrunk: false }]);
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-feature', refName: 'feature' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-feature', name: 'feature', headCommit: '', nodeCount: 0, isTrunk: false }]);
 
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
@@ -149,15 +149,15 @@ describe('/api/projects/[id]/branches', () => {
 
   it('sets per-user current branch on PATCH when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtListRefsShadowV1.mockResolvedValue([
-      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true },
-      { name: 'feature', headCommit: 'b', nodeCount: 2, isTrunk: false }
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true },
+      { id: 'ref-feature', name: 'feature', headCommit: 'b', nodeCount: 2, isTrunk: false }
     ]);
-    mocks.rtSetCurrentRefShadowV1.mockResolvedValue(undefined);
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
 
     const res = await PATCH(createRequest({ name: 'feature' }, 'PATCH'), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
-    expect(mocks.rtSetCurrentRefShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'feature' });
+    expect(mocks.rtSetCurrentRefShadowV2).toHaveBeenCalledWith({ projectId: 'project-1', refId: 'ref-feature' });
     expect(mocks.switchBranch).not.toHaveBeenCalled();
   });
 

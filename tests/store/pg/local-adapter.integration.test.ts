@@ -2,7 +2,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rtCreateProjectShadow, rtListProjectsShadowV1 } from '@/src/store/pg/projects';
-import { rtAppendNodeToRefShadowV1 } from '@/src/store/pg/nodes';
+import { rtAppendNodeToRefShadowV2 } from '@/src/store/pg/nodes';
 
 const mocks = vi.hoisted(() => ({
   createLocalPgAdapter: vi.fn()
@@ -45,7 +45,7 @@ describe('local pg adapter integration (smoke)', () => {
             error: null
           };
         }
-        if (fn === 'rt_append_node_to_ref_v1') {
+        if (fn === 'rt_append_node_to_ref_v2') {
           return {
             data: [
               {
@@ -84,9 +84,9 @@ describe('local pg adapter integration (smoke)', () => {
       }
     ]);
 
-    const appended = await rtAppendNodeToRefShadowV1({
+    const appended = await rtAppendNodeToRefShadowV2({
       projectId: 'proj-1',
-      refName: 'main',
+      refId: 'ref-1',
       kind: 'message',
       role: 'user',
       contentJson: { text: 'hello' }

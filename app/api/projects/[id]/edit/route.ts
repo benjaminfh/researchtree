@@ -24,14 +24,16 @@ interface RouteContext {
   params: { id: string };
 }
 
-async function getPreferredBranch(projectId: string): Promise<string> {
+async function getPreferredBranch(projectId: string): Promise<{ id: string | null; name: string }> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
-    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-    return (await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' })).refName;
+    const { resolveCurrentRef } = await import('@/src/server/pgRefs');
+    const current = await resolveCurrentRef(projectId, 'main');
+    return { id: current.id, name: current.name };
   }
   const { getCurrentBranchName } = await import('@git/utils');
-  return getCurrentBranchName(projectId).catch(() => 'main');
+  const name = await getCurrentBranchName(projectId).catch(() => 'main');
+  return { id: null, name };
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
@@ -51,7 +53,8 @@ export async function POST(request: Request, { params }: RouteContext) {
     };
     const currentBranch = await getPreferredBranch(params.id);
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
-    const sourceRef = fromRef?.trim() || currentBranch;
+    const explicitFromRef = fromRef?.trim() || null;
+    const sourceRef = explicitFromRef ?? currentBranch.name;
     const branchConfigMap = await getBranchConfigMap(params.id);
     const baseConfig = branchConfigMap[sourceRef] ?? resolveBranchConfig();
     const requestedProvider = llmProvider ? resolveOpenAIProviderSelection(llmProvider) : baseConfig.provider;
@@ -77,9 +80,11 @@ export async function POST(request: Request, { params }: RouteContext) {
       const releaseRefLock = await acquireProjectRefLock(params.id, sourceRef);
       try {
         if (store.mode === 'pg') {
-          const { rtCreateRefFromNodeParentShadowV1 } = await import('@/src/store/pg/branches');
-          const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-          const { rtAppendNodeToRefShadowV1, rtGetNodeContentShadowV1 } = await import('@/src/store/pg/nodes');
+          const { rtCreateRefFromNodeParentShadowV2 } = await import('@/src/store/pg/branches');
+          const { rtSetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+          const { rtAppendNodeToRefShadowV2, rtGetNodeContentShadowV1 } = await import('@/src/store/pg/nodes');
+          const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+          const { resolveRefByName } = await import('@/src/server/pgRefs');
 
           const targetNode = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId })) as any | null;
           if (!targetNode) {
@@ -90,10 +95,16 @@ export async function POST(request: Request, { params }: RouteContext) {
           }
 
           const apiKey = targetNode.role === 'user' ? await requireUserApiKeyForProvider(provider) : null;
+          const sourceRefInfo = explicitFromRef
+            ? await resolveRefByName(params.id, sourceRef)
+            : { id: currentBranch.id, name: sourceRef };
+          if (!sourceRefInfo.id) {
+            throw badRequest(`Branch ${sourceRef} is missing ref id`);
+          }
 
-          await rtCreateRefFromNodeParentShadowV1({
+          await rtCreateRefFromNodeParentShadowV2({
             projectId: params.id,
-            sourceRefName: sourceRef,
+            sourceRefId: sourceRefInfo.id,
             newRefName: targetBranch,
             nodeId,
             provider,
@@ -101,10 +112,19 @@ export async function POST(request: Request, { params }: RouteContext) {
             previousResponseId: null
           });
 
-          await rtSetCurrentRefShadowV1({ projectId: params.id, refName: targetBranch });
+          const branches = await rtListRefsShadowV2({ projectId: params.id });
+          const targetRef = branches.find((branch) => branch.name === targetBranch);
+          if (!targetRef?.id) {
+            throw badRequest(`Branch ${targetBranch} is missing ref id`);
+          }
 
-          const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-          const lastTargetRows = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetBranch, limit: 1 }).catch(() => []);
+          await rtSetCurrentRefShadowV2({ projectId: params.id, refId: targetRef.id });
+
+          const lastTargetRows = await rtGetHistoryShadowV2({
+            projectId: params.id,
+            refId: targetRef.id,
+            limit: 1
+          }).catch(() => []);
           const lastTargetNode = (lastTargetRows[0]?.nodeJson as any) ?? null;
           const parentId = lastTargetNode?.id ? String(lastTargetNode.id) : null;
 
@@ -119,9 +139,9 @@ export async function POST(request: Request, { params }: RouteContext) {
             createdOnBranch: targetBranch
           };
 
-          await rtAppendNodeToRefShadowV1({
+          await rtAppendNodeToRefShadowV2({
             projectId: params.id,
-            refName: targetBranch,
+            refId: targetRef.id,
             kind: editedNode.type,
             role: editedNode.role,
             contentJson: editedNode,
@@ -142,7 +162,9 @@ export async function POST(request: Request, { params }: RouteContext) {
               let rawResponse: unknown = null;
               let responseId: string | null = null;
               const previousResponseId =
-                provider === 'openai_responses' ? await getPreviousResponseId(params.id, targetBranch).catch(() => null) : null;
+                provider === 'openai_responses'
+                  ? await getPreviousResponseId(params.id, { id: targetRef.id, name: targetBranch }).catch(() => null)
+                  : null;
               for await (const chunk of streamAssistantCompletion({
                 messages: messagesForCompletion,
                 provider,
@@ -210,9 +232,9 @@ export async function POST(request: Request, { params }: RouteContext) {
                   rawResponse: rawResponseForStorage
                 };
 
-                await rtAppendNodeToRefShadowV1({
+                await rtAppendNodeToRefShadowV2({
                   projectId: params.id,
-                  refName: targetBranch,
+                  refId: targetRef.id,
                   kind: assistantNode.type,
                   role: assistantNode.role,
                   contentJson: assistantNode,
@@ -222,7 +244,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   rawResponse: rawResponseForStorage
                 });
                 if (provider === 'openai_responses' && responseId) {
-                  await setPreviousResponseId(params.id, targetBranch, responseId);
+                  await setPreviousResponseId(params.id, { id: targetRef.id, name: targetBranch }, responseId);
                 }
               } else {
                 console.warn('[edit] Skipping empty assistant response');
@@ -287,7 +309,9 @@ export async function POST(request: Request, { params }: RouteContext) {
             let rawResponse: unknown = null;
             let responseId: string | null = null;
             const previousResponseId =
-              provider === 'openai_responses' ? await getPreviousResponseId(params.id, targetBranch).catch(() => null) : null;
+              provider === 'openai_responses'
+                ? await getPreviousResponseId(params.id, { id: null, name: targetBranch }).catch(() => null)
+                : null;
             for await (const chunk of streamAssistantCompletion({
               messages: messagesForCompletion,
               provider,
@@ -355,7 +379,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 { ref: targetBranch }
               );
               if (provider === 'openai_responses' && responseId) {
-                await setPreviousResponseId(params.id, targetBranch, responseId);
+                await setPreviousResponseId(params.id, { id: null, name: targetBranch }, responseId);
               }
             } else {
               console.warn('[edit] Skipping empty assistant response');
