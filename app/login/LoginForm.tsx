@@ -6,6 +6,7 @@ import { useFormState, useFormStatus } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { signInWithPassword, signUpWithPassword } from './actions';
 import Link from 'next/link';
+import { PASSWORD_MIN_LENGTH, PASSWORD_POLICY_HINT } from '@/src/utils/passwordPolicy';
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -32,15 +33,17 @@ const initialState = { error: null as string | null, mode: null as 'signIn' | 's
 export function LoginForm({
   redirectTo,
   initialEmail,
+  initialMode,
   waitlistEnforced
 }: {
   redirectTo: string;
   initialEmail?: string | null;
+  initialMode: 'signIn' | 'signUp';
   waitlistEnforced: boolean;
 }) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
-  const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
+  const [mode, setMode] = useState<'signUp' | 'signIn'>(initialMode);
   const [emailValue, setEmailValue] = useState(initialEmail ?? '');
 
   useEffect(() => {
@@ -58,7 +61,12 @@ export function LoginForm({
   const activeError = useMemo(() => {
     const signInError = signInState?.error ?? null;
     const signUpError = signUpState?.error ?? null;
-    return mode === 'signIn' ? signInError : signUpError;
+    if (mode === 'signIn') {
+      if (signInError) return signInError;
+      if (signUpState?.mode === 'signIn' && signUpError) return signUpError;
+      return null;
+    }
+    return signUpError;
   }, [mode, signInState, signUpState]);
 
   return (
@@ -134,11 +142,13 @@ export function LoginForm({
               name="password"
               type="password"
               autoComplete="new-password"
-              minLength={10}
+              minLength={PASSWORD_MIN_LENGTH}
+              pattern={`(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${PASSWORD_MIN_LENGTH},}`}
+              title={PASSWORD_POLICY_HINT}
               required
             />
             <span className="mt-1 block text-xs text-slate-600">
-              Minimum 10 characters. Use lowercase and uppercase letters, digits, and symbols.
+              {PASSWORD_POLICY_HINT}
             </span>
           </label>
 

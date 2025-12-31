@@ -6,7 +6,13 @@
 # FRONT END
 
 ## REGISTRATION & LOGIN
-[x] if a user attempts to create an account with an email that's already registered, the UI hits a dead end and provides no feedback
+[x][reverify] if a user attempts to create an account with an email that's already registered, the UI hits a dead end and provides no feedback
+[ ] when user clicks confirm email link in email, should send them to "existing user" view
+[ ] when user triggers password reset, email link takes them to new user registration view
+[ ] when returning user (existing but expired/cancelled cookie) lands on login page, best efforts to show them sign in view, not new user view
+[ ] when new user enters non-compliant password, need to block submission and registration - does/should supabase return error in this case?
+[ ] allow magic link sign in?
+
 
 
 ## HOME
@@ -15,6 +21,8 @@
 
 [x] models are now pinned immutably to branches - this means that a user now has no opportunity to choose provider for the main/trunk branch when creating a new project. 
 [ ] on page load (home, workspace) rail renders as open and then closes, causing a flicker.
+[ ] home - recent list must scroll after flexing into Archive section (currently forces everything below off the page)
+[ ] home - archive pushes user button off bottom of page when expanded (see screenshot)
 
 ## WORKSPACE / PROJECT
 [x] workspace UI sometimes refers to main, sometimes to trunk

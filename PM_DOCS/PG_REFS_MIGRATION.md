@@ -137,3 +137,111 @@ Risks:
 
 - This intentionally deviates from Git: Git refs are mutable names; there is no immutable ref ID.
 - The benefit is a stable link between provenance (nodes/commits) and side-car data (drafts/prefs).
+
+# Appendix: Implement Branch Rename + Pinned Branch (One-Phase PR)
+
+Goal: ship both features in one PR: safe branch rename (mutable label) + per-project pinned branch (separate from current/HEAD).
+
+Behavior requirements:
+- Pinned branch sorts to the top of the branch list.
+- Current branch stays in its natural order and is highlighted with a label/icon (no reordering).
+- Renames must be safe and must not break history/drafts/prefs (use `ref_id` everywhere).
+- One pinned branch per project (nullable).
+
+## A) Supabase Migration (RPCs + list refs)
+
+Create one migration file that:
+1) Adds RPCs:
+   - `rt_rename_ref_v2(p_project_id uuid, p_ref_id uuid, p_new_name text, p_lock_timeout_ms integer default 3000)`
+     - Validate auth + membership.
+     - Ensure `p_new_name` is non-empty, trimmed, and unique per project.
+     - Update `public.refs` set `name = p_new_name`, `updated_at = now()` where `id = p_ref_id and project_id = p_project_id`.
+     - Return the updated `id`, `name`.
+   - `rt_set_pinned_ref_v2(p_project_id uuid, p_ref_id uuid)`
+     - Validate auth + membership.
+     - Ensure ref belongs to project.
+     - Update `public.projects` set `pinned_ref_id = p_ref_id`.
+   - `rt_clear_pinned_ref_v2(p_project_id uuid)`
+     - Validate auth + membership.
+     - Update `public.projects` set `pinned_ref_id = null`.
+   - `rt_get_pinned_ref_v2(p_project_id uuid)`
+     - Return `ref_id`, `ref_name` (left join `refs`).
+2) Extend `rt_list_refs_v2` to include `is_pinned boolean`.
+   - Join `projects.pinned_ref_id` and compute `is_pinned`.
+3) Grant execute for new RPCs to `authenticated`.
+
+## B) Store Layer (PG)
+
+Add wrappers in `src/store/pg`:
+- `rtRenameRefShadowV2`
+- `rtSetPinnedRefShadowV2`
+- `rtClearPinnedRefShadowV2`
+- `rtGetPinnedRefShadowV2`
+- Update `rtListRefsShadowV2` return type to include `isPinned`.
+
+## C) API Routes
+
+Add endpoints (PG + Git mode paths for parity):
+- Rename:
+  - `PATCH /api/projects/{id}/branches/{refId}` (body: `{ name: string }`)
+  - PG: call `rt_rename_ref_v2`, return updated branches + current branch.
+  - Git: use `git branch -m` (or equivalent helper) + update branch config map.
+- Pin:
+  - `POST /api/projects/{id}/branches/{refId}/pin` -> set pinned
+  - `DELETE /api/projects/{id}/branches/pin` -> clear pinned
+  - PG: set/clear via new RPCs.
+  - Git: store pinned ref in per-project metadata (add file or extend existing metadata if needed).
+
+## D) UI (WorkspaceClient)
+
+Branch list changes:
+- Sort: pinned branch first, then trunk, then existing order.
+- Add a "Pinned" badge/icon next to the pinned branch.
+- Add a "Current" badge/icon on the active branch (do not change its order).
+- Add actions in the branch list row (e.g., menu or inline buttons):
+  - Rename branch
+  - Pin/unpin branch
+
+Rename flow:
+- Inline edit or modal (re-use existing branch name input styles).
+- Validate non-empty, max length; show conflicts (duplicate name).
+
+Pin flow:
+- Single pinned branch per project.
+- Toggling pinned state updates list and persists.
+
+## E) Tests + Verification (Run in review)
+
+Add tests:
+- RPC contract tests for new functions and `rt_list_refs_v2` fields.
+- API tests for rename/pin routes.
+- UI tests if available for branch list ordering and pin/rename behavior.
+
+Manual smoke (PG mode):
+- Rename current branch; verify history/artefact/drafts still load.
+- Pin a branch; refresh; pinned badge persists.
+- Switch current branch; verify pinned stays fixed and current label updates.
+
+# Appendix: Allow Trunk Rename (Unwind `main` Assumptions)
+
+Goal: make trunk identity independent of the branch name so `main` can be renamed safely.
+
+1) Add canonical trunk id:
+   - Add `projects.trunk_ref_id uuid` (FK to `refs.id`).
+   - Backfill to the ref currently named `main` for each project.
+2) RPC updates (use trunk_ref_id):
+   - `rt_list_refs_v2`: `is_trunk = (r.id = p.trunk_ref_id)`.
+   - `rt_get_current_ref_v2`: default to trunk_ref_id (not a name).
+   - Project creation: set `trunk_ref_id` on insert.
+3) Server/app updates:
+   - Replace name defaults (`'main'`) with trunk_ref_id lookups.
+   - `src/server/context.ts`: resolve default ref by trunk id.
+   - `app/projects/[id]/page.tsx`: resolve branchName from trunk id (not literal main).
+4) Git-mode parity:
+   - Add `trunkBranchName` to project metadata file.
+   - Update rename flow to move trunk pointer when renaming trunk.
+   - Replace `INITIAL_BRANCH` checks with metadata trunk name.
+5) UI:
+   - Keep “trunk” as a label derived from `isTrunk` (already largely done).
+6) Remove rename guard:
+   - Drop the “cannot rename main” check in `rt_rename_ref_v2` and `src/git/branches.ts`.

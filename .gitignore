@@ -9,6 +9,7 @@
 .DS_Store
 tsconfig.tsbuildinfo
 out/
+test-results/
 
 # Deployment platforms
 supabase/.temp/
