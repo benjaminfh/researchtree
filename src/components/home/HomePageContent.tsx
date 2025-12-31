@@ -152,6 +152,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                 key={project.id}
                                 className="group w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
                                 title={project.name}
+                                data-project-id={project.id}
                               >
                                 <div className="flex min-w-0 items-center justify-between gap-3">
                                   <Link href={`/projects/${project.id}`} className="min-w-0 flex-1" title={project.name}>
@@ -178,6 +179,8 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                         : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
                                     }`}
                                     aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
+                                    data-testid="archive-workspace"
+                                    data-project-id={project.id}
                                   >
                                     {isConfirming ? <CheckIcon className="h-4 w-4" /> : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
                                   </button>
@@ -216,6 +219,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                   key={project.id}
                                   className="w-full min-w-0 rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm"
                                   title={project.name}
+                                  data-project-id={project.id}
                                 >
                                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                                     <span
@@ -240,6 +244,8 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                           : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
                                       }`}
                                       aria-label={isConfirming ? 'Confirm unarchive' : 'Unarchive workspace'}
+                                      data-testid="unarchive-workspace"
+                                      data-project-id={project.id}
                                     >
                                       {isConfirming ? (
                                         <CheckIcon className="h-4 w-4" />

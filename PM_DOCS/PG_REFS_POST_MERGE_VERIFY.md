@@ -351,7 +351,11 @@ where table_schema = 'public'
   and column_name = 'pinned_ref_id';
 ```
 
-Success. No rows returned
+[
+  {
+    "column_name": "pinned_ref_id"
+  }
+]
 
 Expect: one row.
 

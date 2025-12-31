@@ -9,6 +9,7 @@
 .DS_Store
 tsconfig.tsbuildinfo
 out/
+test-results/
 
 # Deployment platforms
 supabase/.temp/
@@ -221,3 +222,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Playwright
+tests/e2e/.auth/

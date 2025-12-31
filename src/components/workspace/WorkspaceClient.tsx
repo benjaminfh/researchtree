@@ -1921,6 +1921,9 @@ export function WorkspaceClient({
                             ? 'bg-primary/15 text-primary shadow-sm'
                             : 'text-slate-700 hover:bg-white/80'
                         }`}
+                        data-testid="branch-switch"
+                        data-branch-name={branch.name}
+                        data-branch-trunk={branch.isTrunk ? 'true' : undefined}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex min-w-0 items-center gap-2">
@@ -1956,6 +1959,9 @@ export function WorkspaceClient({
                     disabled={isSwitching}
                     submitting={isCreating}
                     error={branchActionError}
+                    testId="branch-form-rail"
+                    inputTestId="branch-form-rail-input"
+                    submitTestId="branch-form-rail-submit"
                     providerSelector={
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
@@ -1965,6 +1971,7 @@ export function WorkspaceClient({
                             onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                             className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
                             disabled={isSwitching || isCreating}
+                            data-testid="branch-provider-select-rail"
                           >
                             {selectableProviderOptions.map((option) => (
                               <option key={option.id} value={option.id}>
@@ -2042,6 +2049,7 @@ export function WorkspaceClient({
                   href="/"
                   className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
                   aria-label="Back to home"
+                  data-testid="back-to-home"
                 >
                   <HomeIcon className="h-4 w-4" />
                 </Link>
@@ -2087,6 +2095,7 @@ export function WorkspaceClient({
                     href="/"
                     className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                     aria-label="Back to home"
+                    data-testid="back-to-home"
                   >
                     <HomeIcon className="h-4 w-4" />
                   </Link>
@@ -2256,7 +2265,10 @@ export function WorkspaceClient({
                       <div className="flex items-center gap-2">
                         <div ref={newBranchPopoverRef} className="relative h-11">
                           {showNewBranchPopover ? (
-                            <div className="absolute bottom-0 right-0 z-30 w-[420px] overflow-hidden rounded-2xl border border-divider/80 bg-white shadow-lg">
+                            <div
+                              className="absolute bottom-0 right-0 z-30 w-[420px] overflow-hidden rounded-2xl border border-divider/80 bg-white shadow-lg"
+                              data-testid="branch-popover"
+                            >
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2286,6 +2298,9 @@ export function WorkspaceClient({
                                   disabled={isSwitching}
                                   submitting={isCreating}
                                   error={branchActionError}
+                                  testId="branch-form-popover"
+                                  inputTestId="branch-form-popover-input"
+                                  submitTestId="branch-form-popover-submit"
                                   providerSelector={
                                     <div className="flex flex-wrap items-center gap-2">
                                       <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
@@ -2295,6 +2310,7 @@ export function WorkspaceClient({
                                           onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
                                           disabled={isSwitching || isCreating}
+                                          data-testid="branch-provider-select-popover"
                                         >
                                           {selectableProviderOptions.map((option) => (
                                             <option key={option.id} value={option.id}>
@@ -2340,6 +2356,7 @@ export function WorkspaceClient({
                               disabled={isCreating || isSwitching}
                               className="inline-flex h-full items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
                               aria-label="Show branch creator"
+                              data-testid="branch-new-button"
                             >
                               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
                                 <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
@@ -2360,6 +2377,7 @@ export function WorkspaceClient({
                             }}
                             disabled={isMerging}
                             className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                            data-testid="merge-open-button"
                           >
                             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
                               <BlueprintIcon icon="git-merge" className="h-4 w-4" />
@@ -2416,6 +2434,7 @@ export function WorkspaceClient({
                   }}
                   aria-label="Show canvas / graph panel"
                   className="card-surface flex h-full w-full items-start justify-center rounded-2xl border border-dashed border-divider/70 bg-white/80 px-2 py-6 text-sm font-semibold text-primary shadow-sm hover:bg-primary/5"
+                  data-testid="insight-panel-show"
                 >
                   <span className="whitespace-nowrap text-xs font-semibold tracking-wide text-slate-700 [writing-mode:vertical-rl] [text-orientation:mixed]">
                     Graph | Canvas
@@ -2431,6 +2450,7 @@ export function WorkspaceClient({
                         className={`flex-1 rounded-full px-3 py-1 transition ${
                           insightTab === 'graph' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                         }`}
+                        data-testid="insight-tab-graph"
                       >
                         Thred graph
                       </button>
@@ -2440,6 +2460,7 @@ export function WorkspaceClient({
                         className={`flex-1 rounded-full px-3 py-1 transition ${
                           insightTab === 'canvas' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                         }`}
+                        data-testid="insight-tab-canvas"
                       >
                         Canvas
                       </button>
@@ -2457,7 +2478,7 @@ export function WorkspaceClient({
                   </div>
                   <div className="flex flex-1 min-h-0 flex-col">
                     {insightTab === 'graph' ? (
-                      <div className="flex-1 min-h-0">
+                      <div className="flex-1 min-h-0" data-testid="graph-panel">
                         {graphHistoryLoading ? (
                           <div className="flex h-full items-center justify-center">
                             <div className="h-full w-full animate-pulse rounded-2xl bg-slate-100" />
@@ -2738,6 +2759,7 @@ export function WorkspaceClient({
                                     onFocus={() => setIsCanvasFocused(true)}
                                     onBlur={() => setIsCanvasFocused(false)}
                                     className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
+                                    data-testid="canvas-editor"
                                   />
                                   {!isCanvasFocused && artefactDraft.length === 0 ? (
                                     <div className="pointer-events-none absolute left-4 top-4 text-sm text-slate-400">
@@ -2745,7 +2767,10 @@ export function WorkspaceClient({
                                     </div>
                                   ) : null}
                                   {isSavingArtefact || artefactError ? (
-                                    <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                                    <div
+                                      className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur"
+                                      data-testid="canvas-save-indicator"
+                                    >
                                       {isSavingArtefact ? (
                                         <>
                                           <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
@@ -2932,7 +2957,7 @@ export function WorkspaceClient({
             if (event.target === event.currentTarget) closeMergeModal();
           }}
         >
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="merge-modal">
             <h3 className="text-lg font-semibold text-slate-900">
               Merge {displayBranchName(branchName)} into {displayBranchName(mergeTargetBranch)}
             </h3>
@@ -2949,6 +2974,7 @@ export function WorkspaceClient({
                 onChange={(event) => setMergeTargetBranch(event.target.value)}
                 className="w-full rounded-lg border border-divider/80 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isMerging}
+                data-testid="merge-target"
               >
                 {sortedBranches
                   .filter((branch) => branch.name !== branchName)
@@ -2971,6 +2997,7 @@ export function WorkspaceClient({
                 placeholder={`What should come back to ${displayBranchName(mergeTargetBranch)}?`}
                 className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isMerging}
+                data-testid="merge-summary"
               />
               <p className="text-xs text-muted">
                 This summary is remembered on the target branch and injected into future LLM context as a merge note.
@@ -3035,7 +3062,10 @@ export function WorkspaceClient({
                   <span className="text-xs text-muted">No changes detected</span>
                 ) : null}
               </div>
-              <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-divider/80 bg-slate-50 font-mono text-xs text-slate-800">
+              <div
+                className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-divider/80 bg-slate-50 font-mono text-xs text-slate-800"
+                data-testid="merge-diff"
+              >
                 {isMergePreviewLoading ? (
                   <div className="space-y-2 px-3 py-3 animate-pulse">
                     <div className="h-3 w-5/6 rounded-full bg-slate-200" />
@@ -3134,6 +3164,7 @@ export function WorkspaceClient({
                 }}
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={isMerging || isMergePreviewLoading || !selectedMergePayload}
+                data-testid="merge-submit"
               >
                 {isMerging ? (
                   <span className="inline-flex items-center gap-2">
@@ -3151,7 +3182,7 @@ export function WorkspaceClient({
 
       {showEditModal && editingNode ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="edit-modal">
             <h3 className="text-lg font-semibold text-slate-900">Edit message (new branch)</h3>
             <p className="text-sm text-muted">Editing creates a new branch from this message and switches you there.</p>
             <div className="mt-4 space-y-2">
@@ -3166,17 +3197,19 @@ export function WorkspaceClient({
                 className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isEditing}
                 required
+                data-testid="edit-branch-name"
               />
             </div>
 	            <div className="mt-4 flex flex-wrap items-center gap-2">
 	              <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
 	                <span className="font-semibold text-slate-700">Provider</span>
-	                <select
-	                  value={editProvider}
-	                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
-	                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-	                  disabled={isEditing}
-	                >
+                <select
+                  value={editProvider}
+                  onChange={(event) => setEditProvider(event.target.value as LLMProvider)}
+                  className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                  disabled={isEditing}
+                  data-testid="edit-provider-select"
+                >
 	                  {selectableProviderOptions.map((option) => (
 	                    <option key={option.id} value={option.id}>
 	                      {option.label}
@@ -3214,6 +3247,7 @@ export function WorkspaceClient({
                 rows={4}
                 className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isEditing}
+                data-testid="edit-content"
               />
             </div>
             {editError ? <p className="mt-2 text-sm text-red-600">{editError}</p> : null}
@@ -3291,6 +3325,7 @@ export function WorkspaceClient({
                 }}
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={isEditing}
+                data-testid="edit-submit"
               >
                 {isEditing ? (
                   <span className="inline-flex items-center gap-2">
