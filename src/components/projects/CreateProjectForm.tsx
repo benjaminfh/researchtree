@@ -59,7 +59,7 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
   };
 
   return (
-    <form onSubmit={handleSubmit} className="card-surface flex flex-col gap-4 p-6">
+    <form onSubmit={handleSubmit} className="card-surface flex flex-col gap-4 p-6" data-testid="create-project-form">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-primary">Create Workspace</p>
@@ -80,6 +80,7 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
           className="rounded-lg border border-divider/80 px-3 py-2 text-base shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
           disabled={isSubmitting}
           required
+          data-testid="create-project-name"
         />
       </label>
 
@@ -92,6 +93,7 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
           rows={3}
           className="rounded-lg border border-divider/80 px-3 py-2 text-base shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
           disabled={isSubmitting}
+          data-testid="create-project-description"
         />
       </label>
 
@@ -102,6 +104,7 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
           onChange={(event) => setProvider(event.target.value as LLMProvider)}
           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
           disabled={isSubmitting || providerOptions.length === 0}
+          data-testid="create-project-provider"
         >
           {providerOptions.map((option) => (
             <option key={option.id} value={option.id}>
@@ -117,6 +120,7 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
         type="submit"
         disabled={isSubmitting}
         className="inline-flex w-fit items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+        data-testid="create-project-submit"
       >
         {isSubmitting ? (
           <span className="inline-flex items-center gap-2">

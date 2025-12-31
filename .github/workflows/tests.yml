@@ -7,6 +7,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/master' && 'prod' || 'preview' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,3 +28,26 @@ jobs:
         env:
           DEBUG_PRINT_LIMIT: '500'
         run: npm test
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run e2e smoke
+        env:
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+          E2E_OPENAI_API_KEY: ${{ secrets.E2E_OPENAI_API_KEY }}
+          E2E_GEMINI_API_KEY: ${{ secrets.E2E_GEMINI_API_KEY }}
+          E2E_ANTHROPIC_API_KEY: ${{ secrets.E2E_ANTHROPIC_API_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RT_STORE: pg
+          RT_PG_ADAPTER: supabase
+          RT_APP_ORIGIN: http://localhost:3000
+          DEPLOY_ENV: dev
+          LLM_DEFAULT_PROVIDER: openai
+          LLM_ENABLE_OPENAI: 'true'
+          LLM_ENABLE_GEMINI: 'true'
+          LLM_ENABLE_ANTHROPIC: 'true'
+        run: npx playwright test
