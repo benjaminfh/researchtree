@@ -1,0 +1,19 @@
+name: require-dev-for-master
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure master merges come from dev
+        run: |
+          echo "Base branch: ${{ github.base_ref }}"
+          echo "Head branch: ${{ github.head_ref }}"
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "Only PRs from 'dev' can merge into 'master'."
+            exit 1
+          fi
