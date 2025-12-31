@@ -156,7 +156,9 @@ $$;
 revoke all on function public.rt_get_pinned_ref_v2(uuid) from public;
 grant execute on function public.rt_get_pinned_ref_v2(uuid) to authenticated;
 
-create or replace function public.rt_list_refs_v2(
+drop function if exists public.rt_list_refs_v2(uuid);
+
+create function public.rt_list_refs_v2(
   p_project_id uuid
 )
 returns table (
