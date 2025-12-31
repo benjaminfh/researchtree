@@ -15,6 +15,8 @@
 
 [x] models are now pinned immutably to branches - this means that a user now has no opportunity to choose provider for the main/trunk branch when creating a new project. 
 [ ] on page load (home, workspace) rail renders as open and then closes, causing a flicker.
+[ ] home - recent list must scroll after flexing into Archive section (currently forces everything below off the page)
+[ ] home - archive pushes user button off bottom of page when expanded (see screenshot)
 
 ## WORKSPACE / PROJECT
 [x] workspace UI sometimes refers to main, sometimes to trunk

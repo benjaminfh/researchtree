@@ -190,7 +190,8 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'feature/phase-2' })).toBeInTheDocument();
+    const featureBranch = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
+    expect(featureBranch).toBeTruthy();
     expect(screen.getByText('Test project description')).toBeInTheDocument();
 
     // Reveal shared history on non-trunk branches before asserting messages.
@@ -530,7 +531,9 @@ describe('WorkspaceClient', () => {
         expect(badge).toHaveTextContent('Gemini');
       });
 
-      await user.click(screen.getByRole('button', { name: TRUNK_LABEL }));
+      const trunkButton = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'main');
+      expect(trunkButton).toBeTruthy();
+      await user.click(trunkButton as HTMLElement);
 
       await waitFor(() => {
         const badge = screen.getByText('Provider').parentElement;
@@ -639,7 +642,9 @@ describe('WorkspaceClient', () => {
       return 0;
     }) as unknown as typeof globalThis.requestAnimationFrame;
 
-    await user.click(screen.getByRole('button', { name: TRUNK_LABEL }));
+    const trunkButton = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'main');
+    expect(trunkButton).toBeTruthy();
+    await user.click(trunkButton as HTMLElement);
 
     await waitFor(() => {
       expect(listEl.scrollTop).toBe(2000);

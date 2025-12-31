@@ -502,6 +502,12 @@ export function WorkspaceClient({
   const [newBranchName, setNewBranchName] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isPinning, setIsPinning] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<BranchSummary | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [mergeSummary, setMergeSummary] = useState('');
   const [mergeError, setMergeError] = useState<string | null>(null);
@@ -588,6 +594,21 @@ export function WorkspaceClient({
     setEditProvider(normalizeProviderForUi(branchProvider));
     setEditThinking(thinking);
     setShowEditModal(true);
+  };
+
+  const openRenameModal = (branch: BranchSummary) => {
+    setRenameTarget(branch);
+    setRenameValue(branch.name);
+    setRenameError(null);
+    setShowRenameModal(true);
+  };
+
+  const closeRenameModal = () => {
+    if (isRenaming) return;
+    setShowRenameModal(false);
+    setRenameTarget(null);
+    setRenameValue('');
+    setRenameError(null);
   };
 
   const {
@@ -1108,7 +1129,11 @@ export function WorkspaceClient({
 
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
   const displayBranchName = (name: string) => (name === trunkName ? TRUNK_LABEL : name);
-  const sortedBranches = branches;
+  const sortedBranches = useMemo(() => {
+    const pinned = branches.filter((branch) => branch.isPinned);
+    const unpinned = branches.filter((branch) => !branch.isPinned);
+    return [...pinned, ...unpinned];
+  }, [branches]);
   const branchColorMap = useMemo(
     () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
     [sortedBranches, trunkName]
@@ -1881,6 +1906,75 @@ export function WorkspaceClient({
     }
   };
 
+  const renameBranch = async () => {
+    if (!renameTarget) return;
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      setRenameError('Branch name is required.');
+      return;
+    }
+    setIsRenaming(true);
+    setRenameError(null);
+    setBranchActionError(null);
+    try {
+      const branchId = renameTarget.id ?? renameTarget.name;
+      const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nextName })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? 'Rename failed');
+      }
+      const data = (await res.json()) as {
+        branchName?: string;
+        branchId?: string | null;
+        branches?: BranchSummary[];
+      };
+      if (data.branchName) {
+        setBranchName(data.branchName);
+      }
+      if (data.branches) {
+        setBranches(data.branches);
+      }
+      closeRenameModal();
+    } catch (err) {
+      setRenameError((err as Error).message);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const togglePinnedBranch = async (branch: BranchSummary) => {
+    if (isPinning) return;
+    setIsPinning(true);
+    setBranchActionError(null);
+    try {
+      const branchId = branch.id ?? branch.name;
+      const url = branch.isPinned
+        ? `/api/projects/${project.id}/branches/pin`
+        : `/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/pin`;
+      const method = branch.isPinned ? 'DELETE' : 'POST';
+      const res = await fetch(url, { method });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? 'Pin update failed');
+      }
+      const data = (await res.json()) as { branches?: BranchSummary[]; branchName?: string };
+      if (data.branchName) {
+        setBranchName(data.branchName);
+      }
+      if (data.branches) {
+        setBranches(data.branches);
+      }
+    } catch (err) {
+      setBranchActionError((err as Error).message);
+    } finally {
+      setIsPinning(false);
+    }
+  };
+
   const closeMergeModal = () => {
     if (isMerging) return;
     setShowMergeModal(false);
@@ -1903,7 +1997,7 @@ export function WorkspaceClient({
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
                     <span>Branches</span>
                     <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-2 py-1 text-xs font-medium text-slate-700">
-                      {isSwitching || isCreating ? (
+                      {isSwitching || isCreating || isPinning ? (
                         <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                       ) : null}
                       {sortedBranches.length}
@@ -1915,7 +2009,7 @@ export function WorkspaceClient({
                         key={branch.name}
                         type="button"
                         onClick={() => void switchBranch(branch.name)}
-                        disabled={isSwitching || isCreating}
+                        disabled={isSwitching || isCreating || isPinning || isRenaming}
                         className={`w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
                           branchName === branch.name
                             ? 'bg-primary/15 text-primary shadow-sm'
@@ -1943,6 +2037,44 @@ export function WorkspaceClient({
                               {displayBranchName(branch.name)}
                             </span>
                           </span>
+                          <span className="inline-flex items-center gap-2">
+                            {branch.isPinned ? (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                Pinned
+                              </span>
+                            ) : null}
+                            {branchName === branch.name ? (
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                Current
+                              </span>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void togglePinnedBranch(branch);
+                              }}
+                              disabled={isSwitching || isCreating || isPinning}
+                              className="inline-flex items-center gap-1 rounded-full border border-divider/80 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                              aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                            >
+                              <BlueprintIcon icon="pin" className="h-3 w-3" />
+                              <span>{branch.isPinned ? 'Unpin' : 'Pin'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openRenameModal(branch);
+                              }}
+                              disabled={branch.isTrunk || isSwitching || isCreating || isPinning}
+                              className="inline-flex items-center gap-1 rounded-full border border-divider/80 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                              aria-label="Rename branch"
+                            >
+                              <BlueprintIcon icon="edit" className="h-3 w-3" />
+                              <span>Rename</span>
+                            </button>
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -1956,7 +2088,7 @@ export function WorkspaceClient({
                     value={newBranchName}
                     onValueChange={setNewBranchName}
                     onSubmit={() => void createBranch()}
-                    disabled={isSwitching}
+                    disabled={isSwitching || isPinning || isRenaming}
                     submitting={isCreating}
                     error={branchActionError}
                     testId="branch-form-rail"
@@ -1970,7 +2102,7 @@ export function WorkspaceClient({
                             value={newBranchProvider}
                             onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                             className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                            disabled={isSwitching || isCreating}
+                            disabled={isSwitching || isCreating || isPinning || isRenaming}
                             data-testid="branch-provider-select-rail"
                           >
                             {selectableProviderOptions.map((option) => (
@@ -1986,7 +2118,7 @@ export function WorkspaceClient({
                             value={newBranchThinking}
                             onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
                             className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                            disabled={isSwitching || isCreating}
+                            disabled={isSwitching || isCreating || isPinning || isRenaming}
                           >
                             {(() => {
                               const branchModel =
@@ -2309,7 +2441,7 @@ export function WorkspaceClient({
                                           value={newBranchProvider}
                                           onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                          disabled={isSwitching || isCreating}
+                                          disabled={isSwitching || isCreating || isPinning || isRenaming}
                                           data-testid="branch-provider-select-popover"
                                         >
                                           {selectableProviderOptions.map((option) => (
@@ -2325,7 +2457,7 @@ export function WorkspaceClient({
                                           value={newBranchThinking}
                                           onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
                                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                          disabled={isSwitching || isCreating}
+                                          disabled={isSwitching || isCreating || isPinning || isRenaming}
                                         >
                                           {(() => {
                                             const branchModel =
@@ -3173,6 +3305,55 @@ export function WorkspaceClient({
                   </span>
                 ) : (
                   `Merge into ${displayBranchName(mergeTargetBranch)}`
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRenameModal && renameTarget ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" data-testid="rename-modal">
+            <h3 className="text-lg font-semibold text-slate-900">Rename branch</h3>
+            <p className="text-sm text-muted">This only changes the label. History, drafts, and Canvas stay intact.</p>
+            <div className="mt-4 space-y-2">
+              <label className="text-sm font-medium text-slate-800" htmlFor="rename-branch-name">
+                Branch name
+              </label>
+              <input
+                id="rename-branch-name"
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                disabled={isRenaming}
+                required
+                data-testid="rename-branch-name"
+              />
+            </div>
+            {renameError ? <p className="mt-2 text-sm text-red-600">{renameError}</p> : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeRenameModal}
+                className="rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                disabled={isRenaming}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void renameBranch()}
+                className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={isRenaming}
+              >
+                {isRenaming ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                    <span>Renaming…</span>
+                  </span>
+                ) : (
+                  'Rename'
                 )}
               </button>
             </div>
