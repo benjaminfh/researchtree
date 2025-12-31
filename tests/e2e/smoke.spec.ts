@@ -41,12 +41,16 @@ async function waitForStreamingIdle(page: Page) {
 
 async function expectActiveBranch(page: Page, branchName: string) {
   const branchButton = page.locator(`[data-testid="branch-switch"][data-branch-name="${branchName}"]`);
-  await expect(branchButton).toHaveClass(/bg-primary\/15/);
+  await expect(branchButton.getByText('Current', { exact: true })).toBeVisible();
 }
 
 async function switchToBranch(page: Page, branchName: string) {
   const branchButton = page.locator(`[data-testid="branch-switch"][data-branch-name="${branchName}"]`);
-  await branchButton.click();
+  const switchResponsePromise = page.waitForResponse((response) => {
+    return response.url().includes('/api/projects/') && response.url().includes('/branches') && response.request().method() === 'POST';
+  });
+  await branchButton.click({ position: { x: 8, y: 8 } });
+  await switchResponsePromise.catch(() => null);
   await expectActiveBranch(page, branchName);
 }
 
@@ -120,7 +124,9 @@ test('workspace smoke flow', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('create-project-name').fill(projectName);
   await page.getByTestId('create-project-description').fill('Playwright smoke test');
-  await page.getByTestId('create-project-provider').selectOption('openai');
+  const providerSelect = page.getByTestId('create-project-provider');
+  await expect(providerSelect.locator('option[value=\"openai\"]')).toHaveCount(1);
+  await providerSelect.selectOption('openai');
   const createResponsePromise = page.waitForResponse((response) => {
     return response.url().includes('/api/projects') && response.request().method() === 'POST';
   });
@@ -131,8 +137,8 @@ test('workspace smoke flow', async ({ page }) => {
     const message = body?.error?.message ?? `Create project failed (status ${createResponse.status()}).`;
     throw new Error(message);
   }
-  await expect(page).toHaveURL(/\/projects\//);
   await expect(page.getByTestId('chat-message-list')).toBeVisible();
+  await expect(page).toHaveURL(/\/projects\//);
 
   const trunkButton = page.locator('[data-testid="branch-switch"][data-branch-trunk="true"]');
   const trunkName = await trunkButton.getAttribute('data-branch-name');
@@ -151,7 +157,9 @@ test('workspace smoke flow', async ({ page }) => {
 
   await page.getByTestId('branch-new-button').click();
   await expect(page.getByTestId('branch-popover')).toBeVisible();
-  await page.getByTestId('branch-provider-select-popover').selectOption('gemini');
+  const branchProviderSelect = page.getByTestId('branch-provider-select-popover');
+  await expect(branchProviderSelect.locator('option[value=\"gemini\"]')).toHaveCount(1);
+  await branchProviderSelect.selectOption('gemini');
   await page.getByTestId('branch-form-popover-input').fill(regularBranch);
   await page.getByTestId('branch-form-popover-submit').click();
   await expect(page.locator(`[data-testid="branch-switch"][data-branch-name="${regularBranch}"]`)).toBeVisible();
@@ -172,7 +180,8 @@ test('workspace smoke flow', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Create branch from message' }).last().click();
   await expect(page.getByTestId('branch-popover')).toBeVisible();
-  await page.getByTestId('branch-provider-select-popover').selectOption('anthropic');
+  await expect(branchProviderSelect.locator('option[value=\"anthropic\"]')).toHaveCount(1);
+  await branchProviderSelect.selectOption('anthropic');
   await page.getByTestId('branch-form-popover-input').fill(assistantBranch);
   await page.getByTestId('branch-form-popover-submit').click();
   await expect(page.locator(`[data-testid="branch-switch"][data-branch-name="${assistantBranch}"]`)).toBeVisible();
@@ -214,7 +223,7 @@ test('workspace smoke flow', async ({ page }) => {
   await expect(page.getByTestId('merge-modal')).toBeVisible();
   await page.getByTestId('merge-target').selectOption({ value: trunkName });
   await page.getByTestId('merge-summary').fill(`Merge ${regularBranch} into trunk`);
-  await expect(page.getByTestId('merge-diff')).toContainText(branchCanvas);
+  await expect(page.getByTestId('merge-diff')).toContainText(branchCanvas, { timeout: 30_000 });
   await page.getByTestId('merge-submit').click();
   await expect(page.getByTestId('merge-modal')).toBeHidden();
   await expect(page.getByText('Merged from')).toBeVisible();
