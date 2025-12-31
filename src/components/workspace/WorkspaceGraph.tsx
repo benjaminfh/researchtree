@@ -1362,6 +1362,7 @@ export function WorkspaceGraph({
                   className={`rounded-full px-3 py-1 transition ${
                     mode === 'collapsed' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                   }`}
+                  data-testid="graph-mode-collapsed"
                 >
                   Collapsed
                 </button>
@@ -1371,6 +1372,7 @@ export function WorkspaceGraph({
                   className={`rounded-full px-3 py-1 transition ${
                     mode === 'nodes' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                   }`}
+                  data-testid="graph-mode-all"
                 >
                   All
                 </button>
@@ -1380,6 +1382,7 @@ export function WorkspaceGraph({
                   className={`rounded-full px-3 py-1 transition ${
                     mode === 'starred' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                   }`}
+                  data-testid="graph-mode-starred"
                 >
                   Starred
                 </button>

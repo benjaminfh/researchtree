@@ -2049,6 +2049,7 @@ export function WorkspaceClient({
                   href="/"
                   className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
                   aria-label="Back to home"
+                  data-testid="back-to-home"
                 >
                   <HomeIcon className="h-4 w-4" />
                 </Link>
@@ -2094,6 +2095,7 @@ export function WorkspaceClient({
                     href="/"
                     className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                     aria-label="Back to home"
+                    data-testid="back-to-home"
                   >
                     <HomeIcon className="h-4 w-4" />
                   </Link>
@@ -2432,6 +2434,7 @@ export function WorkspaceClient({
                   }}
                   aria-label="Show canvas / graph panel"
                   className="card-surface flex h-full w-full items-start justify-center rounded-2xl border border-dashed border-divider/70 bg-white/80 px-2 py-6 text-sm font-semibold text-primary shadow-sm hover:bg-primary/5"
+                  data-testid="insight-panel-show"
                 >
                   <span className="whitespace-nowrap text-xs font-semibold tracking-wide text-slate-700 [writing-mode:vertical-rl] [text-orientation:mixed]">
                     Graph | Canvas
@@ -2447,6 +2450,7 @@ export function WorkspaceClient({
                         className={`flex-1 rounded-full px-3 py-1 transition ${
                           insightTab === 'graph' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                         }`}
+                        data-testid="insight-tab-graph"
                       >
                         Thred graph
                       </button>
@@ -2456,6 +2460,7 @@ export function WorkspaceClient({
                         className={`flex-1 rounded-full px-3 py-1 transition ${
                           insightTab === 'canvas' ? 'bg-white text-primary shadow-sm' : 'text-slate-600'
                         }`}
+                        data-testid="insight-tab-canvas"
                       >
                         Canvas
                       </button>

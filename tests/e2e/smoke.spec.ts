@@ -2,8 +2,18 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
+async function ensureInsightsVisible(page: Page) {
+  const showPanel = page.getByTestId('insight-panel-show');
+  if (await showPanel.isVisible()) {
+    await showPanel.click();
+  }
+}
+
 async function saveCanvas(page: Page, text: string) {
+  await ensureInsightsVisible(page);
+  await page.getByTestId('insight-tab-canvas').click();
   const editor = page.getByTestId('canvas-editor');
+  await editor.waitFor({ state: 'visible' });
   await editor.fill(text);
   const responsePromise = page.waitForResponse((response) => {
     return response.url().includes('/artefact') && response.request().method() === 'PUT' && response.ok();
@@ -24,6 +34,11 @@ async function waitForAssistantResponse(page: Page, previousCount: number) {
   await expect.poll(() => list.count()).toBeGreaterThan(previousCount);
 }
 
+async function waitForStreamingIdle(page: Page) {
+  const stopButton = page.getByLabel('Stop streaming');
+  await stopButton.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => null);
+}
+
 async function expectActiveBranch(page: Page, branchName: string) {
   const branchButton = page.locator(`[data-testid="branch-switch"][data-branch-name="${branchName}"]`);
   await expect(branchButton).toHaveClass(/bg-primary\/15/);
@@ -33,6 +48,60 @@ async function switchToBranch(page: Page, branchName: string) {
   const branchButton = page.locator(`[data-testid="branch-switch"][data-branch-name="${branchName}"]`);
   await branchButton.click();
   await expectActiveBranch(page, branchName);
+}
+
+async function openEditForUserMessage(page: Page, message: string) {
+  const row = page.locator('[data-node-id]').filter({ hasText: message }).first();
+  await expect(row).toBeVisible();
+  await expect
+    .poll(async () => row.getAttribute('data-node-id'))
+    .not.toBe('optimistic-user');
+  await row.getByRole('button', { name: 'Edit message' }).click();
+}
+
+async function waitForNodeIdStable(page: Page, message: string) {
+  const row = page.getByTestId('chat-message-list').locator('[data-node-id]').filter({ hasText: message }).first();
+  await expect(row).toBeVisible();
+  await expect
+    .poll(async () => row.getAttribute('data-node-id'))
+    .not.toBe('optimistic-user');
+  return row;
+}
+
+async function getNodeIdForMessage(page: Page, message: string) {
+  const row = await waitForNodeIdStable(page, message);
+  const nodeId = await row.getAttribute('data-node-id');
+  if (!nodeId) {
+    throw new Error(`Node id not found for message: ${message}`);
+  }
+  return nodeId;
+}
+
+async function ensureGraphVisible(page: Page) {
+  const graphPanel = page.getByTestId('graph-panel');
+  if (await graphPanel.isVisible()) return;
+  await ensureInsightsVisible(page);
+  await page.getByTestId('insight-tab-graph').click();
+  await graphPanel.waitFor({ state: 'visible' });
+}
+
+async function submitEditAndWait(page: Page) {
+  const editResponsePromise = page.waitForResponse((response) => {
+    return response.url().includes('/edit') && response.request().method() === 'POST';
+  });
+  await page.getByTestId('edit-submit').click();
+  const editResponse = await editResponsePromise;
+  if (!editResponse.ok()) {
+    const body = await editResponse.json().catch(() => null);
+    const message = body?.error?.message ?? `Edit failed (status ${editResponse.status()}).`;
+    throw new Error(message);
+  }
+  try {
+    await expect(page.getByTestId('edit-modal')).toBeHidden({ timeout: 20_000 });
+  } catch {
+    const errorText = await page.getByTestId('edit-modal').getByText(/.+/).first().textContent().catch(() => '');
+    throw new Error(`Edit modal did not close. ${errorText ? `Modal text: ${errorText}` : ''}`.trim());
+  }
 }
 
 test('workspace smoke flow', async ({ page }) => {
@@ -52,7 +121,16 @@ test('workspace smoke flow', async ({ page }) => {
   await page.getByTestId('create-project-name').fill(projectName);
   await page.getByTestId('create-project-description').fill('Playwright smoke test');
   await page.getByTestId('create-project-provider').selectOption('openai');
+  const createResponsePromise = page.waitForResponse((response) => {
+    return response.url().includes('/api/projects') && response.request().method() === 'POST';
+  });
   await page.getByTestId('create-project-submit').click();
+  const createResponse = await createResponsePromise;
+  if (!createResponse.ok()) {
+    const body = await createResponse.json().catch(() => null);
+    const message = body?.error?.message ?? `Create project failed (status ${createResponse.status()}).`;
+    throw new Error(message);
+  }
   await expect(page).toHaveURL(/\/projects\//);
   await expect(page.getByTestId('chat-message-list')).toBeVisible();
 
@@ -67,6 +145,7 @@ test('workspace smoke flow', async ({ page }) => {
   await page.getByLabel('Send message').click();
   await expect(page.getByText(message1)).toBeVisible();
   await waitForAssistantResponse(page, initialCount);
+  const message1NodeId = await getNodeIdForMessage(page, message1);
 
   await saveCanvas(page, trunkCanvas);
 
@@ -105,12 +184,11 @@ test('workspace smoke flow', async ({ page }) => {
   await expect(page.getByText(message3)).toBeVisible();
   await waitForAssistantResponse(page, anthropicCount);
 
-  await page.getByRole('button', { name: 'Edit message' }).last().click();
+  await openEditForUserMessage(page, message3);
   await expect(page.getByTestId('edit-modal')).toBeVisible();
   await page.getByTestId('edit-branch-name').fill(editBranch);
   await page.getByTestId('edit-content').fill(`${message3} updated`);
-  await page.getByTestId('edit-submit').click();
-  await expect(page.getByTestId('edit-modal')).toBeHidden();
+  await submitEditAndWait(page);
   await expect(page.locator(`[data-testid="branch-switch"][data-branch-name="${editBranch}"]`)).toBeVisible();
   await expectActiveBranch(page, editBranch);
 
@@ -120,14 +198,16 @@ test('workspace smoke flow', async ({ page }) => {
   await expect(page.getByText(message4)).toBeVisible();
   await waitForAssistantResponse(page, editCount);
 
-  await page.getByRole('button', { name: 'Star node' }).last().click();
-  await expect(page.getByRole('button', { name: 'Unstar node' }).last()).toBeVisible();
+  await waitForStreamingIdle(page);
+  const starRow = await waitForNodeIdStable(page, message4);
+  await starRow.getByRole('button', { name: 'Star node' }).click();
+  await expect(starRow.getByRole('button', { name: 'Unstar node' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'All' }).click();
-  const graphLabel = message1.slice(0, 30);
-  await page.getByTestId('graph-panel').getByText(graphLabel).click();
+  await ensureGraphVisible(page);
+  await page.getByTestId('graph-mode-all').click();
+  await page.getByTestId('graph-panel').getByTestId(`rf__node-${message1NodeId}`).click();
   await page.getByRole('button', { name: 'Jump to message' }).click();
-  await expect(page.getByText(message1)).toBeVisible();
+  await expect(page.getByTestId('chat-message-list').getByText(message1)).toBeVisible();
 
   await switchToBranch(page, regularBranch);
   await page.getByTestId('merge-open-button').click();
@@ -139,7 +219,7 @@ test('workspace smoke flow', async ({ page }) => {
   await expect(page.getByTestId('merge-modal')).toBeHidden();
   await expect(page.getByText('Merged from')).toBeVisible();
 
-  await page.getByRole('link', { name: 'Back to home' }).click();
+  await page.getByTestId('back-to-home').first().click();
   await expect(page).toHaveURL(/\/$/);
 
   const projectCard = page.locator('li', { hasText: projectName });
