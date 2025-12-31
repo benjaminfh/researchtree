@@ -6,7 +6,13 @@
 # FRONT END
 
 ## REGISTRATION & LOGIN
-[x] if a user attempts to create an account with an email that's already registered, the UI hits a dead end and provides no feedback
+[x][reverify] if a user attempts to create an account with an email that's already registered, the UI hits a dead end and provides no feedback
+[ ] when user clicks confirm email link in email, should send them to "existing user" view
+[ ] when user triggers password reset, email link takes them to new user registration view
+[ ] when returning user (existing but expired/cancelled cookie) lands on login page, best efforts to show them sign in view, not new user view
+[ ] when new user enters non-compliant password, need to block submission and registration - does/should supabase return error in this case?
+[ ] allow magic link sign in?
+
 
 
 ## HOME

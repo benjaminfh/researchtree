@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
 import { getRequestOrigin } from '@/src/server/requestOrigin';
+import { getPasswordPolicyError } from '@/src/utils/passwordPolicy';
 
 type AuthActionState = { error: string | null; mode?: 'signIn' | 'signUp' | null };
 
@@ -23,6 +24,11 @@ export async function signInWithPassword(_prevState: AuthActionState, formData: 
 
   if (!email || !password) {
     return { error: 'Email and password are required.' };
+  }
+
+  const passwordError = getPasswordPolicyError(password);
+  if (passwordError) {
+    return { error: passwordError };
   }
 
   try {
@@ -59,6 +65,7 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
     const loginParams = new URLSearchParams();
     loginParams.set('redirectTo', redirectTo);
     loginParams.set('email', email);
+    loginParams.set('mode', 'signIn');
     const postConfirmRedirectTo = `/login?${loginParams.toString()}#existing-user`;
     const emailRedirectTo = origin
       ? `${origin}/auth/callback?flow=signup-confirm&redirectTo=${encodeURIComponent(postConfirmRedirectTo)}`
@@ -106,5 +113,5 @@ export async function signOut(): Promise<void> {
   } catch {
     // ignore
   }
-  redirect('/login');
+  redirect('/login?mode=signIn#existing-user');
 }
