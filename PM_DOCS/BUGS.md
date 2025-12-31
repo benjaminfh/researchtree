@@ -31,6 +31,7 @@
 [x] if a user has entered provider API token but hits a quota issue with the provider, we surface a generic errors. We need to detect this response for each provider and surface a clear user facing error.
 [x] double check that we surface a clear user facing error if user tries a provider and has not entered an api token for that provider.
 [x] excess horizontal padding around the chat/graph container <div class="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
+[ ] gemini replies initially stream thinking content into chat view. Once complete, thinking is contained (corrrectly) in thinking box, and only reply content shows. This initial state is a bug.
 
 ### Branches
 [x] LLM config should be pinned to branch [Fixed - provider/thinking persisted per `projectId + branchName` storage keys]
