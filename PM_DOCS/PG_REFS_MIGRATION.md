@@ -221,3 +221,27 @@ Manual smoke (PG mode):
 - Rename current branch; verify history/artefact/drafts still load.
 - Pin a branch; refresh; pinned badge persists.
 - Switch current branch; verify pinned stays fixed and current label updates.
+
+# Appendix: Allow Trunk Rename (Unwind `main` Assumptions)
+
+Goal: make trunk identity independent of the branch name so `main` can be renamed safely.
+
+1) Add canonical trunk id:
+   - Add `projects.trunk_ref_id uuid` (FK to `refs.id`).
+   - Backfill to the ref currently named `main` for each project.
+2) RPC updates (use trunk_ref_id):
+   - `rt_list_refs_v2`: `is_trunk = (r.id = p.trunk_ref_id)`.
+   - `rt_get_current_ref_v2`: default to trunk_ref_id (not a name).
+   - Project creation: set `trunk_ref_id` on insert.
+3) Server/app updates:
+   - Replace name defaults (`'main'`) with trunk_ref_id lookups.
+   - `src/server/context.ts`: resolve default ref by trunk id.
+   - `app/projects/[id]/page.tsx`: resolve branchName from trunk id (not literal main).
+4) Git-mode parity:
+   - Add `trunkBranchName` to project metadata file.
+   - Update rename flow to move trunk pointer when renaming trunk.
+   - Replace `INITIAL_BRANCH` checks with metadata trunk name.
+5) UI:
+   - Keep “trunk” as a label derived from `isTrunk` (already largely done).
+6) Remove rename guard:
+   - Drop the “cannot rename main” check in `rt_rename_ref_v2` and `src/git/branches.ts`.
