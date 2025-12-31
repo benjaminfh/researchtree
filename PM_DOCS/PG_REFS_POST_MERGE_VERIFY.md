@@ -234,7 +234,7 @@ where ref_id is null;
 
 [
   {
-    "artefacts_missing_ref_id": 0
+    "artefacts_missing_ref_id": 1
   }
 ]
 
@@ -262,13 +262,32 @@ where table_schema = 'public'
 
 Expect: zero rows.
 
+[
+  {
+    "column_name": "ref_name"
+  },
+  {
+    "column_name": "ref_name"
+  },
+  {
+    "column_name": "current_ref_name"
+  }
+]
+
 ### 2) Confirm ref_id is not null
 
 ```sql
 select count(*) as commit_order_null_ref_id
 from public.commit_order
 where ref_id is null;
+
 ```
+
+[
+  {
+    "commit_order_null_ref_id": 0
+  }
+]
 
 ```sql
 select count(*) as artefact_drafts_null_ref_id
@@ -276,11 +295,23 @@ from public.artefact_drafts
 where ref_id is null;
 ```
 
+[
+  {
+    "artefact_drafts_null_ref_id": 0
+  }
+]
+
 ```sql
 select count(*) as artefacts_null_ref_id
 from public.artefacts
 where ref_id is null;
 ```
+
+[
+  {
+    "artefacts_null_ref_id": 1
+  }
+]
 
 Expect: all 0.
 
@@ -298,6 +329,21 @@ where conname in (
 );
 ```
 
+[
+  {
+    "conname": "artefact_drafts_pkey",
+    "conrelid": "artefact_drafts"
+  },
+  {
+    "conname": "commit_order_pkey",
+    "conrelid": "commit_order"
+  },
+  {
+    "conname": "refs_pkey",
+    "conrelid": "refs"
+  }
+]
+
 Expect: all present.
 
 ### 4) Confirm pinned_ref_id column
@@ -309,6 +355,8 @@ where table_schema = 'public'
   and table_name = 'projects'
   and column_name = 'pinned_ref_id';
 ```
+
+Success. No rows returned
 
 Expect: one row.
 
