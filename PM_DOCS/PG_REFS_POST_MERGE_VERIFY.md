@@ -234,7 +234,7 @@ where ref_id is null;
 
 [
   {
-    "artefacts_missing_ref_id": 1
+    "artefacts_missing_ref_id": 0
   }
 ]
 
@@ -250,6 +250,8 @@ Note: Backfill picks one ref per commit using `commit_order` (highest ordinal, t
 
 ## Phase 3: Cleanup Verification (after ref_name removal)
 
+Note: `20251231003230_rt_ref_id_phase3_cleanup.sql` now includes a defensive artefacts backfill + guard before `ref_id` NOT NULL. This is to protect prod if Phase 1 didn’t fully backfill; do not re-run on dev once applied.
+
 ### 1) Confirm legacy ref_name columns are gone
 
 ```sql
@@ -262,17 +264,7 @@ where table_schema = 'public'
 
 Expect: zero rows.
 
-[
-  {
-    "column_name": "ref_name"
-  },
-  {
-    "column_name": "ref_name"
-  },
-  {
-    "column_name": "current_ref_name"
-  }
-]
+Success. No rows returned 
 
 ### 2) Confirm ref_id is not null
 
@@ -309,7 +301,7 @@ where ref_id is null;
 
 [
   {
-    "artefacts_null_ref_id": 1
+    "artefacts_null_ref_id": 0
   }
 ]
 
@@ -328,19 +320,22 @@ where conname in (
   'refs_project_id_name_key'
 );
 ```
-
 [
   {
-    "conname": "artefact_drafts_pkey",
-    "conrelid": "artefact_drafts"
+    "conname": "refs_pkey",
+    "conrelid": "refs"
   },
   {
     "conname": "commit_order_pkey",
     "conrelid": "commit_order"
   },
   {
-    "conname": "refs_pkey",
-    "conrelid": "refs"
+    "conname": "commit_order_project_id_ref_id_commit_id_key",
+    "conrelid": "commit_order"
+  },
+  {
+    "conname": "artefact_drafts_pkey",
+    "conrelid": "artefact_drafts"
   }
 ]
 

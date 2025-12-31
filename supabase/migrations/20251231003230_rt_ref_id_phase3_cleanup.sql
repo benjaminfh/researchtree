@@ -41,6 +41,33 @@ alter table public.projects
 create index if not exists projects_pinned_ref_id_idx
   on public.projects (pinned_ref_id);
 
+-- Defensive backfill + guard before enforcing NOT NULL on artefacts.ref_id.
+with ranked as (
+  select
+    co.project_id,
+    co.commit_id,
+    co.ref_id,
+    row_number() over (
+      partition by co.project_id, co.commit_id
+      order by co.ordinal desc, co.ref_id
+    ) as rn
+  from public.commit_order co
+)
+update public.artefacts a
+set ref_id = ranked.ref_id
+from ranked
+where a.project_id = ranked.project_id
+  and a.commit_id = ranked.commit_id
+  and ranked.rn = 1
+  and a.ref_id is null;
+
+do $$
+begin
+  if exists (select 1 from public.artefacts where ref_id is null) then
+    raise exception 'Phase 3 blocked: artefacts.ref_id still null';
+  end if;
+end $$;
+
 -- Enforce ref_id presence.
 alter table public.commit_order
   alter column ref_id set not null;
