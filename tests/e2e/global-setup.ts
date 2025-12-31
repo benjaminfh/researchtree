@@ -15,11 +15,11 @@ export default async function globalSetup(config: FullConfig) {
   if (!email || !password) {
     throw new Error('E2E_EMAIL and E2E_PASSWORD must be set to run Playwright smoke tests.');
   }
-  const openaiKey = process.env.E2E_OPENAI_API_KEY?.trim();
-  const geminiKey = process.env.E2E_GEMINI_API_KEY?.trim();
-  const anthropicKey = process.env.E2E_ANTHROPIC_API_KEY?.trim();
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const geminiKey = process.env.GEMINI_API_KEY?.trim();
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!openaiKey || !geminiKey || !anthropicKey) {
-    throw new Error('E2E_OPENAI_API_KEY, E2E_GEMINI_API_KEY, and E2E_ANTHROPIC_API_KEY must be set for provider smoke.');
+    throw new Error('OPENAI_API_KEY, GEMINI_API_KEY, and ANTHROPIC_API_KEY must be set for provider smoke.');
   }
 
   const authDir = path.join(__dirname, '.auth');

@@ -8,9 +8,9 @@ Prereqs:
 Required env vars:
 - E2E_EMAIL: email for the test user
 - E2E_PASSWORD: password for the test user
-- E2E_OPENAI_API_KEY: OpenAI key stored into Profile
-- E2E_GEMINI_API_KEY: Gemini key stored into Profile
-- E2E_ANTHROPIC_API_KEY: Anthropic key stored into Profile
+- OPENAI_API_KEY: OpenAI key stored into Profile
+- GEMINI_API_KEY: Gemini key stored into Profile
+- ANTHROPIC_API_KEY: Anthropic key stored into Profile
 - E2E_BASE_URL (optional): defaults to http://localhost:3000
 - E2E_NO_WEB_SERVER=1 (optional): skip auto `npm run dev`
 
