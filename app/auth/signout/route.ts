@@ -13,5 +13,5 @@ export async function POST(request: Request) {
     // ignore
   }
   const url = new URL(request.url);
-  return NextResponse.redirect(new URL('/login', url.origin), { status: 303 });
+  return NextResponse.redirect(new URL('/login?mode=signIn#existing-user', url.origin), { status: 303 });
 }
