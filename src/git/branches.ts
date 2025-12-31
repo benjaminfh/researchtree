@@ -17,8 +17,7 @@ import {
   readNodesFromRef
 } from './utils';
 import { getArtefactFromRef } from './artefact';
-import { readBranchConfigMap, setBranchConfig, writeBranchConfigMap } from './branchConfig';
-import { getPinnedBranchName, setPinnedBranchName } from './projects';
+import { readBranchConfigMap, setBranchConfig } from './branchConfig';
 
 function buildLineDiff(base: string, incoming: string): string {
   const baseLines = base.length > 0 ? base.split(/\r?\n/) : [];
@@ -111,42 +110,12 @@ export async function switchBranch(projectId: string, branchName: string): Promi
   await forceCheckoutRef(projectId, branchName);
 }
 
-export async function renameBranch(projectId: string, fromBranch: string, toBranch: string): Promise<void> {
-  await assertProjectExists(projectId);
-  const git = simpleGit(getProjectPath(projectId));
-  const branches = await git.branchLocal();
-  if (!branches.all.includes(fromBranch)) {
-    throw new Error(`Branch ${fromBranch} does not exist`);
-  }
-  if (branches.all.includes(toBranch)) {
-    throw new Error(`Branch ${toBranch} already exists`);
-  }
-  if (fromBranch === INITIAL_BRANCH) {
-    throw new Error('Cannot rename trunk branch');
-  }
-
-  await git.raw(['branch', '-m', fromBranch, toBranch]);
-
-  const configMap = await readBranchConfigMap(projectId);
-  if (configMap[fromBranch]) {
-    configMap[toBranch] = configMap[fromBranch]!;
-    delete configMap[fromBranch];
-    await writeBranchConfigMap(projectId, configMap);
-  }
-
-  const pinnedBranch = await getPinnedBranchName(projectId);
-  if (pinnedBranch === fromBranch) {
-    await setPinnedBranchName(projectId, toBranch);
-  }
-}
-
 export async function listBranches(projectId: string): Promise<BranchSummary[]> {
   await assertProjectExists(projectId);
   const git = simpleGit(getProjectPath(projectId));
   const branches = await git.branchLocal();
   const configMap = await readBranchConfigMap(projectId);
   const fallbackProvider = resolveOpenAIProviderSelection();
-  const pinnedBranch = await getPinnedBranchName(projectId);
 
   const summaries: (BranchSummary & { _lastModifiedAt: number; _createdAt: number })[] = [];
   for (const name of branches.all) {
@@ -165,7 +134,6 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
       headCommit,
       nodeCount: nodes.length,
       isTrunk: name === INITIAL_BRANCH,
-      isPinned: pinnedBranch === name,
       provider,
       model,
       _lastModifiedAt: lastModifiedAt,

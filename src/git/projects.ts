@@ -113,31 +113,6 @@ export async function getProject(projectId: string): Promise<ProjectMetadata | n
   return { ...metadata, branchName };
 }
 
-export async function getPinnedBranchName(projectId: string): Promise<string | null> {
-  await assertProjectExists(projectId);
-  const metadataPath = getProjectFilePath(projectId, 'metadata');
-  if (!(await pathExists(metadataPath))) {
-    return null;
-  }
-  const metadata = await readJsonFile<ProjectMetadata>(metadataPath);
-  return metadata.pinnedBranchName ?? null;
-}
-
-export async function setPinnedBranchName(projectId: string, branchName: string | null): Promise<void> {
-  await assertProjectExists(projectId);
-  const metadataPath = getProjectFilePath(projectId, 'metadata');
-  if (!(await pathExists(metadataPath))) {
-    throw new Error('Project metadata not found');
-  }
-  const metadata = await readJsonFile<ProjectMetadata>(metadataPath);
-  if (branchName) {
-    metadata.pinnedBranchName = branchName;
-  } else if ('pinnedBranchName' in metadata) {
-    delete (metadata as ProjectMetadata & { pinnedBranchName?: string }).pinnedBranchName;
-  }
-  await writeJsonFile(metadataPath, metadata);
-}
-
 export async function deleteProject(projectId: string): Promise<void> {
   await assertProjectExists(projectId);
   await fs.rm(getProjectPath(projectId), { recursive: true, force: true });

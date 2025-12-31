@@ -9,14 +9,7 @@ import {
   rtGetStarredNodeIdsShadowV1
 } from '@/src/store/pg/reads';
 import { rtAppendNodeToRefShadowV2, rtGetNodeContentShadowV1 } from '@/src/store/pg/nodes';
-import {
-  rtCreateRefFromNodeParentShadowV2,
-  rtCreateRefFromRefShadowV2,
-  rtRenameRefShadowV2,
-  rtSetPinnedRefShadowV2,
-  rtClearPinnedRefShadowV2,
-  rtGetPinnedRefShadowV2
-} from '@/src/store/pg/branches';
+import { rtCreateRefFromNodeParentShadowV2, rtCreateRefFromRefShadowV2 } from '@/src/store/pg/branches';
 import { rtCreateProjectShadow, rtGetProjectShadowV1, rtListProjectsShadowV1 } from '@/src/store/pg/projects';
 import { rtGetCurrentRefShadowV2, rtSetCurrentRefShadowV2 } from '@/src/store/pg/prefs';
 import { rtGetRefPreviousResponseIdV2, rtSetRefPreviousResponseIdV2 } from '@/src/store/pg/refs';
@@ -86,16 +79,16 @@ describe('pg store RPC wrappers', () => {
   it('rtListRefsShadowV2 maps rows', async () => {
     mocks.rpc.mockResolvedValue({
       data: [
-        { id: 'r1', name: 'main', head_commit: 'c1', node_count: 2, is_trunk: true, is_pinned: true },
-        { id: 'r2', name: 'feat', head_commit: 'c2', node_count: 1, is_trunk: false, is_pinned: false, provider: 'openai', model: 'gpt-5.2' }
+        { id: 'r1', name: 'main', head_commit: 'c1', node_count: 2, is_trunk: true },
+        { id: 'r2', name: 'feat', head_commit: 'c2', node_count: 1, is_trunk: false, provider: 'openai', model: 'gpt-5.2' }
       ],
       error: null
     });
 
     const result = await rtListRefsShadowV2({ projectId: 'p1' });
     expect(result).toEqual([
-      { id: 'r1', name: 'main', headCommit: 'c1', nodeCount: 2, isTrunk: true, isPinned: true, provider: undefined, model: undefined },
-      { id: 'r2', name: 'feat', headCommit: 'c2', nodeCount: 1, isTrunk: false, isPinned: false, provider: 'openai', model: 'gpt-5.2' }
+      { id: 'r1', name: 'main', headCommit: 'c1', nodeCount: 2, isTrunk: true, provider: undefined, model: undefined },
+      { id: 'r2', name: 'feat', headCommit: 'c2', nodeCount: 1, isTrunk: false, provider: 'openai', model: 'gpt-5.2' }
     ]);
   });
 
@@ -115,48 +108,6 @@ describe('pg store RPC wrappers', () => {
         updatedAt: '2025-01-01T00:00:00.000Z'
       }
     ]);
-  });
-
-  it('rtRenameRefShadowV2 maps params and data', async () => {
-    mocks.rpc.mockResolvedValue({
-      data: [{ ref_id: 'r1', ref_name: 'renamed' }],
-      error: null
-    });
-
-    const result = await rtRenameRefShadowV2({ projectId: 'p1', refId: 'r1', newName: 'renamed' });
-    expect(mocks.rpc).toHaveBeenCalledWith('rt_rename_ref_v2', {
-      p_project_id: 'p1',
-      p_ref_id: 'r1',
-      p_new_name: 'renamed',
-      p_lock_timeout_ms: 3000
-    });
-    expect(result).toEqual({ refId: 'r1', refName: 'renamed' });
-  });
-
-  it('rtSetPinnedRefShadowV2 maps params', async () => {
-    mocks.rpc.mockResolvedValue({ data: null, error: null });
-    await rtSetPinnedRefShadowV2({ projectId: 'p1', refId: 'r1' });
-    expect(mocks.rpc).toHaveBeenCalledWith('rt_set_pinned_ref_v2', {
-      p_project_id: 'p1',
-      p_ref_id: 'r1'
-    });
-  });
-
-  it('rtClearPinnedRefShadowV2 maps params', async () => {
-    mocks.rpc.mockResolvedValue({ data: null, error: null });
-    await rtClearPinnedRefShadowV2({ projectId: 'p1' });
-    expect(mocks.rpc).toHaveBeenCalledWith('rt_clear_pinned_ref_v2', {
-      p_project_id: 'p1'
-    });
-  });
-
-  it('rtGetPinnedRefShadowV2 maps data', async () => {
-    mocks.rpc.mockResolvedValue({ data: [{ ref_id: 'r1', ref_name: 'main' }], error: null });
-    const result = await rtGetPinnedRefShadowV2({ projectId: 'p1' });
-    expect(mocks.rpc).toHaveBeenCalledWith('rt_get_pinned_ref_v2', {
-      p_project_id: 'p1'
-    });
-    expect(result).toEqual({ refId: 'r1', refName: 'main' });
   });
 
   it('rtGetProjectShadowV1 maps rows and handles missing', async () => {

@@ -91,7 +91,6 @@ export interface ProjectMetadata {
   description?: string;
   createdAt: string;
   branchName?: string;
-  pinnedBranchName?: string;
 }
 
 export interface BranchSummary {
@@ -100,7 +99,6 @@ export interface BranchSummary {
   headCommit: string;
   nodeCount: number;
   isTrunk: boolean;
-  isPinned?: boolean;
   provider?: LLMProvider;
   model?: string;
 }

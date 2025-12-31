@@ -31,13 +31,8 @@ export const switchBranchSchema = z.object({
   name: z.string().min(1).max(120)
 });
 
-export const renameBranchSchema = z.object({
-  name: z.string().min(1).max(120)
-});
-
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
 export type SwitchBranchInput = z.infer<typeof switchBranchSchema>;
-export type RenameBranchInput = z.infer<typeof renameBranchSchema>;
 
 export const mergeRequestSchema = z.object({
   sourceBranch: z.string().min(1).max(120),

@@ -8,7 +8,6 @@ export interface PgBranchSummary {
   headCommit: string;
   nodeCount: number;
   isTrunk: boolean;
-  isPinned: boolean;
   provider?: string;
   model?: string;
 }
@@ -152,7 +151,6 @@ export async function rtListRefsShadowV2(input: { projectId: string }): Promise<
     headCommit: String(row.head_commit ?? ''),
     nodeCount: Number(row.node_count ?? 0),
     isTrunk: Boolean(row.is_trunk),
-    isPinned: Boolean(row.is_pinned),
     provider: row.provider ? String(row.provider) : undefined,
     model: row.model ? String(row.model) : undefined
   }));
