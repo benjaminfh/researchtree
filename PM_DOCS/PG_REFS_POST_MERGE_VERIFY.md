@@ -105,7 +105,6 @@ Each query should return non-empty rows with expected counts.
     "name": "PG Refs Fixture"
   }
 ]
-
 2 => 
 ```
 [
@@ -195,7 +194,7 @@ where id is null;
 ```sql
 select count(*) as commit_order_missing_ref_id
 from public.commit_order
-where ref_id is null and ref_name is not null;
+where ref_id is null;
 ```
 
 [
@@ -207,7 +206,7 @@ where ref_id is null and ref_name is not null;
 ```sql
 select count(*) as drafts_missing_ref_id
 from public.artefact_drafts
-where ref_id is null and ref_name is not null;
+where ref_id is null;
 ```
 
 [
@@ -219,7 +218,7 @@ where ref_id is null and ref_name is not null;
 ```sql
 select count(*) as prefs_missing_ref_id
 from public.project_user_prefs
-where current_ref_id is null and current_ref_name is not null;
+where current_ref_id is null;
 ```
 [
   {
@@ -233,6 +232,12 @@ from public.artefacts
 where ref_id is null;
 ```
 
+[
+  {
+    "artefacts_missing_ref_id": 0
+  }
+]
+
 Note: Backfill picks one ref per commit using `commit_order` (highest ordinal, then ref_id) so counts should be 0 once the patch migration runs.
 
 ## 5) Smoke API routes (PG store mode)
@@ -242,3 +247,74 @@ Note: Backfill picks one ref per commit using `commit_order` (highest ordinal, t
 - `POST /api/projects/{id}/merge`
 - `GET /api/projects/{id}/graph`
 - `GET /api/projects/{id}/artefact?ref=main`
+
+## Phase 3: Cleanup Verification (after ref_name removal)
+
+### 1) Confirm legacy ref_name columns are gone
+
+```sql
+select column_name
+from information_schema.columns
+where table_schema = 'public'
+  and table_name in ('commit_order','artefact_drafts','project_user_prefs')
+  and column_name in ('ref_name','current_ref_name');
+```
+
+Expect: zero rows.
+
+### 2) Confirm ref_id is not null
+
+```sql
+select count(*) as commit_order_null_ref_id
+from public.commit_order
+where ref_id is null;
+```
+
+```sql
+select count(*) as artefact_drafts_null_ref_id
+from public.artefact_drafts
+where ref_id is null;
+```
+
+```sql
+select count(*) as artefacts_null_ref_id
+from public.artefacts
+where ref_id is null;
+```
+
+Expect: all 0.
+
+### 3) Confirm key constraints exist
+
+```sql
+select conname, conrelid::regclass
+from pg_constraint
+where conname in (
+  'commit_order_pkey',
+  'commit_order_project_id_ref_id_commit_id_key',
+  'artefact_drafts_pkey',
+  'refs_pkey',
+  'refs_project_id_name_key'
+);
+```
+
+Expect: all present.
+
+### 4) Confirm pinned_ref_id column
+
+```sql
+select column_name
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'projects'
+  and column_name = 'pinned_ref_id';
+```
+
+Expect: one row.
+
+### 5) RPC smoke (v2)
+
+- `rt_get_history_v2`
+- `rt_get_canvas_v2`
+- `rt_append_node_to_ref_v2`
+- `rt_merge_ours_v2`
