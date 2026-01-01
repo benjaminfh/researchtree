@@ -73,7 +73,8 @@ describe('buildChatContext', () => {
     const context = await buildChatContext('project-1');
 
     expect(context.messages[0].role).toBe('system');
-    expect(context.messages[0].content).toContain('System prompt is fixed.');
+    expect(context.messages[0].content).toContain('Canvas tools may not be available in this conversation.');
+    expect(context.messages[0].content).toContain('Some user messages are hidden canvas updates; treat them as authoritative canvas changes.');
     expect(context.messages.some((msg) => flattenMessageContent(msg.content).includes('Hello'))).toBe(true);
   });
 
@@ -186,7 +187,8 @@ describe('buildChatContext', () => {
 
     const context = await buildChatContext('project-1', { ref: 'main' });
     expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
-    expect(context.messages[0].content).toContain('System prompt is fixed.');
+    expect(context.messages[0].content).toContain('Canvas tools may not be available in this conversation.');
+    expect(context.messages[0].content).toContain('Some user messages are hidden canvas updates; treat them as authoritative canvas changes.');
     expect(context.messages.some((m) => m.role === 'user' && flattenMessageContent(m.content) === 'Hello')).toBe(true);
   });
 
