@@ -1,7 +1,13 @@
-## Product Manager Docs
+## Global design decisions
+All text forms submit on cmd+Enter if form state is valid.
+
+## Product Management
 We plan and track progress in PM_DOCS/
-We track feature requets in PM_DOCS/FRs.md
-We track bugs in PM_DOCS/BUGS.md
+We track feature requets and bugs in Github Issues
+Issue creation process:
+- Generate a title from the description of the issue provided by the user; issue body should contain only additive, useful, descriptive info. Do not repeat the title/name, labels, status, or PM_DOCS source refs in the body. Iterate with the user if the issue description seems unclear to you (or would be unhelpful to an engineer picking up the issue later).
+- Labels: FRs -> `enhancement`; BUGS -> `bug`. Add one of `ui`, `server`, `database` when applicable.
+- Status handling: open items stay open. If marked done, close as `completed`. If marked [o]/won't do, close as `not planned`. Use `gh issue create` then `gh issue close --reason ...`.
 
 ## Supabase migration files
  - The file MUST be named in the format YYYYMMDDHHmmss_short_description.sql with proper casing for months, minutes, and seconds in UTC time.
