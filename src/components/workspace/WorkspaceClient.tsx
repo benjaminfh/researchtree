@@ -502,7 +502,7 @@ export function WorkspaceClient({
   const [newBranchName, setNewBranchName] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [isPinning, setIsPinning] = useState(false);
+  const [pendingPinBranchIds, setPendingPinBranchIds] = useState<Set<string>>(new Set());
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTarget, setRenameTarget] = useState<BranchSummary | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -1947,11 +1947,16 @@ export function WorkspaceClient({
   };
 
   const togglePinnedBranch = async (branch: BranchSummary) => {
-    if (isPinning) return;
-    setIsPinning(true);
+    const branchId = branch.id ?? branch.name;
+    if (pendingPinBranchIds.has(branchId)) return;
     setBranchActionError(null);
+    setPendingPinBranchIds((prev) => new Set(prev).add(branchId));
+    const prevBranches = branches;
+    const optimistic = branches.map((item) =>
+      item.name === branch.name ? { ...item, isPinned: !item.isPinned } : item
+    );
+    setBranches(optimistic);
     try {
-      const branchId = branch.id ?? branch.name;
       const url = branch.isPinned
         ? `/api/projects/${project.id}/branches/pin`
         : `/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/pin`;
@@ -1970,8 +1975,13 @@ export function WorkspaceClient({
       }
     } catch (err) {
       setBranchActionError((err as Error).message);
+      setBranches(prevBranches);
     } finally {
-      setIsPinning(false);
+      setPendingPinBranchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(branchId);
+        return next;
+      });
     }
   };
 
@@ -1997,7 +2007,7 @@ export function WorkspaceClient({
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
                     <span>Branches</span>
                     <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-2 py-1 text-xs font-medium text-slate-700">
-                      {isSwitching || isCreating || isPinning ? (
+                      {isSwitching || isCreating ? (
                         <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                       ) : null}
                       {sortedBranches.length}
@@ -2005,7 +2015,9 @@ export function WorkspaceClient({
                   </div>
                   <div className="space-y-1 overflow-y-auto pr-1">
                     {sortedBranches.map((branch) => {
-                      const switchDisabled = isSwitching || isCreating || isPinning || isRenaming;
+                      const branchId = branch.id ?? branch.name;
+                      const pinPending = pendingPinBranchIds.has(branchId);
+                      const switchDisabled = isSwitching || isCreating || isRenaming;
                       return (
                       <div
                         key={branch.name}
@@ -2059,13 +2071,17 @@ export function WorkspaceClient({
                                 event.stopPropagation();
                                 void togglePinnedBranch(branch);
                               }}
-                              disabled={isSwitching || isCreating || isPinning}
+                              disabled={isSwitching || isCreating || pinPending}
                               className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                isSwitching || isCreating || isPinning ? 'cursor-not-allowed' : 'hover:bg-primary/10'
+                                isSwitching || isCreating || pinPending ? 'cursor-not-allowed' : 'hover:bg-primary/10'
                               } ${branch.isPinned ? 'text-red-600 hover:text-red-700' : 'text-slate-400 hover:text-slate-600'}`}
                               aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
                             >
-                              <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                              {pinPending ? (
+                                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                              ) : (
+                                <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                              )}
                             </button>
                             <button
                               type="button"
@@ -2073,9 +2089,9 @@ export function WorkspaceClient({
                                 event.stopPropagation();
                                 openRenameModal(branch);
                               }}
-                              disabled={branch.isTrunk || isSwitching || isCreating || isPinning}
+                              disabled={branch.isTrunk || isSwitching || isCreating || isRenaming}
                               className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                branch.isTrunk || isSwitching || isCreating || isPinning
+                                branch.isTrunk || isSwitching || isCreating || isRenaming
                                   ? 'cursor-not-allowed text-slate-300'
                                   : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
                               }`}
@@ -2098,7 +2114,7 @@ export function WorkspaceClient({
                     value={newBranchName}
                     onValueChange={setNewBranchName}
                     onSubmit={() => void createBranch()}
-                    disabled={isSwitching || isPinning || isRenaming}
+                    disabled={isSwitching || isRenaming}
                     submitting={isCreating}
                     error={branchActionError}
                     testId="branch-form-rail"
@@ -2112,7 +2128,7 @@ export function WorkspaceClient({
                             value={newBranchProvider}
                             onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                             className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                            disabled={isSwitching || isCreating || isPinning || isRenaming}
+                            disabled={isSwitching || isCreating || isRenaming}
                             data-testid="branch-provider-select-rail"
                           >
                             {selectableProviderOptions.map((option) => (
@@ -2128,7 +2144,7 @@ export function WorkspaceClient({
                             value={newBranchThinking}
                             onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
                             className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                            disabled={isSwitching || isCreating || isPinning || isRenaming}
+                            disabled={isSwitching || isCreating || isRenaming}
                           >
                             {(() => {
                               const branchModel =
@@ -2153,97 +2169,48 @@ export function WorkspaceClient({
               </>
             ) : null}
 
-            {ctx.railCollapsed ? (
-              <div className="mt-auto flex flex-col items-start gap-3 pb-2">
-                <div ref={hintsRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowHints((prev) => !prev)}
-                    ref={hintsButtonRef}
-                    className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
-                    aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
-                    aria-expanded={showHints}
-                  >
-                    <QuestionMarkCircleIcon className="h-4 w-4" />
-                  </button>
-                  <RailPopover
-                    open={showHints}
-                    anchorRef={hintsButtonRef}
-                    ariaLabel="Session tips"
-                    className="w-[320px] p-4 text-sm"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-slate-900">Session tips</p>
-                    </div>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                      <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                      <li>⌘ + B to toggle the rail.</li>
-                      <li>⌘ + click a graph node to jump to its message.</li>
-                      <li>← Thred graph · → Canvas.</li>
-                      <li>↑ show graph/canvas · ↓ hide panel.</li>
-                      <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
-                      <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                    </ul>
-                  </RailPopover>
-                </div>
-                <AuthRailStatus railCollapsed={ctx.railCollapsed} onRequestExpandRail={ctx.toggleRail} />
-                <Link
-                  href="/"
-                  className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
-                  aria-label="Back to home"
-                  data-testid="back-to-home"
+            <div className="mt-auto flex flex-col items-start gap-3 pb-2">
+              <div ref={hintsRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowHints((prev) => !prev)}
+                  ref={hintsButtonRef}
+                  className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                  aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
+                  aria-expanded={showHints}
                 >
-                  <HomeIcon className="h-4 w-4" />
-                </Link>
-              </div>
-            ) : (
-              <div className="mt-auto space-y-3 pb-2">
-                <div className="flex flex-col items-start gap-3">
-                  <div ref={hintsRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowHints((prev) => !prev)}
-                      ref={hintsButtonRef}
-                      className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
-                      aria-label={showHints ? 'Hide session tips' : 'Show session tips'}
-                      aria-expanded={showHints}
-                    >
-                      <QuestionMarkCircleIcon className="h-4 w-4" />
-                    </button>
-                    <RailPopover
-                      open={showHints}
-                      anchorRef={hintsButtonRef}
-                      ariaLabel="Session tips"
-                      className="w-[320px] p-4 text-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-semibold text-slate-900">Session tips</p>
-                      </div>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-                      <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
-                      <li>⌘ + B to toggle the rail.</li>
-                      <li>⌘ + click a graph node to jump to its message.</li>
-                      <li>← Thred graph · → Canvas.</li>
-                      <li>↑ show graph/canvas · ↓ hide panel.</li>
-                      <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
-                        <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
-                      </ul>
-                    </RailPopover>
+                  <QuestionMarkCircleIcon className="h-4 w-4" />
+                </button>
+                <RailPopover
+                  open={showHints}
+                  anchorRef={hintsButtonRef}
+                  ariaLabel="Session tips"
+                  className="w-[320px] p-4 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">Session tips</p>
                   </div>
-
-                  <AuthRailStatus railCollapsed={ctx.railCollapsed} onRequestExpandRail={ctx.toggleRail} />
-
-                  <Link
-                    href="/"
-                    className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
-                    aria-label="Back to home"
-                    data-testid="back-to-home"
-                  >
-                    <HomeIcon className="h-4 w-4" />
-                  </Link>
-                </div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                    <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
+                    <li>⌘ + B to toggle the rail.</li>
+                    <li>⌘ + click a graph node to jump to its message.</li>
+                    <li>← Thred graph · → Canvas.</li>
+                    <li>↑ show graph/canvas · ↓ hide panel.</li>
+                    <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
+                    <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
+                  </ul>
+                </RailPopover>
               </div>
-            )}
+              <AuthRailStatus railCollapsed={ctx.railCollapsed} onRequestExpandRail={ctx.toggleRail} />
+              <Link
+                href="/"
+                className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
+                aria-label="Back to home"
+                data-testid="back-to-home"
+              >
+                <HomeIcon className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         )}
         renderMain={(ctx) => (
@@ -2451,7 +2418,7 @@ export function WorkspaceClient({
                                           value={newBranchProvider}
                                           onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                          disabled={isSwitching || isCreating || isPinning || isRenaming}
+                                          disabled={isSwitching || isCreating || isRenaming}
                                           data-testid="branch-provider-select-popover"
                                         >
                                           {selectableProviderOptions.map((option) => (
@@ -2467,7 +2434,7 @@ export function WorkspaceClient({
                                           value={newBranchThinking}
                                           onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
                                           className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                          disabled={isSwitching || isCreating || isPinning || isRenaming}
+                                          disabled={isSwitching || isCreating || isRenaming}
                                         >
                                           {(() => {
                                             const branchModel =
