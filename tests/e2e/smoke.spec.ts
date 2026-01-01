@@ -170,7 +170,13 @@ test('workspace smoke flow', async ({ page }) => {
   await expect(page.getByText(message2)).toBeVisible();
   await waitForAssistantResponse(page, geminiCount);
 
-  await page.getByRole('button', { name: 'Create branch from message' }).last().click();
+  const branchFromMessageRow = page
+    .getByTestId('chat-message-list')
+    .locator('article')
+    .filter({ has: page.locator('button[data-branch-trigger="true"]') })
+    .last();
+  await expect(branchFromMessageRow).toBeVisible();
+  await branchFromMessageRow.getByRole('button', { name: 'Create branch from message' }).click();
   await expect(page.getByTestId('branch-popover')).toBeVisible();
   await page.getByTestId('branch-provider-select-popover').selectOption('anthropic');
   await page.getByTestId('branch-form-popover-input').fill(assistantBranch);
