@@ -39,8 +39,8 @@ export function resolveBranchConfig(input?: {
 export async function getBranchConfigMap(projectId: string): Promise<Record<string, BranchConfig>> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
-    const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
-    const branches = await rtListRefsShadowV1({ projectId });
+    const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+    const branches = await rtListRefsShadowV2({ projectId });
     const map: Record<string, BranchConfig> = {};
     for (const branch of branches) {
       map[branch.name] = resolveBranchConfig({

@@ -5,6 +5,8 @@ import { APP_NAME } from '@/src/config/app';
 import { submitAccessCode, submitWaitlistRequest } from './actions';
 import { WaitlistSubmitButton } from './WaitlistSubmitButton';
 
+export const runtime = 'nodejs';
+
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/waitlist';
   if (!input.startsWith('/')) return '/waitlist';
@@ -107,7 +109,7 @@ export default function WaitlistPage({
 
           <div className="flex flex-wrap items-center gap-3">
             <Link
-              href="/login"
+              href="/login?mode=signIn#existing-user"
               className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
             >
               Back to sign in

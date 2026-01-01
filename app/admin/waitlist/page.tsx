@@ -6,6 +6,8 @@ import { approveEmailAction, approveEmailWithFeedbackAction, removeAllowlistEmai
 import { ApproveEmailForm } from './ApproveEmailForm';
 import { AdminSubmitButton } from './AdminSubmitButton';
 
+export const runtime = 'nodejs';
+
 export default async function AdminWaitlistPage() {
   await requireAdminUser();
 

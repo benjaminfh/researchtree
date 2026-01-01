@@ -8,7 +8,7 @@ function slugify(input: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-const DEFAULT_APP_NAME = 'Threds';
+const DEFAULT_APP_NAME = 'threds';
 
 export const APP_NAME = (process.env.NEXT_PUBLIC_APP_NAME ?? DEFAULT_APP_NAME).trim() || DEFAULT_APP_NAME;
 export const TRUNK_LABEL = (process.env.NEXT_PUBLIC_RT_TRUNK_LABEL ?? 'main').trim() || 'main';
@@ -16,6 +16,8 @@ export const TRUNK_LABEL = (process.env.NEXT_PUBLIC_RT_TRUNK_LABEL ?? 'main').tr
 // Used for things like localStorage key prefixes. Defaults to APP_NAME, but can be set explicitly.
 export const APP_ID = (process.env.NEXT_PUBLIC_APP_ID ?? APP_NAME).trim() || APP_NAME;
 export const APP_SLUG = slugify(APP_ID) || 'threds';
+const autoFollowDelay = Number(process.env.NEXT_PUBLIC_AUTO_FOLLOW_RESUME_DELAY_MS ?? 400);
+export const AUTO_FOLLOW_RESUME_DELAY_MS = Number.isFinite(autoFollowDelay) ? autoFollowDelay : 400;
 
 export function storageKey(suffix: string): string {
   return `${APP_SLUG}:${suffix}`;

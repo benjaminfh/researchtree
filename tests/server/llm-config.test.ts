@@ -25,7 +25,7 @@ describe('llmConfig', () => {
 
   it('defaults to openai+gemini enabled, anthropic disabled', () => {
     expect(getDeployEnv()).toBe('dev');
-    expect(getEnabledProviders()).toEqual(['openai', 'gemini', 'mock']);
+    expect(getEnabledProviders()).toEqual(['openai', 'openai_responses', 'gemini', 'mock']);
   });
 
   it('respects provider enable toggles', () => {
@@ -38,7 +38,7 @@ describe('llmConfig', () => {
   it('removes mock provider in prod', () => {
     process.env.DEPLOY_ENV = 'prod';
     expect(getDeployEnv()).toBe('prod');
-    expect(getEnabledProviders()).toEqual(['openai', 'gemini']);
+    expect(getEnabledProviders()).toEqual(['openai', 'openai_responses', 'gemini']);
   });
 
   it('validates OPENAI_MODEL against allowlist when provided', () => {

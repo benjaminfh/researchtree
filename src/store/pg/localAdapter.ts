@@ -10,21 +10,28 @@ type QueryFn = (sql: string, values: unknown[]) => Promise<QueryResult>;
 type RpcReturnType = 'set' | 'scalar' | 'void';
 
 const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }> = {
-  rt_get_history_v1: { params: ['p_project_id', 'p_ref_name', 'p_limit'], returnType: 'set' },
-  rt_get_canvas_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
-  rt_get_canvas_hashes_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
-  rt_get_canvas_pair_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'set' },
-  rt_list_refs_v1: { params: ['p_project_id'], returnType: 'set' },
+  rt_get_history_v2: {
+    params: ['p_project_id', 'p_ref_id', 'p_limit', 'p_before_ordinal', 'p_include_raw_response'],
+    returnType: 'set'
+  },
+  rt_get_canvas_v2: { params: ['p_project_id', 'p_ref_id', 'p_kind'], returnType: 'set' },
+  rt_get_canvas_hashes_v2: { params: ['p_project_id', 'p_ref_id', 'p_kind'], returnType: 'set' },
+  rt_get_canvas_pair_v2: { params: ['p_project_id', 'p_ref_id', 'p_kind'], returnType: 'set' },
+  rt_list_refs_v2: { params: ['p_project_id'], returnType: 'set' },
+  rt_rename_ref_v2: { params: ['p_project_id', 'p_ref_id', 'p_new_name', 'p_lock_timeout_ms'], returnType: 'set' },
+  rt_set_pinned_ref_v2: { params: ['p_project_id', 'p_ref_id'], returnType: 'void' },
+  rt_clear_pinned_ref_v2: { params: ['p_project_id'], returnType: 'void' },
+  rt_get_pinned_ref_v2: { params: ['p_project_id'], returnType: 'set' },
   rt_list_projects_v1: { params: [], returnType: 'set' },
   rt_get_project_v1: { params: ['p_project_id'], returnType: 'set' },
   rt_list_project_member_ids_v1: { params: ['p_user_id'], returnType: 'set' },
   rt_get_project_main_ref_updates_v1: { params: ['p_project_ids'], returnType: 'set' },
   rt_get_node_content_json_v1: { params: ['p_project_id', 'p_node_id'], returnType: 'scalar' },
   rt_get_starred_node_ids_v1: { params: ['p_project_id'], returnType: 'scalar' },
-  rt_append_node_to_ref_v1: {
+  rt_append_node_to_ref_v2: {
     params: [
       'p_project_id',
-      'p_ref_name',
+      'p_ref_id',
       'p_kind',
       'p_role',
       'p_content_json',
@@ -37,38 +44,40 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
     ],
     returnType: 'set'
   },
-  rt_create_ref_from_node_parent_v1: {
+  rt_create_ref_from_node_parent_v2: {
     params: [
       'p_project_id',
-      'p_source_ref_name',
+      'p_source_ref_id',
       'p_new_ref_name',
       'p_node_id',
       'p_provider',
       'p_model',
-      'p_previous_response_id'
+      'p_previous_response_id',
+      'p_lock_timeout_ms'
     ],
     returnType: 'set'
   },
-  rt_create_ref_from_ref_v1: {
+  rt_create_ref_from_ref_v2: {
     params: [
       'p_project_id',
-      'p_from_ref_name',
+      'p_from_ref_id',
       'p_new_ref_name',
       'p_provider',
       'p_model',
-      'p_previous_response_id'
+      'p_previous_response_id',
+      'p_lock_timeout_ms'
     ],
     returnType: 'set'
   },
   rt_create_project: { params: ['p_name', 'p_description', 'p_project_id', 'p_provider', 'p_model'], returnType: 'scalar' },
-  rt_get_current_ref_v1: { params: ['p_project_id', 'p_default_ref_name'], returnType: 'scalar' },
-  rt_set_current_ref_v1: { params: ['p_project_id', 'p_ref_name', 'p_lock_timeout_ms'], returnType: 'void' },
-  rt_get_ref_previous_response_id_v1: { params: ['p_project_id', 'p_ref_name'], returnType: 'scalar' },
-  rt_set_ref_previous_response_id_v1: { params: ['p_project_id', 'p_ref_name', 'p_previous_response_id'], returnType: 'void' },
-  rt_update_artefact_on_ref: {
+  rt_get_current_ref_v2: { params: ['p_project_id', 'p_default_ref_name'], returnType: 'set' },
+  rt_set_current_ref_v2: { params: ['p_project_id', 'p_ref_id', 'p_lock_timeout_ms'], returnType: 'void' },
+  rt_get_ref_previous_response_id_v2: { params: ['p_project_id', 'p_ref_id'], returnType: 'scalar' },
+  rt_set_ref_previous_response_id_v2: { params: ['p_project_id', 'p_ref_id', 'p_previous_response_id'], returnType: 'void' },
+  rt_update_artefact_on_ref_v2: {
     params: [
       'p_project_id',
-      'p_ref_name',
+      'p_ref_id',
       'p_content',
       'p_kind',
       'p_state_node_id',
@@ -78,15 +87,16 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
     ],
     returnType: 'set'
   },
-  rt_save_artefact_draft: { params: ['p_project_id', 'p_ref_name', 'p_content'], returnType: 'set' },
-  rt_merge_ours_v1: {
+  rt_save_artefact_draft_v2: { params: ['p_project_id', 'p_ref_id', 'p_content', 'p_lock_timeout_ms'], returnType: 'set' },
+  rt_merge_ours_v2: {
     params: [
       'p_project_id',
-      'p_target_ref_name',
-      'p_source_ref_name',
+      'p_target_ref_id',
+      'p_source_ref_id',
       'p_merge_node_json',
       'p_merge_node_id',
-      'p_commit_message'
+      'p_commit_message',
+      'p_lock_timeout_ms'
     ],
     returnType: 'set'
   },

@@ -23,6 +23,7 @@ export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
 export const createBranchSchema = z.object({
   name: z.string().min(1).max(120),
   fromRef: z.string().max(120).optional(),
+  fromNodeId: z.string().min(1).optional(),
   provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
   model: z.string().max(200).optional()
 });
@@ -31,8 +32,13 @@ export const switchBranchSchema = z.object({
   name: z.string().min(1).max(120)
 });
 
+export const renameBranchSchema = z.object({
+  name: z.string().min(1).max(120)
+});
+
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
 export type SwitchBranchInput = z.infer<typeof switchBranchSchema>;
+export type RenameBranchInput = z.infer<typeof renameBranchSchema>;
 
 export const mergeRequestSchema = z.object({
   sourceBranch: z.string().min(1).max(120),
