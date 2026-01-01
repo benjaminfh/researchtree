@@ -709,7 +709,7 @@ export function WorkspaceClient({
     const option = providerOptions.find((entry) => entry.id === branchProvider);
     return activeBranch?.model ?? option?.defaultModel ?? getDefaultModelForProviderFromCapabilities(branchProvider);
   }, [activeBranch?.model, branchProvider, providerOptions]);
-  const [thinking, setThinking] = useState<ThinkingSetting>('medium');
+  const [thinking, setThinking] = useState<ThinkingSetting>(() => getDefaultThinkingSetting(branchProvider, branchModel));
   const thinkingStorageKey = useMemo(
     () => `researchtree:thinking:${project.id}:${branchName}`,
     [project.id, branchName]
@@ -2004,16 +2004,31 @@ export function WorkspaceClient({
                     </span>
                   </div>
                   <div className="space-y-1 overflow-y-auto pr-1">
-                    {sortedBranches.map((branch) => (
-                      <button
+                    {sortedBranches.map((branch) => {
+                      const switchDisabled = isSwitching || isCreating || isPinning || isRenaming;
+                      return (
+                      <div
                         key={branch.name}
-                        type="button"
-                        onClick={() => void switchBranch(branch.name)}
-                        disabled={isSwitching || isCreating || isPinning || isRenaming}
+                        role="button"
+                        tabIndex={switchDisabled ? -1 : 0}
+                        onClick={() => {
+                          if (switchDisabled) return;
+                          void switchBranch(branch.name);
+                        }}
+                        onKeyDown={(event) => {
+                          if (switchDisabled) return;
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            void switchBranch(branch.name);
+                          }
+                        }}
+                        aria-disabled={switchDisabled}
                         className={`w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
                           branchName === branch.name
                             ? 'bg-primary/15 text-primary shadow-sm'
-                            : 'text-slate-700 hover:bg-white/80'
+                            : switchDisabled
+                              ? 'text-slate-400'
+                              : 'text-slate-700 hover:bg-white/80'
                         }`}
                         data-testid="branch-switch"
                         data-branch-name={branch.name}
@@ -2070,8 +2085,9 @@ export function WorkspaceClient({
                             </button>
                           </span>
                         </div>
-                      </button>
-                    ))}
+                      </div>
+                      );
+                    })}
                   </div>
                   {branchActionError ? <p className="text-sm text-red-600">{branchActionError}</p> : null}
                 </div>

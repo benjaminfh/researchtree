@@ -540,9 +540,7 @@ describe('WorkspaceClient', () => {
         expect(badge).toHaveTextContent('OpenAI');
       });
 
-      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe(
-        getDefaultThinkingSetting('gemini', 'gemini-3.0-pro')
-      );
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
       expect(window.localStorage.getItem('researchtree:thinking:proj-1:main')).toBe(
         getDefaultThinkingSetting('openai', 'gpt-5.2')
       );
