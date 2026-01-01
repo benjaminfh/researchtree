@@ -17,6 +17,20 @@ function sanitizeRedirectTo(input: string | null): string | null {
   return input;
 }
 
+function validatePasswordPolicy(password: string): string | null {
+  if (password.length < 10) {
+    return 'Password must be at least 10 characters.';
+  }
+  const hasLower = /[a-z]/.test(password);
+  const hasUpper = /[A-Z]/.test(password);
+  const hasDigit = /\d/.test(password);
+  const hasSymbol = /[^A-Za-z0-9]/.test(password);
+  if (!hasLower || !hasUpper || !hasDigit || !hasSymbol) {
+    return 'Password must include lowercase, uppercase, number, and symbol characters.';
+  }
+  return null;
+}
+
 export async function signInWithPassword(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
@@ -24,6 +38,10 @@ export async function signInWithPassword(_prevState: AuthActionState, formData: 
 
   if (!email || !password) {
     return { error: 'Email and password are required.' };
+  }
+  const policyError = validatePasswordPolicy(password);
+  if (policyError) {
+    return { error: policyError };
   }
 
   const passwordError = getPasswordPolicyError(password);
@@ -52,6 +70,10 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 
   if (!email || !password) {
     return { error: 'Email and password are required.' };
+  }
+  const policyError = validatePasswordPolicy(password);
+  if (policyError) {
+    return { error: policyError };
   }
 
   try {
