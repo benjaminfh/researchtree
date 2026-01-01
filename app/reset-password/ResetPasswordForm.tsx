@@ -5,6 +5,7 @@
 import { useFormState, useFormStatus } from 'react-dom';
 import Link from 'next/link';
 import { updatePassword } from './actions';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
 
 const initialState = { error: null as string | null };
 
@@ -30,13 +31,14 @@ function SubmitButton() {
 
 export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
   const [state, action] = useFormState(updatePassword, initialState);
+  const handleCommandEnter = useCommandEnterSubmit();
 
   return (
     <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold text-slate-900">Set a new password</h1>
       <p className="mt-2 text-sm text-slate-600">Choose a new password for your account.</p>
 
-      <form action={action} className="mt-6 space-y-3">
+      <form onKeyDown={handleCommandEnter} action={action} className="mt-6 space-y-3">
         <input type="hidden" name="redirectTo" value={redirectTo} />
 
         <label className="block">

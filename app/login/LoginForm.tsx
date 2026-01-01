@@ -6,6 +6,7 @@ import { useFormState, useFormStatus } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { signInWithPassword, signUpWithPassword } from './actions';
 import Link from 'next/link';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -42,6 +43,8 @@ export function LoginForm({
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
   const [mode, setMode] = useState<'signUp' | 'signIn'>('signUp');
   const [emailValue, setEmailValue] = useState(initialEmail ?? '');
+  const handleSignInCommandEnter = useCommandEnterSubmit();
+  const handleSignUpCommandEnter = useCommandEnterSubmit();
 
   useEffect(() => {
     if (window.location.hash === '#existing-user') {
@@ -60,7 +63,7 @@ export function LoginForm({
       <h1 className="text-xl font-semibold text-slate-900">{mode === 'signIn' ? 'Sign in' : 'Create an account'}</h1>
 
       {mode === 'signIn' ? (
-        <form action={signInAction} className="mt-6 space-y-3">
+        <form onKeyDown={handleSignInCommandEnter} action={signInAction} className="mt-6 space-y-3">
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <label className="block">
             <span className="text-sm font-medium text-slate-800">Email</span>
@@ -98,7 +101,7 @@ export function LoginForm({
           </div>
         </form>
       ) : (
-        <form action={signUpAction} className="mt-6 space-y-3">
+        <form onKeyDown={handleSignUpCommandEnter} action={signUpAction} className="mt-6 space-y-3">
           <input type="hidden" name="redirectTo" value={redirectTo} />
           {waitlistEnforced ? (
             <p className="text-sm text-slate-600">

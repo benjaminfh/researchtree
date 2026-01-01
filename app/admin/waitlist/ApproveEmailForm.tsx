@@ -5,6 +5,7 @@
 import { useEffect, useRef } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import type { approveEmailWithFeedbackAction } from './actions';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
 
 type ApproveState = Awaited<ReturnType<typeof approveEmailWithFeedbackAction>>;
 
@@ -31,6 +32,7 @@ function SubmitButton() {
 export function ApproveEmailForm({ action }: { action: typeof approveEmailWithFeedbackAction }) {
   const [state, formAction] = useFormState<ApproveState, FormData>(action, { ok: false, error: null, email: null });
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const handleCommandEnter = useCommandEnterSubmit();
 
   useEffect(() => {
     if (!state.ok) return;
@@ -40,7 +42,7 @@ export function ApproveEmailForm({ action }: { action: typeof approveEmailWithFe
   }, [state.ok]);
 
   return (
-    <form action={formAction} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+    <form onKeyDown={handleCommandEnter} action={formAction} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
       <label className="block flex-1">
         <span className="text-sm font-medium text-slate-800">Email</span>
         <input

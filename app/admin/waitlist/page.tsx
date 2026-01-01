@@ -5,6 +5,7 @@ import { listAllowlistedEmails, listWaitlistRequests } from '@/src/server/waitli
 import { approveEmailAction, approveEmailWithFeedbackAction, removeAllowlistEmailAction } from './actions';
 import { ApproveEmailForm } from './ApproveEmailForm';
 import { AdminSubmitButton } from './AdminSubmitButton';
+import { CommandEnterForm } from '@/src/components/forms/CommandEnterForm';
 
 export default async function AdminWaitlistPage() {
   await requireAdminUser();
@@ -39,10 +40,10 @@ export default async function AdminWaitlistPage() {
                       {req.last_requested_at ? ` • Last: ${new Date(req.last_requested_at).toLocaleString()}` : ''}
                     </p>
                   </div>
-                  <form action={approveEmailAction}>
+                  <CommandEnterForm action={approveEmailAction}>
                     <input type="hidden" name="email" value={req.email} />
                     <AdminSubmitButton label="Approve" pendingLabel="Approving…" />
-                  </form>
+                  </CommandEnterForm>
                 </li>
               ))}
             </ul>
@@ -63,10 +64,10 @@ export default async function AdminWaitlistPage() {
                       {item.created_by ? `Approved by ${item.created_by}` : 'Approved'}
                     </p>
                   </div>
-                  <form action={removeAllowlistEmailAction}>
+                  <CommandEnterForm action={removeAllowlistEmailAction}>
                     <input type="hidden" name="email" value={item.email} />
                     <AdminSubmitButton label="Remove" pendingLabel="Removing…" variant="secondary" />
-                  </form>
+                  </CommandEnterForm>
                 </li>
               ))}
             </ul>
