@@ -41,7 +41,7 @@ async function waitForStreamingIdle(page: Page) {
 
 async function expectActiveBranch(page: Page, branchName: string) {
   const branchButton = page.locator(`[data-testid="branch-switch"][data-branch-name="${branchName}"]`);
-  await expect(branchButton.getByText('Current', { exact: true })).toBeVisible();
+  await expect(branchButton).toHaveAttribute('data-branch-current', 'true');
 }
 
 async function switchToBranch(page: Page, branchName: string) {

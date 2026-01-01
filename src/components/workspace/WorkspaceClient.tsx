@@ -1987,12 +1987,17 @@ export function WorkspaceClient({
       <RailPageLayout
         renderRail={(ctx) => (
           <div className="mt-6 flex h-full flex-col gap-6">
-            {!ctx.railCollapsed ? (
-              <>
-                <div className="rounded-2xl border border-divider/70 bg-white/80 px-3 py-2 shadow-sm">
-                  <div className="truncate text-xs font-semibold text-slate-800">{project.name}</div>
-                  <div className="truncate text-[11px] text-muted">{project.description ?? 'No description provided.'}</div>
-                </div>
+            <>
+              <div
+                className={`rounded-2xl border border-divider/70 bg-white/80 px-3 py-2 shadow-sm ${
+                  ctx.railCollapsed ? 'pointer-events-none opacity-0' : ''
+                }`}
+                aria-hidden={ctx.railCollapsed}
+              >
+                <div className="truncate text-xs font-semibold text-slate-800">{project.name}</div>
+                <div className="truncate text-[11px] text-muted">{project.description ?? 'No description provided.'}</div>
+              </div>
+              {!ctx.railCollapsed ? (
                 <div className="space-y-3 overflow-hidden">
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
                     <span>Branches</span>
@@ -2004,20 +2009,34 @@ export function WorkspaceClient({
                     </span>
                   </div>
                   <div className="space-y-1 overflow-y-auto pr-1">
-                    {sortedBranches.map((branch) => (
-                      <button
+                    {sortedBranches.map((branch) => {
+                      const isDisabled = isSwitching || isCreating || isPinning || isRenaming;
+                      return (
+                      <div
                         key={branch.name}
-                        type="button"
-                        onClick={() => void switchBranch(branch.name)}
-                        disabled={isSwitching || isCreating || isPinning || isRenaming}
+                        role="button"
+                        tabIndex={isDisabled ? -1 : 0}
+                        aria-disabled={isDisabled}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          void switchBranch(branch.name);
+                        }}
+                        onKeyDown={(event) => {
+                          if (isDisabled) return;
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            void switchBranch(branch.name);
+                          }
+                        }}
                         className={`w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
                           branchName === branch.name
                             ? 'bg-primary/15 text-primary shadow-sm'
                             : 'text-slate-700 hover:bg-white/80'
-                        }`}
+                        } ${isDisabled ? 'opacity-60' : ''}`}
                         data-testid="branch-switch"
                         data-branch-name={branch.name}
                         data-branch-trunk={branch.isTrunk ? 'true' : undefined}
+                        data-branch-current={branchName === branch.name ? 'true' : undefined}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex min-w-0 items-center gap-2">
@@ -2070,13 +2089,15 @@ export function WorkspaceClient({
                             </button>
                           </span>
                         </div>
-                      </button>
-                    ))}
+                      </div>
+                    );
+                    })}
                   </div>
                   {branchActionError ? <p className="text-sm text-red-600">{branchActionError}</p> : null}
                 </div>
+              ) : null}
 
-                {features.uiRailBranchCreator ? (
+              {features.uiRailBranchCreator ? (
                   <NewBranchFormCard
                     fromLabel={displayBranchName(branchName)}
                     value={newBranchName}
