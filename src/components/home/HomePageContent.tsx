@@ -130,13 +130,12 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
       <RailPageLayout
         renderRail={({ railCollapsed, toggleRail }) =>
           !railCollapsed ? (
-            <div className="mt-6 flex flex-1 flex-col gap-3">
+            <div className="mt-6 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
               <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
                 Workspaces
               </div>
-              <div className="flex-1 min-h-0 overflow-hidden pr-1">
-                <div className="flex h-full flex-col gap-4">
-                  <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+                  <div className={`flex min-h-0 flex-1 flex-col gap-2 ${archivedProjects.length > 0 ? 'border-b border-divider/60 pb-3' : ''}`}>
                     <div className="text-xs font-semibold uppercase tracking-wide text-muted">Recent</div>
                     {recentProjects.length === 0 ? (
                       <p className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 text-xs text-muted shadow-sm">
@@ -193,7 +192,11 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                     )}
                   </div>
                   {archivedProjects.length > 0 ? (
-                    <div className={`flex min-h-0 flex-col gap-2 border-t border-divider/60 pt-3 ${showArchived ? 'flex-1' : ''}`}>
+                    <div
+                      className={`flex min-h-0 flex-col gap-2 pt-2 ${
+                        showArchived ? 'h-[66%]' : ''
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => setShowArchived((prev) => !prev)}
@@ -262,7 +265,6 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                       ) : null}
                     </div>
                   ) : null}
-                </div>
               </div>
 
               <div className="mt-auto flex items-start pb-2">

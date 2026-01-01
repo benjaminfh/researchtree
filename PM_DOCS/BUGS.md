@@ -23,6 +23,7 @@
 [ ] on page load (home, workspace) rail renders as open and then closes, causing a flicker.
 [ ] home - recent list must scroll after flexing into Archive section (currently forces everything below off the page)
 [ ] home - archive pushes user button off bottom of page when expanded (see screenshot)
+[ ] home - when archive is expanded, it disappears off the bottom of the page
 
 ## WORKSPACE / PROJECT
 [x] workspace UI sometimes refers to main, sometimes to trunk

@@ -1,3 +1,8 @@
+## Product Manager Docs
+We plan and track progress in PM_DOCS/
+We track feature requets in PM_DOCS/FRs.md
+We track bugs in PM_DOCS/BUGS.md
+
 ## Supabase migration files
  - The file MUST be named in the format YYYYMMDDHHmmss_short_description.sql with proper casing for months, minutes, and seconds in UTC time.
 
