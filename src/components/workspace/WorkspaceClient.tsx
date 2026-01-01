@@ -2037,17 +2037,7 @@ export function WorkspaceClient({
                               {displayBranchName(branch.name)}
                             </span>
                           </span>
-                          <span className="inline-flex items-center gap-2">
-                            {branch.isPinned ? (
-                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                                Pinned
-                              </span>
-                            ) : null}
-                            {branchName === branch.name ? (
-                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                                Current
-                              </span>
-                            ) : null}
+                          <span className="inline-flex items-center gap-1">
                             <button
                               type="button"
                               onClick={(event) => {
@@ -2055,11 +2045,12 @@ export function WorkspaceClient({
                                 void togglePinnedBranch(branch);
                               }}
                               disabled={isSwitching || isCreating || isPinning}
-                              className="inline-flex items-center gap-1 rounded-full border border-divider/80 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                isSwitching || isCreating || isPinning ? 'cursor-not-allowed' : 'hover:bg-primary/10'
+                              } ${branch.isPinned ? 'text-red-600 hover:text-red-700' : 'text-slate-400 hover:text-slate-600'}`}
                               aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
                             >
-                              <BlueprintIcon icon="pin" className="h-3 w-3" />
-                              <span>{branch.isPinned ? 'Unpin' : 'Pin'}</span>
+                              <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
                             </button>
                             <button
                               type="button"
@@ -2068,11 +2059,14 @@ export function WorkspaceClient({
                                 openRenameModal(branch);
                               }}
                               disabled={branch.isTrunk || isSwitching || isCreating || isPinning}
-                              className="inline-flex items-center gap-1 rounded-full border border-divider/80 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                branch.isTrunk || isSwitching || isCreating || isPinning
+                                  ? 'cursor-not-allowed text-slate-300'
+                                  : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
+                              }`}
                               aria-label="Rename branch"
                             >
-                              <BlueprintIcon icon="edit" className="h-3 w-3" />
-                              <span>Rename</span>
+                              <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
                             </button>
                           </span>
                         </div>
