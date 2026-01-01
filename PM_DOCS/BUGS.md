@@ -41,6 +41,8 @@
 [x] double check that we surface a clear user facing error if user tries a provider and has not entered an api token for that provider.
 [x] excess horizontal padding around the chat/graph container <div class="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
 [ ] gemini replies initially stream thinking content into chat view. Once complete, thinking is contained (corrrectly) in thinking box, and only reply content shows. This initial state is a bug.
+[x] default thinking bar width should meet the default (min) user message box (currently overlaps it) [Fixed - align assistant bubble/shared bar max width to leave user minimum width.]
+[x] default thinking bar and default shared message bar should be same width and flex the same on resize [Fixed - shared banner and assistant bubbles share the same max-width rule.]
 [x] toggling the rail fires an auth request [Fixed - keep AuthRailStatus mounted across rail toggles.]
 [x] pinning a branch instantly fires a request and triggers spinner - a bit laggy. Should copy our pattern from stars (seems nicer ui/ux) [Fixed - optimistic pin updates + per-button pending indicator.]
 

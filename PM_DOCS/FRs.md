@@ -32,7 +32,8 @@
 [x] when any message is added, the chat container should auto scroll to the bottom [Done - message list scrolls to bottom when `visibleNodes.length` increases]
 [x] Composer hint should fade to 10% opacity once the draft is non-empty. [Done - hint opacity drops when input has content]
 [x] Streaming autoscroll should stop when the user scrolls away, and resume when they return near the bottom. [Done - follow breaks on user scroll, resumes at threshold]
-[ ] thinking bar in the chat window should not extend beyond the user chat bubble max width; default width aligns with shared history bar (slightly wider than current); both shrink when squashed
+[x] thinking bar in the chat window should not extend beyond the user chat bubble max width; default width aligns with shared history bar (slightly wider than current); both shrink when squashed [Done - shared banner and assistant bubbles share a max-width cap that leaves room for the user minimum width.]
+[x] thinking box text should render markdown [Done - thinking traces render via ReactMarkdown + remark-gfm.]
 
 ### Branch
 
