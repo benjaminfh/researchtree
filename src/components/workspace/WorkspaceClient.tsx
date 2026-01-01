@@ -190,12 +190,12 @@ const NodeBubble: FC<{
                 {thinkingInProgress ? (
                   <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-primary/70" />
                 ) : null}
+                <span>Thinking</span>
                 {showThinkingNote ? (
                   <span className="text-[11px] font-medium text-slate-500">
                     OpenAI does not reveal thinking steps.
                   </span>
                 ) : null}
-                <span>Thinking</span>
               </span>
               {hasThinking ? (
                 <button
