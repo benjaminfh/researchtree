@@ -31,7 +31,7 @@ async function waitForAssistantResponse(page: Page, previousCount: number) {
   }
   await stopButton.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => null);
   const list = page.getByTestId('chat-message-list').locator('article');
-  await expect.poll(() => list.count()).toBeGreaterThan(previousCount);
+  await expect.poll(() => list.count()).toBeGreaterThan(previousCount + 1);
 }
 
 async function waitForStreamingIdle(page: Page) {
