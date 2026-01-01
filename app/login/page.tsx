@@ -21,15 +21,23 @@ function sanitizePrefillEmail(input: string | null): string | null {
   return trimmed;
 }
 
+function sanitizeMode(input: string | null): 'signUp' | 'signIn' {
+  if (!input) return 'signUp';
+  const normalized = input.trim().toLowerCase();
+  if (normalized === 'signin') return 'signIn';
+  return 'signUp';
+}
+
 function isWaitlistEnforced(): boolean {
   const raw = process.env.RT_WAITLIST_ENFORCE?.trim().toLowerCase();
   if (!raw) return false;
   return !['0', 'false', 'off', 'no'].includes(raw);
 }
 
-export default function LoginPage({ searchParams }: { searchParams?: { redirectTo?: string; email?: string } }) {
+export default function LoginPage({ searchParams }: { searchParams?: { redirectTo?: string; email?: string; mode?: string } }) {
   const redirectTo = sanitizeRedirectTo(searchParams?.redirectTo ?? null);
   const prefillEmail = sanitizePrefillEmail(searchParams?.email ?? null);
+  const initialMode = sanitizeMode(searchParams?.mode ?? null);
   const waitlistEnforced = isWaitlistEnforced();
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(226,232,255,0.7),_rgba(248,250,252,0.95)_48%,_rgba(255,255,255,1)_100%)] px-6 py-12">
@@ -43,7 +51,12 @@ export default function LoginPage({ searchParams }: { searchParams?: { redirectT
           </p>
         </div>
         <div className="w-full max-w-sm">
-          <LoginForm redirectTo={redirectTo} initialEmail={prefillEmail} waitlistEnforced={waitlistEnforced} />
+          <LoginForm
+            redirectTo={redirectTo}
+            initialEmail={prefillEmail}
+            waitlistEnforced={waitlistEnforced}
+            initialMode={initialMode}
+          />
         </div>
       </div>
     </main>
