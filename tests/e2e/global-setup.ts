@@ -46,16 +46,12 @@ export default async function globalSetup(config: FullConfig) {
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
-  await page.goto(`${baseURL}/login#existing-user`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseURL}/login?mode=signIn`, { waitUntil: 'domcontentloaded' });
 
   const signInButton = page.getByRole('button', { name: 'Sign in' });
-  if (!(await signInButton.isVisible())) {
-    const existingUserToggle = page.getByRole('button', { name: 'Existing User' });
-    if (await existingUserToggle.isVisible()) {
-      await existingUserToggle.click();
-    }
-  }
-  await signInButton.waitFor({ state: 'visible', timeout: 10_000 });
+  const emailField = page.getByLabel('Email');
+  await emailField.waitFor({ state: 'visible', timeout: 15_000 });
+  await signInButton.waitFor({ state: 'visible', timeout: 15_000 });
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await signInButton.click();
