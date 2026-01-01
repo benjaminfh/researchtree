@@ -53,11 +53,13 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (!parsed.success) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
+    const fromNodeId = parsed.data.fromNodeId?.trim() || null;
 
     if (store.mode === 'pg') {
       return await withProjectLock(params.id, async () => {
         const { rtGetCurrentRefShadowV2, rtSetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
-        const { rtCreateRefFromRefShadowV2 } = await import('@/src/store/pg/branches');
+        const { rtCreateRefFromNodeShadowV2, rtCreateRefFromRefShadowV2 } = await import('@/src/store/pg/branches');
+        const { rtGetNodeContentShadowV1 } = await import('@/src/store/pg/nodes');
         const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
 
         const existingBranches = await rtListRefsShadowV2({ projectId: params.id });
@@ -93,14 +95,33 @@ export async function POST(request: Request, { params }: RouteContext) {
           fallback: baseConfig
         });
 
-        await rtCreateRefFromRefShadowV2({
-          projectId: params.id,
-          newRefName: parsed.data.name,
-          fromRefId: baseBranch.id,
-          provider: resolvedConfig.provider,
-          model: resolvedConfig.model,
-          previousResponseId: null
-        });
+        if (fromNodeId) {
+          const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNodeId })) as any | null;
+          if (!node) {
+            throw badRequest(`Node ${fromNodeId} not found`);
+          }
+          if (node.type !== 'message' || node.role !== 'assistant') {
+            throw badRequest('Only assistant message nodes can be used to create a branch split');
+          }
+          await rtCreateRefFromNodeShadowV2({
+            projectId: params.id,
+            newRefName: parsed.data.name,
+            sourceRefId: baseBranch.id,
+            nodeId: fromNodeId,
+            provider: resolvedConfig.provider,
+            model: resolvedConfig.model,
+            previousResponseId: null
+          });
+        } else {
+          await rtCreateRefFromRefShadowV2({
+            projectId: params.id,
+            newRefName: parsed.data.name,
+            fromRefId: baseBranch.id,
+            provider: resolvedConfig.provider,
+            model: resolvedConfig.model,
+            previousResponseId: null
+          });
+        }
         const branches = await rtListRefsShadowV2({ projectId: params.id });
         const newBranch = branches.find((branch) => branch.name === parsed.data.name);
         if (newBranch?.id) {
@@ -133,11 +154,29 @@ export async function POST(request: Request, { params }: RouteContext) {
         model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
         fallback: baseConfig
       });
-      await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
-        provider: resolvedConfig.provider,
-        model: resolvedConfig.model,
-        previousResponseId: null
-      });
+      if (fromNodeId) {
+        const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
+        const sourceNodes = await readNodesFromRef(project.id, baseRef);
+        const node = sourceNodes.find((entry) => entry.id === fromNodeId);
+        if (!node) {
+          throw badRequest(`Node ${fromNodeId} not found on ref ${baseRef}`);
+        }
+        if (node.type !== 'message' || node.role !== 'assistant') {
+          throw badRequest('Only assistant message nodes can be used to create a branch split');
+        }
+        const commitHash = await getCommitHashForNode(project.id, baseRef, fromNodeId);
+        await createBranch(project.id, parsed.data.name, commitHash, {
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model,
+          previousResponseId: null
+        });
+      } else {
+        await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model,
+          previousResponseId: null
+        });
+      }
       const branches = await listBranches(project.id);
       return Response.json({ branchName: parsed.data.name, branches }, { status: 201 });
     });

@@ -23,6 +23,7 @@ export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
 export const createBranchSchema = z.object({
   name: z.string().min(1).max(120),
   fromRef: z.string().max(120).optional(),
+  fromNodeId: z.string().min(1).optional(),
   provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
   model: z.string().max(200).optional()
 });

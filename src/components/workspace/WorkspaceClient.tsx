@@ -1887,6 +1887,7 @@ export function WorkspaceClient({
         body: JSON.stringify({
           name: newBranchName.trim(),
           fromRef: branchName,
+          ...(branchSplitNodeId ? { fromNodeId: branchSplitNodeId } : {}),
           provider: newBranchProvider,
           model: branchModel
         })
