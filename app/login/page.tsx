@@ -4,6 +4,8 @@ import { LoginForm } from './LoginForm';
 import { APP_NAME } from '@/src/config/app';
 import BranchingTracesBackground from '@/src/components/login/BranchingTracesBackground';
 
+export const runtime = 'nodejs';
+
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/';
   if (!input.startsWith('/')) return '/';
@@ -27,9 +29,14 @@ function isWaitlistEnforced(): boolean {
   return !['0', 'false', 'off', 'no'].includes(raw);
 }
 
-export default function LoginPage({ searchParams }: { searchParams?: { redirectTo?: string; email?: string } }) {
+export default function LoginPage({
+  searchParams
+}: {
+  searchParams?: { redirectTo?: string; email?: string; mode?: string };
+}) {
   const redirectTo = sanitizeRedirectTo(searchParams?.redirectTo ?? null);
   const prefillEmail = sanitizePrefillEmail(searchParams?.email ?? null);
+  const initialMode = searchParams?.mode === 'signIn' ? 'signIn' : 'signUp';
   const waitlistEnforced = isWaitlistEnforced();
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(226,232,255,0.7),_rgba(248,250,252,0.95)_48%,_rgba(255,255,255,1)_100%)] px-6 py-12">
@@ -43,7 +50,12 @@ export default function LoginPage({ searchParams }: { searchParams?: { redirectT
           </p>
         </div>
         <div className="w-full max-w-sm">
-          <LoginForm redirectTo={redirectTo} initialEmail={prefillEmail} waitlistEnforced={waitlistEnforced} />
+          <LoginForm
+            redirectTo={redirectTo}
+            initialEmail={prefillEmail}
+            initialMode={initialMode}
+            waitlistEnforced={waitlistEnforced}
+          />
         </div>
       </div>
     </main>

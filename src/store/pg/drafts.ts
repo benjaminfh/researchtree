@@ -2,16 +2,18 @@
 
 import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
-export async function rtSaveArtefactDraft(input: {
+export async function rtSaveArtefactDraftV2(input: {
   projectId: string;
-  refName: string;
+  refId: string;
   content: string;
+  lockTimeoutMs?: number;
 }): Promise<{ contentHash: string; updatedAt: string }> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_save_artefact_draft', {
+  const { data, error } = await rpc('rt_save_artefact_draft_v2', {
     p_project_id: input.projectId,
-    p_ref_name: input.refName,
-    p_content: input.content ?? ''
+    p_ref_id: input.refId,
+    p_content: input.content ?? '',
+    p_lock_timeout_ms: input.lockTimeoutMs ?? 3000
   });
 
   if (error) {
@@ -20,7 +22,7 @@ export async function rtSaveArtefactDraft(input: {
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) {
-    throw new Error('No data returned from rt_save_artefact_draft');
+    throw new Error('No data returned from rt_save_artefact_draft_v2');
   }
 
   return {

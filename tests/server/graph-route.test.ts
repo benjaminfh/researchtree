@@ -9,10 +9,10 @@ const mocks = vi.hoisted(() => ({
   getCurrentBranchName: vi.fn(),
   readNodesFromRef: vi.fn(),
   getStarredNodeIds: vi.fn(),
-  rtListRefsShadowV1: vi.fn(),
-  rtGetHistoryShadowV1: vi.fn(),
+  rtListRefsShadowV2: vi.fn(),
+  rtGetHistoryShadowV2: vi.fn(),
   rtGetStarredNodeIdsShadowV1: vi.fn(),
-  rtGetCurrentRefShadowV1: vi.fn()
+  rtGetCurrentRefShadowV2: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -33,13 +33,13 @@ vi.mock('@git/stars', () => ({
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtListRefsShadowV1: mocks.rtListRefsShadowV1,
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
+  rtListRefsShadowV2: mocks.rtListRefsShadowV2,
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
   rtGetStarredNodeIdsShadowV1: mocks.rtGetStarredNodeIdsShadowV1
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
-  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1
+  rtGetCurrentRefShadowV2: mocks.rtGetCurrentRefShadowV2
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/graph';
@@ -105,11 +105,11 @@ describe('/api/projects/[id]/graph', () => {
 
   it('uses Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtListRefsShadowV1.mockResolvedValue([
-      { name: 'main', headCommit: '', nodeCount: 650, isTrunk: true },
-      { name: 'feature/x', headCommit: '', nodeCount: 3, isTrunk: false }
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: '', nodeCount: 650, isTrunk: true },
+      { id: 'ref-feature', name: 'feature/x', headCommit: '', nodeCount: 3, isTrunk: false }
     ]);
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'feature/x' });
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-feature', refName: 'feature/x' });
     mocks.rtGetStarredNodeIdsShadowV1.mockResolvedValue(['n-2']);
 
     const mainNodes = Array.from({ length: 650 }, (_, i) => ({
@@ -129,8 +129,8 @@ describe('/api/projects/[id]/graph', () => {
       parent: i === 0 ? null : `f-${i - 1}`
     }));
 
-    mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
-      const nodes = refName === 'main' ? mainNodes : refName === 'feature/x' ? featureNodes : [];
+    mocks.rtGetHistoryShadowV2.mockImplementation(async ({ refId }: any) => {
+      const nodes = refId === 'ref-main' ? mainNodes : refId === 'ref-feature' ? featureNodes : [];
       return nodes.map((node, idx) => ({ ordinal: idx, nodeJson: node }));
     });
 

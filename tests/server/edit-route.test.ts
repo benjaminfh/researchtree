@@ -15,14 +15,17 @@ const mocks = vi.hoisted(() => ({
   resolveLLMProvider: vi.fn(),
   getDefaultModelForProvider: vi.fn(),
   getProviderTokenLimit: vi.fn(),
-  rtCreateRefFromNodeParentShadowV1: vi.fn(),
-  rtAppendNodeToRefShadowV1: vi.fn(),
-  rtSetCurrentRefShadowV1: vi.fn(),
-  rtGetHistoryShadowV1: vi.fn(),
-  rtGetCurrentRefShadowV1: vi.fn(),
+  rtCreateRefFromNodeParentShadowV2: vi.fn(),
+  rtAppendNodeToRefShadowV2: vi.fn(),
+  rtSetCurrentRefShadowV2: vi.fn(),
+  rtGetHistoryShadowV2: vi.fn(),
+  rtGetCurrentRefShadowV2: vi.fn(),
   rtGetNodeContentShadowV1: vi.fn(),
+  rtListRefsShadowV2: vi.fn(),
   getBranchConfigMap: vi.fn(),
-  resolveBranchConfig: vi.fn()
+  resolveBranchConfig: vi.fn(),
+  resolveRefByName: vi.fn(),
+  resolveCurrentRef: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -63,21 +66,27 @@ vi.mock('@/src/server/branchConfig', () => ({
 }));
 
 vi.mock('@/src/store/pg/branches', () => ({
-  rtCreateRefFromNodeParentShadowV1: mocks.rtCreateRefFromNodeParentShadowV1
+  rtCreateRefFromNodeParentShadowV2: mocks.rtCreateRefFromNodeParentShadowV2
 }));
 
 vi.mock('@/src/store/pg/nodes', () => ({
-  rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1,
+  rtAppendNodeToRefShadowV2: mocks.rtAppendNodeToRefShadowV2,
   rtGetNodeContentShadowV1: mocks.rtGetNodeContentShadowV1
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
-  rtSetCurrentRefShadowV1: mocks.rtSetCurrentRefShadowV1,
-  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1
+  rtSetCurrentRefShadowV2: mocks.rtSetCurrentRefShadowV2,
+  rtGetCurrentRefShadowV2: mocks.rtGetCurrentRefShadowV2
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
+  rtListRefsShadowV2: mocks.rtListRefsShadowV2
+}));
+
+vi.mock('@/src/server/pgRefs', () => ({
+  resolveRefByName: mocks.resolveRefByName,
+  resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/edit';
@@ -122,8 +131,10 @@ describe('/api/projects/[id]/edit', () => {
       yield { type: 'text', content: 'bar' };
     });
     process.env.RT_STORE = 'git';
-    mocks.rtGetHistoryShadowV1.mockResolvedValue([]);
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+    mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
   });
 
   it('creates edit branch, appends edited user node, and generates assistant reply', async () => {
@@ -202,8 +213,8 @@ describe('/api/projects/[id]/edit', () => {
 
   it('uses Postgres for edit branch + node when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtCreateRefFromNodeParentShadowV1.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
-    mocks.rtSetCurrentRefShadowV1.mockResolvedValue(undefined);
+    mocks.rtCreateRefFromNodeParentShadowV2.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
     mocks.rtGetNodeContentShadowV1.mockResolvedValue({
       id: 'node-5',
       type: 'message',
@@ -212,41 +223,44 @@ describe('/api/projects/[id]/edit', () => {
       timestamp: 0,
       parent: null
     });
-    mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
-      if (refName === 'edit-123') {
+    mocks.rtGetHistoryShadowV2.mockImplementation(async ({ refId }: any) => {
+      if (refId === 'ref-edit') {
         return [{ ordinal: 0, nodeJson: { id: 'node-4', type: 'message', role: 'user', content: 'Before', timestamp: 0, parent: null } }];
       }
       return [];
     });
-    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+    mocks.rtAppendNodeToRefShadowV2.mockResolvedValue({
       newCommitId: 'c1',
       nodeId: 'node-1',
       ordinal: 1,
       artefactId: null,
       artefactContentHash: null
     });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-edit', name: 'edit-123' }]);
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
 
     const res = await POST(createRequest({ content: 'Edited message', branchName: 'edit-123', fromRef: 'main', nodeId: 'node-5' }), {
       params: { id: 'project-1' }
     });
     expect(res.status).toBe(201);
     expect(mocks.rtGetNodeContentShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', nodeId: 'node-5' });
-    expect(mocks.rtCreateRefFromNodeParentShadowV1).toHaveBeenCalledWith(
+    expect(mocks.rtCreateRefFromNodeParentShadowV2).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'project-1',
-        sourceRefName: 'main',
+        sourceRefId: 'ref-main',
         newRefName: 'edit-123',
         nodeId: 'node-5',
         provider: 'mock',
         model: 'mock'
       })
     );
-    expect(mocks.rtSetCurrentRefShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'edit-123' });
-    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'project-1', refName: 'edit-123', attachDraft: true })
+    expect(mocks.rtSetCurrentRefShadowV2).toHaveBeenCalledWith({ projectId: 'project-1', refId: 'ref-edit' });
+    expect(mocks.rtAppendNodeToRefShadowV2).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'project-1', refId: 'ref-edit', attachDraft: true })
     );
-    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'project-1', refName: 'edit-123', attachDraft: false })
+    expect(mocks.rtAppendNodeToRefShadowV2).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'project-1', refId: 'ref-edit', attachDraft: false })
     );
     expect(mocks.appendNode).not.toHaveBeenCalled();
     expect(mocks.createBranch).not.toHaveBeenCalled();

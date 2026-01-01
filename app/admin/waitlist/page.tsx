@@ -7,6 +7,8 @@ import { ApproveEmailForm } from './ApproveEmailForm';
 import { AdminSubmitButton } from './AdminSubmitButton';
 import { CommandEnterForm } from '@/src/components/forms/CommandEnterForm';
 
+export const runtime = 'nodejs';
+
 export default async function AdminWaitlistPage() {
   await requireAdminUser();
 

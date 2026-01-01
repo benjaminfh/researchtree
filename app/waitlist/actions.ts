@@ -5,6 +5,12 @@
 import { redirect } from 'next/navigation';
 import { redeemAccessCode, requestWaitlistAccess } from '@/src/server/waitlist';
 
+function isRedirectError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const digest = (error as { digest?: unknown }).digest;
+  return typeof digest === 'string' && digest.startsWith('NEXT_REDIRECT');
+}
+
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/login';
   if (!input.startsWith('/')) return '/login';
@@ -23,6 +29,7 @@ export async function submitWaitlistRequest(formData: FormData): Promise<void> {
   try {
     await requestWaitlistAccess(email);
   } catch (err) {
+    if (isRedirectError(err)) throw err;
     const message = (err as Error)?.message ?? 'Request failed.';
     redirect(`${redirectTo}?requested=0&error=${encodeURIComponent(message)}`);
   }
@@ -45,6 +52,7 @@ export async function submitAccessCode(formData: FormData): Promise<void> {
       redirect(`${redirectTo}?codeApplied=0&error=${encodeURIComponent('Invalid or exhausted access code.')}`);
     }
   } catch (err) {
+    if (isRedirectError(err)) throw err;
     const message = (err as Error)?.message ?? 'Access code failed.';
     redirect(`${redirectTo}?codeApplied=0&error=${encodeURIComponent(message)}`);
   }

@@ -2,9 +2,9 @@
 
 import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
-export async function rtUpdateArtefactShadow(input: {
+export async function rtUpdateArtefactShadowV2(input: {
   projectId: string;
-  refName: string;
+  refId: string;
   content: string;
   stateNodeId?: string | null;
   stateNodeJson?: unknown | null;
@@ -17,9 +17,9 @@ export async function rtUpdateArtefactShadow(input: {
   contentHash: string;
 }> {
   const { rpc } = getPgStoreAdapter();
-  const { data, error } = await rpc('rt_update_artefact_on_ref', {
+  const { data, error } = await rpc('rt_update_artefact_on_ref_v2', {
     p_project_id: input.projectId,
-    p_ref_name: input.refName,
+    p_ref_id: input.refId,
     p_content: input.content ?? '',
     p_kind: 'canvas_md',
     p_state_node_id: input.stateNodeId ?? null,
@@ -34,7 +34,7 @@ export async function rtUpdateArtefactShadow(input: {
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) {
-    throw new Error('No data returned from rt_update_artefact_on_ref');
+    throw new Error('No data returned from rt_update_artefact_on_ref_v2');
   }
 
   return {

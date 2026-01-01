@@ -21,7 +21,7 @@ describe('createSupabaseServerClient helpers', () => {
     vi.resetModules();
   });
 
-  it('omits setAll in server components', async () => {
+  it('provides setAll when cookies are writable', async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
 
@@ -32,7 +32,7 @@ describe('createSupabaseServerClient helpers', () => {
     const options = createServerClient.mock.calls[0]?.[2] as any;
     expect(options.cookies).toBeDefined();
     expect(options.cookies.getAll).toEqual(expect.any(Function));
-    expect(options.cookies).not.toHaveProperty('setAll');
+    expect(options.cookies.setAll).toEqual(expect.any(Function));
   });
 
   it('includes setAll for server actions and routes', async () => {
@@ -49,4 +49,3 @@ describe('createSupabaseServerClient helpers', () => {
     expect(options.cookies.setAll).toEqual(expect.any(Function));
   });
 });
-

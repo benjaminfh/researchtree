@@ -34,11 +34,13 @@ export async function GET(request: Request, { params }: RouteContext) {
     const effectiveLimit = typeof parsedLimit === 'number' && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
     if (store.mode === 'pg') {
-      const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-      const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-      const refName =
-        refParam?.trim() || (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: INITIAL_BRANCH })).refName;
-      const rows = await rtGetHistoryShadowV1({ projectId: params.id, refName, limit: effectiveLimit });
+      const { rtGetHistoryShadowV2 } = await import('@/src/store/pg/reads');
+      const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
+      const refName = refParam?.trim();
+      const ref = refName
+        ? await resolveRefByName(params.id, refName)
+        : await resolveCurrentRef(params.id, INITIAL_BRANCH);
+      const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: ref.id, limit: effectiveLimit });
       const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
       const nonStateNodes = pgNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
       const sanitizedNodes = nonStateNodes.map(stripRawResponse);

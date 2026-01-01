@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   getArtefactFromRef: vi.fn(),
   readNodesFromRef: vi.fn(),
-  rtGetCanvasShadowV1: vi.fn()
+  rtGetCanvasShadowV2: vi.fn(),
+  resolveRefByName: vi.fn(),
+  resolveCurrentRef: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -23,7 +25,12 @@ vi.mock('@git/utils', () => ({
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1
+  rtGetCanvasShadowV2: mocks.rtGetCanvasShadowV2
+}));
+
+vi.mock('@/src/server/pgRefs', () => ({
+  resolveRefByName: mocks.resolveRefByName,
+  resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/artefact';
@@ -33,7 +40,11 @@ describe('/api/projects/[id]/artefact', () => {
     mocks.getProject.mockReset();
     mocks.getArtefactFromRef.mockReset();
     mocks.readNodesFromRef.mockReset();
-    mocks.rtGetCanvasShadowV1.mockReset();
+    mocks.rtGetCanvasShadowV2.mockReset();
+    mocks.resolveRefByName.mockReset();
+    mocks.resolveCurrentRef.mockReset();
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
     process.env.RT_STORE = 'git';
   });
 
@@ -91,7 +102,7 @@ describe('/api/projects/[id]/artefact', () => {
 
   it('uses Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetCanvasShadowV1.mockResolvedValue({
+    mocks.rtGetCanvasShadowV2.mockResolvedValue({
       content: '# Draft canvas',
       contentHash: 'abc',
       updatedAt: '2020-01-01T00:00:01.000Z',
@@ -101,7 +112,7 @@ describe('/api/projects/[id]/artefact', () => {
     const res = await GET(new Request(`${baseUrl}?ref=main`), { params: { id: 'project-1' } });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(mocks.rtGetCanvasShadowV1).toHaveBeenCalledWith({ projectId: 'project-1', refName: 'main' });
+    expect(mocks.rtGetCanvasShadowV2).toHaveBeenCalledWith({ projectId: 'project-1', refId: 'ref-main' });
     expect(mocks.getArtefactFromRef).not.toHaveBeenCalled();
     expect(data.artefact).toBe('# Draft canvas');
     expect(data.lastUpdatedAt).toBe(Date.parse('2020-01-01T00:00:01.000Z'));
@@ -109,7 +120,7 @@ describe('/api/projects/[id]/artefact', () => {
 
   it('returns 500 when Postgres read fails in RT_STORE=pg mode', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetCanvasShadowV1.mockRejectedValue(new Error('pg down'));
+    mocks.rtGetCanvasShadowV2.mockRejectedValue(new Error('pg down'));
 
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
     expect(res.status).toBe(500);

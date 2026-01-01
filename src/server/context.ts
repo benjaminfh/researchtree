@@ -44,11 +44,34 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   const resolvedRef = options?.ref?.trim() || null;
 
   let nodes: NodeRecord[];
+  let resolvedRefName = resolvedRef;
+  let resolvedRefId: string | null = null;
 
   if (store.mode === 'pg') {
-    const refName = resolvedRef ?? 'main';
-    const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-    const rows = await rtGetHistoryShadowV1({ projectId, refName, limit, includeRawResponse: true });
+    const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+    const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+    if (resolvedRef) {
+      const branches = await rtListRefsShadowV2({ projectId });
+      const match = branches.find((branch) => branch.name === resolvedRef);
+      if (!match?.id) {
+        throw new Error(`Ref ${resolvedRef} not found`);
+      }
+      resolvedRefId = match.id;
+      resolvedRefName = match.name;
+    } else {
+      const current = await rtGetCurrentRefShadowV2({ projectId, defaultRefName: 'main' });
+      resolvedRefId = current.refId;
+      resolvedRefName = current.refName;
+    }
+    if (!resolvedRefId) {
+      throw new Error('Ref id not resolved');
+    }
+    const rows = await rtGetHistoryShadowV2({
+      projectId,
+      refId: resolvedRefId,
+      limit,
+      includeRawResponse: true
+    });
     nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
   } else {
     const { getNodes } = await import('@git/nodes');
@@ -57,7 +80,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   }
 
   const trimmed = nodes.slice(-limit);
-  const refName = resolvedRef ?? 'main';
+  const refName = resolvedRefName ?? 'main';
   const branchConfigMap = await getBranchConfigMap(projectId);
   const currentConfig = branchConfigMap[refName] ?? resolveBranchConfig();
   if (!branchConfigMap[refName]) {

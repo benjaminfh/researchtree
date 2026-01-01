@@ -190,7 +190,8 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'feature/phase-2' })).toBeInTheDocument();
+    const featureBranch = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
+    expect(featureBranch).toBeTruthy();
     expect(screen.getByText('Test project description')).toBeInTheDocument();
 
     // Reveal shared history on non-trunk branches before asserting messages.
@@ -530,16 +531,16 @@ describe('WorkspaceClient', () => {
         expect(badge).toHaveTextContent('Gemini');
       });
 
-      await user.click(screen.getByRole('button', { name: TRUNK_LABEL }));
+      const trunkButton = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'main');
+      expect(trunkButton).toBeTruthy();
+      await user.click(trunkButton as HTMLElement);
 
       await waitFor(() => {
         const badge = screen.getByText('Provider').parentElement;
         expect(badge).toHaveTextContent('OpenAI');
       });
 
-      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe(
-        getDefaultThinkingSetting('gemini', 'gemini-3.0-pro')
-      );
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
       expect(window.localStorage.getItem('researchtree:thinking:proj-1:main')).toBe(
         getDefaultThinkingSetting('openai', 'gpt-5.2')
       );
@@ -562,6 +563,24 @@ describe('WorkspaceClient', () => {
     expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
     await waitFor(() => {
       expect(capturedChatOptions?.thinking).toBe('high');
+    });
+  });
+
+  it('hydrates and persists the web search toggle', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem('researchtree:websearch:proj-1:feature/phase-2', 'true');
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const toggle = await screen.findByRole('button', { name: 'Toggle web search' });
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(capturedChatOptions?.webSearch).toBe(true);
+    });
+
+    await user.click(toggle);
+    expect(window.localStorage.getItem('researchtree:websearch:proj-1:feature/phase-2')).toBe('false');
+    await waitFor(() => {
+      expect(capturedChatOptions?.webSearch).toBe(false);
     });
   });
 
@@ -621,7 +640,9 @@ describe('WorkspaceClient', () => {
       return 0;
     }) as unknown as typeof globalThis.requestAnimationFrame;
 
-    await user.click(screen.getByRole('button', { name: TRUNK_LABEL }));
+    const trunkButton = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'main');
+    expect(trunkButton).toBeTruthy();
+    await user.click(trunkButton as HTMLElement);
 
     await waitFor(() => {
       expect(listEl.scrollTop).toBe(2000);

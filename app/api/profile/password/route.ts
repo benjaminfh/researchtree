@@ -5,6 +5,8 @@ import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 import { z } from 'zod';
 
+export const runtime = 'nodejs';
+
 const changePasswordSchema = z
   .object({
     newPassword: z.string().min(8).max(500),

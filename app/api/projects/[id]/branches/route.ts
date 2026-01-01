@@ -20,11 +20,11 @@ export async function GET(_req: Request, { params }: RouteContext) {
     await requireProjectAccess({ id: params.id });
 
     if (store.mode === 'pg') {
-      const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-      const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
-      const { refName } = await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' });
-      const branches = await rtListRefsShadowV1({ projectId: params.id });
-      return Response.json({ branches, currentBranch: refName });
+      const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+      const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+      const { refId, refName } = await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: 'main' });
+      const branches = await rtListRefsShadowV2({ projectId: params.id });
+      return Response.json({ branches, currentBranch: refName, currentBranchId: refId });
     }
 
     const { getProject } = await import('@git/projects');
@@ -53,23 +53,33 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (!parsed.success) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
+    const fromNodeId = parsed.data.fromNodeId?.trim() || null;
 
     if (store.mode === 'pg') {
       return await withProjectLock(params.id, async () => {
-        const { rtGetCurrentRefShadowV1, rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-        const { rtCreateRefFromRefShadowV1 } = await import('@/src/store/pg/branches');
-        const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
+        const { rtGetCurrentRefShadowV2, rtSetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+        const { rtCreateRefFromNodeShadowV2, rtCreateRefFromRefShadowV2 } = await import('@/src/store/pg/branches');
+        const { rtGetNodeContentShadowV1 } = await import('@/src/store/pg/nodes');
+        const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
 
-        const existingBranches = await rtListRefsShadowV1({ projectId: params.id });
-        const baseRef =
-          parsed.data.fromRef ??
-          (await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' })).refName ??
-          'main';
-
-        const baseBranch = existingBranches.find((b) => b.name === baseRef);
+        const existingBranches = await rtListRefsShadowV2({ projectId: params.id });
+        const currentRef = parsed.data.fromRef
+          ? null
+          : await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: 'main' });
+        const baseRefName = parsed.data.fromRef ?? currentRef?.refName ?? 'main';
+        const baseBranch =
+          parsed.data.fromRef
+            ? existingBranches.find((b) => b.name === baseRefName)
+            : currentRef?.refId
+              ? existingBranches.find((b) => b.id === currentRef.refId) ??
+                (currentRef.refName ? existingBranches.find((b) => b.name === currentRef.refName) : undefined)
+              : existingBranches.find((b) => b.name === baseRefName);
         const baseExists = Boolean(baseBranch);
         if (!baseExists) {
-          throw badRequest(`Branch ${baseRef} does not exist`);
+          throw badRequest(`Branch ${baseRefName} does not exist`);
+        }
+        if (!baseBranch?.id) {
+          throw badRequest(`Branch ${baseRefName} is missing ref id`);
         }
 
         const baseConfig = resolveBranchConfig({
@@ -85,17 +95,39 @@ export async function POST(request: Request, { params }: RouteContext) {
           fallback: baseConfig
         });
 
-        await rtCreateRefFromRefShadowV1({
-          projectId: params.id,
-          newRefName: parsed.data.name,
-          fromRefName: baseRef,
-          provider: resolvedConfig.provider,
-          model: resolvedConfig.model,
-          previousResponseId: null
-        });
-        await rtSetCurrentRefShadowV1({ projectId: params.id, refName: parsed.data.name });
-        const branches = await rtListRefsShadowV1({ projectId: params.id });
-        return Response.json({ branchName: parsed.data.name, branches }, { status: 201 });
+        if (fromNodeId) {
+          const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNodeId })) as any | null;
+          if (!node) {
+            throw badRequest(`Node ${fromNodeId} not found`);
+          }
+          if (node.type !== 'message' || node.role !== 'assistant') {
+            throw badRequest('Only assistant message nodes can be used to create a branch split');
+          }
+          await rtCreateRefFromNodeShadowV2({
+            projectId: params.id,
+            newRefName: parsed.data.name,
+            sourceRefId: baseBranch.id,
+            nodeId: fromNodeId,
+            provider: resolvedConfig.provider,
+            model: resolvedConfig.model,
+            previousResponseId: null
+          });
+        } else {
+          await rtCreateRefFromRefShadowV2({
+            projectId: params.id,
+            newRefName: parsed.data.name,
+            fromRefId: baseBranch.id,
+            provider: resolvedConfig.provider,
+            model: resolvedConfig.model,
+            previousResponseId: null
+          });
+        }
+        const branches = await rtListRefsShadowV2({ projectId: params.id });
+        const newBranch = branches.find((branch) => branch.name === parsed.data.name);
+        if (newBranch?.id) {
+          await rtSetCurrentRefShadowV2({ projectId: params.id, refId: newBranch.id });
+        }
+        return Response.json({ branchName: parsed.data.name, branchId: newBranch?.id ?? null, branches }, { status: 201 });
       });
     }
 
@@ -122,11 +154,29 @@ export async function POST(request: Request, { params }: RouteContext) {
         model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
         fallback: baseConfig
       });
-      await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
-        provider: resolvedConfig.provider,
-        model: resolvedConfig.model,
-        previousResponseId: null
-      });
+      if (fromNodeId) {
+        const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
+        const sourceNodes = await readNodesFromRef(project.id, baseRef);
+        const node = sourceNodes.find((entry) => entry.id === fromNodeId);
+        if (!node) {
+          throw badRequest(`Node ${fromNodeId} not found on ref ${baseRef}`);
+        }
+        if (node.type !== 'message' || node.role !== 'assistant') {
+          throw badRequest('Only assistant message nodes can be used to create a branch split');
+        }
+        const commitHash = await getCommitHashForNode(project.id, baseRef, fromNodeId);
+        await createBranch(project.id, parsed.data.name, commitHash, {
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model,
+          previousResponseId: null
+        });
+      } else {
+        await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model,
+          previousResponseId: null
+        });
+      }
       const branches = await listBranches(project.id);
       return Response.json({ branchName: parsed.data.name, branches }, { status: 201 });
     });
@@ -148,16 +198,24 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     if (store.mode === 'pg') {
       return await withProjectLock(params.id, async () => {
-        const { rtSetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-        const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
-        const branches = await rtListRefsShadowV1({ projectId: params.id });
+        const { rtSetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+        const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+        const branches = await rtListRefsShadowV2({ projectId: params.id });
         const exists = branches.some((b) => b.name === parsed.data.name);
         if (!exists) {
           throw badRequest(`Branch ${parsed.data.name} does not exist`);
         }
-        await rtSetCurrentRefShadowV1({ projectId: params.id, refName: parsed.data.name });
-        const updatedBranches = await rtListRefsShadowV1({ projectId: params.id });
-        return Response.json({ branchName: parsed.data.name, branches: updatedBranches });
+        const selectedBranch = branches.find((b) => b.name === parsed.data.name);
+        if (!selectedBranch?.id) {
+          throw badRequest(`Branch ${parsed.data.name} is missing ref id`);
+        }
+        await rtSetCurrentRefShadowV2({ projectId: params.id, refId: selectedBranch.id });
+        const updatedBranches = await rtListRefsShadowV2({ projectId: params.id });
+        return Response.json({
+          branchName: parsed.data.name,
+          branchId: selectedBranch.id,
+          branches: updatedBranches
+        });
       });
     }
 

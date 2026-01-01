@@ -6,6 +6,7 @@ import { useFormState, useFormStatus } from 'react-dom';
 import Link from 'next/link';
 import { updatePassword } from './actions';
 import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
+import { PASSWORD_MIN_LENGTH, PASSWORD_POLICY_HINT } from '@/src/utils/passwordPolicy';
 
 const initialState = { error: null as string | null };
 
@@ -49,8 +50,11 @@ export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
             type="password"
             autoComplete="new-password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
+            pattern={`(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${PASSWORD_MIN_LENGTH},}`}
+            title={PASSWORD_POLICY_HINT}
           />
+          <span className="mt-1 block text-xs text-slate-600">{PASSWORD_POLICY_HINT}</span>
         </label>
         <label className="block">
           <span className="text-sm font-medium text-slate-800">Confirm password</span>
@@ -60,7 +64,7 @@ export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
             type="password"
             autoComplete="new-password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
           />
         </label>
 
@@ -68,7 +72,10 @@ export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
 
         <div className="flex items-center justify-between gap-3">
           <SubmitButton />
-          <Link href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`} className="text-sm text-slate-900 underline">
+          <Link
+            href={`/login?redirectTo=${encodeURIComponent(redirectTo)}&mode=signIn#existing-user`}
+            className="text-sm text-slate-900 underline"
+          >
             Back to sign in
           </Link>
         </div>

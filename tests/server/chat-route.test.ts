@@ -10,12 +10,14 @@ const mocks = vi.hoisted(() => ({
   streamAssistantCompletion: vi.fn(),
   registerStream: vi.fn(),
   releaseStream: vi.fn(),
-  rtAppendNodeToRefShadowV1: vi.fn(),
-  rtGetHistoryShadowV1: vi.fn(),
-  rtGetCurrentRefShadowV1: vi.fn(),
+  rtAppendNodeToRefShadowV2: vi.fn(),
+  rtGetHistoryShadowV2: vi.fn(),
+  rtGetCurrentRefShadowV2: vi.fn(),
   getBranchConfigMap: vi.fn(),
-  rtGetCanvasHashesShadowV1: vi.fn(),
-  rtGetCanvasPairShadowV1: vi.fn()
+  rtGetCanvasHashesShadowV2: vi.fn(),
+  rtGetCanvasPairShadowV2: vi.fn(),
+  resolveRefByName: vi.fn(),
+  resolveCurrentRef: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -51,17 +53,22 @@ vi.mock('@/src/server/stream-registry', () => ({
 }));
 
 vi.mock('@/src/store/pg/nodes', () => ({
-  rtAppendNodeToRefShadowV1: mocks.rtAppendNodeToRefShadowV1
+  rtAppendNodeToRefShadowV2: mocks.rtAppendNodeToRefShadowV2
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
-  rtGetCanvasHashesShadowV1: mocks.rtGetCanvasHashesShadowV1,
-  rtGetCanvasPairShadowV1: mocks.rtGetCanvasPairShadowV1
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
+  rtGetCanvasHashesShadowV2: mocks.rtGetCanvasHashesShadowV2,
+  rtGetCanvasPairShadowV2: mocks.rtGetCanvasPairShadowV2
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
-  rtGetCurrentRefShadowV1: mocks.rtGetCurrentRefShadowV1
+  rtGetCurrentRefShadowV2: mocks.rtGetCurrentRefShadowV2
+}));
+
+vi.mock('@/src/server/pgRefs', () => ({
+  resolveRefByName: mocks.resolveRefByName,
+  resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
 vi.mock('@/src/server/providerCapabilities', () => ({
@@ -100,11 +107,11 @@ describe('/api/projects/[id]/chat', () => {
     mocks.appendNodeToRefNoCheckout.mockResolvedValue(undefined);
     mocks.registerStream.mockImplementation(() => undefined);
     mocks.releaseStream.mockImplementation(() => undefined);
-    mocks.rtGetHistoryShadowV1.mockResolvedValue([]);
-    mocks.rtGetCurrentRefShadowV1.mockResolvedValue({ refName: 'main' });
+    mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-1', refName: 'main' });
     mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
-    mocks.rtGetCanvasHashesShadowV1.mockResolvedValue({ draftHash: null, artefactHash: null });
-    mocks.rtGetCanvasPairShadowV1.mockResolvedValue({
+    mocks.rtGetCanvasHashesShadowV2.mockResolvedValue({ draftHash: null, artefactHash: null });
+    mocks.rtGetCanvasPairShadowV2.mockResolvedValue({
       draftContent: '',
       draftHash: null,
       artefactContent: '',
@@ -112,6 +119,8 @@ describe('/api/projects/[id]/chat', () => {
       draftUpdatedAt: null,
       artefactUpdatedAt: null
     });
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-1', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-1', name: 'main' });
     process.env.RT_STORE = 'git';
   });
 
@@ -138,10 +147,10 @@ describe('/api/projects/[id]/chat', () => {
 
   it('uses Postgres for user+assistant nodes when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetCanvasHashesShadowV1
+    mocks.rtGetCanvasHashesShadowV2
       .mockResolvedValueOnce({ draftHash: 'draft-1', artefactHash: 'artefact-0' })
       .mockResolvedValueOnce({ draftHash: 'draft-1', artefactHash: 'draft-1' });
-    mocks.rtGetCanvasPairShadowV1.mockResolvedValue({
+    mocks.rtGetCanvasPairShadowV2.mockResolvedValue({
       draftContent: 'Canvas v2',
       draftHash: 'draft-1',
       artefactContent: 'Canvas v1',
@@ -149,7 +158,7 @@ describe('/api/projects/[id]/chat', () => {
       draftUpdatedAt: null,
       artefactUpdatedAt: null
     });
-    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+    mocks.rtAppendNodeToRefShadowV2.mockResolvedValue({
       newCommitId: 'c1',
       nodeId: 'user-1',
       ordinal: 0,
@@ -161,19 +170,19 @@ describe('/api/projects/[id]/chat', () => {
     expect(res.status).toBe(200);
     await res.text();
 
-    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+    expect(mocks.rtAppendNodeToRefShadowV2).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'project-1',
-        refName: 'main',
+        refId: 'ref-1',
         kind: 'message',
         role: 'user',
         attachDraft: true
       })
     );
-    expect(mocks.rtAppendNodeToRefShadowV1).toHaveBeenCalledWith(
+    expect(mocks.rtAppendNodeToRefShadowV2).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'project-1',
-        refName: 'main',
+        refId: 'ref-1',
         kind: 'message',
         role: 'assistant',
         attachDraft: false
@@ -261,7 +270,7 @@ describe('/api/projects/[id]/chat', () => {
 
   it('skips empty assistant node in Postgres mode', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtAppendNodeToRefShadowV1.mockResolvedValue({
+    mocks.rtAppendNodeToRefShadowV2.mockResolvedValue({
       newCommitId: 'c1',
       nodeId: 'user-1',
       ordinal: 0,
@@ -280,7 +289,7 @@ describe('/api/projects/[id]/chat', () => {
     const chunks = lines.map((line) => JSON.parse(line));
     expect(chunks).toEqual([{ type: 'error', message: 'LLM returned empty response' }]);
 
-    expect(mocks.rtAppendNodeToRefShadowV1).not.toHaveBeenCalled();
+    expect(mocks.rtAppendNodeToRefShadowV2).not.toHaveBeenCalled();
   });
 
   it('propagates errors from context builder', async () => {
