@@ -57,6 +57,19 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
     ],
     returnType: 'set'
   },
+  rt_create_ref_from_node_v2: {
+    params: [
+      'p_project_id',
+      'p_source_ref_id',
+      'p_new_ref_name',
+      'p_node_id',
+      'p_provider',
+      'p_model',
+      'p_previous_response_id',
+      'p_lock_timeout_ms'
+    ],
+    returnType: 'set'
+  },
   rt_create_ref_from_ref_v2: {
     params: [
       'p_project_id',
