@@ -3,6 +3,7 @@
 
 # OVERALL
 [x] We need a spinner or "loading text" visual indicator rectangles to indicate to the user that requests are still running after an action (navigation, form submit etc). It is context dependent whether it should be a spinner or other visual.
+[ ] cmd-enter should submit on ALL forms (global behaviour) if form state is valid.
 
 # HOME PAGE
 ## ONBOARDING

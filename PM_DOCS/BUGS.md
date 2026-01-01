@@ -48,6 +48,7 @@
 
 ### Branches
 [x] LLM config should be pinned to branch [Fixed - provider/thinking persisted per `projectId + branchName` storage keys]
+[ ] when branching from assistant node, the new branch starts from the wrong node (the latest on the branch [wrong] instead of below the clicked assistant node [correct])
 
 ### Merge
 [x] merge modal has summary + payload selection -> is the summary injected into the context? This behaviour is not signalled to the user at all. It needs to be. [Fixed - merge modal explicitly states summary is injected into future LLM context]
