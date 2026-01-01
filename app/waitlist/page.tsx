@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { APP_NAME } from '@/src/config/app';
 import { submitAccessCode, submitWaitlistRequest } from './actions';
 import { WaitlistSubmitButton } from './WaitlistSubmitButton';
+import { CommandEnterForm } from '@/src/components/forms/CommandEnterForm';
 
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/waitlist';
@@ -58,7 +59,7 @@ export default function WaitlistPage({
             </div>
           ) : null}
 
-          <form action={submitWaitlistRequest} className="space-y-3">
+          <CommandEnterForm action={submitWaitlistRequest} className="space-y-3">
             <input type="hidden" name="redirectTo" value={redirectTo} />
             <label className="block">
               <span className="text-sm font-medium text-slate-800">Email</span>
@@ -73,11 +74,11 @@ export default function WaitlistPage({
             </label>
 
             <WaitlistSubmitButton label="Request access" pendingLabel="Requesting…" />
-          </form>
+          </CommandEnterForm>
 
           <div className="border-t border-slate-200 pt-4">
             <p className="text-sm font-medium text-slate-800">Have an access code?</p>
-            <form action={submitAccessCode} className="mt-3 space-y-3">
+            <CommandEnterForm action={submitAccessCode} className="mt-3 space-y-3">
               <input type="hidden" name="redirectTo" value={redirectTo} />
               <label className="block">
                 <span className="text-sm font-medium text-slate-800">Email</span>
@@ -102,7 +103,7 @@ export default function WaitlistPage({
               </label>
 
               <WaitlistSubmitButton label="Apply access code" pendingLabel="Applying…" />
-            </form>
+            </CommandEnterForm>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
