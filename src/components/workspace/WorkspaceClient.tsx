@@ -116,6 +116,7 @@ const NodeBubble: FC<{
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const isAssistantPending = node.type === 'message' && node.role === 'assistant' && node.id === 'assistant-pending';
+  const isTransientNode = node.id === 'streaming' || node.id === 'assistant-pending' || node.id === 'optimistic-user';
   const messageText = getNodeText(node);
   const thinkingText = getNodeThinkingText(node);
   const canCopy = node.type === 'message' && messageText.length > 0;
@@ -394,6 +395,7 @@ const NodeBubble: FC<{
           ) : null}
           {node.type === 'message' &&
           onEdit &&
+          !isTransientNode &&
           (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage) ? (
             <button
               type="button"
