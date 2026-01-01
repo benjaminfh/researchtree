@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   rtGetCurrentRefShadowV2: vi.fn(),
   rtSetCurrentRefShadowV2: vi.fn(),
   rtListRefsShadowV2: vi.fn(),
-  rtCreateRefFromRefShadowV2: vi.fn()
+  rtCreateRefFromRefShadowV2: vi.fn(),
+  rtCreateRefFromNodeShadowV2: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -39,7 +40,8 @@ vi.mock('@/src/store/pg/reads', () => ({
 }));
 
 vi.mock('@/src/store/pg/branches', () => ({
-  rtCreateRefFromRefShadowV2: mocks.rtCreateRefFromRefShadowV2
+  rtCreateRefFromRefShadowV2: mocks.rtCreateRefFromRefShadowV2,
+  rtCreateRefFromNodeShadowV2: mocks.rtCreateRefFromNodeShadowV2
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/branches';
