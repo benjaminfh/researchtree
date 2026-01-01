@@ -5,6 +5,7 @@
 import React, { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { LLMProvider } from '@/src/shared/llmProvider';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
 
 interface ProviderOption {
   id: LLMProvider;
@@ -23,6 +24,7 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
   const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const handleCommandEnter = useCommandEnterSubmit();
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -59,7 +61,12 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
   };
 
   return (
-    <form onSubmit={handleSubmit} className="card-surface flex flex-col gap-4 p-6" data-testid="create-project-form">
+    <form
+      onKeyDown={handleCommandEnter}
+      onSubmit={handleSubmit}
+      className="card-surface flex flex-col gap-4 p-6"
+      data-testid="create-project-form"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-primary">Create Workspace</p>

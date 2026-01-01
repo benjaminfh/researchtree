@@ -1,6 +1,9 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
+'use client';
+
 import React, { type FormEvent } from 'react';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
 
 export function NewBranchFormCard({
   fromLabel,
@@ -34,9 +37,11 @@ export function NewBranchFormCard({
   submitTestId?: string;
 }) {
   const isDisabled = disabled || submitting;
+  const handleCommandEnter = useCommandEnterSubmit({ enabled: !isDisabled && Boolean(value.trim()) });
 
   return (
     <form
+      onKeyDown={handleCommandEnter}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         onSubmit();
