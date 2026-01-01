@@ -133,7 +133,11 @@ const NodeBubble: FC<{
   const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
   const showThinkingNote = isAssistant && showOpenAiThinkingNote && !hasThinking && !thinkingInProgress;
   const containerWidth = isAssistant ? 'w-full' : '';
-  const width = isUser ? 'min-w-[14rem] max-w-[82%]' : isAssistant ? 'w-full max-w-[85%]' : 'max-w-[82%]';
+  const width = isUser
+    ? 'min-w-[14rem] max-w-[82%]'
+    : isAssistant
+      ? 'w-full max-w-[85%] md:max-w-[calc(100%-14rem)]'
+      : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
   const palette = muted
     ? isUser
@@ -209,7 +213,9 @@ const NodeBubble: FC<{
               ) : null}
             </div>
             {showThinking && hasThinking ? (
-              <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">{thinkingText}</p>
+              <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{thinkingText}</ReactMarkdown>
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -2228,7 +2234,7 @@ export function WorkspaceClient({
                 >
                   <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 flex flex-wrap items-center gap-3">
                     {branchName !== trunkName && sharedCount > 0 ? (
-                      <div className="pointer-events-auto w-full md:w-3/5 md:ml-4">
+                      <div className="pointer-events-auto w-full md:ml-4 md:max-w-[calc(100%-12rem)]">
                         <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[rgba(238,243,255,0.95)] px-4 py-3 text-sm text-slate-700 shadow-sm">
                           <div className="flex min-w-0 flex-1 items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-primary/80" />
