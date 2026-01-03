@@ -12,6 +12,16 @@ export function createSupabaseServerClient() {
     cookies: {
       getAll() {
         return cookieStore.getAll();
+      },
+      setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
+        if (!('set' in cookieStore)) return;
+        for (const { name, value, options } of cookiesToSet) {
+          try {
+            cookieStore.set(name, value, options as CookieOptions);
+          } catch {
+            // ignore when called from read-only contexts
+          }
+        }
       }
     }
   });

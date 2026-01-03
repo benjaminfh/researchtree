@@ -1,6 +1,15 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
+function isDesktopRuntime(): boolean {
+  if (process.env.RT_DESKTOP !== '1') return false;
+  const origin = process.env.RT_APP_ORIGIN ?? '';
+  return origin.startsWith('http://127.0.0.1:') || origin.startsWith('http://localhost:');
+}
+
 function hasSupabaseEnv(): boolean {
+  if (isDesktopRuntime()) {
+    return false;
+  }
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||

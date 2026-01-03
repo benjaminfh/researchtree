@@ -10,8 +10,8 @@ const mocks = vi.hoisted(() => {
     getArtefact: vi.fn(),
     getArtefactFromRef: vi.fn(),
     readNodesFromRef: vi.fn(),
-    rtGetHistoryShadowV1: vi.fn(),
-    rtListRefsShadowV1: vi.fn(),
+    rtGetHistoryShadowV2: vi.fn(),
+    rtListRefsShadowV2: vi.fn(),
     getProjectPath: vi.fn(),
     pathExists: vi.fn(),
     readJsonFile: vi.fn()
@@ -35,8 +35,8 @@ vi.mock('@git/utils', () => ({
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
-  rtListRefsShadowV1: mocks.rtListRefsShadowV1
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
+  rtListRefsShadowV2: mocks.rtListRefsShadowV2
 }));
 
 describe('buildChatContext', () => {
@@ -45,8 +45,8 @@ describe('buildChatContext', () => {
     mocks.getArtefact.mockReset();
     mocks.getArtefactFromRef.mockReset();
     mocks.readNodesFromRef.mockReset();
-    mocks.rtGetHistoryShadowV1.mockReset();
-    mocks.rtListRefsShadowV1.mockReset();
+    mocks.rtGetHistoryShadowV2.mockReset();
+    mocks.rtListRefsShadowV2.mockReset();
     mocks.getProjectPath.mockReset();
     mocks.pathExists.mockReset();
     mocks.readJsonFile.mockReset();
@@ -54,7 +54,7 @@ describe('buildChatContext', () => {
     process.env.MERGE_USER = 'assistant';
     mocks.getProjectPath.mockReturnValue('/tmp/project-1');
     mocks.pathExists.mockResolvedValue(false);
-    mocks.rtListRefsShadowV1.mockResolvedValue([{ name: 'main', provider: 'openai', model: 'gpt-5.2' }]);
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-main', name: 'main', provider: 'openai', model: 'gpt-5.2' }]);
   });
 
   it('includes recent messages and uses a fixed system prompt', async () => {
@@ -181,12 +181,12 @@ describe('buildChatContext', () => {
 
   it('reads nodes + canvas from Postgres when RT_STORE=pg and ref is provided', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetHistoryShadowV1.mockResolvedValue([
+    mocks.rtGetHistoryShadowV2.mockResolvedValue([
       { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null } }
     ]);
 
     const context = await buildChatContext('project-1', { ref: 'main' });
-    expect(mocks.rtGetHistoryShadowV1).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refName: 'main' }));
+    expect(mocks.rtGetHistoryShadowV2).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', refId: 'ref-main' }));
     expect(context.messages[0].content).toContain('Canvas tools may not be available in this conversation.');
     expect(context.messages[0].content).toContain('Some user messages are hidden canvas updates; treat them as authoritative canvas changes.');
     expect(context.messages.some((m) => m.role === 'user' && flattenMessageContent(m.content) === 'Hello')).toBe(true);
@@ -194,7 +194,7 @@ describe('buildChatContext', () => {
 
   it('throws when Postgres context read fails in RT_STORE=pg mode', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtGetHistoryShadowV1.mockRejectedValue(new Error('pg down'));
+    mocks.rtGetHistoryShadowV2.mockRejectedValue(new Error('pg down'));
     await expect(buildChatContext('project-1', { ref: 'main' })).rejects.toThrow('pg down');
     expect(mocks.readNodesFromRef).not.toHaveBeenCalled();
   });

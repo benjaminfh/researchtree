@@ -17,8 +17,8 @@ interface RouteContext {
 async function getPreferredBranch(projectId: string): Promise<string> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
-    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-    return (await rtGetCurrentRefShadowV1({ projectId, defaultRefName: INITIAL_BRANCH })).refName;
+    const { resolveCurrentRef } = await import('@/src/server/pgRefs');
+    return (await resolveCurrentRef(projectId, INITIAL_BRANCH)).name;
   }
   const { getCurrentBranchName } = await import('@git/utils');
   return getCurrentBranchName(projectId).catch(() => INITIAL_BRANCH);
@@ -87,10 +87,10 @@ export async function POST(request: Request, { params }: RouteContext) {
     return await withProjectLockAndRefLock(params.id, resolvedTargetBranch, async () => {
       try {
         if (store.mode === 'pg') {
-          const { rtListRefsShadowV1, rtGetHistoryShadowV1, rtGetCanvasShadowV1 } = await import('@/src/store/pg/reads');
-          const { rtMergeOursShadowV1 } = await import('@/src/store/pg/merge');
+          const { rtListRefsShadowV2, rtGetHistoryShadowV2, rtGetCanvasShadowV2 } = await import('@/src/store/pg/reads');
+          const { rtMergeOursShadowV2 } = await import('@/src/store/pg/merge');
 
-          const branches = await rtListRefsShadowV1({ projectId: params.id });
+          const branches = await rtListRefsShadowV2({ projectId: params.id });
           const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
           const targetName = resolvedTargetBranch ?? trunkName;
           if (targetName === sourceBranch) {
@@ -104,11 +104,16 @@ export async function POST(request: Request, { params }: RouteContext) {
           if (!targetExists) {
             throw badRequest(`Target branch ${targetName} does not exist`);
           }
-          const sourceHeadCommit = branches.find((b) => b.name === sourceBranch)?.headCommit ?? '';
+          const sourceBranchInfo = branches.find((b) => b.name === sourceBranch);
+          const targetBranchInfo = branches.find((b) => b.name === targetName);
+          if (!sourceBranchInfo?.id || !targetBranchInfo?.id) {
+            throw badRequest('Branch is missing ref id');
+          }
+          const sourceHeadCommit = sourceBranchInfo.headCommit ?? '';
 
           const [targetRows, sourceRows] = await Promise.all([
-            rtGetHistoryShadowV1({ projectId: params.id, refName: targetName, limit: 500 }),
-            rtGetHistoryShadowV1({ projectId: params.id, refName: sourceBranch, limit: 500 })
+            rtGetHistoryShadowV2({ projectId: params.id, refId: targetBranchInfo.id, limit: 500 }),
+            rtGetHistoryShadowV2({ projectId: params.id, refId: sourceBranchInfo.id, limit: 500 })
           ]);
           const targetNodes = targetRows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
           const sourceNodes = sourceRows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
@@ -146,8 +151,8 @@ export async function POST(request: Request, { params }: RouteContext) {
               : undefined;
 
           const [targetCanvas, sourceCanvas] = await Promise.all([
-            rtGetCanvasShadowV1({ projectId: params.id, refName: targetName }),
-            rtGetCanvasShadowV1({ projectId: params.id, refName: sourceBranch })
+            rtGetCanvasShadowV2({ projectId: params.id, refId: targetBranchInfo.id }),
+            rtGetCanvasShadowV2({ projectId: params.id, refId: sourceBranchInfo.id })
           ]);
           const canvasDiff = buildLineDiff(targetCanvas.content ?? '', sourceCanvas.content ?? '');
 
@@ -166,10 +171,10 @@ export async function POST(request: Request, { params }: RouteContext) {
             createdOnBranch: targetName
           };
 
-          await rtMergeOursShadowV1({
+          await rtMergeOursShadowV2({
             projectId: params.id,
-            targetRefName: targetName,
-            sourceRefName: sourceBranch,
+            targetRefId: targetBranchInfo.id,
+            sourceRefId: sourceBranchInfo.id,
             mergeNodeId: mergeNode.id,
             mergeNodeJson: mergeNode,
             commitMessage: 'merge'

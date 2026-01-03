@@ -15,12 +15,20 @@ function sanitizeRedirectTo(input: string | null): string | null {
   return input;
 }
 
+function ensureSignInModeForLogin(redirectTo: string): string {
+  if (!redirectTo.startsWith('/login')) return redirectTo;
+  const url = new URL(redirectTo, 'http://local');
+  url.searchParams.set('mode', 'signIn');
+  return `${url.pathname}?${url.searchParams.toString()}`;
+}
+
 export async function requestPasswordReset(
   _prevState: PasswordResetActionState,
   formData: FormData
 ): Promise<PasswordResetActionState> {
   const email = String(formData.get('email') ?? '').trim();
-  const redirectTo = sanitizeRedirectTo(String(formData.get('redirectTo') ?? '').trim()) ?? '/';
+  const redirectTo =
+    ensureSignInModeForLogin(sanitizeRedirectTo(String(formData.get('redirectTo') ?? '').trim()) ?? '/');
 
   if (!email) {
     return { error: 'Email is required.' };

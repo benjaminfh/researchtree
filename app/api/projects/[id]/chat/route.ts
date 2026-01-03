@@ -27,15 +27,16 @@ interface RouteContext {
   params: { id: string };
 }
 
-async function getPreferredBranch(projectId: string): Promise<string> {
+async function getPreferredBranch(projectId: string): Promise<{ id: string | null; name: string }> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
-    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-    const { refName } = await rtGetCurrentRefShadowV1({ projectId, defaultRefName: 'main' });
-    return refName;
+    const { resolveCurrentRef } = await import('@/src/server/pgRefs');
+    const current = await resolveCurrentRef(projectId, 'main');
+    return { id: current.id, name: current.name };
   }
   const { getCurrentBranchName } = await import('@git/utils');
-  return getCurrentBranchName(projectId).catch(() => 'main');
+  const name = await getCurrentBranchName(projectId).catch(() => 'main');
+  return { id: null, name };
 }
 
 function labelForProvider(provider: LLMProvider): string {
@@ -72,14 +73,28 @@ export async function POST(request: Request, { params }: RouteContext) {
       thinking?: ThinkingSetting;
       webSearch?: boolean;
     };
-    const targetRef = ref ?? (await getPreferredBranch(params.id));
+    const preferred = await getPreferredBranch(params.id);
+    const requestedRefName = ref?.trim() || null;
+    const targetRefName = requestedRefName ?? preferred.name;
+    let targetRefId: string | null = null;
+    if (store.mode === 'pg') {
+      if (requestedRefName) {
+        const { resolveRefByName } = await import('@/src/server/pgRefs');
+        targetRefId = (await resolveRefByName(params.id, requestedRefName)).id;
+      } else {
+        targetRefId = preferred.id;
+      }
+    }
+    if (store.mode === 'pg' && !targetRefId) {
+      throw badRequest(`Branch ${targetRefName} is missing ref id`);
+    }
     const branchConfigMap = await getBranchConfigMap(params.id);
-    const activeConfig = branchConfigMap[targetRef] ?? resolveBranchConfig();
+    const activeConfig = branchConfigMap[targetRefName] ?? resolveBranchConfig();
     const provider = activeConfig.provider;
     const modelName = activeConfig.model;
     if (llmProvider && llmProvider !== provider) {
       throw badRequest(
-        `Branch ${targetRef} is locked to ${labelForProvider(provider)} (${modelName}). Create a new branch to switch.`
+        `Branch ${targetRefName} is locked to ${labelForProvider(provider)} (${modelName}). Create a new branch to switch.`
       );
     }
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
@@ -95,10 +110,12 @@ export async function POST(request: Request, { params }: RouteContext) {
     const tokenLimit = await getProviderTokenLimit(provider, modelName);
     const apiKey = await requireUserApiKeyForProvider(provider);
     const previousResponseId =
-      provider === 'openai_responses' ? await getPreviousResponseId(params.id, targetRef).catch(() => null) : null;
+      provider === 'openai_responses'
+        ? await getPreviousResponseId(params.id, { id: targetRefId, name: targetRefName }).catch(() => null)
+        : null;
 
-    console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRef, webSearch });
-    const releaseLock = await acquireProjectRefLock(params.id, targetRef);
+    console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRefName, webSearch });
+    const releaseLock = await acquireProjectRefLock(params.id, targetRefName);
     const abortController = new AbortController();
 
     try {
@@ -106,8 +123,11 @@ export async function POST(request: Request, { params }: RouteContext) {
         if (store.mode !== 'pg') {
           return { hasChanges: false, diff: '', message: '' };
         }
-        const { rtGetCanvasHashesShadowV1, rtGetCanvasPairShadowV1 } = await import('@/src/store/pg/reads');
-        const hashes = await rtGetCanvasHashesShadowV1({ projectId: params.id, refName: targetRef });
+        const { rtGetCanvasHashesShadowV2, rtGetCanvasPairShadowV2 } = await import('@/src/store/pg/reads');
+        if (!targetRefId) {
+          return { hasChanges: false, diff: '', message: '' };
+        }
+        const hashes = await rtGetCanvasHashesShadowV2({ projectId: params.id, refId: targetRefId });
         const hasChanges = Boolean(hashes.draftHash && hashes.draftHash !== hashes.artefactHash);
         if (!hasChanges) {
           return { hasChanges: false, diff: '', message: '' };
@@ -115,13 +135,13 @@ export async function POST(request: Request, { params }: RouteContext) {
         if (!includeMessage) {
           return { hasChanges, diff: '', message: '' };
         }
-        const pair = await rtGetCanvasPairShadowV1({ projectId: params.id, refName: targetRef });
+        const pair = await rtGetCanvasPairShadowV2({ projectId: params.id, refId: targetRefId });
         const diff = buildUnifiedDiff(pair.artefactContent ?? '', pair.draftContent ?? '');
         const message = diff.trim().length > 0 ? buildCanvasDiffMessage(diff) : '';
         return { hasChanges, diff, message };
       };
 
-      const context = await buildChatContext(params.id, { tokenLimit, ref: targetRef });
+      const context = await buildChatContext(params.id, { tokenLimit, ref: targetRefName });
       const userCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
       const messagesForCompletion = [
         ...context.messages,
@@ -129,15 +149,15 @@ export async function POST(request: Request, { params }: RouteContext) {
         { role: 'user' as const, content: message }
       ];
 
-      registerStream(params.id, abortController, targetRef);
+      registerStream(params.id, abortController, targetRefName);
 
       let released = false;
-        const releaseAll = () => {
-          if (released) return;
-          released = true;
-          releaseStream(params.id, targetRef);
-          releaseLock();
-        };
+      const releaseAll = () => {
+        if (released) return;
+        released = true;
+        releaseStream(params.id, targetRefName);
+        releaseLock();
+      };
 
       if (canvasToolsEnabled) {
         const stream = new ReadableStream<Uint8Array>({
@@ -193,9 +213,9 @@ export async function POST(request: Request, { params }: RouteContext) {
               if (persistedUser) return;
 
               if (store.mode === 'pg') {
-                const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-                const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-                const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+                const { rtGetHistoryShadowV2 } = await import('@/src/store/pg/reads');
+                const { rtAppendNodeToRefShadowV2 } = await import('@/src/store/pg/nodes');
+                const last = await rtGetHistoryShadowV2({ projectId: params.id, refId: targetRefId!, limit: 1 }).catch(() => []);
                 const lastNode = (last[0]?.nodeJson as any) ?? null;
                 const parentId = lastNode?.id ? String(lastNode.id) : null;
 
@@ -209,13 +229,13 @@ export async function POST(request: Request, { params }: RouteContext) {
                     uiHidden: true,
                     timestamp: Date.now(),
                     parent: parentId,
-                    createdOnBranch: targetRef,
+                    createdOnBranch: targetRefName,
                     contextWindow: [],
                     tokensUsed: undefined
                   };
-                  await rtAppendNodeToRefShadowV1({
+                  await rtAppendNodeToRefShadowV2({
                     projectId: params.id,
-                    refName: targetRef,
+                    refId: targetRefId!,
                     kind: hiddenNode.type,
                     role: hiddenNode.role,
                     contentJson: hiddenNode,
@@ -235,13 +255,13 @@ export async function POST(request: Request, { params }: RouteContext) {
                   contentBlocks: buildTextBlock(message),
                   timestamp: Date.now(),
                   parent: parentId,
-                  createdOnBranch: targetRef,
+                  createdOnBranch: targetRefName,
                   contextWindow: [],
                   tokensUsed: undefined
                 };
-                await rtAppendNodeToRefShadowV1({
+                await rtAppendNodeToRefShadowV2({
                   projectId: params.id,
-                  refName: targetRef,
+                  refId: targetRefId!,
                   kind: userNode.type,
                   role: userNode.role,
                   contentJson: userNode,
@@ -259,7 +279,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               if (!project) {
                 throw notFound('Project not found');
               }
-              await appendNodeToRefNoCheckout(project.id, targetRef, {
+              await appendNodeToRefNoCheckout(project.id, targetRefName, {
                 type: 'message',
                 role: 'user',
                 content: message,
@@ -282,7 +302,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 apiKey,
                 previousResponseId,
                 projectId: params.id,
-                refName: targetRef
+                refId: targetRefId!
               });
               rawResponse = result.rawResponse ?? null;
               responseId = result.responseId ?? null;
@@ -321,7 +341,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 const contentText = deriveTextFromBlocks(contentBlocks) || assistantText || '';
                 const rawResponseForStorage = toJsonValue(rawResponse);
                 if (store.mode === 'pg') {
-                  const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+                  const { rtAppendNodeToRefShadowV2 } = await import('@/src/store/pg/nodes');
                   const assistantNode = {
                     id: uuidv4(),
                     type: 'message',
@@ -330,15 +350,15 @@ export async function POST(request: Request, { params }: RouteContext) {
                     contentBlocks,
                     timestamp: Date.now(),
                     parent: persistedUserNodeId,
-                    createdOnBranch: targetRef,
+                    createdOnBranch: targetRefName,
                     modelUsed: modelName,
                     responseId: responseId ?? undefined,
                     interrupted: abortController.signal.aborted || streamError !== null,
                     rawResponse: rawResponseForStorage
                   };
-                  await rtAppendNodeToRefShadowV1({
+                  await rtAppendNodeToRefShadowV2({
                     projectId: params.id,
-                    refName: targetRef,
+                    refId: targetRefId!,
                     kind: assistantNode.type,
                     role: assistantNode.role,
                     contentJson: assistantNode,
@@ -357,13 +377,13 @@ export async function POST(request: Request, { params }: RouteContext) {
                       uiHidden: true,
                       timestamp: Date.now(),
                       parent: assistantNode.id,
-                      createdOnBranch: targetRef,
+                      createdOnBranch: targetRefName,
                       contextWindow: [],
                       tokensUsed: undefined
                     };
-                    await rtAppendNodeToRefShadowV1({
+                    await rtAppendNodeToRefShadowV2({
                       projectId: params.id,
-                      refName: targetRef,
+                      refId: targetRefId!,
                       kind: hiddenNode.type,
                       role: hiddenNode.role,
                       contentJson: hiddenNode,
@@ -374,7 +394,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   }
                 }
                 if (provider === 'openai_responses' && responseId) {
-                  await setPreviousResponseId(params.id, targetRef, responseId);
+                  await setPreviousResponseId(params.id, { id: targetRefId, name: targetRefName }, responseId);
                 }
               }
             } catch (error) {
@@ -390,7 +410,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 userId: user.id,
                 projectId: params.id,
                 provider,
-                ref: targetRef,
+                ref: targetRefName,
                 message
               });
               controllerStream.error(streamError);
@@ -401,7 +421,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               userId: user.id,
               projectId: params.id,
               provider,
-              ref: targetRef
+              ref: targetRefName
             });
             controllerStream.close();
           },
@@ -438,9 +458,9 @@ export async function POST(request: Request, { params }: RouteContext) {
             if (persistedUser) return;
 
             if (store.mode === 'pg') {
-              const { rtGetHistoryShadowV1 } = await import('@/src/store/pg/reads');
-              const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
-              const last = await rtGetHistoryShadowV1({ projectId: params.id, refName: targetRef, limit: 1 }).catch(() => []);
+              const { rtGetHistoryShadowV2 } = await import('@/src/store/pg/reads');
+              const { rtAppendNodeToRefShadowV2 } = await import('@/src/store/pg/nodes');
+              const last = await rtGetHistoryShadowV2({ projectId: params.id, refId: targetRefId!, limit: 1 }).catch(() => []);
               const lastNode = (last[0]?.nodeJson as any) ?? null;
               const parentId = lastNode?.id ? String(lastNode.id) : null;
 
@@ -457,13 +477,13 @@ export async function POST(request: Request, { params }: RouteContext) {
                   uiHidden: true,
                   timestamp: Date.now(),
                   parent: parentId,
-                  createdOnBranch: targetRef,
+                  createdOnBranch: targetRefName,
                   contextWindow: [],
                   tokensUsed: undefined
                 };
-                await rtAppendNodeToRefShadowV1({
+                await rtAppendNodeToRefShadowV2({
                   projectId: params.id,
-                  refName: targetRef,
+                  refId: targetRefId!,
                   kind: hiddenNode.type,
                   role: hiddenNode.role,
                   contentJson: hiddenNode,
@@ -481,13 +501,13 @@ export async function POST(request: Request, { params }: RouteContext) {
                 contentBlocks: buildTextBlock(message),
                 timestamp: Date.now(),
                 parent: parentId,
-                createdOnBranch: targetRef,
+                createdOnBranch: targetRefName,
                 contextWindow: [],
                 tokensUsed: undefined
               };
-              await rtAppendNodeToRefShadowV1({
+              await rtAppendNodeToRefShadowV2({
                 projectId: params.id,
-                refName: targetRef,
+                refId: targetRefId!,
                 kind: userNode.type,
                 role: userNode.role,
                 contentJson: userNode,
@@ -509,7 +529,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               gitProjectId = project.id;
             }
 
-            await appendNodeToRefNoCheckout(gitProjectId, targetRef, {
+            await appendNodeToRefNoCheckout(gitProjectId, targetRefName, {
               type: 'message',
               role: 'user',
               content: message,
@@ -596,7 +616,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               const contentText = deriveTextFromBlocks(contentBlocks) || buffered;
               const rawResponseForStorage = toJsonValue(rawResponse);
               if (store.mode === 'pg') {
-                const { rtAppendNodeToRefShadowV1 } = await import('@/src/store/pg/nodes');
+                const { rtAppendNodeToRefShadowV2 } = await import('@/src/store/pg/nodes');
                 const assistantNode = {
                   id: uuidv4(),
                   type: 'message',
@@ -605,15 +625,15 @@ export async function POST(request: Request, { params }: RouteContext) {
                   contentBlocks,
                   timestamp: Date.now(),
                   parent: persistedUserNodeId,
-                  createdOnBranch: targetRef,
+                  createdOnBranch: targetRefName,
                   modelUsed: modelName,
                   responseId: responseId ?? undefined,
                   interrupted: abortController.signal.aborted || streamError !== null,
                   rawResponse: rawResponseForStorage
                 };
-                await rtAppendNodeToRefShadowV1({
+                await rtAppendNodeToRefShadowV2({
                   projectId: params.id,
-                  refName: targetRef,
+                  refId: targetRefId!,
                   kind: assistantNode.type,
                   role: assistantNode.role,
                   contentJson: assistantNode,
@@ -632,13 +652,13 @@ export async function POST(request: Request, { params }: RouteContext) {
                     uiHidden: true,
                     timestamp: Date.now(),
                     parent: assistantNode.id,
-                    createdOnBranch: targetRef,
+                    createdOnBranch: targetRefName,
                     contextWindow: [],
                     tokensUsed: undefined
                   };
-                  await rtAppendNodeToRefShadowV1({
+                  await rtAppendNodeToRefShadowV2({
                     projectId: params.id,
-                    refName: targetRef,
+                    refId: targetRefId!,
                     kind: hiddenNode.type,
                     role: hiddenNode.role,
                     contentJson: hiddenNode,
@@ -649,7 +669,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 }
               } else if (gitProjectId) {
                 const { appendNodeToRefNoCheckout } = await import('@git/nodes');
-                await appendNodeToRefNoCheckout(gitProjectId, targetRef, {
+                await appendNodeToRefNoCheckout(gitProjectId, targetRefName, {
                   type: 'message',
                   role: 'assistant',
                   content: contentText,
@@ -661,7 +681,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 });
               }
               if (provider === 'openai_responses' && responseId) {
-                await setPreviousResponseId(params.id, targetRef, responseId);
+                await setPreviousResponseId(params.id, { id: targetRefId, name: targetRefName }, responseId);
               }
             }
           } catch (error) {
@@ -674,16 +694,16 @@ export async function POST(request: Request, { params }: RouteContext) {
             const message = streamError instanceof Error ? streamError.message : String(streamError);
             const isAbort =
               abortController.signal.aborted || (streamError as { name?: string | null })?.name === 'AbortError';
-            console.error('[chat] stream error', {
-              requestId,
-              userId: user.id,
-              projectId: params.id,
-              provider,
-              ref: targetRef,
-              yieldedAny,
-              bufferedLength: buffered.length,
-              message
-            });
+              console.error('[chat] stream error', {
+                requestId,
+                userId: user.id,
+                projectId: params.id,
+                provider,
+                ref: targetRefName,
+                yieldedAny,
+                bufferedLength: buffered.length,
+                message
+              });
             if (!isAbort) {
               controllerStream.enqueue(encodeChunk(`${JSON.stringify({ type: 'error', message })}\n`));
             }
@@ -695,7 +715,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             userId: user.id,
             projectId: params.id,
             provider,
-            ref: targetRef,
+            ref: targetRefName,
             bufferedLength: buffered.length
           });
           controllerStream.close();
@@ -715,7 +735,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         }
       });
     } catch (error) {
-      releaseStream(params.id, targetRef);
+      releaseStream(params.id, targetRefName);
       releaseLock();
       throw error;
     }

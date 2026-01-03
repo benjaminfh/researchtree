@@ -341,6 +341,7 @@ export function ProfilePageClient({ email }: { email: string | null }) {
                   }}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  minLength={10}
                   disabled={changingPassword}
                   className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 disabled:opacity-60"
                 />
@@ -357,10 +358,13 @@ export function ProfilePageClient({ email }: { email: string | null }) {
                   }}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  minLength={10}
                   disabled={changingPassword}
                   className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 disabled:opacity-60"
                 />
-                <span className="text-xs text-muted">Minimum 8 characters.</span>
+                <span className="text-xs text-muted">
+                  Minimum 10 characters. Use lowercase and uppercase letters, digits, and symbols.
+                </span>
               </label>
             </div>
 

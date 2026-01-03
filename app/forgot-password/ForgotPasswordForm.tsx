@@ -55,7 +55,10 @@ export function ForgotPasswordForm({ redirectTo }: { redirectTo: string }) {
 
         <div className="flex items-center justify-between gap-3">
           <SubmitButton />
-          <Link href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`} className="text-sm text-slate-900 underline">
+          <Link
+            href={`/login?redirectTo=${encodeURIComponent(redirectTo)}&mode=signIn#existing-user`}
+            className="text-sm text-slate-900 underline"
+          >
             Back to sign in
           </Link>
         </div>

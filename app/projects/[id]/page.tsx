@@ -8,6 +8,8 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
 
+export const runtime = 'nodejs';
+
 interface ProjectPageProps {
   params: {
     id: string;
@@ -28,9 +30,10 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       notFound();
     }
 
-    const { rtGetCurrentRefShadowV1 } = await import('@/src/store/pg/prefs');
-    const { rtListRefsShadowV1 } = await import('@/src/store/pg/reads');
-    const current = await rtGetCurrentRefShadowV1({ projectId: params.id, defaultRefName: 'main' }).catch(() => ({
+    const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+    const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+    const current = await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: 'main' }).catch(() => ({
+      refId: null,
       refName: 'main'
     }));
 
@@ -41,7 +44,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       createdAt: data.createdAt,
       branchName: current.refName
     };
-    branches = await rtListRefsShadowV1({ projectId: params.id });
+    branches = await rtListRefsShadowV2({ projectId: params.id });
   } else {
     const { getProject } = await import('@git/projects');
     const { listBranches } = await import('@git/branches');

@@ -3,6 +3,8 @@
 import { ForgotPasswordForm } from './ForgotPasswordForm';
 import { APP_NAME } from '@/src/config/app';
 
+export const runtime = 'nodejs';
+
 function sanitizeRedirectTo(input: string | null): string {
   if (!input) return '/';
   if (!input.startsWith('/')) return '/';
@@ -25,4 +27,3 @@ export default function ForgotPasswordPage({ searchParams }: { searchParams?: { 
     </main>
   );
 }
-

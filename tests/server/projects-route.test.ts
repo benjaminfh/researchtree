@@ -81,7 +81,7 @@ describe('/api/projects route', () => {
     const response = await POST(createRequest('POST', { name: 'Test' }));
     expect(response.status).toBe(201);
     expect(mocks.rtCreateProjectShadow).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: '1', name: 'Test', provider: 'openai', model: 'gpt-5.2' })
+      expect.objectContaining({ projectId: '1', name: 'Test', provider: 'openai_responses', model: 'gpt-5.2' })
     );
   });
 
@@ -142,7 +142,7 @@ describe('/api/projects route', () => {
     expect(mocks.rtCreateProjectShadow).toHaveBeenCalledWith({
       name: 'PG',
       description: 'd',
-      provider: 'openai',
+      provider: 'openai_responses',
       model: 'gpt-5.2'
     });
   });
