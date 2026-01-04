@@ -671,11 +671,19 @@ export function WorkspaceClient({
         setShowNewBranchPopover(true);
         return;
       }
-      if (showNewBranchPopover) {
+      if (showNewBranchPopover && branchSplitNodeId === node.id && branchPopoverMode === 'standard') {
         setShowNewBranchPopover(false);
         resetBranchQuestionState();
         return;
       }
+      setShowNewBranchPopover(false);
+      resetBranchQuestionState();
+      setBranchActionError(null);
+      setNewBranchName('');
+      setBranchSplitNodeId(node.id);
+      setBranchPopoverMode('standard');
+      setShowNewBranchPopover(true);
+      return;
     }
     if (showNewBranchPopover) {
       setShowNewBranchPopover(false);
