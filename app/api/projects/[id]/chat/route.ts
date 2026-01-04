@@ -527,8 +527,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                 id: nodeId,
                 type: 'message',
                 role: 'user',
-                content: message,
-                contentBlocks: buildTextBlock(message),
+                content: userContent,
+                contentBlocks: buildTextBlock(userContent),
                 timestamp: Date.now(),
                 parent: parentId,
                 createdOnBranch: targetRefName,
@@ -562,8 +562,8 @@ export async function POST(request: Request, { params }: RouteContext) {
             await appendNodeToRefNoCheckout(gitProjectId, targetRefName, {
               type: 'message',
               role: 'user',
-              content: message,
-              contentBlocks: buildTextBlock(message),
+              content: userContent,
+              contentBlocks: buildTextBlock(userContent),
               contextWindow: [],
               tokensUsed: undefined
             });

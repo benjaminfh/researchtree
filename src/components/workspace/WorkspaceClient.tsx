@@ -1541,6 +1541,10 @@ export function WorkspaceClient({
     return out;
   }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
+  const latestVisibleNodeId = useMemo(() => {
+    if (visibleNodes.length === 0) return null;
+    return visibleNodes[visibleNodes.length - 1]!.id;
+  }, [visibleNodes]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -1565,6 +1569,11 @@ export function WorkspaceClient({
   );
   const persistedNodesRef = useRef<NodeRecord[]>([]);
   persistedNodesRef.current = nodes.filter((node) => node.type !== 'state');
+
+  useEffect(() => {
+    if (!showNewBranchPopover || !latestVisibleNodeId) return;
+    setBranchSplitNodeId((prev) => prev ?? latestVisibleNodeId);
+  }, [showNewBranchPopover, latestVisibleNodeId]);
 
   useEffect(() => {
     if (previousVisibleBranchRef.current !== branchName) {
@@ -2400,6 +2409,7 @@ export function WorkspaceClient({
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
                                 highlighted={highlightedNodeId === node.id}
+                                showBranchSplit={showNewBranchPopover && branchSplitNodeId === node.id}
                               />
                             ))}
                           </div>
@@ -2613,8 +2623,8 @@ export function WorkspaceClient({
                             <button
                               type="button"
                               onClick={() => {
+                                setBranchSplitNodeId(latestVisibleNodeId);
                                 setBranchActionError(null);
-                                setBranchSplitNodeId(null);
                                 setNewBranchHighlight('');
                                 setNewBranchQuestion('');
                                 setSwitchToNewBranch(false);
