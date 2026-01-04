@@ -41,6 +41,8 @@ import {
   Square2StackIcon,
   XMarkIcon
 } from './HeroIcons';
+import { MarkdownWithCopy } from './MarkdownWithCopy';
+import { copyTextToClipboard } from './clipboard';
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -149,29 +151,6 @@ const NodeBubble: FC<{
     : 'bg-white text-slate-900';
   const align = isUser ? 'ml-auto items-end' : 'mr-auto items-start';
 
-  const copyToClipboard = async (text: string) => {
-    if (typeof navigator === 'undefined') return;
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // ignore and fall back
-    }
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    } catch {
-      // ignore
-    }
-  };
-
   useEffect(() => {
     return () => {
       if (copyFeedbackTimeoutRef.current) {
@@ -223,7 +202,7 @@ const NodeBubble: FC<{
         {node.type === 'message' && messageText ? (
           isAssistant ? (
             <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageText}</ReactMarkdown>
+              <MarkdownWithCopy content={messageText} />
             </div>
           ) : (
             <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{messageText}</p>
@@ -375,7 +354,7 @@ const NodeBubble: FC<{
               type="button"
               onClick={() => {
                 void (async () => {
-                  await copyToClipboard(messageText);
+                  await copyTextToClipboard(messageText);
                   setCopyFeedback(true);
                   if (copyFeedbackTimeoutRef.current) {
                     clearTimeout(copyFeedbackTimeoutRef.current);
@@ -661,28 +640,6 @@ export function WorkspaceClient({
     }
   };
 
-  const copyTextToClipboard = async (text: string) => {
-    if (typeof navigator === 'undefined') return;
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // ignore and fall back
-    }
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    } catch {
-      // ignore
-    }
-  };
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
     ref: branchName
   });
