@@ -2256,7 +2256,9 @@ export function WorkspaceClient({
       model,
       thinkingSetting,
       nodeId,
-      switchOnComplete
+      switchOnComplete,
+      onResponse,
+      onFailure
     }: {
       targetBranch: string;
       fromRef: string;
@@ -2266,6 +2268,8 @@ export function WorkspaceClient({
       thinkingSetting: ThinkingSetting;
       nodeId?: string | null;
       switchOnComplete: boolean;
+      onResponse?: () => void;
+      onFailure?: () => void;
     }) => {
       const taskId = startBackgroundTask({
         branchName: targetBranch,
@@ -2274,8 +2278,9 @@ export function WorkspaceClient({
       });
       pushToast('info', `Edit queued for ${displayBranchName(targetBranch)}.`);
       void (async () => {
+        let responded = false;
         try {
-          const res = await fetch(`/api/projects/${project.id}/edit`, {
+          const res = await fetch(`/api/projects/${project.id}/edit-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2288,21 +2293,28 @@ export function WorkspaceClient({
               nodeId
             })
           });
-          if (!res.ok) {
+          if (!res.ok || !res.body) {
             const data = await res.json().catch(() => null);
             throw new Error(data?.error?.message ?? 'Edit failed');
           }
-          const data = (await res.json()) as { branchName: string };
-          const resolvedBranch = data.branchName ?? targetBranch;
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem(`researchtree:thinking:${project.id}:${resolvedBranch}`, thinkingSetting);
+          responded = true;
+          onResponse?.();
+          const reader = res.body.getReader();
+          const { errorMessage } = await consumeNdjsonStream(reader, {
+            defaultErrorMessage: 'Edit failed'
+          });
+          if (errorMessage) {
+            throw new Error(errorMessage);
           }
-          if (switchOnComplete) {
-            await switchBranch(resolvedBranch);
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(`researchtree:thinking:${project.id}:${targetBranch}`, thinkingSetting);
           }
           await refreshInsights({ includeGraph: true, includeBranches: true });
-          pushToast('success', `Edit completed on ${displayBranchName(resolvedBranch)}.`);
+          pushToast('success', `Edit completed on ${displayBranchName(targetBranch)}.`);
         } catch (err) {
+          if (!responded) {
+            onFailure?.();
+          }
           pushToast('error', (err as Error).message);
         } finally {
           finishBackgroundTask(taskId);
@@ -2399,7 +2411,9 @@ export function WorkspaceClient({
       provider,
       model,
       thinkingSetting,
-      switchOnCreate
+      switchOnCreate,
+      onResponse,
+      onFailure
     }: {
       targetBranch: string;
       fromRef: string;
@@ -2410,6 +2424,8 @@ export function WorkspaceClient({
       model: string;
       thinkingSetting: ThinkingSetting;
       switchOnCreate: boolean;
+      onResponse?: () => void;
+      onFailure?: () => void;
     }) => {
       const taskId = startBackgroundTask({
         branchName: targetBranch,
@@ -2417,10 +2433,8 @@ export function WorkspaceClient({
         switchOnComplete: false
       });
       pushToast('info', `Question queued for ${displayBranchName(targetBranch)}.`);
-      if (switchOnCreate) {
-        setBranchName(targetBranch);
-      }
       void (async () => {
+        let responded = false;
         try {
           const res = await fetch(`/api/projects/${project.id}/branch-question`, {
             method: 'POST',
@@ -2441,6 +2455,8 @@ export function WorkspaceClient({
             const data = await res.json().catch(() => null);
             throw new Error(data?.error?.message ?? 'Failed to send question to new branch');
           }
+          responded = true;
+          onResponse?.();
           const reader = res.body.getReader();
           const { errorMessage } = await consumeNdjsonStream(reader, {
             defaultErrorMessage: 'Failed to send question to new branch'
@@ -2451,6 +2467,9 @@ export function WorkspaceClient({
           pushToast('success', `Question completed on ${displayBranchName(targetBranch)}.`);
           await refreshInsights({ includeGraph: true, includeBranches: true });
         } catch (err) {
+          if (!responded) {
+            onFailure?.();
+          }
           pushToast('error', (err as Error).message);
         } finally {
           finishBackgroundTask(taskId);
@@ -2590,12 +2609,6 @@ export function WorkspaceClient({
       return;
     }
 
-    setShowEditModal(false);
-    setEditDraft('');
-    setEditBranchName('');
-    setEditingNode(null);
-    setSwitchToEditBranch(true);
-
     startEditTask({
       targetBranch,
       fromRef,
@@ -2604,9 +2617,19 @@ export function WorkspaceClient({
       model: editModel,
       thinkingSetting: editThinking,
       nodeId,
-      switchOnComplete: shouldSwitch
+      switchOnComplete: shouldSwitch,
+      onResponse: () => {
+        setIsEditing(false);
+        setShowEditModal(false);
+        setEditDraft('');
+        setEditBranchName('');
+        setEditingNode(null);
+        setSwitchToEditBranch(true);
+      },
+      onFailure: () => {
+        setIsEditing(false);
+      }
     });
-    setIsEditing(false);
   };
 
   const closeMergeModal = () => {
@@ -3113,6 +3136,7 @@ export function WorkspaceClient({
                                         });
                                         return;
                                       } else {
+                                        setIsCreating(true);
                                         startBranchQuestionTask({
                                           targetBranch: branchNameInput,
                                           fromRef: branchName,
@@ -3122,7 +3146,17 @@ export function WorkspaceClient({
                                           provider: newBranchProvider,
                                           model: branchModel,
                                           thinkingSetting,
-                                          switchOnCreate: false
+                                          switchOnCreate: false,
+                                          onResponse: () => {
+                                            setIsCreating(false);
+                                            setBranchActionError(null);
+                                            setShowNewBranchPopover(false);
+                                            resetBranchQuestionState();
+                                            setNewBranchName('');
+                                          },
+                                          onFailure: () => {
+                                            setIsCreating(false);
+                                          }
                                         });
                                         if (typeof window !== 'undefined') {
                                           window.localStorage.setItem(

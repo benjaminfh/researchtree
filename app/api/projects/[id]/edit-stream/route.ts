@@ -6,7 +6,7 @@ import { buildChatContext } from '@/src/server/context';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { resolveOpenAIProviderSelection, streamAssistantCompletion } from '@/src/server/llm';
+import { encodeChunk, resolveOpenAIProviderSelection, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
@@ -20,7 +20,6 @@ import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConf
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { toJsonValue } from '@/src/server/json';
-import { encodeChunk } from '@/src/server/llm';
 
 interface RouteContext {
   params: { id: string };
