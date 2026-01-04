@@ -828,6 +828,7 @@ export function WorkspaceClient({
   const [draft, setDraft] = useState('');
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
+  const questionDraftRef = useRef<string | null>(null);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
@@ -947,6 +948,7 @@ export function WorkspaceClient({
       setStreamBlocks([]);
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
+      questionDraftRef.current = null;
       hasReceivedAssistantChunkRef.current = false;
       if (assistantPendingTimerRef.current) {
         clearTimeout(assistantPendingTimerRef.current);
@@ -1023,6 +1025,52 @@ export function WorkspaceClient({
     await sendMessage(sent);
   };
 
+  const sendQuestionWithStream = async ({
+    targetBranch,
+    question,
+    highlight,
+    provider,
+    thinkingSetting
+  }: {
+    targetBranch: string;
+    question: string;
+    highlight?: string;
+    provider: LLMProvider;
+    thinkingSetting: ThinkingSetting;
+  }) => {
+    if (!question.trim() || state.isStreaming) return;
+    shouldScrollToBottomRef.current = true;
+    questionDraftRef.current = question;
+    setStreamBlocks([]);
+    hasReceivedAssistantChunkRef.current = false;
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    setAssistantPending(false);
+    setOptimisticUserNode({
+      id: 'optimistic-user',
+      type: 'message',
+      role: 'user',
+      content: question,
+      contentBlocks: [{ type: 'text', text: question }],
+      timestamp: Date.now(),
+      parent: null,
+      createdOnBranch: targetBranch
+    });
+    assistantPendingTimerRef.current = setTimeout(() => {
+      setAssistantPending(true);
+      assistantPendingTimerRef.current = null;
+    }, 100);
+    await sendMessage({
+      question,
+      highlight,
+      ref: targetBranch,
+      llmProvider: provider,
+      thinking: thinkingSetting
+    });
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await sendDraft();
@@ -1060,15 +1108,18 @@ export function WorkspaceClient({
   const isSending = state.isStreaming || assistantPending;
 
   useEffect(() => {
-    if (!state.error || !optimisticDraftRef.current) return;
+    if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
     const sent = optimisticDraftRef.current;
     optimisticDraftRef.current = null;
+    questionDraftRef.current = null;
     void Promise.all([refreshHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
     setStreamBlocks([]);
     if (!hasReceivedAssistantChunkRef.current) {
-      setDraft(sent);
+      if (sent) {
+        setDraft(sent);
+      }
     }
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
@@ -2912,22 +2963,38 @@ export function WorkspaceClient({
                                       const branchModel =
                                         providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
                                         getDefaultModelForProviderFromCapabilities(newBranchProvider);
-                                      startBranchQuestionTask({
-                                        targetBranch: branchNameInput,
-                                        fromRef: branchName,
-                                        fromNodeId: branchSplitNodeId,
-                                        question,
-                                        highlight,
-                                        provider: newBranchProvider,
-                                        model: branchModel,
-                                        thinkingSetting,
-                                        switchOnCreate: switchToNewBranch
-                                      });
-                                      if (typeof window !== 'undefined') {
-                                        window.localStorage.setItem(
-                                          `researchtree:thinking:${project.id}:${branchNameInput}`,
+                                      if (switchToNewBranch) {
+                                        const result = await createBranch({ switchToNew: true });
+                                        if (!result.ok) return;
+                                        if (!result.branchProvider) {
+                                          setBranchActionError('Unable to resolve provider for the new branch.');
+                                          return;
+                                        }
+                                        await sendQuestionWithStream({
+                                          targetBranch: result.branchName,
+                                          question,
+                                          highlight,
+                                          provider: result.branchProvider,
                                           thinkingSetting
-                                        );
+                                        });
+                                      } else {
+                                        startBranchQuestionTask({
+                                          targetBranch: branchNameInput,
+                                          fromRef: branchName,
+                                          fromNodeId: branchSplitNodeId,
+                                          question,
+                                          highlight,
+                                          provider: newBranchProvider,
+                                          model: branchModel,
+                                          thinkingSetting,
+                                          switchOnCreate: false
+                                        });
+                                        if (typeof window !== 'undefined') {
+                                          window.localStorage.setItem(
+                                            `researchtree:thinking:${project.id}:${branchNameInput}`,
+                                            thinkingSetting
+                                          );
+                                        }
                                       }
                                     } else {
                                       const result = await createBranch();
