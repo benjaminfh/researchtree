@@ -399,7 +399,6 @@ const NodeBubble: FC<{
           (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage) ? (
             <button
               type="button"
-              data-branch-trigger={node.role === 'assistant' ? 'true' : undefined}
               onClick={() => onEdit(node)}
               className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none"
               aria-label={node.role === 'assistant' ? 'Create branch from message' : 'Edit message'}
@@ -581,17 +580,25 @@ export function WorkspaceClient({
   const INSIGHT_COLLAPSED_WIDTH = 56;
   const SPLIT_GAP = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
+  const openNewBranchModal = (splitNodeId: string | null = null) => {
+    setBranchActionError(null);
+    setNewBranchName('');
+    setBranchSplitNodeId(splitNodeId);
+    setShowNewBranchModal(true);
+  };
+  const closeNewBranchModal = () => {
+    if (isCreating) return;
+    setShowNewBranchModal(false);
+    setBranchSplitNodeId(null);
+    setBranchActionError(null);
+  };
   const openEditModal = (node: MessageNode) => {
     if (node.role === 'assistant') {
-      if (showNewBranchPopover && branchSplitNodeId === node.id) {
-        setShowNewBranchPopover(false);
-        setBranchSplitNodeId(null);
+      if (showNewBranchModal && branchSplitNodeId === node.id) {
+        closeNewBranchModal();
         return;
       }
-      setBranchActionError(null);
-      setNewBranchName('');
-      setBranchSplitNodeId(node.id);
-      setShowNewBranchPopover(true);
+      openNewBranchModal(node.id);
       return;
     }
     setBranchSplitNodeId(null);
@@ -1409,8 +1416,7 @@ export function WorkspaceClient({
   const autoOpenedHintsRef = useRef(false);
   const hintsRef = useRef<HTMLDivElement | null>(null);
   const hintsButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [showNewBranchPopover, setShowNewBranchPopover] = useState(false);
-  const newBranchPopoverRef = useRef<HTMLDivElement | null>(null);
+  const [showNewBranchModal, setShowNewBranchModal] = useState(false);
 
   useEffect(() => {
     if (isLoading || !isNewUser || autoOpenedHintsRef.current) return;
@@ -1443,35 +1449,6 @@ export function WorkspaceClient({
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [showHints]);
-
-  useEffect(() => {
-    if (!showNewBranchPopover) return;
-
-    function onPointerDown(event: MouseEvent | TouchEvent) {
-      const target = event.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest('[data-branch-trigger="true"]')) return;
-      if (newBranchPopoverRef.current?.contains(target)) return;
-      setShowNewBranchPopover(false);
-      setBranchSplitNodeId(null);
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setShowNewBranchPopover(false);
-        setBranchSplitNodeId(null);
-      }
-    }
-
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [showNewBranchPopover]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -2349,7 +2326,7 @@ export function WorkspaceClient({
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
                           onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToCurrentBranch : undefined}
                           highlighted={highlightedNodeId === node.id}
-                          showBranchSplit={showNewBranchPopover && branchSplitNodeId === node.id}
+                          showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                         />
                       ))}
                     </div>
@@ -2381,108 +2358,19 @@ export function WorkspaceClient({
 
                     {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
-                        <div ref={newBranchPopoverRef} className="relative h-11">
-                          {showNewBranchPopover ? (
-                            <div
-                              className="absolute bottom-0 right-0 z-30 w-[420px] overflow-hidden rounded-2xl border border-divider/80 bg-white shadow-lg"
-                              data-testid="branch-popover"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowNewBranchPopover(false);
-                                  setBranchSplitNodeId(null);
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-primary/10"
-                                aria-label="Hide branch creator"
-                              >
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                                  <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
-                                </span>
-                                New branch
-                              </button>
-                              <div className="border-t border-divider/80 bg-white/80 p-4">
-                                <NewBranchFormCard
-                                  fromLabel={displayBranchName(branchName)}
-                                  value={newBranchName}
-                                  onValueChange={setNewBranchName}
-                                  onSubmit={async () => {
-                                    const ok = await createBranch();
-                                    if (ok) {
-                                      setShowNewBranchPopover(false);
-                                      setBranchSplitNodeId(null);
-                                    }
-                                  }}
-                                  disabled={isSwitching}
-                                  submitting={isCreating}
-                                  error={branchActionError}
-                                  testId="branch-form-popover"
-                                  inputTestId="branch-form-popover-input"
-                                  submitTestId="branch-form-popover-submit"
-                                  providerSelector={
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                                        <span className="font-semibold text-slate-700">Provider</span>
-                                        <select
-                                          value={newBranchProvider}
-                                          onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
-                                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                          disabled={isSwitching || isCreating || isRenaming}
-                                          data-testid="branch-provider-select-popover"
-                                        >
-                                          {selectableProviderOptions.map((option) => (
-                                            <option key={option.id} value={option.id}>
-                                              {option.label}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
-                                        <span className="font-semibold text-slate-700">Thinking</span>
-                                        <select
-                                          value={newBranchThinking}
-                                          onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
-                                          className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                          disabled={isSwitching || isCreating || isRenaming}
-                                        >
-                                          {(() => {
-                                            const branchModel =
-                                              providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
-                                              getDefaultModelForProviderFromCapabilities(newBranchProvider);
-                                            const allowed = branchModel
-                                              ? getAllowedThinkingSettings(newBranchProvider, branchModel)
-                                              : THINKING_SETTINGS;
-                                            return allowed.map((setting) => (
-                                              <option key={setting} value={setting}>
-                                                {THINKING_SETTING_LABELS[setting]}
-                                              </option>
-                                            ));
-                                          })()}
-                                        </select>
-                                      </div>
-                                    </div>
-                                  }
-                                  autoFocus
-                                  variant="plain"
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setShowNewBranchPopover(true)}
-                              disabled={isCreating || isSwitching}
-                              className="inline-flex h-full items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
-                              aria-label="Show branch creator"
-                              data-testid="branch-new-button"
-                            >
-                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                                <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
-                              </span>
-                              New branch
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openNewBranchModal(null)}
+                          disabled={isCreating || isSwitching}
+                          className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                          aria-label="Show branch creator"
+                          data-testid="branch-new-button"
+                        >
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                            <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+                          </span>
+                          New branch
+                        </button>
 
                         {sortedBranches.length > 1 ? (
                           <button
@@ -3293,6 +3181,93 @@ export function WorkspaceClient({
                   `Merge into ${displayBranchName(mergeTargetBranch)}`
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showNewBranchModal ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="branch-modal">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold text-slate-900">Create branch</h3>
+                <p className="text-sm text-muted">
+                  {branchSplitNodeId
+                    ? 'Branching from the selected assistant message.'
+                    : 'Start a new branch from this conversation.'}
+                </p>
+              </div>
+              <NewBranchFormCard
+                fromLabel={displayBranchName(branchName)}
+                value={newBranchName}
+                onValueChange={setNewBranchName}
+                onSubmit={async () => {
+                  const ok = await createBranch();
+                  if (ok) {
+                    closeNewBranchModal();
+                  }
+                }}
+                disabled={isSwitching}
+                submitting={isCreating}
+                error={branchActionError}
+                testId="branch-form-popover"
+                inputTestId="branch-form-popover-input"
+                submitTestId="branch-form-popover-submit"
+                providerSelector={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                      <span className="font-semibold text-slate-700">Provider</span>
+                      <select
+                        value={newBranchProvider}
+                        onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                        className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        disabled={isSwitching || isCreating || isRenaming}
+                        data-testid="branch-provider-select-popover"
+                      >
+                        {selectableProviderOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                      <span className="font-semibold text-slate-700">Thinking</span>
+                      <select
+                        value={newBranchThinking}
+                        onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                        className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        disabled={isSwitching || isCreating || isRenaming}
+                      >
+                        {(() => {
+                          const branchModel =
+                            providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                            getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                          const allowed = branchModel ? getAllowedThinkingSettings(newBranchProvider, branchModel) : THINKING_SETTINGS;
+                          return allowed.map((setting) => (
+                            <option key={setting} value={setting}>
+                              {THINKING_SETTING_LABELS[setting]}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                  </div>
+                }
+                autoFocus
+                variant="plain"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeNewBranchModal}
+                  className="rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                  disabled={isCreating}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
