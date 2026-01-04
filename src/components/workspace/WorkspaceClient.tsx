@@ -4026,28 +4026,81 @@ export function WorkspaceClient({
                   const isQuestionMode = branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim());
                   const question = newBranchQuestion.trim();
                   const highlight = newBranchHighlight.trim() || undefined;
-                  const provider = newBranchProvider;
                   const thinkingSetting = newBranchThinking;
                   if (isQuestionMode && !question) {
                     setBranchActionError('Question is required.');
                     return;
                   }
-                  const result = isQuestionMode
-                    ? await createBranch({ switchToNew: switchToNewBranch })
-                    : await createBranch();
-                  if (!result.ok) return;
                   if (isQuestionMode) {
+                    const branchNameInput = newBranchName.trim();
+                    if (!branchNameInput) {
+                      setBranchActionError('Branch name is required.');
+                      return;
+                    }
+                    const branchModel =
+                      providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                      getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                    if (switchToNewBranch) {
+                      setIsCreating(true);
+                      void sendQuestionWithStream({
+                        targetBranch: branchNameInput,
+                        fromRef: branchName,
+                        fromNodeId: branchSplitNodeId,
+                        question,
+                        highlight,
+                        provider: newBranchProvider,
+                        model: branchModel,
+                        thinkingSetting,
+                        onResponse: () => {
+                          setIsCreating(false);
+                          setBranchName(branchNameInput);
+                          setBranchActionError(null);
+                          setShowNewBranchPopover(false);
+                          resetBranchQuestionState();
+                          setNewBranchName('');
+                        },
+                        onFailure: () => {
+                          setIsCreating(false);
+                        }
+                      });
+                      return;
+                    }
+                    setIsCreating(true);
                     startBranchQuestionTask({
-                      targetBranch: result.branchName,
+                      targetBranch: branchNameInput,
+                      fromRef: branchName,
+                      fromNodeId: branchSplitNodeId,
                       question,
                       highlight,
-                      provider,
-                      thinkingSetting
+                      provider: newBranchProvider,
+                      model: branchModel,
+                      thinkingSetting,
+                      switchOnCreate: false,
+                      onResponse: () => {
+                        setIsCreating(false);
+                        setBranchActionError(null);
+                        setShowNewBranchPopover(false);
+                        resetBranchQuestionState();
+                        setNewBranchName('');
+                      },
+                      onFailure: () => {
+                        setIsCreating(false);
+                      }
                     });
+                    if (typeof window !== 'undefined') {
+                      window.localStorage.setItem(
+                        `researchtree:thinking:${project.id}:${branchNameInput}`,
+                        thinkingSetting
+                      );
+                    }
+                  } else {
+                    const result = await createBranch();
+                    if (!result.ok) return;
                   }
                   setBranchActionError(null);
                   setShowNewBranchPopover(false);
                   resetBranchQuestionState();
+                  setNewBranchName('');
                 }}
                 disabled={isSwitching}
                 submitting={isCreating}
