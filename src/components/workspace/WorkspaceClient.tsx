@@ -582,7 +582,7 @@ export function WorkspaceClient({
   const INSIGHT_MIN_WIDTH = 360;
   const INSIGHT_COLLAPSED_WIDTH = 56;
   const SPLIT_GAP = 12;
-  const COLLAPSED_COMPOSER_PADDING = 32;
+  const COLLAPSED_COMPOSER_PADDING = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
   const openEditModal = (node: MessageNode) => {
     if (node.role === 'assistant') {
@@ -2426,6 +2426,19 @@ export function WorkspaceClient({
                       <div className="flex-1" />
                     )}
 
+                    {composerCollapsed ? (
+                      <button
+                        type="button"
+                        onClick={() => expandComposer()}
+                        disabled={state.isStreaming}
+                        className="flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Expand composer"
+                        data-testid="composer-expand-button"
+                      >
+                        <ConsoleIcon className="h-5 w-5" />
+                      </button>
+                    ) : null}
+
                     {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
                         <div ref={newBranchPopoverRef} className="relative h-11">
@@ -2958,26 +2971,6 @@ export function WorkspaceClient({
             </div>
           </div>
         </div>
-
-          {composerCollapsed ? (
-            <div className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
-              <div
-                className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
-                style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
-              >
-                <button
-                  type="button"
-                  onClick={() => expandComposer()}
-                  disabled={state.isStreaming}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Expand composer"
-                  data-testid="composer-expand-button"
-                >
-                  <ConsoleIcon className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          ) : null}
 
           {!composerCollapsed ? (
             <form
