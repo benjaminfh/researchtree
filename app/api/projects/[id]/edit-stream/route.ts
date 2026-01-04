@@ -432,12 +432,18 @@ export async function POST(request: Request, { params }: RouteContext) {
               }
             }
 
-            if (!yieldedText && node.role === 'user' && !abortController.signal.aborted && streamError == null) {
+            if (
+              !yieldedText &&
+              node.type === 'message' &&
+              node.role === 'user' &&
+              !abortController.signal.aborted &&
+              streamError == null
+            ) {
               streamError = new Error('LLM returned empty response');
             }
 
             try {
-              if (node.role === 'user' && buffered.trim().length > 0) {
+              if (node.type === 'message' && node.role === 'user' && buffered.trim().length > 0) {
                 const contentBlocks = buildContentBlocksForProvider({
                   provider,
                   rawResponse,
