@@ -35,6 +35,18 @@ export const createBranchSchema = z.object({
   switch: z.boolean().optional()
 });
 
+export const branchQuestionSchema = z.object({
+  name: z.string().min(1).max(120),
+  fromRef: z.string().max(120).optional(),
+  fromNodeId: z.string().min(1).optional(),
+  provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
+  model: z.string().max(200).optional(),
+  question: z.string().min(1).max(6000),
+  highlight: z.string().min(1).max(8000).optional(),
+  thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
+  switch: z.boolean().optional()
+});
+
 export const switchBranchSchema = z.object({
   name: z.string().min(1).max(120)
 });
@@ -44,6 +56,7 @@ export const renameBranchSchema = z.object({
 });
 
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+export type BranchQuestionInput = z.infer<typeof branchQuestionSchema>;
 export type SwitchBranchInput = z.infer<typeof switchBranchSchema>;
 export type RenameBranchInput = z.infer<typeof renameBranchSchema>;
 

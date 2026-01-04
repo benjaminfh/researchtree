@@ -2216,6 +2216,7 @@ export function WorkspaceClient({
       }
       const data = (await res.json()) as { branchName: string; branchId?: string | null; branches: BranchSummary[] };
       const createdBranchName = data.branchName ?? newBranchName.trim();
+      const createdBranch = data.branches?.find((branch) => branch.name === createdBranchName);
       if (switchToNew && createdBranchName) {
         setBranchName(createdBranchName);
       }
@@ -2229,7 +2230,12 @@ export function WorkspaceClient({
       }
       refreshCoreData();
       refreshInsights({ includeGraph: true, includeBranches: true });
-      return { ok: true as const, branchName: createdBranchName };
+      return {
+        ok: true as const,
+        branchName: createdBranchName,
+        branchProvider: createdBranch?.provider,
+        branchModel: createdBranch?.model
+      };
     } catch (err) {
       setBranchActionError((err as Error).message);
       return { ok: false as const };
@@ -2241,16 +2247,24 @@ export function WorkspaceClient({
   const startBranchQuestionTask = useCallback(
     ({
       targetBranch,
+      fromRef,
+      fromNodeId,
       question,
       highlight,
       provider,
-      thinkingSetting
+      model,
+      thinkingSetting,
+      switchOnCreate
     }: {
       targetBranch: string;
+      fromRef: string;
+      fromNodeId?: string | null;
       question: string;
       highlight?: string;
       provider: LLMProvider;
+      model: string;
       thinkingSetting: ThinkingSetting;
+      switchOnCreate: boolean;
     }) => {
       const taskId = startBackgroundTask({
         branchName: targetBranch,
@@ -2258,17 +2272,24 @@ export function WorkspaceClient({
         switchOnComplete: false
       });
       pushToast('info', `Question queued for ${displayBranchName(targetBranch)}.`);
+      if (switchOnCreate) {
+        setBranchName(targetBranch);
+      }
       void (async () => {
         try {
-          const res = await fetch(`/api/projects/${project.id}/chat`, {
+          const res = await fetch(`/api/projects/${project.id}/branch-question`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              name: targetBranch,
+              fromRef,
+              fromNodeId,
+              provider,
+              model,
               question,
               highlight,
-              llmProvider: provider,
-              ref: targetBranch,
-              thinking: thinkingSetting
+              thinking: thinkingSetting,
+              switch: switchOnCreate
             })
           });
           if (!res.ok || !res.body) {
@@ -2422,7 +2443,7 @@ export function WorkspaceClient({
   return (
     <>
       {toasts.length > 0 ? (
-        <div className="fixed right-4 top-4 z-50 space-y-2">
+        <div className="fixed left-1/2 top-4 z-50 -translate-x-1/2 space-y-2">
           {toasts.map((toast) => (
             <div
               key={toast.id}
@@ -2877,28 +2898,45 @@ export function WorkspaceClient({
                                       branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim());
                                     const question = newBranchQuestion.trim();
                                     const highlight = newBranchHighlight.trim() || undefined;
-                                    const provider = newBranchProvider;
                                     const thinkingSetting = newBranchThinking;
                                     if (isQuestionMode && !question) {
                                       setBranchActionError('Question is required.');
                                       return;
                                     }
-                                    const result = isQuestionMode
-                                      ? await createBranch({ switchToNew: switchToNewBranch })
-                                      : await createBranch();
-                                    if (!result.ok) return;
                                     if (isQuestionMode) {
+                                      const branchNameInput = newBranchName.trim();
+                                      if (!branchNameInput) {
+                                        setBranchActionError('Branch name is required.');
+                                        return;
+                                      }
+                                      const branchModel =
+                                        providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                                        getDefaultModelForProviderFromCapabilities(newBranchProvider);
                                       startBranchQuestionTask({
-                                        targetBranch: result.branchName,
+                                        targetBranch: branchNameInput,
+                                        fromRef: branchName,
+                                        fromNodeId: branchSplitNodeId,
                                         question,
                                         highlight,
-                                        provider,
-                                        thinkingSetting
+                                        provider: newBranchProvider,
+                                        model: branchModel,
+                                        thinkingSetting,
+                                        switchOnCreate: switchToNewBranch
                                       });
+                                      if (typeof window !== 'undefined') {
+                                        window.localStorage.setItem(
+                                          `researchtree:thinking:${project.id}:${branchNameInput}`,
+                                          thinkingSetting
+                                        );
+                                      }
+                                    } else {
+                                      const result = await createBranch();
+                                      if (!result.ok) return;
                                     }
                                     setBranchActionError(null);
                                     setShowNewBranchPopover(false);
                                     resetBranchQuestionState();
+                                    setNewBranchName('');
                                   }}
                                   disabled={isSwitching}
                                   submitting={isCreating}
