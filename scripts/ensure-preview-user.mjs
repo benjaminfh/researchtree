@@ -73,17 +73,6 @@ async function findUserByEmail(targetEmail) {
     console.log('[ensure-preview-user] Updated existing user (password/confirmed)')
   }
 
-  // OPTIONAL: profiles upsert (remove if not applicable)
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .upsert({ id: user.id, email }, { onConflict: 'id' })
-
-  if (profileError) {
-    console.warn('[ensure-preview-user] profiles upsert warning:', profileError.message)
-  } else {
-    console.log('[ensure-preview-user] Ensured profiles row')
-  }
-
   // REQUIRED: user_llm_keys upsert
   // Assumes `user_id` is unique/PK (so onConflict: 'user_id' works).
   // Leave secret ids as null if not provided.
