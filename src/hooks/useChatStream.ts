@@ -30,6 +30,13 @@ export type ChatSendPayload =
       webSearch?: boolean;
     };
 
+export interface StreamRequestOptions {
+  url: string;
+  body: Record<string, unknown>;
+  onResponse?: (response: Response) => void;
+  debugLabel?: string;
+}
+
 interface UseChatStreamOptions {
   projectId: string;
   ref?: string;
@@ -55,47 +62,24 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
     (typeof window !== 'undefined' && (window as any).__RT_STREAM_DEBUG === true) ||
     process.env.NEXT_PUBLIC_STREAM_DEBUG === 'true';
 
-  const sendMessage = useCallback(
-    async (payload: ChatSendPayload) => {
-      const normalized =
-        typeof payload === 'string'
-          ? { message: payload }
-          : payload ?? { message: '' };
-      const userMessage = normalized.message ?? '';
-      const userQuestion = normalized.question ?? '';
-      if (!(userMessage.trim() || userQuestion.trim())) {
-        return;
-      }
+  const sendStreamRequest = useCallback(
+    async ({ url, body, onResponse, debugLabel }: StreamRequestOptions) => {
       if (streamDebugEnabled) {
         streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
         console.debug('[stream][start]', {
           projectId,
-          ref: normalized.ref ?? ref,
-          provider: normalized.llmProvider ?? provider,
-          thinking: normalized.thinking ?? thinking,
-          webSearch: normalized.webSearch ?? webSearch,
-          messageLength: (normalized.message ?? '').length,
-          questionLength: (normalized.question ?? '').length,
-          highlightLength: (normalized.highlight ?? '').length
+          label: debugLabel,
+          url
         });
       }
       setState({ isStreaming: true, error: null });
       activeRequest.current = new AbortController();
       activeRequestId.current = null;
       try {
-        const response = await fetch(`/api/projects/${projectId}/chat`, {
+        const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: normalized.message,
-            question: normalized.question,
-            highlight: normalized.highlight,
-            intent: normalized.intent,
-            llmProvider: normalized.llmProvider ?? provider,
-            ref: normalized.ref ?? ref,
-            thinking: normalized.thinking ?? thinking,
-            webSearch: normalized.webSearch ?? webSearch
-          }),
+          body: JSON.stringify(body),
           signal: activeRequest.current.signal
         });
 
@@ -116,6 +100,7 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
           throw new Error(reqId ? `${message} (requestId=${reqId})` : message);
         }
 
+        onResponse?.(response);
         const reader = response.body.getReader();
         let streamErrorMessage: string | null = null;
         const { errorMessage } = await consumeNdjsonStream<ChatStreamChunk>(reader, {
@@ -179,7 +164,48 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
         activeRequestId.current = null;
       }
     },
-    [projectId, provider, ref, thinking, webSearch, onChunk, onComplete]
+    [projectId, onChunk, onComplete, streamDebugEnabled]
+  );
+
+  const sendMessage = useCallback(
+    async (payload: ChatSendPayload) => {
+      const normalized =
+        typeof payload === 'string'
+          ? { message: payload }
+          : payload ?? { message: '' };
+      const userMessage = normalized.message ?? '';
+      const userQuestion = normalized.question ?? '';
+      if (!(userMessage.trim() || userQuestion.trim())) {
+        return;
+      }
+      if (streamDebugEnabled) {
+        streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
+        console.debug('[stream][start]', {
+          projectId,
+          ref: normalized.ref ?? ref,
+          provider: normalized.llmProvider ?? provider,
+          thinking: normalized.thinking ?? thinking,
+          webSearch: normalized.webSearch ?? webSearch,
+          messageLength: (normalized.message ?? '').length,
+          questionLength: (normalized.question ?? '').length,
+          highlightLength: (normalized.highlight ?? '').length
+        });
+      }
+      await sendStreamRequest({
+        url: `/api/projects/${projectId}/chat`,
+        body: {
+          message: normalized.message,
+          question: normalized.question,
+          highlight: normalized.highlight,
+          intent: normalized.intent,
+          llmProvider: normalized.llmProvider ?? provider,
+          ref: normalized.ref ?? ref,
+          thinking: normalized.thinking ?? thinking,
+          webSearch: normalized.webSearch ?? webSearch
+        }
+      });
+    },
+    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled]
   );
 
   const interrupt = useCallback(async () => {
@@ -194,6 +220,7 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
 
   return {
     sendMessage,
+    sendStreamRequest,
     interrupt,
     state
   };
