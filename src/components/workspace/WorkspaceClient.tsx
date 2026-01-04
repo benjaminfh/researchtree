@@ -101,6 +101,7 @@ const NodeBubble: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
+  branchQuestionCandidate?: boolean;
   showOpenAiThinkingNote?: boolean;
 }> = ({
   node,
@@ -113,6 +114,7 @@ const NodeBubble: FC<{
   isCanvasDiffPinned = false,
   onPinCanvasDiff,
   highlighted = false,
+  branchQuestionCandidate = false,
   showOpenAiThinkingNote = false
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
@@ -402,10 +404,24 @@ const NodeBubble: FC<{
               type="button"
               data-branch-trigger={node.role === 'assistant' ? 'true' : undefined}
               onClick={() => onEdit(node)}
-              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none"
-              aria-label={node.role === 'assistant' ? 'Create branch from message' : 'Edit message'}
+              className={`rounded-full px-2 py-1 focus:outline-none ${
+                branchQuestionCandidate
+                  ? 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                  : 'bg-slate-100 text-slate-600 hover:bg-primary/10 hover:text-primary'
+              }`}
+              aria-label={
+                branchQuestionCandidate
+                  ? 'Ask a question on a new branch'
+                  : node.role === 'assistant'
+                    ? 'Create branch from message'
+                    : 'Edit message'
+              }
             >
-              <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+              {branchQuestionCandidate ? (
+                <QuestionMarkCircleIcon className="h-4 w-4" />
+              ) : (
+                <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+              )}
             </button>
           ) : null}
           {!isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
@@ -432,6 +448,7 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
+  branchQuestionCandidate?: boolean;
   showBranchSplit?: boolean;
 }> = ({
   node,
@@ -450,6 +467,7 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned,
   onPinCanvasDiff,
   highlighted,
+  branchQuestionCandidate,
   showBranchSplit
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
@@ -482,6 +500,7 @@ const ChatNodeRow: FC<{
             isCanvasDiffPinned={isCanvasDiffPinned}
             onPinCanvasDiff={onPinCanvasDiff}
             highlighted={!!highlighted}
+            branchQuestionCandidate={branchQuestionCandidate}
             showOpenAiThinkingNote={showOpenAiThinkingNote}
           />
           {showBranchSplit ? (
@@ -512,6 +531,7 @@ export function WorkspaceClient({
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSendingBranchQuestion, setIsSendingBranchQuestion] = useState(false);
+  const [branchPopoverMode, setBranchPopoverMode] = useState<'standard' | 'question'>('standard');
   const [pendingPinBranchIds, setPendingPinBranchIds] = useState<Set<string>>(new Set());
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTarget, setRenameTarget] = useState<BranchSummary | null>(null);
@@ -603,23 +623,63 @@ export function WorkspaceClient({
     return '';
   }, []);
 
-  const openEditModal = (node: MessageNode) => {
+  const getSelectionContext = useCallback((): { nodeId: string; text: string } | null => {
+    if (typeof window === 'undefined') return null;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return null;
+    const text = selection.toString().trim();
+    if (!text) return null;
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+    const anchorEl = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement;
+    const focusEl = focusNode instanceof Element ? focusNode : focusNode?.parentElement;
+    if (!anchorEl || !focusEl) return null;
+    const anchorContainer = anchorEl.closest('[data-node-id]');
+    const focusContainer = focusEl.closest('[data-node-id]');
+    if (!anchorContainer || anchorContainer !== focusContainer) return null;
+    const nodeId = anchorContainer.getAttribute('data-node-id');
+    if (!nodeId) return null;
+    return { nodeId, text };
+  }, []);
+
+  const resetBranchQuestionState = useCallback(() => {
+    setBranchSplitNodeId(null);
+    setNewBranchHighlight('');
+    setNewBranchQuestion('');
+    setSwitchToNewBranch(false);
+    setBranchPopoverMode('standard');
+  }, []);
+
+  const openEditModal = (node: MessageNode, highlightText?: string) => {
     if (node.role === 'assistant') {
-      if (showNewBranchPopover && branchSplitNodeId === node.id) {
+      const selectionText = highlightText?.trim() || getSelectionForNode(node.id);
+      if (selectionText) {
+        if (showNewBranchPopover && branchSplitNodeId === node.id && branchPopoverMode === 'question') {
+          setShowNewBranchPopover(false);
+          resetBranchQuestionState();
+          return;
+        }
         setShowNewBranchPopover(false);
-        setBranchSplitNodeId(null);
-        setNewBranchHighlight('');
+        resetBranchQuestionState();
+        setBranchActionError(null);
+        setNewBranchName('');
+        setBranchSplitNodeId(node.id);
+        setNewBranchHighlight(selectionText);
         setNewBranchQuestion('');
+        setSwitchToNewBranch(false);
+        setBranchPopoverMode('question');
+        setShowNewBranchPopover(true);
         return;
       }
-      setBranchActionError(null);
-      setNewBranchName('');
-      setBranchSplitNodeId(node.id);
-      setNewBranchHighlight(getSelectionForNode(node.id));
-      setNewBranchQuestion('');
-      setSwitchToNewBranch(false);
-      setShowNewBranchPopover(true);
-      return;
+      if (showNewBranchPopover) {
+        setShowNewBranchPopover(false);
+        resetBranchQuestionState();
+        return;
+      }
+    }
+    if (showNewBranchPopover) {
+      setShowNewBranchPopover(false);
+      resetBranchQuestionState();
     }
     setBranchSplitNodeId(null);
     setEditingNode(node);
@@ -1522,19 +1582,13 @@ export function WorkspaceClient({
       if (target.closest('[data-branch-trigger="true"]')) return;
       if (newBranchPopoverRef.current?.contains(target)) return;
       setShowNewBranchPopover(false);
-      setBranchSplitNodeId(null);
-      setNewBranchHighlight('');
-      setNewBranchQuestion('');
-      setSwitchToNewBranch(false);
+      resetBranchQuestionState();
     }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setShowNewBranchPopover(false);
-        setBranchSplitNodeId(null);
-        setNewBranchHighlight('');
-        setNewBranchQuestion('');
-        setSwitchToNewBranch(false);
+        resetBranchQuestionState();
       }
     }
 
@@ -1546,7 +1600,7 @@ export function WorkspaceClient({
       document.removeEventListener('touchstart', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [showNewBranchPopover]);
+  }, [showNewBranchPopover, resetBranchQuestionState]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -1559,6 +1613,7 @@ export function WorkspaceClient({
   const previousVisibleBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -1588,6 +1643,13 @@ export function WorkspaceClient({
     if (visibleNodes.length === 0) return null;
     return visibleNodes[visibleNodes.length - 1]!.id;
   }, [visibleNodes]);
+  const visibleNodeRoleMap = useMemo(() => {
+    return new Map(
+      visibleNodes
+        .filter((node) => node.type === 'message')
+        .map((node) => [node.id, (node as MessageNode).role] as const)
+    );
+  }, [visibleNodes]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -1612,6 +1674,36 @@ export function WorkspaceClient({
   );
   const persistedNodesRef = useRef<NodeRecord[]>([]);
   persistedNodesRef.current = nodes.filter((node) => node.type !== 'state');
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleSelectionChange = () => {
+      const selection = getSelectionContext();
+      if (!selection) {
+        setActiveBranchHighlight((prev) => (prev ? null : prev));
+        return;
+      }
+      if (visibleNodeRoleMap.get(selection.nodeId) !== 'assistant') {
+        setActiveBranchHighlight((prev) => (prev ? null : prev));
+        return;
+      }
+      setActiveBranchHighlight((prev) => {
+        if (prev?.nodeId === selection.nodeId && prev.text === selection.text) {
+          return prev;
+        }
+        return selection;
+      });
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    document.addEventListener('mouseup', handleSelectionChange);
+    document.addEventListener('keyup', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('mouseup', handleSelectionChange);
+      document.removeEventListener('keyup', handleSelectionChange);
+    };
+  }, [getSelectionContext, visibleNodeRoleMap]);
 
   useEffect(() => {
     if (!showNewBranchPopover || !latestVisibleNodeId) return;
@@ -2446,13 +2538,24 @@ export function WorkspaceClient({
                                 isStarPending={pendingStarIds.has(node.id)}
                                 onToggleStar={() => void toggleStar(node.id)}
                                 onEdit={
-                                  node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
-                                    ? (n) => openEditModal(n)
+                                  node.type === 'message' &&
+                                  (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage)
+                                    ? (n) =>
+                                        openEditModal(
+                                          n,
+                                          activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
+                                        )
                                     : undefined
                                 }
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
                                 highlighted={highlightedNodeId === node.id}
+                                branchQuestionCandidate={
+                                  node.type === 'message' &&
+                                  node.role === 'assistant' &&
+                                  activeBranchHighlight?.nodeId === node.id &&
+                                  Boolean(activeBranchHighlight.text.trim())
+                                }
                                 showBranchSplit={showNewBranchPopover && branchSplitNodeId === node.id}
                               />
                             ))}
@@ -2478,13 +2581,24 @@ export function WorkspaceClient({
                           isStarPending={pendingStarIds.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
-                            node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
-                              ? (n) => openEditModal(n)
+                            node.type === 'message' &&
+                            (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage)
+                              ? (n) =>
+                                  openEditModal(
+                                    n,
+                                    activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
+                                  )
                               : undefined
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
                           onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToCurrentBranch : undefined}
                           highlighted={highlightedNodeId === node.id}
+                          branchQuestionCandidate={
+                            node.type === 'message' &&
+                            node.role === 'assistant' &&
+                            activeBranchHighlight?.nodeId === node.id &&
+                            Boolean(activeBranchHighlight.text.trim())
+                          }
                           showBranchSplit={showNewBranchPopover && branchSplitNodeId === node.id}
                         />
                       ))}
@@ -2527,10 +2641,7 @@ export function WorkspaceClient({
                                 type="button"
                                 onClick={() => {
                                   setShowNewBranchPopover(false);
-                                  setBranchSplitNodeId(null);
-                                  setNewBranchHighlight('');
-                                  setNewBranchQuestion('');
-                                  setSwitchToNewBranch(false);
+                                  resetBranchQuestionState();
                                 }}
                                 className="flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-primary/10"
                                 aria-label="Hide branch creator"
@@ -2546,21 +2657,23 @@ export function WorkspaceClient({
                                   value={newBranchName}
                                   onValueChange={setNewBranchName}
                                   onSubmit={async () => {
-                                    if (!newBranchQuestion.trim()) {
+                                    const isQuestionMode =
+                                      branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim());
+                                    if (isQuestionMode && !newBranchQuestion.trim()) {
                                       setBranchActionError('Question is required.');
                                       return;
                                     }
-                                    const result = await createBranch({ switchToNew: switchToNewBranch });
-                                    if (result.ok) {
+                                    const result = isQuestionMode
+                                      ? await createBranch({ switchToNew: switchToNewBranch })
+                                      : await createBranch();
+                                    if (!result.ok) return;
+                                    if (isQuestionMode) {
                                       const sent = await sendBranchQuestionToBranch(result.branchName);
                                       if (!sent) return;
-                                      setBranchActionError(null);
-                                      setShowNewBranchPopover(false);
-                                      setBranchSplitNodeId(null);
-                                      setNewBranchHighlight('');
-                                      setNewBranchQuestion('');
-                                      setSwitchToNewBranch(false);
                                     }
+                                    setBranchActionError(null);
+                                    setShowNewBranchPopover(false);
+                                    resetBranchQuestionState();
                                   }}
                                   disabled={isSwitching || isSendingBranchQuestion}
                                   submitting={isCreating || isSendingBranchQuestion}
@@ -2614,64 +2727,66 @@ export function WorkspaceClient({
                                   autoFocus
                                   variant="plain"
                                 />
-                                <div className="mt-3 space-y-3">
-                                  <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-800" htmlFor="branch-highlight">
-                                      Highlight
+                                {branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
+                                  <div className="mt-3 space-y-3">
+                                    <div className="space-y-2">
+                                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-highlight">
+                                        Highlight
+                                      </label>
+                                      <textarea
+                                        id="branch-highlight"
+                                        value={newBranchHighlight}
+                                        onChange={(event) => setNewBranchHighlight(event.target.value)}
+                                        rows={3}
+                                        className="w-full rounded-lg border border-divider/80 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                        readOnly={Boolean(newBranchHighlight)}
+                                        placeholder="No highlight captured"
+                                      />
+                                      <p className="text-xs text-muted">
+                                        Captured from your selection when branching from a message.
+                                      </p>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-question">
+                                        Question<span className="text-rose-600">*</span>
+                                      </label>
+                                      <textarea
+                                        id="branch-question"
+                                        value={newBranchQuestion}
+                                        onChange={(event) => {
+                                          setNewBranchQuestion(event.target.value);
+                                          if (branchActionError) {
+                                            setBranchActionError(null);
+                                          }
+                                        }}
+                                        rows={3}
+                                        required
+                                        className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                        placeholder="What do you want to ask on this branch?"
+                                        disabled={isSwitching || isCreating || isSendingBranchQuestion}
+                                      />
+                                    </div>
+                                    <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
+                                        checked={switchToNewBranch}
+                                        onChange={(event) => setSwitchToNewBranch(event.target.checked)}
+                                        disabled={isCreating || isSendingBranchQuestion || isSwitching}
+                                      />
+                                      Switch to the new branch after creating
                                     </label>
-                                    <textarea
-                                      id="branch-highlight"
-                                      value={newBranchHighlight}
-                                      onChange={(event) => setNewBranchHighlight(event.target.value)}
-                                      rows={3}
-                                      className="w-full rounded-lg border border-divider/80 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                      readOnly={Boolean(newBranchHighlight)}
-                                      placeholder="No highlight captured"
-                                    />
-                                    <p className="text-xs text-muted">Captured from your selection when branching from a message.</p>
                                   </div>
-                                  <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-800" htmlFor="branch-question">
-                                      Question<span className="text-rose-600">*</span>
-                                    </label>
-                                    <textarea
-                                      id="branch-question"
-                                      value={newBranchQuestion}
-                                      onChange={(event) => {
-                                        setNewBranchQuestion(event.target.value);
-                                        if (branchActionError) {
-                                          setBranchActionError(null);
-                                        }
-                                      }}
-                                      rows={3}
-                                      required
-                                      className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                      placeholder="What do you want to ask on this branch?"
-                                      disabled={isSwitching || isCreating || isSendingBranchQuestion}
-                                    />
-                                  </div>
-                                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
-                                    <input
-                                      type="checkbox"
-                                      className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
-                                      checked={switchToNewBranch}
-                                      onChange={(event) => setSwitchToNewBranch(event.target.checked)}
-                                      disabled={isCreating || isSendingBranchQuestion || isSwitching}
-                                    />
-                                    Switch to the new branch after creating
-                                  </label>
-                                </div>
+                                ) : null}
                               </div>
                             </div>
                           ) : (
                             <button
                               type="button"
                               onClick={() => {
-                                setBranchSplitNodeId(latestVisibleNodeId);
                                 setBranchActionError(null);
-                                setNewBranchHighlight('');
-                                setNewBranchQuestion('');
-                                setSwitchToNewBranch(false);
+                                resetBranchQuestionState();
+                                setBranchSplitNodeId(latestVisibleNodeId);
                                 setShowNewBranchPopover(true);
                               }}
                               disabled={isCreating || isSwitching}
