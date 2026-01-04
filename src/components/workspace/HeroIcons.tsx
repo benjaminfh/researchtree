@@ -82,3 +82,7 @@ export function CheckIcon({ className }: IconProps) {
 export function SearchIcon({ className }: IconProps) {
   return <BlueprintIcon icon="globe-network" className={className} />;
 }
+
+export function ConsoleIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="console" className={className} />;
+}

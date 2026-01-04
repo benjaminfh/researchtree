@@ -37,6 +37,7 @@ import {
   ArrowUpIcon,
   CheckIcon,
   HomeIcon,
+  ConsoleIcon,
   PaperClipIcon,
   QuestionMarkCircleIcon,
   SearchIcon,
@@ -610,6 +611,7 @@ export function WorkspaceClient({
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
+  const [composerCollapsed, setComposerCollapsed] = useState(false);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
@@ -625,6 +627,7 @@ export function WorkspaceClient({
   const INSIGHT_MIN_WIDTH = 360;
   const INSIGHT_COLLAPSED_WIDTH = 56;
   const SPLIT_GAP = 12;
+  const COLLAPSED_COMPOSER_PADDING = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
 
   const getSelectionForNode = useCallback((nodeId: string): string => {
@@ -1213,6 +1216,19 @@ export function WorkspaceClient({
       : null;
   const isSending = state.isStreaming || assistantPending;
 
+  const toggleComposerCollapsed = useCallback(
+    (next?: boolean) => {
+      setComposerCollapsed((prev) => {
+        const target = typeof next === 'boolean' ? next : !prev;
+        if (state.isStreaming || target === prev) return prev;
+        return target;
+      });
+    },
+    [state.isStreaming]
+  );
+
+  const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
+
   useEffect(() => {
     if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
     const sent = optimisticDraftRef.current;
@@ -1527,15 +1543,24 @@ export function WorkspaceClient({
   }, [insightCollapsed, insightTab, graphRequestKey, graphHistories, graphHistoryError, loadGraphHistories]);
 
   useEffect(() => {
+    if (composerCollapsed) {
+      setComposerPadding(COLLAPSED_COMPOSER_PADDING);
+      return;
+    }
     const composer = composerRef.current;
-    if (!composer || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
+    if (!composer || typeof ResizeObserver === 'undefined') {
+      setComposerPadding(Math.max(116, COLLAPSED_COMPOSER_PADDING));
+      return;
+    }
+    const updatePadding = () => {
       const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
       setComposerPadding(next);
-    });
+    };
+    updatePadding();
+    const observer = new ResizeObserver(updatePadding);
     observer.observe(composer);
     return () => observer.disconnect();
-  }, []);
+  }, [composerCollapsed, COLLAPSED_COMPOSER_PADDING]);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -1619,6 +1644,22 @@ export function WorkspaceClient({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [collapseInsights, expandInsights, insightCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.key.toLowerCase() !== 'j') return;
+      if (state.isStreaming) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      event.preventDefault();
+      toggleComposerCollapsed();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [state.isStreaming, toggleComposerCollapsed]);
 
   useEffect(() => {
     return () => {
@@ -2918,7 +2959,13 @@ export function WorkspaceClient({
           </div>
         )}
         renderMain={(ctx) => (
-          <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
+          <div
+            className="relative flex h-full min-h-0 min-w-0 flex-col bg-white"
+            data-composer-collapsed={composerCollapsed ? 'true' : 'false'}
+          >
+            <div className="sr-only" aria-live="polite" data-testid="composer-collapsed-state">
+              {composerCollapsed ? 'Composer collapsed' : 'Composer expanded'}
+            </div>
             <div
               className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-3"
               style={{ paddingBottom: composerPadding }}
@@ -3096,6 +3143,19 @@ export function WorkspaceClient({
                     ) : (
                       <div className="flex-1" />
                     )}
+
+                    {composerCollapsed ? (
+                      <button
+                        type="button"
+                        onClick={() => expandComposer()}
+                        disabled={state.isStreaming}
+                        className="flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Expand composer"
+                        data-testid="composer-expand-button"
+                      >
+                        <ConsoleIcon className="h-5 w-5" />
+                      </button>
+                    ) : null}
 
                     {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
@@ -3762,103 +3822,104 @@ export function WorkspaceClient({
           </div>
         </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
-          >
-            <div
-              className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
-              style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
+          {!composerCollapsed ? (
+            <form
+              onSubmit={handleSubmit}
+              className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
             >
               <div
-                ref={composerRef}
-                className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
+                style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
               >
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!webSearchAvailable || state.isStreaming) return;
-                      setWebSearchEnabled((prev) => !prev);
-                    }}
-                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
-                      webSearchEnabled
-                        ? 'border-primary/30 bg-primary/10 text-primary'
-                        : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
-                    } ${!webSearchAvailable ? 'opacity-50' : ''}`}
-                    aria-label="Toggle web search"
-                    aria-pressed={webSearchEnabled}
-                    disabled={state.isStreaming || !webSearchAvailable}
-                  >
-                    <SearchIcon className="h-4 w-4" />
-                    <span>Web search</span>
-                  </button>
-                  {/* <div className="flex h-10 w-10 items-center justify-center">
-                    {features.uiAttachments ? (
-                      <button
-                        type="button"
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                        aria-label="Add attachment"
-                      >
-                        <PaperClipIcon className="h-5 w-5" />
-                      </button>
-                    ) : (
-                      <span aria-hidden="true" />
-                    )}
-                  </div> */}
-                </div>
-                <div className="relative flex-1">
-                  <textarea
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder="Ask anything"
-                    rows={2}
-                    className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                    disabled={state.isStreaming}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter') {
-                        return;
-                      }
-                      if (event.metaKey) {
-                        event.preventDefault();
-                        void sendDraft();
-                        return;
-                      }
-                      if (event.shiftKey || event.altKey) {
-                        return;
-                      }
-                    }}
-                  />
-                  <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
-                    <span className="flex-1 text-left">
-                      {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
-                    </span>
-                    <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
-                      ⌘ + Enter to send · Shift + Enter adds a newline.
-                    </span>
-                    <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
-                      {state.isStreaming ? 'Streaming…' : ''}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div ref={thinkingMenuRef} className="relative hidden sm:block">
+                <div
+                  ref={composerRef}
+                  className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                >
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setThinkingMenuOpen((prev) => !prev)}
-                      className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label="Thinking mode"
-                      aria-haspopup="menu"
-                      aria-expanded={thinkingMenuOpen}
-                      disabled={state.isStreaming}
+                      onClick={() => {
+                        if (!webSearchAvailable || state.isStreaming) return;
+                        setWebSearchEnabled((prev) => !prev);
+                      }}
+                      className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
+                        webSearchEnabled
+                          ? 'border-primary/30 bg-primary/10 text-primary'
+                          : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
+                      } ${!webSearchAvailable ? 'opacity-50' : ''}`}
+                      aria-label="Toggle web search"
+                      aria-pressed={webSearchEnabled}
+                      disabled={state.isStreaming || !webSearchAvailable}
                     >
-                      Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                      <SearchIcon className="h-4 w-4" />
+                      <span>Web search</span>
                     </button>
-                    {thinkingMenuOpen ? (
-                      <div
-                        role="menu"
-                        className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                    {/* <div className="flex h-10 w-10 items-center justify-center">
+                      {features.uiAttachments ? (
+                        <button
+                          type="button"
+                          className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
+                          aria-label="Add attachment"
+                        >
+                          <PaperClipIcon className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <span aria-hidden="true" />
+                      )}
+                    </div> */}
+                  </div>
+                  <div className="relative flex-1">
+                    <textarea
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder="Ask anything"
+                      rows={2}
+                      className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                      disabled={state.isStreaming}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') {
+                          return;
+                        }
+                        if (event.metaKey) {
+                          event.preventDefault();
+                          void sendDraft();
+                          return;
+                        }
+                        if (event.shiftKey || event.altKey) {
+                          return;
+                        }
+                      }}
+                    />
+                    <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
+                      <span className="flex-1 text-left">
+                        {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
+                      </span>
+                      <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
+                        ⌘ + Enter to send · Shift + Enter adds a newline.
+                      </span>
+                      <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
+                        {state.isStreaming ? 'Streaming…' : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div ref={thinkingMenuRef} className="relative hidden sm:block">
+                      <button
+                        type="button"
+                        onClick={() => setThinkingMenuOpen((prev) => !prev)}
+                        className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Thinking mode"
+                        aria-haspopup="menu"
+                        aria-expanded={thinkingMenuOpen}
+                        disabled={state.isStreaming}
                       >
+                        Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                      </button>
+                      {thinkingMenuOpen ? (
+                        <div
+                          role="menu"
+                          className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                        >
 	                        {allowedThinking.map((setting) => {
 	                          const active = thinking === setting;
 	                          return (
@@ -3882,38 +3943,220 @@ export function WorkspaceClient({
 	                            </button>
 	                          );
 	                        })}
-                      </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    {state.isStreaming ? (
+                      <button
+                        type="button"
+                        onClick={interrupt}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
+                        aria-label="Stop streaming"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
                     ) : null}
-                  </div>
-                  {state.isStreaming ? (
                     <button
-                      type="button"
-                      onClick={interrupt}
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
-                      aria-label="Stop streaming"
+                      type="submit"
+                      disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="Send message"
                     >
-                      <XMarkIcon className="h-5 w-5" />
+                      {isSending ? (
+                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                      ) : (
+                        <ArrowUpIcon className="h-5 w-5" />
+                      )}
                     </button>
-                  ) : null}
-                  <button
-                    type="submit"
-                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Send message"
-                  >
-                    {isSending ? (
-                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
-                    ) : (
-                      <ArrowUpIcon className="h-5 w-5" />
-                    )}
-                  </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </form>
+            </form>
+          ) : null}
         </div>
         )}
       />
+
+      {showNewBranchPopover ? (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowNewBranchPopover(false);
+              resetBranchQuestionState();
+            }
+          }}
+          onTouchStart={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowNewBranchPopover(false);
+              resetBranchQuestionState();
+            }
+          }}
+        >
+          <div
+            ref={newBranchPopoverRef}
+            className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl"
+            data-testid="branch-popover"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                  <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+                </span>
+                New branch
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewBranchPopover(false);
+                  resetBranchQuestionState();
+                }}
+                className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                aria-label="Hide branch creator"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4">
+              <NewBranchFormCard
+                fromLabel={displayBranchName(branchName)}
+                value={newBranchName}
+                onValueChange={setNewBranchName}
+                onSubmit={async () => {
+                  const isQuestionMode = branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim());
+                  const question = newBranchQuestion.trim();
+                  const highlight = newBranchHighlight.trim() || undefined;
+                  const provider = newBranchProvider;
+                  const thinkingSetting = newBranchThinking;
+                  if (isQuestionMode && !question) {
+                    setBranchActionError('Question is required.');
+                    return;
+                  }
+                  const result = isQuestionMode
+                    ? await createBranch({ switchToNew: switchToNewBranch })
+                    : await createBranch();
+                  if (!result.ok) return;
+                  if (isQuestionMode) {
+                    startBranchQuestionTask({
+                      targetBranch: result.branchName,
+                      question,
+                      highlight,
+                      provider,
+                      thinkingSetting
+                    });
+                  }
+                  setBranchActionError(null);
+                  setShowNewBranchPopover(false);
+                  resetBranchQuestionState();
+                }}
+                disabled={isSwitching}
+                submitting={isCreating}
+                error={branchActionError}
+                testId="branch-form-popover"
+                inputTestId="branch-form-popover-input"
+                submitTestId="branch-form-popover-submit"
+                providerSelector={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                      <span className="font-semibold text-slate-700">Provider</span>
+                      <select
+                        value={newBranchProvider}
+                        onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                        className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        disabled={isSwitching || isCreating || isRenaming}
+                        data-testid="branch-provider-select-popover"
+                      >
+                        {selectableProviderOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                      <span className="font-semibold text-slate-700">Thinking</span>
+                      <select
+                        value={newBranchThinking}
+                        onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                        className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        disabled={isSwitching || isCreating || isRenaming}
+                      >
+                        {(() => {
+                          const branchModel =
+                            providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                            getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                          const allowed = branchModel
+                            ? getAllowedThinkingSettings(newBranchProvider, branchModel)
+                            : THINKING_SETTINGS;
+                          return allowed.map((setting) => (
+                            <option key={setting} value={setting}>
+                              {THINKING_SETTING_LABELS[setting]}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                  </div>
+                }
+                autoFocus
+                variant="plain"
+              >
+                {branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-highlight">
+                        Highlight
+                      </label>
+                      <textarea
+                        id="branch-highlight"
+                        value={newBranchHighlight}
+                        onChange={(event) => setNewBranchHighlight(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-lg border border-divider/80 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        readOnly={Boolean(newBranchHighlight)}
+                        placeholder="No highlight captured"
+                      />
+                      <p className="text-xs text-muted">
+                        Captured from your selection when branching from a message.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-question">
+                        Question<span className="text-rose-600">*</span>
+                      </label>
+                      <textarea
+                        id="branch-question"
+                        value={newBranchQuestion}
+                        onChange={(event) => {
+                          setNewBranchQuestion(event.target.value);
+                          if (branchActionError) {
+                            setBranchActionError(null);
+                          }
+                        }}
+                        rows={3}
+                        required
+                        className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        placeholder="What do you want to ask on this branch?"
+                        disabled={isSwitching || isCreating}
+                      />
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
+                        checked={switchToNewBranch}
+                        onChange={(event) => setSwitchToNewBranch(event.target.checked)}
+                        disabled={isCreating || isSwitching}
+                      />
+                      Switch to the new branch after creating
+                    </label>
+                  </div>
+                ) : null}
+              </NewBranchFormCard>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showMergeModal ? (
         <div
