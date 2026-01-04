@@ -3,8 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { LLMProvider } from '@/src/server/llm';
 import type { ThinkingSetting } from '@/src/shared/thinking';
-
-const decoder = new TextDecoder();
+import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 
 export interface ChatStreamState {
   isStreaming: boolean;
@@ -118,101 +117,43 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
         }
 
         const reader = response.body.getReader();
-        let buffer = '';
         let streamErrorMessage: string | null = null;
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let newlineIndex = buffer.indexOf('\n');
-          while (newlineIndex !== -1) {
-            const line = buffer.slice(0, newlineIndex).trim();
-            buffer = buffer.slice(newlineIndex + 1);
-            if (line) {
-              try {
-                const parsed = JSON.parse(line) as ChatStreamChunk;
-                if (parsed?.type === 'error' && typeof parsed.message === 'string') {
-                  streamErrorMessage = parsed.message.trim() || 'Chat request failed';
-                  setState({ isStreaming: false, error: streamErrorMessage });
-                  await reader.cancel().catch(() => {});
-                  break;
-                }
-                if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
-                  if (streamDebugEnabled) {
-                    const content = parsed.content ?? '';
-                    const sameAsLast =
-                      parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
-                    const sample = content
-                      ? content.replace(/\s+/g, ' ').slice(0, 60)
-                      : '';
-                    streamDebugStateRef.current.seq += 1;
-                    streamDebugStateRef.current.totalChars += content.length;
-                    console.debug('[stream][chunk]', {
-                      seq: streamDebugStateRef.current.seq,
-                      type: parsed.type,
-                      append: parsed.append,
-                      length: content.length,
-                      totalChars: streamDebugStateRef.current.totalChars,
-                      sameAsLast,
-                      sample
-                    });
-                    streamDebugStateRef.current.lastType = parsed.type;
-                    streamDebugStateRef.current.lastContent = content;
-                  }
-                  onChunk?.(parsed);
-                }
-              } catch {
-                // ignore malformed lines
-              }
-            }
-            if (streamErrorMessage) {
-              break;
-            }
-            newlineIndex = buffer.indexOf('\n');
-          }
-          if (streamErrorMessage) {
-            break;
-          }
-        }
-        if (streamErrorMessage) {
-          return;
-        }
-        const remaining = buffer.trim();
-        if (remaining) {
-          try {
-            const parsed = JSON.parse(remaining) as ChatStreamChunk;
-            if (parsed?.type === 'error' && typeof parsed.message === 'string') {
-              streamErrorMessage = parsed.message.trim() || 'Chat request failed';
-              setState({ isStreaming: false, error: streamErrorMessage });
+        const { errorMessage } = await consumeNdjsonStream<ChatStreamChunk>(reader, {
+          defaultErrorMessage: 'Chat request failed',
+          onError: (message) => {
+            streamErrorMessage = message;
+            setState({ isStreaming: false, error: message });
+          },
+          onFrame: (parsed) => {
+            if (!parsed || typeof parsed.content !== 'string' || parsed.type === 'error') {
               return;
             }
-            if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
-              if (streamDebugEnabled) {
-                const content = parsed.content ?? '';
-                const sameAsLast =
-                  parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
-                const sample = content
-                  ? content.replace(/\s+/g, ' ').slice(0, 60)
-                  : '';
-                streamDebugStateRef.current.seq += 1;
-                streamDebugStateRef.current.totalChars += content.length;
-                console.debug('[stream][chunk]', {
-                  seq: streamDebugStateRef.current.seq,
-                  type: parsed.type,
-                  append: parsed.append,
-                  length: content.length,
-                  totalChars: streamDebugStateRef.current.totalChars,
-                  sameAsLast,
-                  sample
-                });
-                streamDebugStateRef.current.lastType = parsed.type;
-                streamDebugStateRef.current.lastContent = content;
-              }
-              onChunk?.(parsed);
+            if (streamDebugEnabled) {
+              const content = parsed.content ?? '';
+              const sameAsLast =
+                parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
+              const sample = content
+                ? content.replace(/\s+/g, ' ').slice(0, 60)
+                : '';
+              streamDebugStateRef.current.seq += 1;
+              streamDebugStateRef.current.totalChars += content.length;
+              console.debug('[stream][chunk]', {
+                seq: streamDebugStateRef.current.seq,
+                type: parsed.type,
+                append: parsed.append,
+                length: content.length,
+                totalChars: streamDebugStateRef.current.totalChars,
+                sameAsLast,
+                sample
+              });
+              streamDebugStateRef.current.lastType = parsed.type;
+              streamDebugStateRef.current.lastContent = content;
             }
-          } catch {
-            // ignore trailing data
+            onChunk?.(parsed);
           }
+        });
+        if (errorMessage || streamErrorMessage) {
+          return;
         }
 
         onComplete?.();

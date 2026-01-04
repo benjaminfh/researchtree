@@ -9,6 +9,7 @@ import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@g
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
+import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
@@ -1991,11 +1992,11 @@ export function WorkspaceClient({
         throw new Error(data?.error?.message ?? 'Failed to send question to new branch');
       }
       const reader = res.body.getReader();
-      // Drain the stream silently to allow completion and persistence.
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
+      const { errorMessage } = await consumeNdjsonStream(reader, {
+        defaultErrorMessage: 'Failed to send question to new branch'
+      });
+      if (errorMessage) {
+        throw new Error(errorMessage);
       }
       return true;
     } catch (err) {
