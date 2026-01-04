@@ -9,7 +9,14 @@ import { getLocalPgConnectionStrings, LOCAL_PG_USER_ID } from '@/src/server/loca
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const MIGRATIONS_DIR = path.resolve(__dirname, '..', '..', 'supabase', 'migrations');
+function resolveMigrationsDir(): string {
+  if (process.env.RT_MIGRATIONS_DIR) {
+    return process.env.RT_MIGRATIONS_DIR;
+  }
+  return path.resolve(__dirname, '..', '..', 'supabase', 'migrations');
+}
+
+const MIGRATIONS_DIR = resolveMigrationsDir();
 const MIGRATIONS_TABLE = 'local_migrations';
 
 let bootstrapPromise: Promise<void> | null = null;

@@ -27,8 +27,8 @@ describe('app/reset-password/actions updatePassword', () => {
   it('returns an error when passwords do not match', async () => {
     const { updatePassword } = await import('@/app/reset-password/actions');
     const formData = new FormData();
-    formData.set('password', 'password123');
-    formData.set('confirmPassword', 'different');
+    formData.set('password', 'ValidPass1!');
+    formData.set('confirmPassword', 'Different1!');
     formData.set('redirectTo', '/');
 
     const result = await updatePassword({ error: null }, formData);
@@ -43,8 +43,8 @@ describe('app/reset-password/actions updatePassword', () => {
 
     const { updatePassword } = await import('@/app/reset-password/actions');
     const formData = new FormData();
-    formData.set('password', 'password123');
-    formData.set('confirmPassword', 'password123');
+    formData.set('password', 'ValidPass1!');
+    formData.set('confirmPassword', 'ValidPass1!');
     formData.set('redirectTo', '/');
 
     const result = await updatePassword({ error: null }, formData);
@@ -60,15 +60,14 @@ describe('app/reset-password/actions updatePassword', () => {
 
     const { updatePassword } = await import('@/app/reset-password/actions');
     const formData = new FormData();
-    formData.set('password', 'password123');
-    formData.set('confirmPassword', 'password123');
+    formData.set('password', 'ValidPass1!');
+    formData.set('confirmPassword', 'ValidPass1!');
     formData.set('redirectTo', '/dashboard');
 
     const result = await updatePassword({ error: null }, formData);
 
     expect(result.error).toBeNull();
-    expect(updateUser).toHaveBeenCalledWith({ password: 'password123' });
+    expect(updateUser).toHaveBeenCalledWith({ password: 'ValidPass1!' });
     expect(redirect).toHaveBeenCalledWith('/dashboard');
   });
 });
-

@@ -1,8 +1,18 @@
 # BACK END
 [ ] Desktop/local PG mode: app routes to `/login` or throws Supabase env errors when `.env.local` is missing, because several pages and API routes still call `createSupabaseServerClient()` in PG mode. This bypasses the intended local auth failsafe and breaks desktop runs. [Open]
 [ ] (optimization) rawResponse is duplicated in PG (`nodes.content_json` + `nodes.raw_response`); consider de-dupe + a history projection so UI payloads stay small.
+[ ] Build warning: Next.js Edge runtime warnings from `middleware.ts` importing Supabase SSR (`@supabase/ssr` → `@supabase/supabase-js` uses Node APIs). App deploys on Node so runtime is OK; warning persists until middleware avoids Supabase or auth gating moves to Node routes. [Noted]
 
 # FRONT END
+
+## REGISTRATION & LOGIN
+[x][reverify] if a user attempts to create an account with an email that's already registered, the UI hits a dead end and provides no feedback
+[ ] when user clicks confirm email link in email, should send them to "existing user" view
+[ ] when user triggers password reset, email link takes them to new user registration view
+[ ] when returning user (existing but expired/cancelled cookie) lands on login page, best efforts to show them sign in view, not new user view
+[ ] when new user enters non-compliant password, need to block submission and registration - does/should supabase return error in this case?
+[ ] allow magic link sign in?
+
 
 
 ## HOME
@@ -11,6 +21,9 @@
 
 [x] models are now pinned immutably to branches - this means that a user now has no opportunity to choose provider for the main/trunk branch when creating a new project. 
 [ ] on page load (home, workspace) rail renders as open and then closes, causing a flicker.
+[x] home - recent list must scroll after flexing into Archive section (currently forces everything below off the page)
+[x] home - archive pushes user button off bottom of page when expanded (see screenshot)
+[x] home - when archive is expanded, it disappears off the bottom of the page
 
 ## WORKSPACE / PROJECT
 [x] workspace UI sometimes refers to main, sometimes to trunk
@@ -27,9 +40,15 @@
 [x] if a user has entered provider API token but hits a quota issue with the provider, we surface a generic errors. We need to detect this response for each provider and surface a clear user facing error.
 [x] double check that we surface a clear user facing error if user tries a provider and has not entered an api token for that provider.
 [x] excess horizontal padding around the chat/graph container <div class="flex h-full min-h-0 min-w-0 flex-col gap-6 lg:flex-row lg:gap-0">
+[ ] gemini replies initially stream thinking content into chat view. Once complete, thinking is contained (corrrectly) in thinking box, and only reply content shows. This initial state is a bug.
+[x] default thinking bar width should meet the default (min) user message box (currently overlaps it) [Fixed - align assistant bubble/shared bar max width to leave user minimum width.]
+[x] default thinking bar and default shared message bar should be same width and flex the same on resize [Fixed - shared banner and assistant bubbles share the same max-width rule.]
+[x] toggling the rail fires an auth request [Fixed - keep AuthRailStatus mounted across rail toggles.]
+[x] pinning a branch instantly fires a request and triggers spinner - a bit laggy. Should copy our pattern from stars (seems nicer ui/ux) [Fixed - optimistic pin updates + per-button pending indicator.]
 
 ### Branches
 [x] LLM config should be pinned to branch [Fixed - provider/thinking persisted per `projectId + branchName` storage keys]
+[ ] when branching from assistant node, the new branch starts from the wrong node – it starts from the latest on the branch [wrong] instead of below the clicked assistant node [correct].
 
 ### Merge
 [x] merge modal has summary + payload selection -> is the summary injected into the context? This behaviour is not signalled to the user at all. It needs to be. [Fixed - merge modal explicitly states summary is injected into future LLM context]

@@ -1,6 +1,9 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
+'use client';
+
 import React, { type FormEvent } from 'react';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
 
 export function NewBranchFormCard({
   fromLabel,
@@ -14,6 +17,9 @@ export function NewBranchFormCard({
   autoFocus = false,
   variant = 'card',
   containerClassName,
+  testId,
+  inputTestId,
+  submitTestId
 }: {
   fromLabel: string;
   value: string;
@@ -26,11 +32,16 @@ export function NewBranchFormCard({
   autoFocus?: boolean;
   variant?: 'card' | 'plain';
   containerClassName?: string;
+  testId?: string;
+  inputTestId?: string;
+  submitTestId?: string;
 }) {
   const isDisabled = disabled || submitting;
+  const handleCommandEnter = useCommandEnterSubmit({ enabled: !isDisabled && Boolean(value.trim()) });
 
   return (
     <form
+      onKeyDown={handleCommandEnter}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         onSubmit();
@@ -40,6 +51,7 @@ export function NewBranchFormCard({
         variant === 'card' ? 'rounded-2xl border border-divider/80 bg-white/80 p-4 shadow-sm' : '',
         containerClassName ?? '',
       ].join(' ')}
+      data-testid={testId}
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-slate-900">New branch</span>
@@ -54,11 +66,13 @@ export function NewBranchFormCard({
           className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
           disabled={isDisabled}
           autoFocus={autoFocus}
+          data-testid={inputTestId}
         />
         <button
           type="submit"
           disabled={isDisabled || !value.trim()}
           className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+          data-testid={submitTestId}
         >
           {submitting ? (
             <span className="inline-flex items-center gap-2">

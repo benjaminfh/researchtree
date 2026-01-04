@@ -32,6 +32,7 @@ export default function CheckEmailPage({
   const loginParams = new URLSearchParams();
   loginParams.set('redirectTo', redirectTo);
   if (email) loginParams.set('email', email);
+  loginParams.set('mode', 'signIn');
   const loginHref = `/login?${loginParams.toString()}#existing-user`;
 
   return (

@@ -3,6 +3,8 @@
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 import { NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: Request) {
   try {
     const supabase = createSupabaseServerActionClient();
@@ -11,5 +13,5 @@ export async function POST(request: Request) {
     // ignore
   }
   const url = new URL(request.url);
-  return NextResponse.redirect(new URL('/login', url.origin), { status: 303 });
+  return NextResponse.redirect(new URL('/login?mode=signIn#existing-user', url.origin), { status: 303 });
 }

@@ -5,6 +5,8 @@
 import { useFormState, useFormStatus } from 'react-dom';
 import Link from 'next/link';
 import { updatePassword } from './actions';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
+import { PASSWORD_MIN_LENGTH, PASSWORD_POLICY_HINT } from '@/src/utils/passwordPolicy';
 
 const initialState = { error: null as string | null };
 
@@ -30,13 +32,14 @@ function SubmitButton() {
 
 export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
   const [state, action] = useFormState(updatePassword, initialState);
+  const handleCommandEnter = useCommandEnterSubmit();
 
   return (
     <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold text-slate-900">Set a new password</h1>
       <p className="mt-2 text-sm text-slate-600">Choose a new password for your account.</p>
 
-      <form action={action} className="mt-6 space-y-3">
+      <form onKeyDown={handleCommandEnter} action={action} className="mt-6 space-y-3">
         <input type="hidden" name="redirectTo" value={redirectTo} />
 
         <label className="block">
@@ -47,8 +50,11 @@ export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
             type="password"
             autoComplete="new-password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
+            pattern={`(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${PASSWORD_MIN_LENGTH},}`}
+            title={PASSWORD_POLICY_HINT}
           />
+          <span className="mt-1 block text-xs text-slate-600">{PASSWORD_POLICY_HINT}</span>
         </label>
         <label className="block">
           <span className="text-sm font-medium text-slate-800">Confirm password</span>
@@ -58,7 +64,7 @@ export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
             type="password"
             autoComplete="new-password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
           />
         </label>
 
@@ -66,7 +72,10 @@ export function ResetPasswordForm({ redirectTo }: { redirectTo: string }) {
 
         <div className="flex items-center justify-between gap-3">
           <SubmitButton />
-          <Link href={`/login?redirectTo=${encodeURIComponent(redirectTo)}`} className="text-sm text-slate-900 underline">
+          <Link
+            href={`/login?redirectTo=${encodeURIComponent(redirectTo)}&mode=signIn#existing-user`}
+            className="text-sm text-slate-900 underline"
+          >
             Back to sign in
           </Link>
         </div>

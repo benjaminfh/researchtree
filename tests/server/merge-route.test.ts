@@ -7,10 +7,10 @@ const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   mergeBranch: vi.fn(),
   getCurrentBranchName: vi.fn(),
-  rtMergeOursShadowV1: vi.fn(),
-  rtListRefsShadowV1: vi.fn(),
-  rtGetHistoryShadowV1: vi.fn(),
-  rtGetCanvasShadowV1: vi.fn()
+  rtMergeOursShadowV2: vi.fn(),
+  rtListRefsShadowV2: vi.fn(),
+  rtGetHistoryShadowV2: vi.fn(),
+  rtGetCanvasShadowV2: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -26,13 +26,13 @@ vi.mock('@git/utils', () => ({
 }));
 
 vi.mock('@/src/store/pg/merge', () => ({
-  rtMergeOursShadowV1: mocks.rtMergeOursShadowV1
+  rtMergeOursShadowV2: mocks.rtMergeOursShadowV2
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtListRefsShadowV1: mocks.rtListRefsShadowV1,
-  rtGetHistoryShadowV1: mocks.rtGetHistoryShadowV1,
-  rtGetCanvasShadowV1: mocks.rtGetCanvasShadowV1
+  rtListRefsShadowV2: mocks.rtListRefsShadowV2,
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
+  rtGetCanvasShadowV2: mocks.rtGetCanvasShadowV2
 }));
 
 const baseUrl = 'http://localhost/api/projects/project-1/merge';
@@ -106,26 +106,26 @@ describe('/api/projects/[id]/merge', () => {
 
   it('uses Postgres merge when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
-    mocks.rtListRefsShadowV1.mockResolvedValue([
-      { name: 'main', headCommit: 't1', nodeCount: 1, isTrunk: true },
-      { name: 'feature', headCommit: 's1', nodeCount: 2, isTrunk: false }
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: 't1', nodeCount: 1, isTrunk: true },
+      { id: 'ref-feature', name: 'feature', headCommit: 's1', nodeCount: 2, isTrunk: false }
     ]);
-    mocks.rtGetHistoryShadowV1.mockImplementation(async ({ refName }: any) => {
-      if (refName === 'main') return [];
+    mocks.rtGetHistoryShadowV2.mockImplementation(async ({ refId }: any) => {
+      if (refId === 'ref-main') return [];
       return [{ ordinal: 0, nodeJson: { id: 'asst-1', type: 'message', role: 'assistant', content: 'hi' } }];
     });
-    mocks.rtGetCanvasShadowV1.mockResolvedValue({ content: '', contentHash: '', updatedAt: null, source: 'empty' });
-    mocks.rtMergeOursShadowV1.mockResolvedValue({ newCommitId: 'c1', nodeId: 'merge-1', ordinal: 0 });
+    mocks.rtGetCanvasShadowV2.mockResolvedValue({ content: '', contentHash: '', updatedAt: null, source: 'empty' });
+    mocks.rtMergeOursShadowV2.mockResolvedValue({ newCommitId: 'c1', nodeId: 'merge-1', ordinal: 0 });
 
     const res = await POST(createRequest({ sourceBranch: 'feature', mergeSummary: 'summary', targetBranch: 'main' }), {
       params: { id: 'project-1' }
     });
     expect(res.status).toBe(200);
-    expect(mocks.rtMergeOursShadowV1).toHaveBeenCalledWith(
+    expect(mocks.rtMergeOursShadowV2).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'project-1',
-        targetRefName: 'main',
-        sourceRefName: 'feature',
+        targetRefId: 'ref-main',
+        sourceRefId: 'ref-feature',
         mergeNodeJson: expect.objectContaining({ type: 'merge', mergeFrom: 'feature', mergeSummary: 'summary' })
       })
     );

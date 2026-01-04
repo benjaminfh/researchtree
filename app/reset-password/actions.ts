@@ -4,6 +4,7 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
+import { getPasswordPolicyError } from '@/src/utils/passwordPolicy';
 
 type ResetPasswordActionState = { error: string | null };
 
@@ -22,8 +23,8 @@ export async function updatePassword(
   const confirmPassword = String(formData.get('confirmPassword') ?? '');
   const redirectTo = sanitizeRedirectTo(String(formData.get('redirectTo') ?? '').trim()) ?? '/';
 
-  if (!password) return { error: 'Password is required.' };
-  if (password.length < 8) return { error: 'Password must be at least 8 characters.' };
+  const passwordError = getPasswordPolicyError(password);
+  if (passwordError) return { error: passwordError };
   if (password !== confirmPassword) return { error: 'Passwords do not match.' };
 
   try {
@@ -44,4 +45,3 @@ export async function updatePassword(
   redirect(redirectTo);
   return { error: null };
 }
-
