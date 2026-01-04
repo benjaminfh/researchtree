@@ -35,6 +35,7 @@ import {
   ArrowUpIcon,
   CheckIcon,
   HomeIcon,
+  ConsoleIcon,
   PaperClipIcon,
   QuestionMarkCircleIcon,
   SearchIcon,
@@ -565,6 +566,7 @@ export function WorkspaceClient({
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
+  const [composerCollapsed, setComposerCollapsed] = useState(false);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
@@ -580,6 +582,7 @@ export function WorkspaceClient({
   const INSIGHT_MIN_WIDTH = 360;
   const INSIGHT_COLLAPSED_WIDTH = 56;
   const SPLIT_GAP = 12;
+  const COLLAPSED_COMPOSER_PADDING = 32;
   const composerRef = useRef<HTMLDivElement | null>(null);
   const openEditModal = (node: MessageNode) => {
     if (node.role === 'assistant') {
@@ -933,6 +936,19 @@ export function WorkspaceClient({
       : null;
   const isSending = state.isStreaming || assistantPending;
 
+  const toggleComposerCollapsed = useCallback(
+    (next?: boolean) => {
+      setComposerCollapsed((prev) => {
+        const target = typeof next === 'boolean' ? next : !prev;
+        if (state.isStreaming || target === prev) return prev;
+        return target;
+      });
+    },
+    [state.isStreaming]
+  );
+
+  const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
+
   useEffect(() => {
     if (!state.error || !optimisticDraftRef.current) return;
     const sent = optimisticDraftRef.current;
@@ -1178,15 +1194,24 @@ export function WorkspaceClient({
   }, [insightCollapsed, insightTab, graphRequestKey, project.id, graphHistories, graphHistoryError]);
 
   useEffect(() => {
+    if (composerCollapsed) {
+      setComposerPadding(COLLAPSED_COMPOSER_PADDING);
+      return;
+    }
     const composer = composerRef.current;
-    if (!composer || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
+    if (!composer || typeof ResizeObserver === 'undefined') {
+      setComposerPadding(Math.max(116, COLLAPSED_COMPOSER_PADDING));
+      return;
+    }
+    const updatePadding = () => {
       const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
       setComposerPadding(next);
-    });
+    };
+    updatePadding();
+    const observer = new ResizeObserver(updatePadding);
     observer.observe(composer);
     return () => observer.disconnect();
-  }, []);
+  }, [composerCollapsed, COLLAPSED_COMPOSER_PADDING]);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -1270,6 +1295,22 @@ export function WorkspaceClient({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [collapseInsights, expandInsights, insightCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.key.toLowerCase() !== 'j') return;
+      if (state.isStreaming) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      event.preventDefault();
+      toggleComposerCollapsed();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [state.isStreaming, toggleComposerCollapsed]);
 
   useEffect(() => {
     return () => {
@@ -2223,7 +2264,13 @@ export function WorkspaceClient({
           </div>
         )}
         renderMain={(ctx) => (
-          <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
+          <div
+            className="relative flex h-full min-h-0 min-w-0 flex-col bg-white"
+            data-composer-collapsed={composerCollapsed ? 'true' : 'false'}
+          >
+            <div className="sr-only" aria-live="polite" data-testid="composer-collapsed-state">
+              {composerCollapsed ? 'Composer collapsed' : 'Composer expanded'}
+            </div>
             <div
               className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-3"
               style={{ paddingBottom: composerPadding }}
@@ -2912,103 +2959,124 @@ export function WorkspaceClient({
           </div>
         </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
-          >
-            <div
-              className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
-              style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
+          {composerCollapsed ? (
+            <div className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+              <div
+                className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
+                style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => expandComposer()}
+                  disabled={state.isStreaming}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Expand composer"
+                  data-testid="composer-expand-button"
+                >
+                  <ConsoleIcon className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {!composerCollapsed ? (
+            <form
+              onSubmit={handleSubmit}
+              className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
             >
               <div
-                ref={composerRef}
-                className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
+                style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
               >
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!webSearchAvailable || state.isStreaming) return;
-                      setWebSearchEnabled((prev) => !prev);
-                    }}
-                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
-                      webSearchEnabled
-                        ? 'border-primary/30 bg-primary/10 text-primary'
-                        : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
-                    } ${!webSearchAvailable ? 'opacity-50' : ''}`}
-                    aria-label="Toggle web search"
-                    aria-pressed={webSearchEnabled}
-                    disabled={state.isStreaming || !webSearchAvailable}
-                  >
-                    <SearchIcon className="h-4 w-4" />
-                    <span>Web search</span>
-                  </button>
-                  {/* <div className="flex h-10 w-10 items-center justify-center">
-                    {features.uiAttachments ? (
-                      <button
-                        type="button"
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                        aria-label="Add attachment"
-                      >
-                        <PaperClipIcon className="h-5 w-5" />
-                      </button>
-                    ) : (
-                      <span aria-hidden="true" />
-                    )}
-                  </div> */}
-                </div>
-                <div className="relative flex-1">
-                  <textarea
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder="Ask anything"
-                    rows={2}
-                    className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                    disabled={state.isStreaming}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter') {
-                        return;
-                      }
-                      if (event.metaKey) {
-                        event.preventDefault();
-                        void sendDraft();
-                        return;
-                      }
-                      if (event.shiftKey || event.altKey) {
-                        return;
-                      }
-                    }}
-                  />
-                  <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
-                    <span className="flex-1 text-left">
-                      {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
-                    </span>
-                    <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
-                      ⌘ + Enter to send · Shift + Enter adds a newline.
-                    </span>
-                    <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
-                      {state.isStreaming ? 'Streaming…' : ''}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div ref={thinkingMenuRef} className="relative hidden sm:block">
+                <div
+                  ref={composerRef}
+                  className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                >
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setThinkingMenuOpen((prev) => !prev)}
-                      className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label="Thinking mode"
-                      aria-haspopup="menu"
-                      aria-expanded={thinkingMenuOpen}
-                      disabled={state.isStreaming}
+                      onClick={() => {
+                        if (!webSearchAvailable || state.isStreaming) return;
+                        setWebSearchEnabled((prev) => !prev);
+                      }}
+                      className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
+                        webSearchEnabled
+                          ? 'border-primary/30 bg-primary/10 text-primary'
+                          : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
+                      } ${!webSearchAvailable ? 'opacity-50' : ''}`}
+                      aria-label="Toggle web search"
+                      aria-pressed={webSearchEnabled}
+                      disabled={state.isStreaming || !webSearchAvailable}
                     >
-                      Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                      <SearchIcon className="h-4 w-4" />
+                      <span>Web search</span>
                     </button>
-                    {thinkingMenuOpen ? (
-                      <div
-                        role="menu"
-                        className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                    {/* <div className="flex h-10 w-10 items-center justify-center">
+                      {features.uiAttachments ? (
+                        <button
+                          type="button"
+                          className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
+                          aria-label="Add attachment"
+                        >
+                          <PaperClipIcon className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <span aria-hidden="true" />
+                      )}
+                    </div> */}
+                  </div>
+                  <div className="relative flex-1">
+                    <textarea
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder="Ask anything"
+                      rows={2}
+                      className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                      disabled={state.isStreaming}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') {
+                          return;
+                        }
+                        if (event.metaKey) {
+                          event.preventDefault();
+                          void sendDraft();
+                          return;
+                        }
+                        if (event.shiftKey || event.altKey) {
+                          return;
+                        }
+                      }}
+                    />
+                    <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
+                      <span className="flex-1 text-left">
+                        {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
+                      </span>
+                      <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
+                        ⌘ + Enter to send · Shift + Enter adds a newline.
+                      </span>
+                      <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
+                        {state.isStreaming ? 'Streaming…' : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div ref={thinkingMenuRef} className="relative hidden sm:block">
+                      <button
+                        type="button"
+                        onClick={() => setThinkingMenuOpen((prev) => !prev)}
+                        className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Thinking mode"
+                        aria-haspopup="menu"
+                        aria-expanded={thinkingMenuOpen}
+                        disabled={state.isStreaming}
                       >
+                        Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                      </button>
+                      {thinkingMenuOpen ? (
+                        <div
+                          role="menu"
+                          className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                        >
 	                        {allowedThinking.map((setting) => {
 	                          const active = thinking === setting;
 	                          return (
@@ -3032,35 +3100,36 @@ export function WorkspaceClient({
 	                            </button>
 	                          );
 	                        })}
-                      </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    {state.isStreaming ? (
+                      <button
+                        type="button"
+                        onClick={interrupt}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
+                        aria-label="Stop streaming"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
                     ) : null}
-                  </div>
-                  {state.isStreaming ? (
                     <button
-                      type="button"
-                      onClick={interrupt}
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
-                      aria-label="Stop streaming"
+                      type="submit"
+                      disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="Send message"
                     >
-                      <XMarkIcon className="h-5 w-5" />
+                      {isSending ? (
+                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                      ) : (
+                        <ArrowUpIcon className="h-5 w-5" />
+                      )}
                     </button>
-                  ) : null}
-                  <button
-                    type="submit"
-                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Send message"
-                  >
-                    {isSending ? (
-                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
-                    ) : (
-                      <ArrowUpIcon className="h-5 w-5" />
-                    )}
-                  </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </form>
+            </form>
+          ) : null}
         </div>
         )}
       />
