@@ -8,6 +8,7 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { resolveBranchConfig } from '@/src/server/branchConfig';
 import { resolveOpenAIProviderSelection } from '@/src/server/llm';
+import { getPreviousResponseId } from '@/src/server/llmState';
 
 interface RouteContext {
   params: { id: string };
@@ -94,6 +95,12 @@ export async function POST(request: Request, { params }: RouteContext) {
           model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
           fallback: baseConfig
         });
+        const shouldCopyPreviousResponseId =
+          baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
+        const basePreviousResponseId =
+          shouldCopyPreviousResponseId && baseBranch.id
+            ? await getPreviousResponseId(params.id, { id: baseBranch.id, name: baseRefName }).catch(() => null)
+            : null;
 
         if (fromNodeId) {
           const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNodeId })) as any | null;
@@ -110,7 +117,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             nodeId: fromNodeId,
             provider: resolvedConfig.provider,
             model: resolvedConfig.model,
-            previousResponseId: null
+            previousResponseId: shouldCopyPreviousResponseId ? basePreviousResponseId : null
           });
         } else {
           await rtCreateRefFromRefShadowV2({
@@ -119,7 +126,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             fromRefId: baseBranch.id,
             provider: resolvedConfig.provider,
             model: resolvedConfig.model,
-            previousResponseId: null
+            previousResponseId: shouldCopyPreviousResponseId ? basePreviousResponseId : null
           });
         }
         const branches = await rtListRefsShadowV2({ projectId: params.id });
@@ -155,6 +162,11 @@ export async function POST(request: Request, { params }: RouteContext) {
         model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
         fallback: baseConfig
       });
+      const shouldCopyPreviousResponseId = baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
+      const basePreviousResponseId =
+        shouldCopyPreviousResponseId && baseBranch?.name
+          ? await getPreviousResponseId(project.id, { id: null, name: baseBranch.name }).catch(() => null)
+          : null;
       if (fromNodeId) {
         const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
         const sourceNodes = await readNodesFromRef(project.id, baseRef);
@@ -169,13 +181,13 @@ export async function POST(request: Request, { params }: RouteContext) {
         await createBranch(project.id, parsed.data.name, commitHash, {
           provider: resolvedConfig.provider,
           model: resolvedConfig.model,
-          previousResponseId: null
+          previousResponseId: shouldCopyPreviousResponseId ? basePreviousResponseId : null
         });
       } else {
         await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
           provider: resolvedConfig.provider,
           model: resolvedConfig.model,
-          previousResponseId: null
+          previousResponseId: shouldCopyPreviousResponseId ? basePreviousResponseId : null
         });
       }
       const branches = await listBranches(project.id);

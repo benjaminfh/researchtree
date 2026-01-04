@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   rtSetCurrentRefShadowV2: vi.fn(),
   rtListRefsShadowV2: vi.fn(),
   rtCreateRefFromRefShadowV2: vi.fn(),
-  rtCreateRefFromNodeShadowV2: vi.fn()
+  rtCreateRefFromNodeShadowV2: vi.fn(),
+  getPreviousResponseId: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -44,6 +45,10 @@ vi.mock('@/src/store/pg/branches', () => ({
   rtCreateRefFromNodeShadowV2: mocks.rtCreateRefFromNodeShadowV2
 }));
 
+vi.mock('@/src/server/llmState', () => ({
+  getPreviousResponseId: mocks.getPreviousResponseId
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/branches';
 
 function createRequest(body: unknown, method: 'POST' | 'PATCH') {
@@ -60,6 +65,7 @@ describe('/api/projects/[id]/branches', () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.listBranches.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true }]);
     mocks.getCurrentBranchName.mockResolvedValue('main');
+    mocks.getPreviousResponseId.mockResolvedValue('resp-123');
     process.env.RT_STORE = 'git';
   });
 
@@ -89,10 +95,11 @@ describe('/api/projects/[id]/branches', () => {
   it('creates branch', async () => {
     const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
     expect(res.status).toBe(201);
+    expect(mocks.getPreviousResponseId).toHaveBeenCalledWith('project-1', { id: null, name: 'main' });
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
       provider: 'openai_responses',
       model: 'gpt-5.2',
-      previousResponseId: null
+      previousResponseId: 'resp-123'
     });
   });
 
@@ -108,13 +115,14 @@ describe('/api/projects/[id]/branches', () => {
 
     const res = await POST(createRequest({ name: 'new-branch', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
     expect(res.status).toBe(201);
+    expect(mocks.getPreviousResponseId).toHaveBeenCalledWith('project-1', { id: 'ref-main', name: 'main' });
     expect(mocks.rtCreateRefFromRefShadowV2).toHaveBeenCalledWith({
       projectId: 'project-1',
       newRefName: 'new-branch',
       fromRefId: 'ref-main',
       provider: 'openai_responses',
       model: 'gpt-5.2',
-      previousResponseId: null
+      previousResponseId: 'resp-123'
     });
     expect(mocks.createBranch).not.toHaveBeenCalled();
   });
