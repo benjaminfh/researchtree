@@ -2,6 +2,7 @@
 
 'use client';
 
+import React from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { signInWithPassword, signUpWithPassword } from './actions';
@@ -34,13 +35,13 @@ const initialState = { error: null as string | null, mode: null as 'signIn' | 's
 export function LoginForm({
   redirectTo,
   initialEmail,
-  initialMode,
-  waitlistEnforced
+  waitlistEnforced,
+  initialMode = 'signUp'
 }: {
   redirectTo: string;
   initialEmail?: string | null;
-  initialMode: 'signIn' | 'signUp';
   waitlistEnforced: boolean;
+  initialMode?: 'signUp' | 'signIn';
 }) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
