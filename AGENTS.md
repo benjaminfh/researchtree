@@ -1,6 +1,9 @@
 ## Global design decisions
 All text forms submit on cmd+Enter if form state is valid.
 
+## Feature branches
+master and dev branches are protected. Create a feature branch to work using the format codex/{yyyyMMdd}/a-clear-descriptive-title
+
 ## Product Management
 We plan and track progress in PM_DOCS/
 We track feature requets and bugs in Github Issues
