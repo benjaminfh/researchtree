@@ -882,7 +882,7 @@ export function WorkspaceClient({
     }
   }, [HAS_SENT_MESSAGE_KEY]);
 
-  const { sendMessage, interrupt, state } = useChatStream({
+  const { sendMessage, sendStreamRequest, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
     provider: branchProvider,
@@ -1030,13 +1030,23 @@ export function WorkspaceClient({
     question,
     highlight,
     provider,
-    thinkingSetting
+    model,
+    thinkingSetting,
+    fromRef,
+    fromNodeId,
+    onResponse,
+    onFailure
   }: {
     targetBranch: string;
     question: string;
     highlight?: string;
     provider: LLMProvider;
+    model: string;
     thinkingSetting: ThinkingSetting;
+    fromRef: string;
+    fromNodeId?: string | null;
+    onResponse?: () => void;
+    onFailure?: () => void;
   }) => {
     if (!question.trim() || state.isStreaming) return;
     shouldScrollToBottomRef.current = true;
@@ -1062,13 +1072,97 @@ export function WorkspaceClient({
       setAssistantPending(true);
       assistantPendingTimerRef.current = null;
     }, 100);
-    await sendMessage({
-      question,
-      highlight,
-      ref: targetBranch,
-      llmProvider: provider,
-      thinking: thinkingSetting
+    let responded = false;
+    await sendStreamRequest({
+      url: `/api/projects/${project.id}/branch-question`,
+      body: {
+        name: targetBranch,
+        fromRef,
+        fromNodeId,
+        provider,
+        model,
+        question,
+        highlight,
+        thinking: thinkingSetting,
+        switch: true
+      },
+      onResponse: () => {
+        responded = true;
+        onResponse?.();
+      },
+      debugLabel: 'branch-question'
     });
+    if (!responded) {
+      onFailure?.();
+    }
+  };
+
+  const sendEditWithStream = async ({
+    targetBranch,
+    content,
+    fromRef,
+    nodeId,
+    provider,
+    model,
+    thinkingSetting,
+    onResponse,
+    onFailure
+  }: {
+    targetBranch: string;
+    content: string;
+    fromRef: string;
+    nodeId: string;
+    provider: LLMProvider;
+    model: string;
+    thinkingSetting: ThinkingSetting;
+    onResponse?: () => void;
+    onFailure?: () => void;
+  }) => {
+    if (!content.trim() || state.isStreaming) return;
+    shouldScrollToBottomRef.current = true;
+    questionDraftRef.current = content;
+    setStreamBlocks([]);
+    hasReceivedAssistantChunkRef.current = false;
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    setAssistantPending(false);
+    setOptimisticUserNode({
+      id: 'optimistic-user',
+      type: 'message',
+      role: 'user',
+      content,
+      contentBlocks: [{ type: 'text', text: content }],
+      timestamp: Date.now(),
+      parent: null,
+      createdOnBranch: targetBranch
+    });
+    assistantPendingTimerRef.current = setTimeout(() => {
+      setAssistantPending(true);
+      assistantPendingTimerRef.current = null;
+    }, 100);
+    let responded = false;
+    await sendStreamRequest({
+      url: `/api/projects/${project.id}/edit-stream`,
+      body: {
+        content,
+        branchName: targetBranch,
+        fromRef,
+        llmProvider: provider,
+        llmModel: model,
+        thinking: thinkingSetting,
+        nodeId
+      },
+      onResponse: () => {
+        responded = true;
+        onResponse?.();
+      },
+      debugLabel: 'edit-stream'
+    });
+    if (!responded) {
+      onFailure?.();
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -2465,6 +2559,37 @@ export function WorkspaceClient({
     const shouldSwitch = switchToEditBranch;
 
     setEditError(null);
+
+    if (shouldSwitch) {
+      if (!nodeId) {
+        setEditError('Unable to resolve edited node.');
+        setIsEditing(false);
+        return;
+      }
+      void sendEditWithStream({
+        targetBranch,
+        content,
+        fromRef,
+        nodeId,
+        provider: editProvider,
+        model: editModel,
+        thinkingSetting: editThinking,
+        onResponse: () => {
+          setIsEditing(false);
+          setBranchName(targetBranch);
+          setShowEditModal(false);
+          setEditDraft('');
+          setEditBranchName('');
+          setEditingNode(null);
+          setSwitchToEditBranch(true);
+        },
+        onFailure: () => {
+          setIsEditing(false);
+        }
+      });
+      return;
+    }
+
     setShowEditModal(false);
     setEditDraft('');
     setEditBranchName('');
@@ -2964,19 +3089,29 @@ export function WorkspaceClient({
                                         providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
                                         getDefaultModelForProviderFromCapabilities(newBranchProvider);
                                       if (switchToNewBranch) {
-                                        const result = await createBranch({ switchToNew: true });
-                                        if (!result.ok) return;
-                                        if (!result.branchProvider) {
-                                          setBranchActionError('Unable to resolve provider for the new branch.');
-                                          return;
-                                        }
-                                        await sendQuestionWithStream({
-                                          targetBranch: result.branchName,
+                                        setIsCreating(true);
+                                        void sendQuestionWithStream({
+                                          targetBranch: branchNameInput,
+                                          fromRef: branchName,
+                                          fromNodeId: branchSplitNodeId,
                                           question,
                                           highlight,
-                                          provider: result.branchProvider,
-                                          thinkingSetting
+                                          provider: newBranchProvider,
+                                          model: branchModel,
+                                          thinkingSetting,
+                                          onResponse: () => {
+                                            setIsCreating(false);
+                                            setBranchName(branchNameInput);
+                                            setBranchActionError(null);
+                                            setShowNewBranchPopover(false);
+                                            resetBranchQuestionState();
+                                            setNewBranchName('');
+                                          },
+                                          onFailure: () => {
+                                            setIsCreating(false);
+                                          }
                                         });
+                                        return;
                                       } else {
                                         startBranchQuestionTask({
                                           targetBranch: branchNameInput,
