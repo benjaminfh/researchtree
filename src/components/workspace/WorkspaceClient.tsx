@@ -1846,11 +1846,12 @@ export function WorkspaceClient({
   }, []);
 
   const combinedNodes = useMemo(() => {
-    const optimisticBranch = optimisticUserNode?.createdOnBranch ?? null;
+    const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
+    const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
     const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
     let baseNodes = nodes;
-    if (allowOptimistic && optimisticUserNode?.content && optimisticBranch) {
-      const optimisticContent = normalizeMessageText(optimisticUserNode.content);
+    if (allowOptimistic && optimisticMessage?.content && optimisticBranch) {
+      const optimisticContent = normalizeMessageText(optimisticMessage.content);
       const reversedIndex = [...nodes].reverse().findIndex((node) => {
         if (node.type !== 'message') return false;
         if (node.role !== 'user') return false;
