@@ -93,7 +93,13 @@ async function findUserByEmail(targetEmail) {
       p_provider: provider,
       p_secret: secret,
     })
-    if (error) throw error
+    if (error) {
+      if (String(error.message || '').includes('Could not find the function')) {
+        console.log(`[ensure-preview-user] Skip ${provider} token (missing RPC)`)
+        return
+      }
+      throw error
+    }
     console.log(`[ensure-preview-user] Stored ${provider} token`)
   }
 
