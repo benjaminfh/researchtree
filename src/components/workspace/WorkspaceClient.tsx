@@ -698,6 +698,9 @@ export function WorkspaceClient({
     await mutateHistory();
     setHistoryEpoch((value) => value + 1);
   }, [mutateHistory]);
+  const refreshCoreData = useCallback(() => {
+    void Promise.allSettled([refreshHistory(), mutateArtefact()]);
+  }, [refreshHistory, mutateArtefact]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [draft, setDraft] = useState('');
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
@@ -1148,18 +1151,15 @@ export function WorkspaceClient({
   );
   const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
   const lastGraphRequestKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (insightCollapsed || insightTab !== 'graph') return;
-    if (graphHistories && lastGraphRequestKeyRef.current === graphRequestKey && !graphHistoryError) {
-      return;
-    }
-    const controller = new AbortController();
-    const load = async () => {
+  const loadGraphHistories = useCallback(
+    async ({ force = false, signal }: { force?: boolean; signal?: AbortSignal } = {}) => {
+      if (!force && (insightCollapsed || insightTab !== 'graph')) {
+        return;
+      }
       setGraphHistoryLoading(true);
       setGraphHistoryError(null);
       try {
-        const res = await fetch(`/api/projects/${project.id}/graph`, { signal: controller.signal });
+        const res = await fetch(`/api/projects/${project.id}/graph`, { signal });
         if (!res.ok) {
           throw new Error('Failed to load graph');
         }
@@ -1172,10 +1172,52 @@ export function WorkspaceClient({
       } finally {
         setGraphHistoryLoading(false);
       }
-    };
-    void load();
+    },
+    [graphRequestKey, insightCollapsed, insightTab, project.id]
+  );
+  const reloadBranches = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${project.id}/branches`);
+      if (!res.ok) {
+        throw new Error('Failed to reload branches');
+      }
+      const data = (await res.json()) as { branches?: BranchSummary[] };
+      if (Array.isArray(data.branches)) {
+        setBranches(data.branches);
+      }
+    } catch (err) {
+      console.error('[workspace] reload branches failed', err);
+    }
+  }, [project.id]);
+  const refreshInsights = useCallback(
+    (options?: { includeGraph?: boolean; includeBranches?: boolean }) => {
+      const tasks: Promise<unknown>[] = [];
+      if (options?.includeBranches) {
+        tasks.push(reloadBranches());
+      }
+      if (options?.includeGraph) {
+        tasks.push(loadGraphHistories({ force: true }));
+      }
+      if (tasks.length === 0) return;
+      void Promise.allSettled(tasks);
+    },
+    [loadGraphHistories, reloadBranches]
+  );
+
+  useEffect(() => {
+    if (historyEpoch === 0) return;
+    refreshInsights({ includeGraph: true, includeBranches: true });
+  }, [historyEpoch, refreshInsights]);
+
+  useEffect(() => {
+    if (insightCollapsed || insightTab !== 'graph') return;
+    if (graphHistories && lastGraphRequestKeyRef.current === graphRequestKey && !graphHistoryError) {
+      return;
+    }
+    const controller = new AbortController();
+    void loadGraphHistories({ signal: controller.signal });
     return () => controller.abort();
-  }, [insightCollapsed, insightTab, graphRequestKey, project.id, graphHistories, graphHistoryError]);
+  }, [insightCollapsed, insightTab, graphRequestKey, graphHistories, graphHistoryError, loadGraphHistories]);
 
   useEffect(() => {
     const composer = composerRef.current;
@@ -1905,7 +1947,8 @@ export function WorkspaceClient({
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, newBranchThinking);
       }
-      await Promise.all([refreshHistory(), mutateArtefact()]);
+      refreshCoreData();
+      refreshInsights({ includeGraph: true, includeBranches: true });
       return true;
     } catch (err) {
       setBranchActionError((err as Error).message);
