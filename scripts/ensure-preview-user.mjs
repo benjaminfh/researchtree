@@ -8,6 +8,7 @@ if (vercelEnv !== 'preview') {
 
 const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!url) {
   console.error('[ensure-preview-user] Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)')
@@ -15,6 +16,10 @@ if (!url) {
 }
 if (!serviceKey) {
   console.error('[ensure-preview-user] Missing SUPABASE_SERVICE_ROLE_KEY')
+  process.exit(1)
+}
+if (!anonKey) {
+  console.error('[ensure-preview-user] Missing NEXT_PUBLIC_SUPABASE_ANON_KEY')
   process.exit(1)
 }
 
@@ -25,18 +30,21 @@ if (!email || !password) {
   process.exit(1)
 }
 
-const openaiSecretId = process.env.OPENAI_API_KEY || null
-const geminiSecretId = process.env.GEMINI_API_KEY || null
-const anthropicSecretId = process.env.ANTHROPIC_API_KEY || null
+const openaiApiKey = process.env.OPENAI_API_KEY || null
+const geminiApiKey = process.env.GEMINI_API_KEY || null
+const anthropicApiKey = process.env.ANTHROPIC_API_KEY || null
 
-const supabase = createClient(url, serviceKey, {
+const supabaseAdmin = createClient(url, serviceKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+})
+const supabase = createClient(url, anonKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
 async function findUserByEmail(targetEmail) {
   const perPage = 200
   for (let page = 1; page <= 10; page++) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage })
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage })
     if (error) throw error
     const user = data?.users?.find(
       u => (u.email || '').toLowerCase() === targetEmail.toLowerCase()
@@ -53,7 +61,7 @@ async function findUserByEmail(targetEmail) {
   let user = await findUserByEmail(email)
 
   if (!user) {
-    const { data, error } = await supabase.auth.admin.createUser({
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -65,7 +73,7 @@ async function findUserByEmail(targetEmail) {
     console.log(`[ensure-preview-user] User already exists: ${user.id}`)
 
     // Optional: keep preview login consistent across redeploys
-    const { error } = await supabase.auth.admin.updateUserById(user.id, {
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
       password,
       email_confirm: true,
     })
@@ -73,31 +81,25 @@ async function findUserByEmail(targetEmail) {
     console.log('[ensure-preview-user] Updated existing user (password/confirmed)')
   }
 
-  // REQUIRED: user_llm_keys upsert
-  // Assumes `user_id` is unique/PK (so onConflict: 'user_id' works).
-  // Leave secret ids as null if not provided.
-  const now = new Date().toISOString()
-  const { error: llmError } = await supabase
-    .from('user_llm_keys')
-    .upsert(
-      {
-        user_id: user.id,
-        openai_secret_id: openaiSecretId,
-        gemini_secret_id: geminiSecretId,
-        anthropic_secret_id: anthropicSecretId,
-        // If your DB has defaults/triggers for timestamps, you can remove these:
-        updated_at: now,
-        created_at: now,
-      },
-      { onConflict: 'user_id' }
-    )
+  const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+  if (signInError) throw signInError
 
-  if (llmError) {
-    console.error('[ensure-preview-user] user_llm_keys upsert failed:', llmError)
-    process.exit(1)
-  } else {
-    console.log('[ensure-preview-user] Ensured user_llm_keys row')
+  async function setUserKey(provider, secret) {
+    if (!secret) {
+      console.log(`[ensure-preview-user] Skip ${provider} token (missing env)`)
+      return
+    }
+    const { error } = await supabase.rpc('rt_set_user_llm_key_v1', {
+      p_provider: provider,
+      p_secret: secret,
+    })
+    if (error) throw error
+    console.log(`[ensure-preview-user] Stored ${provider} token`)
   }
+
+  await setUserKey('openai', openaiApiKey)
+  await setUserKey('gemini', geminiApiKey)
+  await setUserKey('anthropic', anthropicApiKey)
 
   console.log('[ensure-preview-user] Done.')
 })().catch((err) => {
