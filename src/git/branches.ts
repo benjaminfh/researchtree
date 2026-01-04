@@ -18,7 +18,7 @@ import {
 } from './utils';
 import { getArtefactFromRef } from './artefact';
 import { readBranchConfigMap, setBranchConfig, writeBranchConfigMap } from './branchConfig';
-import { getPinnedBranchName, setPinnedBranchName } from './projects';
+import { getHiddenBranchNames, getPinnedBranchName, setHiddenBranchNames, setPinnedBranchName } from './projects';
 
 function buildLineDiff(base: string, incoming: string): string {
   const baseLines = base.length > 0 ? base.split(/\r?\n/) : [];
@@ -138,6 +138,13 @@ export async function renameBranch(projectId: string, fromBranch: string, toBran
   if (pinnedBranch === fromBranch) {
     await setPinnedBranchName(projectId, toBranch);
   }
+
+  const hiddenBranches = new Set(await getHiddenBranchNames(projectId));
+  if (hiddenBranches.has(fromBranch)) {
+    hiddenBranches.delete(fromBranch);
+    hiddenBranches.add(toBranch);
+    await setHiddenBranchNames(projectId, [...hiddenBranches]);
+  }
 }
 
 export async function listBranches(projectId: string): Promise<BranchSummary[]> {
@@ -147,6 +154,7 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   const configMap = await readBranchConfigMap(projectId);
   const fallbackProvider = resolveOpenAIProviderSelection();
   const pinnedBranch = await getPinnedBranchName(projectId);
+  const hiddenBranches = new Set(await getHiddenBranchNames(projectId));
 
   const summaries: (BranchSummary & { _lastModifiedAt: number; _createdAt: number })[] = [];
   for (const name of branches.all) {
@@ -166,6 +174,7 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
       nodeCount: nodes.length,
       isTrunk: name === INITIAL_BRANCH,
       isPinned: pinnedBranch === name,
+      isHidden: hiddenBranches.has(name),
       provider,
       model,
       _lastModifiedAt: lastModifiedAt,
@@ -174,6 +183,7 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   }
   return summaries
     .sort((a, b) => {
+      if (!!a.isHidden !== !!b.isHidden) return a.isHidden ? 1 : -1;
       if (a.isTrunk && !b.isTrunk) return -1;
       if (!a.isTrunk && b.isTrunk) return 1;
       if (a._lastModifiedAt !== b._lastModifiedAt) return b._lastModifiedAt - a._lastModifiedAt;
@@ -196,6 +206,25 @@ async function getBranchCreatedTimestamp(git: ReturnType<typeof simpleGit>, bran
   if (Number.isFinite(parsed)) return parsed;
   // Fallback: if reflog isn't available, treat "created" as last modified.
   return getRefCommitTimestamp(git, branch);
+}
+
+export async function setBranchHidden(projectId: string, branchName: string, isHidden: boolean): Promise<void> {
+  await assertProjectExists(projectId);
+  const git = simpleGit(getProjectPath(projectId));
+  const branches = await git.branchLocal();
+  if (!branches.all.includes(branchName)) {
+    throw new Error(`Branch ${branchName} does not exist`);
+  }
+  if (branchName === INITIAL_BRANCH) {
+    throw new Error('Cannot hide trunk branch');
+  }
+  const hiddenBranches = new Set(await getHiddenBranchNames(projectId));
+  if (isHidden) {
+    hiddenBranches.add(branchName);
+  } else {
+    hiddenBranches.delete(branchName);
+  }
+  await setHiddenBranchNames(projectId, [...hiddenBranches]);
 }
 
 interface MergeOptions {

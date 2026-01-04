@@ -163,6 +163,24 @@ export async function rtClearPinnedRefShadowV2(input: { projectId: string }): Pr
   }
 }
 
+export async function rtSetRefVisibilityShadowV1(input: {
+  projectId: string;
+  refId: string;
+  isHidden: boolean;
+  lockTimeoutMs?: number;
+}): Promise<void> {
+  const { rpc } = getPgStoreAdapter();
+  const { error } = await rpc('rt_set_ref_visibility_v1', {
+    p_project_id: input.projectId,
+    p_ref_id: input.refId,
+    p_is_hidden: input.isHidden,
+    p_lock_timeout_ms: input.lockTimeoutMs ?? 3000
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function rtGetPinnedRefShadowV2(input: {
   projectId: string;
 }): Promise<{ refId: string | null; refName: string | null }> {

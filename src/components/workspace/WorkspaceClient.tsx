@@ -511,6 +511,7 @@ export function WorkspaceClient({
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [pendingPinBranchIds, setPendingPinBranchIds] = useState<Set<string>>(new Set());
+  const [pendingHideBranchIds, setPendingHideBranchIds] = useState<Set<string>>(new Set());
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTarget, setRenameTarget] = useState<BranchSummary | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -560,10 +561,38 @@ export function WorkspaceClient({
   const insightPaneRef = useRef<HTMLDivElement | null>(null);
   const isResizingRef = useRef(false);
   const savedChatPaneWidthRef = useRef<number | null>(null);
+  const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
+  const displayBranchName = (name: string) => (name === trunkName ? TRUNK_LABEL : name);
+  const hiddenBranchNames = useMemo(
+    () => new Set(branches.filter((branch) => branch.isHidden).map((branch) => branch.name)),
+    [branches]
+  );
+  const visibleBranches = useMemo(() => branches.filter((branch) => !branch.isHidden), [branches]);
+  const hiddenBranches = useMemo(() => branches.filter((branch) => branch.isHidden), [branches]);
+  const sortedBranches = useMemo(() => {
+    const pinned = visibleBranches.filter((branch) => branch.isPinned);
+    const unpinned = visibleBranches.filter((branch) => !branch.isPinned);
+    return [...pinned, ...unpinned, ...hiddenBranches];
+  }, [hiddenBranches, visibleBranches]);
+  const branchColorMap = useMemo(
+    () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
+    [sortedBranches, trunkName]
+  );
+  const graphRequestKey = useMemo(
+    () => visibleBranches.map((branch) => branch.name).sort().join('|'),
+    [visibleBranches]
+  );
+  const lastGraphRequestKeyRef = useRef<string | null>(null);
   const [graphHistories, setGraphHistories] = useState<Record<string, NodeRecord[]> | null>(null);
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
+  const visibleGraphHistories = useMemo(() => {
+    if (!graphHistories) return null;
+    return Object.fromEntries(
+      Object.entries(graphHistories).filter(([branchName]) => !hiddenBranchNames.has(branchName))
+    );
+  }, [graphHistories, hiddenBranchNames]);
   const [composerPadding, setComposerPadding] = useState(128);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const collapseInsights = useCallback(() => {
@@ -1135,20 +1164,6 @@ export function WorkspaceClient({
     setArtefactDraft(artefact);
   }, [artefact]);
 
-  const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
-  const displayBranchName = (name: string) => (name === trunkName ? TRUNK_LABEL : name);
-  const sortedBranches = useMemo(() => {
-    const pinned = branches.filter((branch) => branch.isPinned);
-    const unpinned = branches.filter((branch) => !branch.isPinned);
-    return [...pinned, ...unpinned];
-  }, [branches]);
-  const branchColorMap = useMemo(
-    () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
-    [sortedBranches, trunkName]
-  );
-  const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
-  const lastGraphRequestKeyRef = useRef<string | null>(null);
-
   useEffect(() => {
     if (insightCollapsed || insightTab !== 'graph') return;
     if (graphHistories && lastGraphRequestKeyRef.current === graphRequestKey && !graphHistoryError) {
@@ -1509,14 +1524,23 @@ export function WorkspaceClient({
     return out;
   }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
+  const graphHistoriesForDisplay = useMemo(() => {
+    if (visibleGraphHistories) {
+      return visibleGraphHistories;
+    }
+    if (hiddenBranchNames.has(branchName)) {
+      return {};
+    }
+    return { [branchName]: visibleNodes };
+  }, [branchName, hiddenBranchNames, visibleGraphHistories, visibleNodes]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
       let record: NodeRecord | null = activeMatch;
       let targetBranch: string = branchName;
 
-      if (!record && graphHistories) {
-        for (const [b, hist] of Object.entries(graphHistories)) {
+      if (!record && graphHistoriesForDisplay) {
+        for (const [b, hist] of Object.entries(graphHistoriesForDisplay)) {
           const found = hist.find((node) => node.id === nodeId);
           if (found) {
             record = found;
@@ -1529,7 +1553,7 @@ export function WorkspaceClient({
       if (!record) return null;
       return { record, targetBranch };
     },
-    [visibleNodes, graphHistories, branchName]
+    [visibleNodes, graphHistoriesForDisplay, branchName]
   );
   const persistedNodesRef = useRef<NodeRecord[]>([]);
   persistedNodesRef.current = nodes.filter((node) => node.type !== 'state');
@@ -1994,6 +2018,43 @@ export function WorkspaceClient({
     }
   };
 
+  const toggleHiddenBranch = async (branch: BranchSummary) => {
+    const branchId = branch.id ?? branch.name;
+    if (pendingHideBranchIds.has(branchId)) return;
+    setBranchActionError(null);
+    setPendingHideBranchIds((prev) => new Set(prev).add(branchId));
+    const previousBranches = branches;
+    const optimistic = branches.map((item) =>
+      item.name === branch.name ? { ...item, isHidden: !item.isHidden } : item
+    );
+    setBranches(optimistic);
+    try {
+      const url = `/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/hide`;
+      const method = branch.isHidden ? 'DELETE' : 'POST';
+      const res = await fetch(url, { method });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? 'Visibility update failed');
+      }
+      const data = (await res.json()) as { branches?: BranchSummary[]; branchName?: string };
+      if (data.branchName) {
+        setBranchName(data.branchName);
+      }
+      if (data.branches) {
+        setBranches(data.branches);
+      }
+    } catch (err) {
+      setBranchActionError((err as Error).message);
+      setBranches(previousBranches);
+    } finally {
+      setPendingHideBranchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(branchId);
+        return next;
+      });
+    }
+  };
+
   const closeMergeModal = () => {
     if (isMerging) return;
     setShowMergeModal(false);
@@ -2026,6 +2087,7 @@ export function WorkspaceClient({
                     {sortedBranches.map((branch) => {
                       const branchId = branch.id ?? branch.name;
                       const pinPending = pendingPinBranchIds.has(branchId);
+                      const hidePending = pendingHideBranchIds.has(branchId);
                       const switchDisabled = isSwitching || isCreating || isRenaming;
                       return (
                       <div
@@ -2050,10 +2112,11 @@ export function WorkspaceClient({
                             : switchDisabled
                               ? 'text-slate-400'
                               : 'text-slate-700 hover:bg-white/80'
-                        }`}
+                        } ${branch.isHidden ? 'opacity-70' : ''}`}
                         data-testid="branch-switch"
                         data-branch-name={branch.name}
                         data-branch-trunk={branch.isTrunk ? 'true' : undefined}
+                        data-branch-hidden={branch.isHidden ? 'true' : undefined}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex min-w-0 items-center gap-2">
@@ -2090,6 +2153,30 @@ export function WorkspaceClient({
                                 <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                               ) : (
                                 <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void toggleHiddenBranch(branch);
+                              }}
+                              disabled={branch.isTrunk || isSwitching || isCreating || hidePending}
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                branch.isTrunk || isSwitching || isCreating || hidePending
+                                  ? 'cursor-not-allowed text-slate-300'
+                                  : branch.isHidden
+                                  ? 'text-primary hover:bg-primary/10 hover:text-primary'
+                                  : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
+                              }`}
+                              aria-label={branch.isHidden ? 'Show branch' : 'Hide branch'}
+                              data-testid="branch-visibility-toggle"
+                              data-branch-name={branch.name}
+                            >
+                              {hidePending ? (
+                                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                              ) : (
+                                <BlueprintIcon icon={branch.isHidden ? 'eye-off' : 'eye-open'} className="h-3.5 w-3.5" />
                               )}
                             </button>
                             <button
@@ -2606,11 +2693,7 @@ export function WorkspaceClient({
                         ) : (
                           <div className="flex h-full min-h-0 flex-col">
                             <WorkspaceGraph
-                              branchHistories={
-                                graphHistories ?? {
-                                  [branchName]: visibleNodes
-                                }
-                              }
+                              branchHistories={graphHistoriesForDisplay}
                               activeBranchName={branchName}
                               trunkName={trunkName}
                               branchColors={branchColorMap}
@@ -2659,7 +2742,7 @@ export function WorkspaceClient({
                                   const canvasDiff = mergeRecord?.canvasDiff?.trim() ?? '';
                                   const hasCanvasDiff = !!mergeRecord && canvasDiff.length > 0;
                                   const nodesOnTargetBranch =
-                                    targetBranch === branchName ? visibleNodes : graphHistories?.[targetBranch] ?? [];
+                                    targetBranch === branchName ? visibleNodes : graphHistoriesForDisplay?.[targetBranch] ?? [];
                                   const isCanvasDiffPinned =
                                     !!mergeRecord &&
                                     nodesOnTargetBranch.some(
@@ -2784,7 +2867,7 @@ export function WorkspaceClient({
                                                       } else {
                                                         const result = await pinCanvasDiffToContext(mergeRecord.id, targetBranch);
                                                         const pinnedNode = result?.pinnedNode;
-                                                        if (pinnedNode && graphHistories?.[targetBranch]) {
+                                                        if (pinnedNode && graphHistoriesForDisplay?.[targetBranch]) {
                                                           setGraphHistories((prev) => {
                                                             if (!prev) return prev;
                                                             const existing = prev[targetBranch] ?? [];

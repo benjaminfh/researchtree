@@ -138,6 +138,33 @@ export async function setPinnedBranchName(projectId: string, branchName: string 
   await writeJsonFile(metadataPath, metadata);
 }
 
+export async function getHiddenBranchNames(projectId: string): Promise<string[]> {
+  await assertProjectExists(projectId);
+  const metadataPath = getProjectFilePath(projectId, 'metadata');
+  if (!(await pathExists(metadataPath))) {
+    return [];
+  }
+  const metadata = await readJsonFile<ProjectMetadata>(metadataPath);
+  const names = metadata.hiddenBranchNames ?? [];
+  return Array.from(new Set(names.map((name) => name.trim()).filter((name) => name.length > 0)));
+}
+
+export async function setHiddenBranchNames(projectId: string, branchNames: string[]): Promise<void> {
+  await assertProjectExists(projectId);
+  const metadataPath = getProjectFilePath(projectId, 'metadata');
+  if (!(await pathExists(metadataPath))) {
+    throw new Error('Project metadata not found');
+  }
+  const metadata = await readJsonFile<ProjectMetadata>(metadataPath);
+  const normalized = Array.from(new Set(branchNames.map((name) => name.trim()).filter((name) => name.length > 0)));
+  if (normalized.length > 0) {
+    metadata.hiddenBranchNames = normalized;
+  } else if ('hiddenBranchNames' in metadata) {
+    delete (metadata as ProjectMetadata & { hiddenBranchNames?: string[] }).hiddenBranchNames;
+  }
+  await writeJsonFile(metadataPath, metadata);
+}
+
 export async function deleteProject(projectId: string): Promise<void> {
   await assertProjectExists(projectId);
   await fs.rm(getProjectPath(projectId), { recursive: true, force: true });

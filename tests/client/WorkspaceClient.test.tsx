@@ -60,8 +60,8 @@ const baseProject: ProjectMetadata = {
 };
 
 const baseBranches: BranchSummary[] = [
-  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true },
-  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false }
+  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
 ];
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
@@ -998,6 +998,118 @@ describe('WorkspaceClient', () => {
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith('How is progress going?');
+    });
+  });
+
+  it('moves hidden branches to the bottom of the rail', async () => {
+    const user = userEvent.setup();
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isPinned: false, isHidden: false },
+      { name: 'beta', headCommit: 'ghi', nodeCount: 1, isTrunk: false, isPinned: true, isHidden: false },
+      { name: 'alpha', headCommit: 'jkl', nodeCount: 1, isTrunk: false, isPinned: false, isHidden: false }
+    ];
+
+    fetchMock.mockImplementation(async (url, init) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (urlStr.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branchHistories: {},
+            branches,
+            trunkName: 'main',
+            currentBranch: 'main',
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (urlStr.includes('/branches') && urlStr.includes('/hide') && init?.method === 'POST') {
+        const updated = branches.map((branch) => (branch.name === 'beta' ? { ...branch, isHidden: true } : branch));
+        return new Response(JSON.stringify({ branches: updated, branchName: 'main' }), { status: 200 });
+      }
+      if (urlStr.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    const branchButtons = screen.getAllByTestId('branch-switch');
+    expect(branchButtons.map((el) => el.getAttribute('data-branch-name'))).toEqual(['beta', 'main', 'alpha']);
+
+    const hideButton = screen
+      .getAllByTestId('branch-visibility-toggle')
+      .find((btn) => btn.getAttribute('data-branch-name') === 'beta');
+    expect(hideButton).toBeTruthy();
+    await user.click(hideButton!);
+
+    await waitFor(() => {
+      const updatedButtons = screen.getAllByTestId('branch-switch');
+      expect(updatedButtons.map((el) => el.getAttribute('data-branch-name'))).toEqual(['main', 'alpha', 'beta']);
+      expect(updatedButtons[2]?.getAttribute('data-branch-hidden')).toBe('true');
+    });
+
+    const hideCall = fetchMock.mock.calls.find(([req]) => req.toString().includes('/hide'));
+    expect(hideCall?.[1]?.method).toBe('POST');
+  });
+
+  it('omits hidden branches from the graph branch histories', async () => {
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isPinned: false, isHidden: false },
+      { name: 'shadow', headCommit: 'zzz', nodeCount: 1, isTrunk: false, isPinned: false, isHidden: true }
+    ];
+    const graphNodes: NodeRecord[] = [
+      { id: 'graph-node', type: 'message', role: 'assistant', content: 'Graph node', timestamp: 1700000000000, parent: null }
+    ];
+
+    fetchMock.mockImplementation(async (url, init) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branchHistories: { main: graphNodes, shadow: sampleNodes },
+            branches,
+            trunkName: 'main',
+            currentBranch: 'main',
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (urlStr.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (urlStr.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps?.branchHistories?.main?.[0]?.id).toBe('graph-node');
+      expect(Object.keys(capturedWorkspaceGraphProps?.branchHistories ?? {})).toEqual(['main']);
     });
   });
 });
