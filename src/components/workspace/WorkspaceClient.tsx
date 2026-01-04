@@ -74,6 +74,8 @@ const getNodeThinkingText = (node: NodeRecord): string => {
   return deriveThinkingFromBlocks(blocks);
 };
 
+const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
+
 const buildQuestionMessage = (question: string, highlight?: string) => {
   const trimmedQuestion = question.trim();
   const trimmedHighlight = highlight?.trim() ?? '';
@@ -1844,9 +1846,24 @@ export function WorkspaceClient({
   }, []);
 
   const combinedNodes = useMemo(() => {
-    const out: NodeRecord[] = [...nodes];
     const optimisticBranch = optimisticUserNode?.createdOnBranch ?? null;
     const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
+    let baseNodes = nodes;
+    if (allowOptimistic && optimisticUserNode?.content && optimisticBranch) {
+      const optimisticContent = normalizeMessageText(optimisticUserNode.content);
+      const reversedIndex = [...nodes].reverse().findIndex((node) => {
+        if (node.type !== 'message') return false;
+        if (node.role !== 'user') return false;
+        if (normalizeMessageText(node.content) !== optimisticContent) return false;
+        const createdOn = node.createdOnBranch ?? branchName;
+        return createdOn === optimisticBranch;
+      });
+      if (reversedIndex >= 0) {
+        const index = nodes.length - 1 - reversedIndex;
+        baseNodes = nodes.filter((_, idx) => idx !== index);
+      }
+    }
+    const out: NodeRecord[] = [...baseNodes];
     if (allowOptimistic) {
       if (optimisticUserNode) {
         out.push(optimisticUserNode);
