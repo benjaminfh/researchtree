@@ -2016,25 +2016,48 @@ export function WorkspaceClient({
     [resolveGraphNode, branchName, switchBranch]
   );
 
-  const createBranch = async ({ switchToNew = true }: { switchToNew?: boolean } = {}) => {
-    if (!newBranchName.trim()) {
+  const createBranch = async ({
+    switchToNew = true,
+    skipUiLock = false,
+    name,
+    provider,
+    thinking,
+    splitNodeId,
+    fromRef
+  }: {
+    switchToNew?: boolean;
+    skipUiLock?: boolean;
+    name?: string;
+    provider?: LLMProvider;
+    thinking?: ThinkingSetting;
+    splitNodeId?: string | null;
+    fromRef?: string;
+  } = {}) => {
+    const trimmedName = (name ?? newBranchName).trim();
+    if (!trimmedName) {
       setBranchActionError('Branch name is required.');
       return { ok: false as const };
     }
-    setIsCreating(true);
+    if (!skipUiLock) {
+      setIsCreating(true);
+    }
     setBranchActionError(null);
+    const effectiveProvider = provider ?? newBranchProvider;
+    const effectiveThinking = thinking ?? newBranchThinking;
+    const effectiveSplitNodeId = typeof splitNodeId === 'undefined' ? branchSplitNodeId : splitNodeId;
+    const effectiveFromRef = fromRef ?? branchName;
     try {
       const branchModel =
-        providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
-        getDefaultModelForProviderFromCapabilities(newBranchProvider);
+        providerOptions.find((option) => option.id === effectiveProvider)?.defaultModel ??
+        getDefaultModelForProviderFromCapabilities(effectiveProvider);
       const res = await fetch(`/api/projects/${project.id}/branches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newBranchName.trim(),
-          fromRef: branchName,
-          ...(branchSplitNodeId ? { fromNodeId: branchSplitNodeId } : {}),
-          provider: newBranchProvider,
+          name: trimmedName,
+          fromRef: effectiveFromRef,
+          ...(effectiveSplitNodeId ? { fromNodeId: effectiveSplitNodeId } : {}),
+          provider: effectiveProvider,
           model: branchModel,
           switch: switchToNew
         })
@@ -2044,7 +2067,7 @@ export function WorkspaceClient({
         throw new Error(data?.error?.message ?? 'Failed to create branch');
       }
       const data = (await res.json()) as { branchName: string; branchId?: string | null; branches: BranchSummary[] };
-      const createdBranchName = data.branchName ?? newBranchName.trim();
+      const createdBranchName = data.branchName ?? trimmedName;
       if (switchToNew && createdBranchName) {
         setBranchName(createdBranchName);
       }
@@ -2053,7 +2076,7 @@ export function WorkspaceClient({
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(
           `researchtree:thinking:${project.id}:${createdBranchName}`,
-          newBranchThinking
+          effectiveThinking
         );
       }
       refreshCoreData();
@@ -2063,28 +2086,42 @@ export function WorkspaceClient({
       setBranchActionError((err as Error).message);
       return { ok: false as const };
     } finally {
-      setIsCreating(false);
+      if (!skipUiLock) {
+        setIsCreating(false);
+      }
     }
   };
 
-  const sendBranchQuestionToBranch = async (targetBranch: string) => {
-    const question = newBranchQuestion.trim();
-    if (!question) {
+  const sendBranchQuestionToBranch = async (options: {
+    targetBranch: string;
+    question: string;
+    highlight?: string;
+    provider: LLMProvider;
+    thinking: ThinkingSetting;
+    skipUiLock?: boolean;
+  }) => {
+    const { targetBranch, question, highlight, provider, thinking, skipUiLock = false } = options;
+    const trimmedQuestion = question.trim();
+
+    if (!trimmedQuestion) {
       setBranchActionError('Question is required.');
       return false;
     }
-    setIsSendingBranchQuestion(true);
+
+    if (!skipUiLock) {
+      setIsSendingBranchQuestion(true);
+    }
     setBranchActionError(null);
     try {
       const res = await fetch(`/api/projects/${project.id}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question,
-          highlight: newBranchHighlight.trim() || undefined,
-          llmProvider: newBranchProvider,
+          question: trimmedQuestion,
+          highlight: highlight?.trim() || undefined,
+          llmProvider: provider,
           ref: targetBranch,
-          thinking: newBranchThinking
+          thinking
         })
       });
       if (!res.ok || !res.body) {
@@ -2103,7 +2140,9 @@ export function WorkspaceClient({
       setBranchActionError((err as Error).message);
       return false;
     } finally {
-      setIsSendingBranchQuestion(false);
+      if (!skipUiLock) {
+        setIsSendingBranchQuestion(false);
+      }
     }
   };
 
@@ -2622,20 +2661,56 @@ export function WorkspaceClient({
                                   value={newBranchName}
                                   onValueChange={setNewBranchName}
                                   onSubmit={async () => {
+                                    const currentBranchName = branchName;
+                                    const highlight = newBranchHighlight;
+                                    const trimmedQuestion = newBranchQuestion.trim();
+                                    const trimmedBranchName = newBranchName.trim();
+                                    const provider = newBranchProvider;
+                                    const thinking = newBranchThinking;
+                                    const splitNodeId = branchSplitNodeId;
                                     const isQuestionMode =
                                       branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim());
-                                    if (isQuestionMode && !newBranchQuestion.trim()) {
+                                    if (isQuestionMode && !trimmedQuestion) {
                                       setBranchActionError('Question is required.');
                                       return;
                                     }
-                                    const result = isQuestionMode
-                                      ? await createBranch({ switchToNew: switchToNewBranch })
-                                      : await createBranch();
-                                    if (!result.ok) return;
-                                    if (isQuestionMode) {
-                                      const sent = await sendBranchQuestionToBranch(result.branchName);
-                                      if (!sent) return;
+                                    const backgroundMode = isQuestionMode && !switchToNewBranch;
+                                    const shouldSwitch = isQuestionMode ? switchToNewBranch : true;
+                                    const runSubmission = async () => {
+                                      const result = await createBranch({
+                                        switchToNew: shouldSwitch,
+                                        skipUiLock: backgroundMode,
+                                        name: trimmedBranchName,
+                                        provider,
+                                        thinking,
+                                        splitNodeId,
+                                        fromRef: currentBranchName
+                                      });
+                                      if (!result.ok) return false;
+                                      if (isQuestionMode) {
+                                        const sent = await sendBranchQuestionToBranch({
+                                          targetBranch: result.branchName,
+                                          question: trimmedQuestion,
+                                          highlight,
+                                          provider,
+                                          thinking,
+                                          skipUiLock: backgroundMode
+                                        });
+                                        if (!sent) return false;
+                                      }
+                                      return true;
+                                    };
+
+                                    if (backgroundMode) {
+                                      setBranchActionError(null);
+                                      setShowNewBranchPopover(false);
+                                      resetBranchQuestionState();
+                                      void runSubmission();
+                                      return;
                                     }
+
+                                    const ok = await runSubmission();
+                                    if (!ok) return;
                                     setBranchActionError(null);
                                     setShowNewBranchPopover(false);
                                     resetBranchQuestionState();
@@ -2691,58 +2766,59 @@ export function WorkspaceClient({
                                   }
                                   autoFocus
                                   variant="plain"
-                                />
-                                {branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
-                                  <div className="mt-3 space-y-3">
-                                    <div className="space-y-2">
-                                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-highlight">
-                                        Highlight
+                                >
+                                  {branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
+                                    <div className="mt-3 space-y-3">
+                                      <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-800" htmlFor="branch-highlight">
+                                          Highlight
+                                        </label>
+                                        <textarea
+                                          id="branch-highlight"
+                                          value={newBranchHighlight}
+                                          onChange={(event) => setNewBranchHighlight(event.target.value)}
+                                          rows={3}
+                                          className="w-full rounded-lg border border-divider/80 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                          readOnly={Boolean(newBranchHighlight)}
+                                          placeholder="No highlight captured"
+                                        />
+                                        <p className="text-xs text-muted">
+                                          Captured from your selection when branching from a message.
+                                        </p>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-800" htmlFor="branch-question">
+                                          Question<span className="text-rose-600">*</span>
+                                        </label>
+                                        <textarea
+                                          id="branch-question"
+                                          value={newBranchQuestion}
+                                          onChange={(event) => {
+                                            setNewBranchQuestion(event.target.value);
+                                            if (branchActionError) {
+                                              setBranchActionError(null);
+                                            }
+                                          }}
+                                          rows={3}
+                                          required
+                                          className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                          placeholder="What do you want to ask on this branch?"
+                                          disabled={isSwitching || isCreating || isSendingBranchQuestion}
+                                        />
+                                      </div>
+                                      <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                                        <input
+                                          type="checkbox"
+                                          className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
+                                          checked={switchToNewBranch}
+                                          onChange={(event) => setSwitchToNewBranch(event.target.checked)}
+                                          disabled={isCreating || isSendingBranchQuestion || isSwitching}
+                                        />
+                                        Switch to the new branch after creating
                                       </label>
-                                      <textarea
-                                        id="branch-highlight"
-                                        value={newBranchHighlight}
-                                        onChange={(event) => setNewBranchHighlight(event.target.value)}
-                                        rows={3}
-                                        className="w-full rounded-lg border border-divider/80 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                        readOnly={Boolean(newBranchHighlight)}
-                                        placeholder="No highlight captured"
-                                      />
-                                      <p className="text-xs text-muted">
-                                        Captured from your selection when branching from a message.
-                                      </p>
                                     </div>
-                                    <div className="space-y-2">
-                                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-question">
-                                        Question<span className="text-rose-600">*</span>
-                                      </label>
-                                      <textarea
-                                        id="branch-question"
-                                        value={newBranchQuestion}
-                                        onChange={(event) => {
-                                          setNewBranchQuestion(event.target.value);
-                                          if (branchActionError) {
-                                            setBranchActionError(null);
-                                          }
-                                        }}
-                                        rows={3}
-                                        required
-                                        className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                                        placeholder="What do you want to ask on this branch?"
-                                        disabled={isSwitching || isCreating || isSendingBranchQuestion}
-                                      />
-                                    </div>
-                                    <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
-                                      <input
-                                        type="checkbox"
-                                        className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
-                                        checked={switchToNewBranch}
-                                        onChange={(event) => setSwitchToNewBranch(event.target.checked)}
-                                        disabled={isCreating || isSendingBranchQuestion || isSwitching}
-                                      />
-                                      Switch to the new branch after creating
-                                    </label>
-                                  </div>
-                                ) : null}
+                                  ) : null}
+                                </NewBranchFormCard>
                               </div>
                             </div>
                           ) : (
