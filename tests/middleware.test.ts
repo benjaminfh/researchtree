@@ -1,6 +1,6 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { middleware } from '../middleware';
 
@@ -30,6 +30,10 @@ describe('middleware redirect behavior', () => {
       RT_STORE: 'pg'
     };
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
+  });
+
+  afterEach(() => {
+    process.env = { ...envBackup };
   });
 
   it('redirects unauthenticated users to login with sign-in indicators', async () => {
