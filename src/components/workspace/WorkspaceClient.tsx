@@ -74,6 +74,15 @@ const getNodeThinkingText = (node: NodeRecord): string => {
   return deriveThinkingFromBlocks(blocks);
 };
 
+const buildQuestionMessage = (question: string, highlight?: string) => {
+  const trimmedQuestion = question.trim();
+  const trimmedHighlight = highlight?.trim() ?? '';
+  if (!trimmedHighlight) {
+    return trimmedQuestion;
+  }
+  return ['Highlighted passage:', `"""${trimmedHighlight}"""`, '', 'Question:', trimmedQuestion].join('\n');
+};
+
 const createClientId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
@@ -1049,8 +1058,9 @@ export function WorkspaceClient({
     onFailure?: () => void;
   }) => {
     if (!question.trim() || state.isStreaming) return;
+    const optimisticContent = buildQuestionMessage(question, highlight);
     shouldScrollToBottomRef.current = true;
-    questionDraftRef.current = question;
+    questionDraftRef.current = optimisticContent;
     setStreamBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
@@ -1062,8 +1072,8 @@ export function WorkspaceClient({
       id: 'optimistic-user',
       type: 'message',
       role: 'user',
-      content: question,
-      contentBlocks: [{ type: 'text', text: question }],
+      content: optimisticContent,
+      contentBlocks: [{ type: 'text', text: optimisticContent }],
       timestamp: Date.now(),
       parent: null,
       createdOnBranch: targetBranch
@@ -1835,17 +1845,21 @@ export function WorkspaceClient({
 
   const combinedNodes = useMemo(() => {
     const out: NodeRecord[] = [...nodes];
-    if (optimisticUserNode) {
-      out.push(optimisticUserNode);
-    }
-    if (assistantPendingNode) {
-      out.push(assistantPendingNode);
-    }
-    if (streamingNode) {
-      out.push(streamingNode);
+    const optimisticBranch = optimisticUserNode?.createdOnBranch ?? null;
+    const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
+    if (allowOptimistic) {
+      if (optimisticUserNode) {
+        out.push(optimisticUserNode);
+      }
+      if (assistantPendingNode) {
+        out.push(assistantPendingNode);
+      }
+      if (streamingNode) {
+        out.push(streamingNode);
+      }
     }
     return out;
-  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
+  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
   const latestVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
