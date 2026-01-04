@@ -9,12 +9,15 @@ const mocks = vi.hoisted(() => ({
   createBranch: vi.fn(),
   switchBranch: vi.fn(),
   getCurrentBranchName: vi.fn(),
+  readNodesFromRef: vi.fn(),
+  getCommitHashForNode: vi.fn(),
   rtGetCurrentRefShadowV2: vi.fn(),
   rtSetCurrentRefShadowV2: vi.fn(),
   rtListRefsShadowV2: vi.fn(),
   rtCreateRefFromRefShadowV2: vi.fn(),
   rtCreateRefFromNodeShadowV2: vi.fn(),
-  getPreviousResponseId: vi.fn()
+  getPreviousResponseId: vi.fn(),
+  rtGetNodeContentShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -28,7 +31,9 @@ vi.mock('@git/branches', () => ({
 }));
 
 vi.mock('@git/utils', () => ({
-  getCurrentBranchName: mocks.getCurrentBranchName
+  getCurrentBranchName: mocks.getCurrentBranchName,
+  readNodesFromRef: mocks.readNodesFromRef,
+  getCommitHashForNode: mocks.getCommitHashForNode
 }));
 
 vi.mock('@/src/store/pg/prefs', () => ({
@@ -43,6 +48,10 @@ vi.mock('@/src/store/pg/reads', () => ({
 vi.mock('@/src/store/pg/branches', () => ({
   rtCreateRefFromRefShadowV2: mocks.rtCreateRefFromRefShadowV2,
   rtCreateRefFromNodeShadowV2: mocks.rtCreateRefFromNodeShadowV2
+}));
+
+vi.mock('@/src/store/pg/nodes', () => ({
+  rtGetNodeContentShadowV1: mocks.rtGetNodeContentShadowV1
 }));
 
 vi.mock('@/src/server/llmState', () => ({
@@ -127,6 +136,35 @@ describe('/api/projects/[id]/branches', () => {
     expect(mocks.createBranch).not.toHaveBeenCalled();
   });
 
+  it('creates branch from assistant node in Postgres using the node response id', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-main', name: 'main', provider: 'openai_responses' }]);
+    mocks.rtGetNodeContentShadowV1.mockResolvedValue({
+      id: 'node-1',
+      type: 'message',
+      role: 'assistant',
+      responseId: 'resp-node'
+    });
+    mocks.rtCreateRefFromNodeShadowV2.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
+
+    const res = await POST(createRequest({ name: 'split', fromNodeId: 'node-1' }, 'POST'), {
+      params: { id: 'project-1' }
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.rtCreateRefFromNodeShadowV2).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      newRefName: 'split',
+      sourceRefId: 'ref-main',
+      nodeId: 'node-1',
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: 'resp-node'
+    });
+  });
+
   it('returns 400 when creating a Postgres branch from a missing base ref', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
@@ -134,6 +172,27 @@ describe('/api/projects/[id]/branches', () => {
 
     const res = await POST(createRequest({ name: 'new-branch', fromRef: 'nope' }, 'POST'), { params: { id: 'project-1' } });
     expect(res.status).toBe(400);
+  });
+
+  it('creates git branch from assistant node using the node response id', async () => {
+    mocks.listBranches.mockResolvedValue([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses' }
+    ]);
+    mocks.readNodesFromRef.mockResolvedValue([
+      { id: 'node-1', type: 'message', role: 'assistant', responseId: 'resp-node' }
+    ]);
+    mocks.getCommitHashForNode.mockResolvedValue('commit-hash-1');
+
+    const res = await POST(createRequest({ name: 'split', fromNodeId: 'node-1' }, 'POST'), {
+      params: { id: 'project-1' }
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'split', 'commit-hash-1', {
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: 'resp-node'
+    });
   });
 
   it('switches branch', async () => {
