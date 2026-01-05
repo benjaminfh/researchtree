@@ -24,6 +24,12 @@ interface RouteContext {
   params: { id: string };
 }
 
+const debugResponses = process.env.RT_DEBUG_RESPONSES === 'true';
+const logResponses = (label: string, payload: Record<string, unknown>) => {
+  if (!debugResponses) return;
+  console.info('[responses-debug]', label, payload);
+};
+
 async function getPreferredBranch(projectId: string): Promise<{ id: string | null; name: string }> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
@@ -67,6 +73,12 @@ export async function POST(request: Request, { params }: RouteContext) {
     const modelName = requestedConfig.model;
     const shouldCopyPreviousResponseId =
       baseConfig.provider === 'openai_responses' && provider === 'openai_responses';
+    logResponses('edit.branch.base', {
+      sourceRef,
+      provider,
+      model: modelName,
+      shouldCopyPreviousResponseId
+    });
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
     if (!thinkingValidation.ok) {
@@ -106,6 +118,10 @@ export async function POST(request: Request, { params }: RouteContext) {
               }
             }
           }
+          logResponses('edit.branch.pg', {
+            nodeId,
+            previousResponseId
+          });
 
           const apiKey = targetNode.role === 'user' ? await requireUserApiKeyForProvider(provider) : null;
           const sourceRefInfo = explicitFromRef
@@ -301,6 +317,10 @@ export async function POST(request: Request, { params }: RouteContext) {
             }
           }
         }
+        logResponses('edit.branch.git', {
+          nodeId,
+          previousResponseId
+        });
 
         const apiKey = targetNode.role === 'user' ? await requireUserApiKeyForProvider(provider) : null;
 
