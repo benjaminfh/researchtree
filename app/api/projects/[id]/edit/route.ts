@@ -24,12 +24,6 @@ interface RouteContext {
   params: { id: string };
 }
 
-const debugResponses = process.env.RT_DEBUG_RESPONSES === 'true';
-const logResponses = (label: string, payload: Record<string, unknown>) => {
-  if (!debugResponses) return;
-  console.info('[responses-debug]', label, payload);
-};
-
 async function getPreferredBranch(projectId: string): Promise<{ id: string | null; name: string }> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
@@ -71,14 +65,6 @@ export async function POST(request: Request, { params }: RouteContext) {
     });
     const provider = requestedConfig.provider;
     const modelName = requestedConfig.model;
-    const shouldCopyPreviousResponseId =
-      baseConfig.provider === 'openai_responses' && provider === 'openai_responses';
-    logResponses('edit.branch.base', {
-      sourceRef,
-      provider,
-      model: modelName,
-      shouldCopyPreviousResponseId
-    });
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
     if (!thinkingValidation.ok) {
@@ -107,21 +93,6 @@ export async function POST(request: Request, { params }: RouteContext) {
           if (targetNode.type !== 'message') {
             throw badRequest('Only message nodes can be edited');
           }
-          let previousResponseId: string | null = null;
-          if (shouldCopyPreviousResponseId && targetNode.role === 'user') {
-            const parentId = typeof targetNode.parent === 'string' ? targetNode.parent : null;
-            if (parentId) {
-              const parentNode = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: parentId })) as any | null;
-              const candidate = parentNode?.role === 'assistant' ? parentNode?.responseId : null;
-              if (typeof candidate === 'string' && candidate.trim().length > 0) {
-                previousResponseId = candidate.trim();
-              }
-            }
-          }
-          logResponses('edit.branch.pg', {
-            nodeId,
-            previousResponseId
-          });
 
           const apiKey = targetNode.role === 'user' ? await requireUserApiKeyForProvider(provider) : null;
           const sourceRefInfo = explicitFromRef
@@ -138,7 +109,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             nodeId,
             provider,
             model: modelName,
-            previousResponseId
+            previousResponseId: null
           });
 
           const branches = await rtListRefsShadowV2({ projectId: params.id });
@@ -190,14 +161,14 @@ export async function POST(request: Request, { params }: RouteContext) {
               const streamBlocks: ThinkingContentBlock[] = [];
               let rawResponse: unknown = null;
               let responseId: string | null = null;
-            const previousResponseId =
-              provider === 'openai_responses'
-                ? await getPreviousResponseId(params.id, { id: targetRef.id, name: targetBranch }).catch(() => null)
-                : null;
-            for await (const chunk of streamAssistantCompletion({
-              messages: messagesForCompletion,
-              provider,
-              model: modelName,
+              const previousResponseId =
+                provider === 'openai_responses'
+                  ? await getPreviousResponseId(params.id, { id: targetRef.id, name: targetBranch }).catch(() => null)
+                  : null;
+              for await (const chunk of streamAssistantCompletion({
+                messages: messagesForCompletion,
+                provider,
+                model: modelName,
                 thinking: effectiveThinking,
                 apiKey,
                 previousResponseId
@@ -304,33 +275,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         if (targetNode.type !== 'message') {
           throw badRequest('Only message nodes can be edited');
         }
-        let previousResponseId: string | null = null;
-        if (shouldCopyPreviousResponseId && targetNode.role === 'user') {
-          const parentId = typeof (targetNode as any).parent === 'string' ? String((targetNode as any).parent) : null;
-          if (parentId) {
-            const parentNode = sourceNodes.find((node) => node.id === parentId);
-            const parentIsAssistant =
-              parentNode?.type === 'message' && (parentNode as { role?: string })?.role === 'assistant';
-            const candidate = parentIsAssistant ? (parentNode as any)?.responseId : null;
-            if (typeof candidate === 'string' && candidate.trim().length > 0) {
-              previousResponseId = candidate.trim();
-            }
-          }
-        }
-        logResponses('edit.branch.git', {
-          nodeId,
-          previousResponseId
-        });
 
         const apiKey = targetNode.role === 'user' ? await requireUserApiKeyForProvider(provider) : null;
 
         try {
           const commitHash = await getCommitHashForNode(project.id, sourceRef, nodeId, { parent: true });
-          await createBranch(project.id, targetBranch, commitHash, {
-            provider,
-            model: modelName,
-            previousResponseId
-          });
+          await createBranch(project.id, targetBranch, commitHash, { provider, model: modelName, previousResponseId: null });
         } catch (err) {
           const message = (err as Error)?.message ?? 'Failed to create edit branch';
           throw badRequest(message);

@@ -335,9 +335,9 @@ async function* streamFromOpenAI(
   yield { type: 'raw_response', content: '', payload: rawParts } satisfies LLMStreamChunk;
 }
 
-export function buildOpenAIResponsesInput(messages: ChatMessage[], options?: { previousResponseId?: string | null }): {
+function toOpenAIResponsesInput(messages: ChatMessage[]): {
   instructions?: string;
-  input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }>;
+  input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }>;
 } {
   const instructions = messages
     .filter((message) => message.role === 'system')
@@ -345,32 +345,49 @@ export function buildOpenAIResponsesInput(messages: ChatMessage[], options?: { p
     .join('\n\n')
     .trim();
 
-  const shouldReplayHistory = !options?.previousResponseId;
-  const input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }> = [];
+  let lastUserText = '';
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== 'user') continue;
+    const text = flattenMessageContent(message.content).trim();
+    if (text) {
+      lastUserText = text;
+      break;
+    }
+  }
 
-  if (shouldReplayHistory) {
-    for (const message of messages) {
-      if (message.role !== 'user' && message.role !== 'assistant') continue;
-      const text = flattenMessageContent(message.content).trim();
-      if (!text) continue;
-      input.push({
-        role: message.role,
-        content: [{ type: 'input_text', text }]
-      });
-    }
-  } else {
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i];
-      if (message?.role !== 'user') continue;
-      const text = flattenMessageContent(message.content).trim();
-      if (text) {
-        input.push({
-          role: 'user',
-          content: [{ type: 'input_text', text }]
-        });
-        break;
-      }
-    }
+  const input = lastUserText
+    ? [
+        {
+          role: 'user' as const,
+          content: [{ type: 'input_text' as const, text: lastUserText }]
+        }
+      ]
+    : [];
+
+  return {
+    ...(instructions ? { instructions } : {}),
+    input
+  };
+}
+
+function toOpenAIResponsesInputFromMessages(messages: ChatMessage[]): {
+  instructions?: string;
+  input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }>;
+} {
+  const instructions = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => flattenMessageContent(message.content))
+    .join('\n\n')
+    .trim();
+
+  const input: Array<{ role: 'user'; content: Array<{ type: 'input_text'; text: string }> }> = [];
+  for (const message of messages) {
+    if (message.role !== 'user') continue;
+    input.push({
+      role: 'user',
+      content: [{ type: 'input_text', text: flattenMessageContent(message.content) }]
+    });
   }
 
   return {
@@ -404,7 +421,7 @@ async function* streamFromOpenAIResponses(
 
   const openAIClient = new OpenAI({ apiKey });
   const model = modelOverride ?? getDefaultModelForProvider('openai_responses');
-  const { instructions, input } = buildOpenAIResponsesInput(messages, { previousResponseId });
+  const { instructions, input } = toOpenAIResponsesInput(messages);
   const thinkingParams = buildOpenAIResponsesThinkingParams(thinking);
 
   let stream: any;
@@ -1150,9 +1167,7 @@ async function completeWithOpenAIResponsesTools(options: LLMToolLoopOptions): Pr
   const tools = getCanvasToolsForOpenAIResponses();
   const responseTools = options.webSearch ? [...tools, { type: 'web_search' }] : tools;
   const thinkingParams = buildOpenAIResponsesThinkingParams(options.thinking);
-  const { instructions, input } = buildOpenAIResponsesInput(options.messages, {
-    previousResponseId: options.previousResponseId
-  });
+  const { instructions, input } = toOpenAIResponsesInputFromMessages(options.messages);
 
   const rawResponses: unknown[] = [];
   let response: any = await openAIClient.responses.create({
