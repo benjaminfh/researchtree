@@ -25,7 +25,8 @@ const mocks = vi.hoisted(() => ({
   getBranchConfigMap: vi.fn(),
   resolveBranchConfig: vi.fn(),
   resolveRefByName: vi.fn(),
-  resolveCurrentRef: vi.fn()
+  resolveCurrentRef: vi.fn(),
+  requireUserApiKeyForProvider: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -89,6 +90,10 @@ vi.mock('@/src/server/pgRefs', () => ({
   resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
+vi.mock('@/src/server/llmUserKeys', () => ({
+  requireUserApiKeyForProvider: mocks.requireUserApiKeyForProvider
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/edit';
 
 function createRequest(body: unknown) {
@@ -130,6 +135,7 @@ describe('/api/projects/[id]/edit', () => {
       yield { type: 'text', content: 'foo' };
       yield { type: 'text', content: 'bar' };
     });
+    mocks.requireUserApiKeyForProvider.mockResolvedValue(null);
     process.env.RT_STORE = 'git';
     mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
@@ -308,7 +314,7 @@ describe('/api/projects/[id]/edit', () => {
         fromRef: 'main',
         nodeId: 'node-user',
         llmProvider: 'gemini',
-        llmModel: 'gemini-pro'
+        llmModel: 'gemini-3-pro-preview'
       }),
       { params: { id: 'project-1' } }
     );
@@ -316,7 +322,7 @@ describe('/api/projects/[id]/edit', () => {
     expect(res.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash', {
       provider: 'gemini',
-      model: 'gemini-pro',
+      model: 'gemini-3-pro-preview',
       previousResponseId: null
     });
   });
@@ -401,7 +407,7 @@ describe('/api/projects/[id]/edit', () => {
         fromRef: 'main',
         nodeId: 'node-user',
         llmProvider: 'gemini',
-        llmModel: 'gemini-pro'
+        llmModel: 'gemini-3-pro-preview'
       }),
       { params: { id: 'project-1' } }
     );
@@ -414,7 +420,7 @@ describe('/api/projects/[id]/edit', () => {
         newRefName: 'edit-123',
         nodeId: 'node-user',
         provider: 'gemini',
-        model: 'gemini-pro',
+        model: 'gemini-3-pro-preview',
         previousResponseId: null
       })
     );

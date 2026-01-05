@@ -112,13 +112,13 @@ describe('/api/projects/[id]/branches', () => {
     mocks.listBranches.mockResolvedValueOnce([
       { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' }
     ]);
-    const res = await POST(createRequest({ name: 'feature', fromRef: 'main', provider: 'gemini', model: 'gemini-pro' }, 'POST'), {
+    const res = await POST(createRequest({ name: 'feature', fromRef: 'main', provider: 'gemini', model: 'gemini-3-pro-preview' }, 'POST'), {
       params: { id: 'project-1' }
     });
     expect(res.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
       provider: 'gemini',
-      model: 'gemini-pro',
+      model: 'gemini-3-pro-preview',
       previousResponseId: null
     });
   });
@@ -156,7 +156,7 @@ describe('/api/projects/[id]/branches', () => {
     mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
 
     const res = await POST(
-      createRequest({ name: 'new-branch', fromRef: 'main', provider: 'gemini', model: 'gemini-pro' }, 'POST'),
+      createRequest({ name: 'new-branch', fromRef: 'main', provider: 'gemini', model: 'gemini-3-pro-preview' }, 'POST'),
       { params: { id: 'project-1' } }
     );
     expect(res.status).toBe(201);
@@ -165,7 +165,7 @@ describe('/api/projects/[id]/branches', () => {
       newRefName: 'new-branch',
       fromRefId: 'ref-main',
       provider: 'gemini',
-      model: 'gemini-pro',
+      model: 'gemini-3-pro-preview',
       previousResponseId: null
     });
   });
@@ -180,13 +180,13 @@ describe('/api/projects/[id]/branches', () => {
     mocks.getCommitHashForNode.mockResolvedValueOnce('commit-hash-1');
 
     const res = await POST(
-      createRequest({ name: 'split', fromNodeId: 'node-1', provider: 'gemini', model: 'gemini-pro' }, 'POST'),
+      createRequest({ name: 'split', fromNodeId: 'node-1', provider: 'gemini', model: 'gemini-3-pro-preview' }, 'POST'),
       { params: { id: 'project-1' } }
     );
     expect(res.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'split', 'commit-hash-1', {
       provider: 'gemini',
-      model: 'gemini-pro',
+      model: 'gemini-3-pro-preview',
       previousResponseId: null
     });
   });
@@ -205,7 +205,7 @@ describe('/api/projects/[id]/branches', () => {
     mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
 
     const res = await POST(
-      createRequest({ name: 'split', fromNodeId: 'node-1', provider: 'gemini', model: 'gemini-pro' }, 'POST'),
+      createRequest({ name: 'split', fromNodeId: 'node-1', provider: 'gemini', model: 'gemini-3-pro-preview' }, 'POST'),
       { params: { id: 'project-1' } }
     );
     expect(res.status).toBe(201);
@@ -215,7 +215,7 @@ describe('/api/projects/[id]/branches', () => {
       sourceRefId: 'ref-main',
       nodeId: 'node-1',
       provider: 'gemini',
-      model: 'gemini-pro',
+      model: 'gemini-3-pro-preview',
       previousResponseId: null
     });
   });

@@ -136,7 +136,7 @@ describe('/api/projects/[id]/branch-question', () => {
         name: 'question',
         fromNodeId: 'node-1',
         provider: 'gemini',
-        model: 'gemini-pro',
+        model: 'gemini-3-pro-preview',
         question: 'why',
         highlight: 'highlight',
         switch: false
@@ -151,7 +151,7 @@ describe('/api/projects/[id]/branch-question', () => {
       sourceRefId: 'ref-main',
       nodeId: 'node-1',
       provider: 'gemini',
-      model: 'gemini-pro',
+      model: 'gemini-3-pro-preview',
       previousResponseId: null
     });
   });
