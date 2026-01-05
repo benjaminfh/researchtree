@@ -8,14 +8,20 @@ export const createProjectSchema = z.object({
   provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional()
 });
 
-export const chatRequestSchema = z.object({
-  message: z.string().min(1).max(6000),
-  intent: z.string().max(280).optional(),
-  llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
-  ref: z.string().min(1).max(120).optional(),
-  thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
-  webSearch: z.boolean().optional()
-});
+export const chatRequestSchema = z
+  .object({
+    message: z.string().min(1).max(6000).optional(),
+    question: z.string().min(1).max(6000).optional(),
+    highlight: z.string().min(1).max(8000).optional(),
+    intent: z.string().max(280).optional(),
+    llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
+    ref: z.string().min(1).max(120).optional(),
+    thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
+    webSearch: z.boolean().optional()
+  })
+  .refine((value) => Boolean(value.message?.trim() || value.question?.trim()), {
+    message: 'Message or question is required.'
+  });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
@@ -25,7 +31,20 @@ export const createBranchSchema = z.object({
   fromRef: z.string().max(120).optional(),
   fromNodeId: z.string().min(1).optional(),
   provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
-  model: z.string().max(200).optional()
+  model: z.string().max(200).optional(),
+  switch: z.boolean().optional()
+});
+
+export const branchQuestionSchema = z.object({
+  name: z.string().min(1).max(120),
+  fromRef: z.string().max(120).optional(),
+  fromNodeId: z.string().min(1).optional(),
+  provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
+  model: z.string().max(200).optional(),
+  question: z.string().min(1).max(6000),
+  highlight: z.string().min(1).max(8000).optional(),
+  thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
+  switch: z.boolean().optional()
 });
 
 export const switchBranchSchema = z.object({
@@ -37,6 +56,7 @@ export const renameBranchSchema = z.object({
 });
 
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+export type BranchQuestionInput = z.infer<typeof branchQuestionSchema>;
 export type SwitchBranchInput = z.infer<typeof switchBranchSchema>;
 export type RenameBranchInput = z.infer<typeof renameBranchSchema>;
 

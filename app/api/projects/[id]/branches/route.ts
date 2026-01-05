@@ -8,17 +8,10 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { resolveBranchConfig } from '@/src/server/branchConfig';
 import { resolveOpenAIProviderSelection } from '@/src/server/llm';
-import { getPreviousResponseId } from '@/src/server/llmState';
 
 interface RouteContext {
   params: { id: string };
 }
-
-const debugResponses = process.env.RT_DEBUG_RESPONSES === 'true';
-const logResponses = (label: string, payload: Record<string, unknown>) => {
-  if (!debugResponses) return;
-  console.info('[responses-debug]', label, payload);
-};
 
 export async function GET(_req: Request, { params }: RouteContext) {
   try {
@@ -101,20 +94,6 @@ export async function POST(request: Request, { params }: RouteContext) {
           model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
           fallback: baseConfig
         });
-        const shouldCopyPreviousResponseId =
-          baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
-        const basePreviousResponseId =
-          shouldCopyPreviousResponseId && baseBranch.id
-            ? await getPreviousResponseId(params.id, { id: baseBranch.id, name: baseRefName }).catch(() => null)
-            : null;
-        logResponses('branch.create.pg.base', {
-          fromRef: baseRefName,
-          fromNodeId,
-          baseProvider: baseConfig.provider,
-          targetProvider: resolvedConfig.provider,
-          shouldCopyPreviousResponseId,
-          basePreviousResponseId
-        });
 
         if (fromNodeId) {
           const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNodeId })) as any | null;
@@ -124,14 +103,6 @@ export async function POST(request: Request, { params }: RouteContext) {
           if (node.type !== 'message' || node.role !== 'assistant') {
             throw badRequest('Only assistant message nodes can be used to create a branch split');
           }
-          const nodeResponseId =
-            shouldCopyPreviousResponseId && typeof node.responseId === 'string' && node.responseId.trim().length > 0
-              ? node.responseId
-              : null;
-          logResponses('branch.create.pg.node', {
-            fromNodeId,
-            nodeResponseId
-          });
           await rtCreateRefFromNodeShadowV2({
             projectId: params.id,
             newRefName: parsed.data.name,
@@ -139,7 +110,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             nodeId: fromNodeId,
             provider: resolvedConfig.provider,
             model: resolvedConfig.model,
-            previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
+            previousResponseId: null
           });
         } else {
           await rtCreateRefFromRefShadowV2({
@@ -148,12 +119,13 @@ export async function POST(request: Request, { params }: RouteContext) {
             fromRefId: baseBranch.id,
             provider: resolvedConfig.provider,
             model: resolvedConfig.model,
-            previousResponseId: shouldCopyPreviousResponseId ? basePreviousResponseId : null
+            previousResponseId: null
           });
         }
         const branches = await rtListRefsShadowV2({ projectId: params.id });
         const newBranch = branches.find((branch) => branch.name === parsed.data.name);
-        if (newBranch?.id) {
+        const shouldSwitch = parsed.data.switch ?? true;
+        if (shouldSwitch && newBranch?.id) {
           await rtSetCurrentRefShadowV2({ projectId: params.id, refId: newBranch.id });
         }
         return Response.json({ branchName: parsed.data.name, branchId: newBranch?.id ?? null, branches }, { status: 201 });
@@ -183,8 +155,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
         fallback: baseConfig
       });
-        const shouldCopyPreviousResponseId = baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
-        if (fromNodeId) {
+      if (fromNodeId) {
         const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
         const sourceNodes = await readNodesFromRef(project.id, baseRef);
         const node = sourceNodes.find((entry) => entry.id === fromNodeId);
@@ -195,40 +166,24 @@ export async function POST(request: Request, { params }: RouteContext) {
           throw badRequest('Only assistant message nodes can be used to create a branch split');
         }
         const commitHash = await getCommitHashForNode(project.id, baseRef, fromNodeId);
-        const nodeResponseId =
-          shouldCopyPreviousResponseId && typeof (node as any)?.responseId === 'string' && (node as any).responseId.trim().length > 0
-            ? (node as any).responseId
-            : null;
-        logResponses('branch.create.git.node', {
-          fromRef: baseRef,
-          fromNodeId,
-          nodeResponseId,
-          shouldCopyPreviousResponseId
-        });
         await createBranch(project.id, parsed.data.name, commitHash, {
           provider: resolvedConfig.provider,
           model: resolvedConfig.model,
-          previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
+          previousResponseId: null
         });
       } else {
-        const basePreviousResponseId =
-          shouldCopyPreviousResponseId && baseBranch?.name
-            ? await getPreviousResponseId(project.id, { id: null, name: baseBranch.name }).catch(() => null)
-            : null;
-        logResponses('branch.create.git.base', {
-          fromRef: baseRef,
-          shouldCopyPreviousResponseId,
-          basePreviousResponseId,
-          baseProvider: baseConfig.provider,
-          targetProvider: resolvedConfig.provider
-        });
         await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
           provider: resolvedConfig.provider,
           model: resolvedConfig.model,
-          previousResponseId: shouldCopyPreviousResponseId ? basePreviousResponseId : null
+          previousResponseId: null
         });
       }
       const branches = await listBranches(project.id);
+      const shouldSwitch = parsed.data.switch ?? true;
+      if (shouldSwitch) {
+        const { switchBranch } = await import('@git/branches');
+        await switchBranch(project.id, parsed.data.name);
+      }
       return Response.json({ branchName: parsed.data.name, branches }, { status: 201 });
     });
   } catch (error) {
