@@ -293,7 +293,9 @@ export async function POST(request: Request, { params }: RouteContext) {
           const parentId = typeof (targetNode as any).parent === 'string' ? String((targetNode as any).parent) : null;
           if (parentId) {
             const parentNode = sourceNodes.find((node) => node.id === parentId);
-            const candidate = parentNode?.role === 'assistant' ? (parentNode as any)?.responseId : null;
+            const parentIsAssistant =
+              parentNode?.type === 'message' && (parentNode as { role?: string })?.role === 'assistant';
+            const candidate = parentIsAssistant ? (parentNode as any)?.responseId : null;
             if (typeof candidate === 'string' && candidate.trim().length > 0) {
               previousResponseId = candidate.trim();
             }
