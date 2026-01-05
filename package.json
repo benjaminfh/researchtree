@@ -14,7 +14,6 @@
     "desktop:dev": "DESKTOP_NEXT_DEV=1 electron-forge start",
     "desktop:package": "node scripts/desktop-package.js package",
     "desktop:make": "node scripts/desktop-package.js make",
-    "prebuild": "node scripts/ensure-preview-user.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

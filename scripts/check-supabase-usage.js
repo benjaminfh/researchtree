@@ -23,14 +23,14 @@ const ALLOWED = new Set([
   'app/api/profile/password/route.ts'
 ]);
 const TARGET_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
-const SUPABASE_IMPORT_PATTERN = /@supabase\/(ssr|supabase-js|auth-helpers)/;
-const FORBIDDEN_HELPERS = [
+const FORBIDDEN = [
   'createSupabaseServerClient',
   'createSupabaseServerActionClient',
   'createSupabaseAdminClient',
-  'createSupabaseBrowserClient'
+  'createSupabaseBrowserClient',
+  'createServerClient',
+  'createClient'
 ];
-const FORBIDDEN_GENERIC = ['createServerClient', 'createClient'];
 
 async function gatherFiles(entry) {
   const fullPath = path.join(ROOT, entry);
@@ -66,10 +66,7 @@ async function main() {
   for (const filePath of files) {
     if (!isTargetFile(filePath) || isAllowed(filePath)) continue;
     const contents = await fs.readFile(filePath, 'utf8');
-    const hasForbiddenHelpers = FORBIDDEN_HELPERS.some((needle) => contents.includes(needle));
-    const hasSupabaseImport = SUPABASE_IMPORT_PATTERN.test(contents);
-    const hasForbiddenGeneric = hasSupabaseImport && FORBIDDEN_GENERIC.some((needle) => contents.includes(needle));
-    if (hasForbiddenHelpers || hasForbiddenGeneric) {
+    if (FORBIDDEN.some((needle) => contents.includes(needle))) {
       const rel = path.relative(ROOT, filePath).replace(/\\/g, '/');
       violations.push(rel);
     }
