@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   buildChatContext: vi.fn(),
   streamAssistantCompletion: vi.fn(),
   resolveLLMProvider: vi.fn(),
+  resolveOpenAIProviderSelection: vi.fn(),
   getDefaultModelForProvider: vi.fn(),
   getProviderTokenLimit: vi.fn(),
   rtCreateRefFromNodeParentShadowV2: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock('@/src/server/context', () => ({
 vi.mock('@/src/server/llm', () => ({
   streamAssistantCompletion: mocks.streamAssistantCompletion,
   resolveLLMProvider: mocks.resolveLLMProvider,
+  resolveOpenAIProviderSelection: mocks.resolveOpenAIProviderSelection,
   getDefaultModelForProvider: mocks.getDefaultModelForProvider
 }));
 
@@ -127,6 +129,7 @@ describe('/api/projects/[id]/edit', () => {
       ]
     });
     mocks.resolveLLMProvider.mockReturnValue('mock');
+    mocks.resolveOpenAIProviderSelection.mockImplementation((provider?: string) => provider ?? 'openai');
     mocks.getDefaultModelForProvider.mockReturnValue('mock');
     mocks.getProviderTokenLimit.mockResolvedValue(4000);
     mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'mock', model: 'mock' } });
