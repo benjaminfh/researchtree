@@ -75,6 +75,9 @@ describe('/api/projects/[id]/branches', () => {
     mocks.listBranches.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true }]);
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.getPreviousResponseId.mockResolvedValue('resp-123');
+    mocks.readNodesFromRef.mockResolvedValue([]);
+    mocks.getCommitHashForNode.mockResolvedValue('commit-hash-1');
+    mocks.rtGetNodeContentShadowV1.mockResolvedValue(null);
     process.env.RT_STORE = 'git';
   });
 
@@ -112,6 +115,21 @@ describe('/api/projects/[id]/branches', () => {
     });
   });
 
+  it('clears previousResponseId when switching providers on tip branch', async () => {
+    mocks.listBranches.mockResolvedValueOnce([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' }
+    ]);
+    const res = await POST(createRequest({ name: 'feature', fromRef: 'main', provider: 'gemini', model: 'gemini-pro' }, 'POST'), {
+      params: { id: 'project-1' }
+    });
+    expect(res.status).toBe(201);
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
+      provider: 'gemini',
+      model: 'gemini-pro',
+      previousResponseId: null
+    });
+  });
+
   it('creates branch via Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
@@ -134,6 +152,80 @@ describe('/api/projects/[id]/branches', () => {
       previousResponseId: 'resp-123'
     });
     expect(mocks.createBranch).not.toHaveBeenCalled();
+  });
+
+  it('clears previousResponseId when switching providers on tip branch (pg)', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true, provider: 'openai_responses' }
+    ]);
+    mocks.rtCreateRefFromRefShadowV2.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
+
+    const res = await POST(
+      createRequest({ name: 'new-branch', fromRef: 'main', provider: 'gemini', model: 'gemini-pro' }, 'POST'),
+      { params: { id: 'project-1' } }
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.rtCreateRefFromRefShadowV2).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      newRefName: 'new-branch',
+      fromRefId: 'ref-main',
+      provider: 'gemini',
+      model: 'gemini-pro',
+      previousResponseId: null
+    });
+  });
+
+  it('clears previousResponseId when switching providers on assistant split (git)', async () => {
+    mocks.listBranches.mockResolvedValueOnce([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' }
+    ]);
+    mocks.readNodesFromRef.mockResolvedValueOnce([
+      { id: 'node-1', type: 'message', role: 'assistant', responseId: 'resp-node' }
+    ]);
+    mocks.getCommitHashForNode.mockResolvedValueOnce('commit-hash-1');
+
+    const res = await POST(
+      createRequest({ name: 'split', fromNodeId: 'node-1', provider: 'gemini', model: 'gemini-pro' }, 'POST'),
+      { params: { id: 'project-1' } }
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'split', 'commit-hash-1', {
+      provider: 'gemini',
+      model: 'gemini-pro',
+      previousResponseId: null
+    });
+  });
+
+  it('clears previousResponseId when switching providers on assistant split (pg)', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-main', name: 'main', provider: 'openai_responses' }]);
+    mocks.rtGetNodeContentShadowV1.mockResolvedValue({
+      id: 'node-1',
+      type: 'message',
+      role: 'assistant',
+      responseId: 'resp-node'
+    });
+    mocks.rtCreateRefFromNodeShadowV2.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
+
+    const res = await POST(
+      createRequest({ name: 'split', fromNodeId: 'node-1', provider: 'gemini', model: 'gemini-pro' }, 'POST'),
+      { params: { id: 'project-1' } }
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.rtCreateRefFromNodeShadowV2).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      newRefName: 'split',
+      sourceRefId: 'ref-main',
+      nodeId: 'node-1',
+      provider: 'gemini',
+      model: 'gemini-pro',
+      previousResponseId: null
+    });
   });
 
   it('creates branch from assistant node in Postgres using the node response id', async () => {
