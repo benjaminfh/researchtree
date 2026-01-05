@@ -280,47 +280,4 @@ describe('useChatStream', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(result.current.state.isStreaming).toBe(false);
   });
-
-  it('sends structured payload with question, highlight, and ref override', async () => {
-    const fetchMock = vi.fn((url: RequestInfo | URL) => {
-      if (url.toString().includes('/chat')) {
-        return Promise.resolve({
-          ok: true,
-          body: createTextStream(['chunk'])
-        } as Response);
-      }
-      throw new Error('Unexpected fetch call');
-    });
-
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    const { result } = renderHook(() =>
-      useChatStream({ projectId: 'p-structured', ref: 'base', provider: 'openai', thinking: 'low' })
-    );
-
-    await act(async () => {
-      await result.current.sendMessage({
-        question: 'Why?',
-        highlight: 'Some text',
-        ref: 'feature/new',
-        llmProvider: 'gemini',
-        thinking: 'high',
-        webSearch: true
-      });
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/projects/p-structured/chat',
-      expect.objectContaining({
-        body: JSON.stringify({
-          question: 'Why?',
-          highlight: 'Some text',
-          llmProvider: 'gemini',
-          ref: 'feature/new',
-          thinking: 'high',
-          webSearch: true
-        })
-      })
-    );
-  });
 });

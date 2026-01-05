@@ -3,7 +3,8 @@
 import { useCallback, useRef, useState } from 'react';
 import type { LLMProvider } from '@/src/server/llm';
 import type { ThinkingSetting } from '@/src/shared/thinking';
-import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
+
+const decoder = new TextDecoder();
 
 export interface ChatStreamState {
   isStreaming: boolean;
@@ -15,26 +16,6 @@ export interface ChatStreamChunk {
   content?: string;
   message?: string;
   append?: boolean;
-}
-
-export type ChatSendPayload =
-  | string
-  | {
-      message?: string;
-      question?: string;
-      highlight?: string;
-      intent?: string;
-      ref?: string;
-      llmProvider?: LLMProvider;
-      thinking?: ThinkingSetting;
-      webSearch?: boolean;
-    };
-
-export interface StreamRequestOptions {
-  url: string;
-  body: Record<string, unknown>;
-  onResponse?: (response: Response) => void;
-  debugLabel?: string;
 }
 
 interface UseChatStreamOptions {
@@ -62,24 +43,30 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
     (typeof window !== 'undefined' && (window as any).__RT_STREAM_DEBUG === true) ||
     process.env.NEXT_PUBLIC_STREAM_DEBUG === 'true';
 
-  const sendStreamRequest = useCallback(
-    async ({ url, body, onResponse, debugLabel }: StreamRequestOptions) => {
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (!message.trim()) {
+        return;
+      }
       if (streamDebugEnabled) {
         streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
         console.debug('[stream][start]', {
           projectId,
-          label: debugLabel,
-          url
+          ref,
+          provider,
+          thinking,
+          webSearch,
+          messageLength: message.length
         });
       }
       setState({ isStreaming: true, error: null });
       activeRequest.current = new AbortController();
       activeRequestId.current = null;
       try {
-        const response = await fetch(url, {
+        const response = await fetch(`/api/projects/${projectId}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ message, llmProvider: provider, ref, thinking, webSearch }),
           signal: activeRequest.current.signal
         });
 
@@ -100,45 +87,102 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
           throw new Error(reqId ? `${message} (requestId=${reqId})` : message);
         }
 
-        onResponse?.(response);
         const reader = response.body.getReader();
+        let buffer = '';
         let streamErrorMessage: string | null = null;
-        const { errorMessage } = await consumeNdjsonStream<ChatStreamChunk>(reader, {
-          defaultErrorMessage: 'Chat request failed',
-          onError: (message) => {
-            streamErrorMessage = message;
-            setState({ isStreaming: false, error: message });
-          },
-          onFrame: (parsed) => {
-            if (!parsed || typeof parsed.content !== 'string' || parsed.type === 'error') {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex = buffer.indexOf('\n');
+          while (newlineIndex !== -1) {
+            const line = buffer.slice(0, newlineIndex).trim();
+            buffer = buffer.slice(newlineIndex + 1);
+            if (line) {
+              try {
+                const parsed = JSON.parse(line) as ChatStreamChunk;
+                if (parsed?.type === 'error' && typeof parsed.message === 'string') {
+                  streamErrorMessage = parsed.message.trim() || 'Chat request failed';
+                  setState({ isStreaming: false, error: streamErrorMessage });
+                  await reader.cancel().catch(() => {});
+                  break;
+                }
+                if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
+                  if (streamDebugEnabled) {
+                    const content = parsed.content ?? '';
+                    const sameAsLast =
+                      parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
+                    const sample = content
+                      ? content.replace(/\s+/g, ' ').slice(0, 60)
+                      : '';
+                    streamDebugStateRef.current.seq += 1;
+                    streamDebugStateRef.current.totalChars += content.length;
+                    console.debug('[stream][chunk]', {
+                      seq: streamDebugStateRef.current.seq,
+                      type: parsed.type,
+                      append: parsed.append,
+                      length: content.length,
+                      totalChars: streamDebugStateRef.current.totalChars,
+                      sameAsLast,
+                      sample
+                    });
+                    streamDebugStateRef.current.lastType = parsed.type;
+                    streamDebugStateRef.current.lastContent = content;
+                  }
+                  onChunk?.(parsed);
+                }
+              } catch {
+                // ignore malformed lines
+              }
+            }
+            if (streamErrorMessage) {
+              break;
+            }
+            newlineIndex = buffer.indexOf('\n');
+          }
+          if (streamErrorMessage) {
+            break;
+          }
+        }
+        if (streamErrorMessage) {
+          return;
+        }
+        const remaining = buffer.trim();
+        if (remaining) {
+          try {
+            const parsed = JSON.parse(remaining) as ChatStreamChunk;
+            if (parsed?.type === 'error' && typeof parsed.message === 'string') {
+              streamErrorMessage = parsed.message.trim() || 'Chat request failed';
+              setState({ isStreaming: false, error: streamErrorMessage });
               return;
             }
-            if (streamDebugEnabled) {
-              const content = parsed.content ?? '';
-              const sameAsLast =
-                parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
-              const sample = content
-                ? content.replace(/\s+/g, ' ').slice(0, 60)
-                : '';
-              streamDebugStateRef.current.seq += 1;
-              streamDebugStateRef.current.totalChars += content.length;
-              console.debug('[stream][chunk]', {
-                seq: streamDebugStateRef.current.seq,
-                type: parsed.type,
-                append: parsed.append,
-                length: content.length,
-                totalChars: streamDebugStateRef.current.totalChars,
-                sameAsLast,
-                sample
-              });
-              streamDebugStateRef.current.lastType = parsed.type;
-              streamDebugStateRef.current.lastContent = content;
+            if (parsed && typeof parsed.content === 'string' && parsed.type !== 'error') {
+              if (streamDebugEnabled) {
+                const content = parsed.content ?? '';
+                const sameAsLast =
+                  parsed.type === streamDebugStateRef.current.lastType && content === streamDebugStateRef.current.lastContent;
+                const sample = content
+                  ? content.replace(/\s+/g, ' ').slice(0, 60)
+                  : '';
+                streamDebugStateRef.current.seq += 1;
+                streamDebugStateRef.current.totalChars += content.length;
+                console.debug('[stream][chunk]', {
+                  seq: streamDebugStateRef.current.seq,
+                  type: parsed.type,
+                  append: parsed.append,
+                  length: content.length,
+                  totalChars: streamDebugStateRef.current.totalChars,
+                  sameAsLast,
+                  sample
+                });
+                streamDebugStateRef.current.lastType = parsed.type;
+                streamDebugStateRef.current.lastContent = content;
+              }
+              onChunk?.(parsed);
             }
-            onChunk?.(parsed);
+          } catch {
+            // ignore trailing data
           }
-        });
-        if (errorMessage || streamErrorMessage) {
-          return;
         }
 
         onComplete?.();
@@ -164,48 +208,7 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
         activeRequestId.current = null;
       }
     },
-    [projectId, onChunk, onComplete, streamDebugEnabled]
-  );
-
-  const sendMessage = useCallback(
-    async (payload: ChatSendPayload) => {
-      const normalized =
-        typeof payload === 'string'
-          ? { message: payload }
-          : payload ?? { message: '' };
-      const userMessage = normalized.message ?? '';
-      const userQuestion = normalized.question ?? '';
-      if (!(userMessage.trim() || userQuestion.trim())) {
-        return;
-      }
-      if (streamDebugEnabled) {
-        streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
-        console.debug('[stream][start]', {
-          projectId,
-          ref: normalized.ref ?? ref,
-          provider: normalized.llmProvider ?? provider,
-          thinking: normalized.thinking ?? thinking,
-          webSearch: normalized.webSearch ?? webSearch,
-          messageLength: (normalized.message ?? '').length,
-          questionLength: (normalized.question ?? '').length,
-          highlightLength: (normalized.highlight ?? '').length
-        });
-      }
-      await sendStreamRequest({
-        url: `/api/projects/${projectId}/chat`,
-        body: {
-          message: normalized.message,
-          question: normalized.question,
-          highlight: normalized.highlight,
-          intent: normalized.intent,
-          llmProvider: normalized.llmProvider ?? provider,
-          ref: normalized.ref ?? ref,
-          thinking: normalized.thinking ?? thinking,
-          webSearch: normalized.webSearch ?? webSearch
-        }
-      });
-    },
-    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled]
+    [projectId, provider, ref, thinking, webSearch, onChunk, onComplete]
   );
 
   const interrupt = useCallback(async () => {
@@ -220,7 +223,6 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
 
   return {
     sendMessage,
-    sendStreamRequest,
     interrupt,
     state
   };

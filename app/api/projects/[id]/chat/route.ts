@@ -55,32 +55,6 @@ function buildCanvasDiffMessage(diff: string): string {
   ].join('\n');
 }
 
-function buildUserMessage(input: { message?: string | null; question?: string | null; highlight?: string | null }): string {
-  const highlight = input.highlight?.trim() ?? '';
-  const question = input.question?.trim() ?? '';
-  const message = input.message?.trim() ?? '';
-
-  const parts: string[] = [];
-
-  if (highlight) {
-    parts.push('Highlighted passage:', `"""${highlight}"""`);
-  }
-
-  if (question) {
-    parts.push('Question:', question);
-  }
-
-  if (message && parts.length === 0) {
-    return message;
-  }
-
-  if (message) {
-    parts.push('Additional message:', message);
-  }
-
-  return parts.join('\n\n');
-}
-
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     const requestId = uuidv4();
@@ -95,14 +69,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { message, question, highlight, intent, llmProvider, ref, thinking, webSearch } = parsed.data as typeof parsed.data & {
+    const { message, intent, llmProvider, ref, thinking, webSearch } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
       webSearch?: boolean;
     };
-    const userContent = buildUserMessage({ message, question, highlight });
-    if (!userContent.trim()) {
-      throw badRequest('Message is required.');
-    }
     const preferred = await getPreferredBranch(params.id);
     const requestedRefName = ref?.trim() || null;
     const targetRefName = requestedRefName ?? preferred.name;
@@ -176,7 +146,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       const messagesForCompletion = [
         ...context.messages,
         ...(userCanvasDiff.message ? [{ role: 'user' as const, content: userCanvasDiff.message }] : []),
-        { role: 'user' as const, content: userContent }
+        { role: 'user' as const, content: message }
       ];
 
       registerStream(params.id, abortController, targetRefName);
@@ -281,8 +251,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                   id: nodeId,
                   type: 'message',
                   role: 'user',
-                  content: userContent,
-                  contentBlocks: buildTextBlock(userContent),
+                  content: message,
+                  contentBlocks: buildTextBlock(message),
                   timestamp: Date.now(),
                   parent: parentId,
                   createdOnBranch: targetRefName,
@@ -312,8 +282,8 @@ export async function POST(request: Request, { params }: RouteContext) {
               await appendNodeToRefNoCheckout(project.id, targetRefName, {
                 type: 'message',
                 role: 'user',
-                content: userContent,
-                contentBlocks: buildTextBlock(userContent),
+                content: message,
+                contentBlocks: buildTextBlock(message),
                 contextWindow: [],
                 tokensUsed: undefined
               });
@@ -527,8 +497,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                 id: nodeId,
                 type: 'message',
                 role: 'user',
-                content: userContent,
-                contentBlocks: buildTextBlock(userContent),
+                content: message,
+                contentBlocks: buildTextBlock(message),
                 timestamp: Date.now(),
                 parent: parentId,
                 createdOnBranch: targetRefName,
@@ -562,8 +532,8 @@ export async function POST(request: Request, { params }: RouteContext) {
             await appendNodeToRefNoCheckout(gitProjectId, targetRefName, {
               type: 'message',
               role: 'user',
-              content: userContent,
-              contentBlocks: buildTextBlock(userContent),
+              content: message,
+              contentBlocks: buildTextBlock(message),
               contextWindow: [],
               tokensUsed: undefined
             });

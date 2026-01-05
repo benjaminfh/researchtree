@@ -135,8 +135,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         }
         const branches = await rtListRefsShadowV2({ projectId: params.id });
         const newBranch = branches.find((branch) => branch.name === parsed.data.name);
-        const shouldSwitch = parsed.data.switch ?? true;
-        if (shouldSwitch && newBranch?.id) {
+        if (newBranch?.id) {
           await rtSetCurrentRefShadowV2({ projectId: params.id, refId: newBranch.id });
         }
         return Response.json({ branchName: parsed.data.name, branchId: newBranch?.id ?? null, branches }, { status: 201 });
@@ -199,11 +198,6 @@ export async function POST(request: Request, { params }: RouteContext) {
         });
       }
       const branches = await listBranches(project.id);
-      const shouldSwitch = parsed.data.switch ?? true;
-      if (shouldSwitch) {
-        const { switchBranch } = await import('@git/branches');
-        await switchBranch(project.id, parsed.data.name);
-      }
       return Response.json({ branchName: parsed.data.name, branches }, { status: 201 });
     });
   } catch (error) {
