@@ -82,6 +82,8 @@ export async function POST(request: Request, { params }: RouteContext) {
             model: model ?? (provider ? null : baseConfig.model),
             fallback: baseConfig
           });
+          const shouldCopyPreviousResponseId =
+            baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
 
           if (fromNode) {
             const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNode })) as any | null;
@@ -91,6 +93,10 @@ export async function POST(request: Request, { params }: RouteContext) {
             if (node.type !== 'message' || node.role !== 'assistant') {
               throw badRequest('Only assistant message nodes can be used to create a branch split');
             }
+            const nodeResponseId =
+              shouldCopyPreviousResponseId && typeof node.responseId === 'string' && node.responseId.trim().length > 0
+                ? node.responseId
+                : null;
             await rtCreateRefFromNodeShadowV2({
               projectId: params.id,
               newRefName: name,
@@ -98,7 +104,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               nodeId: fromNode,
               provider: resolvedConfig.provider,
               model: resolvedConfig.model,
-              previousResponseId: null
+              previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
             });
           } else {
             await rtCreateRefFromRefShadowV2({
@@ -147,6 +153,8 @@ export async function POST(request: Request, { params }: RouteContext) {
           model: model ?? (provider ? null : baseConfig.model),
           fallback: baseConfig
         });
+        const shouldCopyPreviousResponseId =
+          baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
 
         if (fromNode) {
           const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
@@ -159,10 +167,16 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest('Only assistant message nodes can be used to create a branch split');
           }
           const commitHash = await getCommitHashForNode(project.id, baseRef, fromNode);
+          const nodeResponseId =
+            shouldCopyPreviousResponseId &&
+            typeof (node as any)?.responseId === 'string' &&
+            (node as any).responseId.trim().length > 0
+              ? (node as any).responseId
+              : null;
           await createBranch(project.id, name, commitHash, {
             provider: resolvedConfig.provider,
             model: resolvedConfig.model,
-            previousResponseId: null
+            previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
           });
         } else {
           await createBranch(project.id, name, fromRef, {
