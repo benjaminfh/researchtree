@@ -135,7 +135,7 @@ describe('/api/projects/[id]/edit', () => {
       yield { type: 'text', content: 'foo' };
       yield { type: 'text', content: 'bar' };
     });
-    mocks.requireUserApiKeyForProvider.mockResolvedValue(null);
+    mocks.requireUserApiKeyForProvider.mockResolvedValue('test-key');
     process.env.RT_STORE = 'git';
     mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
