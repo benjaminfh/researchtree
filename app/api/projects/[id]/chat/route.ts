@@ -27,6 +27,12 @@ interface RouteContext {
   params: { id: string };
 }
 
+const debugResponses = process.env.RT_DEBUG_RESPONSES === 'true';
+const logResponses = (label: string, payload: Record<string, unknown>) => {
+  if (!debugResponses) return;
+  console.info('[responses-debug]', label, payload);
+};
+
 async function getPreferredBranch(projectId: string): Promise<{ id: string | null; name: string }> {
   const store = getStoreConfig();
   if (store.mode === 'pg') {
@@ -143,6 +149,13 @@ export async function POST(request: Request, { params }: RouteContext) {
       provider === 'openai_responses'
         ? await getPreviousResponseId(params.id, { id: targetRefId, name: targetRefName }).catch(() => null)
         : null;
+    logResponses('chat.start', {
+      ref: targetRefName,
+      refId: targetRefId,
+      provider,
+      model: modelName,
+      previousResponseId
+    });
 
     console.info('[chat] start', { requestId, userId: user.id, projectId: params.id, provider, ref: targetRefName, webSearch });
     const releaseLock = await acquireProjectRefLock(params.id, targetRefName);
