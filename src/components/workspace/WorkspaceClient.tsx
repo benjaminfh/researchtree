@@ -672,6 +672,16 @@ export function WorkspaceClient({
     setBranchModalMode('standard');
   }, []);
 
+  const buildModalBackdropHandler = useCallback(
+    (onClose: () => void) =>
+      (event: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      },
+    []
+  );
+
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
     const timeout = toastTimeoutsRef.current.get(id);
@@ -769,13 +779,32 @@ export function WorkspaceClient({
     setShowRenameModal(true);
   };
 
-  const closeRenameModal = () => {
+  const closeNewBranchModal = useCallback(() => {
+    setShowNewBranchModal(false);
+    resetBranchQuestionState();
+  }, [resetBranchQuestionState]);
+
+  const closeRenameModal = useCallback(() => {
     if (isRenaming) return;
     setShowRenameModal(false);
     setRenameTarget(null);
     setRenameValue('');
     setRenameError(null);
-  };
+  }, [isRenaming]);
+
+  const resetEditState = useCallback(() => {
+    setShowEditModal(false);
+    setEditDraft('');
+    setEditBranchName('');
+    setEditingNode(null);
+    setEditError(null);
+    setSwitchToEditBranch(true);
+  }, []);
+
+  const closeEditModal = useCallback(() => {
+    if (isEditing) return;
+    resetEditState();
+  }, [isEditing, resetEditState]);
 
   const {
     data: starsData,
@@ -2661,11 +2690,7 @@ export function WorkspaceClient({
         onResponse: () => {
           setIsEditing(false);
           setBranchName(targetBranch);
-          setShowEditModal(false);
-          setEditDraft('');
-          setEditBranchName('');
-          setEditingNode(null);
-          setSwitchToEditBranch(true);
+          resetEditState();
         },
         onFailure: () => {
           setIsEditing(false);
@@ -2685,11 +2710,7 @@ export function WorkspaceClient({
       switchOnComplete: shouldSwitch,
       onResponse: () => {
         setIsEditing(false);
-        setShowEditModal(false);
-        setEditDraft('');
-        setEditBranchName('');
-        setEditingNode(null);
-        setSwitchToEditBranch(true);
+        resetEditState();
       },
       onFailure: () => {
         setIsEditing(false);
@@ -2697,12 +2718,32 @@ export function WorkspaceClient({
     });
   };
 
-  const closeMergeModal = () => {
+  const closeMergeModal = useCallback(() => {
     if (isMerging) return;
     setShowMergeModal(false);
     setMergeSummary('');
     setMergeError(null);
-  };
+  }, [isMerging]);
+
+  const handleNewBranchBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeNewBranchModal),
+    [buildModalBackdropHandler, closeNewBranchModal]
+  );
+
+  const handleMergeBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeMergeModal),
+    [buildModalBackdropHandler, closeMergeModal]
+  );
+
+  const handleRenameBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeRenameModal),
+    [buildModalBackdropHandler, closeRenameModal]
+  );
+
+  const handleEditBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeEditModal),
+    [buildModalBackdropHandler, closeEditModal]
+  );
 
   return (
     <>
@@ -3756,18 +3797,8 @@ export function WorkspaceClient({
       {showNewBranchModal ? (
         <div
           className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setShowNewBranchModal(false);
-              resetBranchQuestionState();
-            }
-          }}
-          onTouchStart={(event) => {
-            if (event.target === event.currentTarget) {
-              setShowNewBranchModal(false);
-              resetBranchQuestionState();
-            }
-          }}
+          onMouseDown={handleNewBranchBackdrop}
+          onTouchStart={handleNewBranchBackdrop}
         >
           <div
             ref={newBranchModalRef}
@@ -3783,10 +3814,7 @@ export function WorkspaceClient({
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setShowNewBranchModal(false);
-                  resetBranchQuestionState();
-                }}
+                onClick={closeNewBranchModal}
                 className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
                 aria-label="Hide branch creator"
               >
@@ -3831,8 +3859,7 @@ export function WorkspaceClient({
                           setIsCreating(false);
                           setBranchName(branchNameInput);
                           setBranchActionError(null);
-                          setShowNewBranchModal(false);
-                          resetBranchQuestionState();
+                          closeNewBranchModal();
                           setNewBranchName('');
                         },
                         onFailure: () => {
@@ -3855,8 +3882,7 @@ export function WorkspaceClient({
                       onResponse: () => {
                         setIsCreating(false);
                         setBranchActionError(null);
-                        setShowNewBranchModal(false);
-                        resetBranchQuestionState();
+                        closeNewBranchModal();
                         setNewBranchName('');
                       },
                       onFailure: () => {
@@ -3874,8 +3900,7 @@ export function WorkspaceClient({
                     if (!result.ok) return;
                   }
                   setBranchActionError(null);
-                  setShowNewBranchModal(false);
-                  resetBranchQuestionState();
+                  closeNewBranchModal();
                   setNewBranchName('');
                 }}
                 disabled={isSwitching}
@@ -3990,12 +4015,8 @@ export function WorkspaceClient({
       {showMergeModal ? (
         <div
           className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeMergeModal();
-          }}
-          onTouchStart={(event) => {
-            if (event.target === event.currentTarget) closeMergeModal();
-          }}
+          onMouseDown={handleMergeBackdrop}
+          onTouchStart={handleMergeBackdrop}
         >
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="merge-modal">
             <h3 className="text-lg font-semibold text-slate-900">
@@ -4221,7 +4242,11 @@ export function WorkspaceClient({
       ) : null}
 
       {showRenameModal && renameTarget ? (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={handleRenameBackdrop}
+          onTouchStart={handleRenameBackdrop}
+        >
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" data-testid="rename-modal">
             <h3 className="text-lg font-semibold text-slate-900">Rename branch</h3>
             <p className="text-sm text-muted">This only changes the label. History, drafts, and Canvas stay intact.</p>
@@ -4270,7 +4295,11 @@ export function WorkspaceClient({
       ) : null}
 
       {showEditModal && editingNode ? (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={handleEditBackdrop}
+          onTouchStart={handleEditBackdrop}
+        >
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="edit-modal">
             <CommandEnterForm
               onSubmit={(event) => {
@@ -4361,15 +4390,7 @@ export function WorkspaceClient({
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (isEditing) return;
-                  setShowEditModal(false);
-                  setEditDraft('');
-                  setEditBranchName('');
-                  setEditingNode(null);
-                  setEditError(null);
-                  setSwitchToEditBranch(true);
-                }}
+                onClick={closeEditModal}
                 className="rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
                 disabled={isEditing}
               >
