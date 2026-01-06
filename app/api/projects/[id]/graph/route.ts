@@ -36,12 +36,13 @@ export async function GET(_request: Request, { params }: RouteContext) {
       const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
 
       const branches = await rtListRefsShadowV2({ projectId: params.id });
-      const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
+      const visibleBranches = branches.filter((branch) => !branch.isHidden);
+      const trunkName = visibleBranches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
       const currentBranch = (await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: trunkName })).refName;
 
       const [branchHistoriesEntries, starredNodeIds] = await Promise.all([
         Promise.all(
-          branches.map(async (branch) => {
+          visibleBranches.map(async (branch) => {
             if (!branch.id) {
               return [branch.name, [] as NodeRecord[]] as [string, NodeRecord[]];
             }
@@ -60,7 +61,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       }
 
       return Response.json({
-        branches,
+        branches: visibleBranches,
         trunkName,
         currentBranch,
         branchHistories,
@@ -78,12 +79,13 @@ export async function GET(_request: Request, { params }: RouteContext) {
       throw notFound('Project not found');
     }
     const branches = await listBranches(project.id);
-    const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
+    const visibleBranches = branches.filter((branch) => !branch.isHidden);
+    const trunkName = visibleBranches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
     const currentBranch = await getCurrentBranchName(project.id).catch(() => trunkName);
 
     const [branchHistoriesEntries, starredNodeIds] = await Promise.all([
       Promise.all(
-        branches.map(async (branch) => {
+        visibleBranches.map(async (branch) => {
           const nodes = await readNodesFromRef(project.id, branch.name);
           const visible = nodes.filter((node) => !isHiddenMessage(node));
           return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
@@ -98,7 +100,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
     }
 
     return Response.json({
-      branches,
+      branches: visibleBranches,
       trunkName,
       currentBranch,
       branchHistories,

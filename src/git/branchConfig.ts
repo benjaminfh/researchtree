@@ -9,6 +9,7 @@ export interface BranchConfigRecord {
   provider: LLMProvider;
   model: string;
   previousResponseId?: string | null;
+  isHidden?: boolean;
 }
 
 interface BranchConfigFile {
@@ -48,5 +49,20 @@ export async function writeBranchConfigMap(projectId: string, map: Record<string
 export async function setBranchConfig(projectId: string, branchName: string, config: BranchConfigRecord): Promise<void> {
   const map = await readBranchConfigMap(projectId);
   map[branchName] = config;
+  await writeBranchConfigMap(projectId, map);
+}
+
+export async function setBranchHidden(projectId: string, branchName: string, isHidden: boolean): Promise<void> {
+  const map = await readBranchConfigMap(projectId);
+  const existing = map[branchName];
+  if (existing) {
+    map[branchName] = { ...existing, isHidden };
+  } else {
+    map[branchName] = {
+      provider: 'openai',
+      model: '',
+      isHidden
+    } as BranchConfigRecord;
+  }
   await writeBranchConfigMap(projectId, map);
 }

@@ -75,6 +75,9 @@ const providerOptions = [
   { id: 'mock', label: 'Mock', defaultModel: 'mock' }
 ] as const;
 
+let branchesState: BranchSummary[];
+let graphHistoriesState: Record<string, NodeRecord[]>;
+
 const sampleNodes: NodeRecord[] = [
   {
     id: 'node-user',
@@ -121,6 +124,11 @@ describe('WorkspaceClient', () => {
     capturedWorkspaceGraphProps = null;
     window.sessionStorage.clear();
     window.localStorage.clear();
+    branchesState = baseBranches.map((branch) => ({ ...branch }));
+    graphHistoriesState = {
+      main: sampleNodes.slice(0, 2),
+      'feature/phase-2': sampleNodes.slice(0, 2)
+    };
 
     mockUseProjectData.mockReturnValue({
       nodes: sampleNodes,
@@ -146,13 +154,10 @@ describe('WorkspaceClient', () => {
       if (url.includes('/graph')) {
         return new Response(
           JSON.stringify({
-            branches: baseBranches,
+            branches: branchesState,
             trunkName: 'main',
             currentBranch: baseProject.branchName,
-            branchHistories: {
-              main: sampleNodes.slice(0, 2),
-              'feature/phase-2': sampleNodes.slice(0, 2)
-            },
+            branchHistories: graphHistoriesState,
             starredNodeIds: []
           }),
           { status: 200 }
@@ -169,8 +174,22 @@ describe('WorkspaceClient', () => {
         const nodes = limit ? base.slice(0, Number(limit)) : base;
         return new Response(JSON.stringify({ nodes }), { status: 200 });
       }
+      if (url.includes('/hidden')) {
+        const segments = url.split('?')[0]?.split('/') ?? [];
+        const targetId = decodeURIComponent(segments[segments.length - 2] ?? '');
+        const branch = branchesState.find((entry) => entry.name === targetId);
+        if (branch) {
+          branch.isHidden = init?.method === 'POST';
+          if (branch.isHidden) {
+            delete graphHistoriesState[branch.name];
+          } else {
+            graphHistoriesState[branch.name] = sampleNodes.slice(0, 2);
+          }
+        }
+        return new Response(JSON.stringify({ branchName: 'main', branches: branchesState }), { status: 200 });
+      }
       if (url.includes('/branches') && init?.method === 'PATCH') {
-        return new Response(JSON.stringify({ branchName: 'main', branches: baseBranches }), { status: 200 });
+        return new Response(JSON.stringify({ branchName: 'main', branches: branchesState }), { status: 200 });
       }
       if (url.includes('/artefact')) {
         return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
@@ -233,6 +252,67 @@ describe('WorkspaceClient', () => {
 
     const bold = await screen.findByText('world');
     expect(bold.tagName).toBe('STRONG');
+  });
+
+  it('sorts hidden branches last and omits them from graph histories', async () => {
+    branchesState.push({ name: 'hidden-exp', headCommit: 'ghi', nodeCount: 1, isTrunk: false, isHidden: true });
+    graphHistoriesState = {
+      main: sampleNodes.slice(0, 2),
+      'feature/phase-2': sampleNodes.slice(0, 2),
+      'hidden-exp': sampleNodes.slice(0, 2)
+    };
+
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={branchesState}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    await waitFor(() => expect(capturedWorkspaceGraphProps?.branchHistories).toBeTruthy());
+
+    const branchButtons = screen.getAllByTestId('branch-switch');
+    const last = branchButtons[branchButtons.length - 1]!;
+    expect(last.getAttribute('data-branch-name')).toBe('hidden-exp');
+    expect(last.getAttribute('data-branch-hidden')).toBe('true');
+    expect(within(last).getByText('Hidden')).toBeInTheDocument();
+
+    const graphBranches = Object.keys(capturedWorkspaceGraphProps?.branchHistories ?? {});
+    expect(graphBranches).not.toContain('hidden-exp');
+  });
+
+  it('allows toggling branch visibility from the rail', async () => {
+    const user = userEvent.setup();
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    await waitFor(() => expect(capturedWorkspaceGraphProps?.branchHistories).toBeTruthy());
+
+    const targetBranch = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
+    expect(targetBranch).toBeTruthy();
+    const hideButton = within(targetBranch!).getByRole('button', { name: 'Hide branch' });
+
+    await user.click(hideButton);
+
+    await waitFor(() => {
+      const updatedBranch = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
+      expect(updatedBranch).toBeTruthy();
+      expect(updatedBranch?.getAttribute('data-branch-hidden')).toBe('true');
+    });
+    expect(branchesState.find((b) => b.name === 'feature/phase-2')?.isHidden).toBe(true);
+
+    const graphBranches = Object.keys(capturedWorkspaceGraphProps?.branchHistories ?? {});
+    expect(graphBranches).not.toContain('feature/phase-2');
   });
 
   it('sends the draft when the user presses ⌘+Enter', async () => {

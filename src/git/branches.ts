@@ -17,7 +17,7 @@ import {
   readNodesFromRef
 } from './utils';
 import { getArtefactFromRef } from './artefact';
-import { readBranchConfigMap, setBranchConfig, writeBranchConfigMap } from './branchConfig';
+import { readBranchConfigMap, setBranchConfig, setBranchHidden, writeBranchConfigMap } from './branchConfig';
 import { getPinnedBranchName, setPinnedBranchName } from './projects';
 
 function buildLineDiff(base: string, incoming: string): string {
@@ -98,7 +98,7 @@ export async function createBranch(
     : getDefaultModelForProvider(provider);
   const previousResponseId =
     options?.previousResponseId !== undefined ? options.previousResponseId : sourceConfig?.previousResponseId ?? null;
-  await setBranchConfig(projectId, branchName, { provider, model, previousResponseId });
+  await setBranchConfig(projectId, branchName, { provider, model, previousResponseId, isHidden: false });
 }
 
 export async function switchBranch(projectId: string, branchName: string): Promise<void> {
@@ -160,12 +160,14 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
     const model = isSupportedModelForProvider(provider, modelCandidate)
       ? modelCandidate
       : getDefaultModelForProvider(provider);
+    const isHidden = config?.isHidden ?? false;
     summaries.push({
       name,
       headCommit,
       nodeCount: nodes.length,
       isTrunk: name === INITIAL_BRANCH,
       isPinned: pinnedBranch === name,
+      isHidden,
       provider,
       model,
       _lastModifiedAt: lastModifiedAt,
@@ -174,6 +176,8 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   }
   return summaries
     .sort((a, b) => {
+      if (a.isHidden && !b.isHidden) return 1;
+      if (!a.isHidden && b.isHidden) return -1;
       if (a.isTrunk && !b.isTrunk) return -1;
       if (!a.isTrunk && b.isTrunk) return 1;
       if (a._lastModifiedAt !== b._lastModifiedAt) return b._lastModifiedAt - a._lastModifiedAt;
@@ -300,4 +304,14 @@ export async function mergeBranch(
     await git.raw(['merge', '--abort']).catch(() => undefined);
     throw error;
   }
+}
+
+export async function setBranchHiddenFlag(projectId: string, branchName: string, isHidden: boolean): Promise<void> {
+  await assertProjectExists(projectId);
+  const git = simpleGit(getProjectPath(projectId));
+  const branches = await git.branchLocal();
+  if (!branches.all.includes(branchName)) {
+    throw new Error(`Branch ${branchName} does not exist`);
+  }
+  await setBranchHidden(projectId, branchName, isHidden);
 }

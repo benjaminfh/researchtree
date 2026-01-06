@@ -550,6 +550,7 @@ export function WorkspaceClient({
   const [isCreating, setIsCreating] = useState(false);
   const [branchPopoverMode, setBranchPopoverMode] = useState<'standard' | 'question'>('standard');
   const [pendingPinBranchIds, setPendingPinBranchIds] = useState<Set<string>>(new Set());
+  const [pendingHiddenBranchIds, setPendingHiddenBranchIds] = useState<Set<string>>(new Set());
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTarget, setRenameTarget] = useState<BranchSummary | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -1463,16 +1464,22 @@ export function WorkspaceClient({
     return [...branches, ...ghostBranches];
   }, [branches, backgroundTasks]);
   const sortedBranches = useMemo(() => {
-    const pinned = displayBranches.filter((branch) => branch.isPinned);
-    const pendingGhosts = displayBranches.filter((branch) => branch.isGhost);
-    const unpinned = displayBranches.filter((branch) => !branch.isPinned && !branch.isGhost);
-    return [...pinned, ...pendingGhosts, ...unpinned];
+    const visible = displayBranches.filter((branch) => !branch.isHidden);
+    const hidden = displayBranches.filter((branch) => branch.isHidden);
+    const pinned = visible.filter((branch) => branch.isPinned);
+    const pendingGhosts = visible.filter((branch) => branch.isGhost);
+    const unpinned = visible.filter((branch) => !branch.isPinned && !branch.isGhost);
+    const hiddenOrdered = hidden;
+    return [...pinned, ...pendingGhosts, ...unpinned, ...hiddenOrdered];
   }, [displayBranches]);
   const branchColorMap = useMemo(
     () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
     [sortedBranches, trunkName]
   );
-  const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
+  const graphRequestKey = useMemo(
+    () => sortedBranches.filter((branch) => !branch.isHidden).map((b) => b.name).sort().join('|'),
+    [sortedBranches]
+  );
   const lastGraphRequestKeyRef = useRef<string | null>(null);
   const loadGraphHistories = useCallback(
     async ({ force = false, signal }: { force?: boolean; signal?: AbortSignal } = {}) => {
@@ -1937,6 +1944,11 @@ export function WorkspaceClient({
         .map((node) => [node.id, (node as MessageNode).role] as const)
     );
   }, [visibleNodes]);
+  const visibleGraphHistories = useMemo(() => {
+    const allowed = new Set(sortedBranches.filter((branch) => !branch.isHidden).map((branch) => branch.name));
+    const source = graphHistories ?? { [branchName]: visibleNodes };
+    return Object.fromEntries(Object.entries(source).filter(([name]) => allowed.has(name)));
+  }, [graphHistories, sortedBranches, branchName, visibleNodes]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -2637,6 +2649,53 @@ export function WorkspaceClient({
     }
   };
 
+  const toggleHiddenBranch = async (branch: BranchSummary) => {
+    const branchId = branch.id ?? branch.name;
+    if (pendingHiddenBranchIds.has(branchId)) return;
+    const willHide = !branch.isHidden;
+    setBranchActionError(null);
+    setPendingHiddenBranchIds((prev) => new Set(prev).add(branchId));
+    const prevBranches = branches;
+    const optimistic = branches.map((item) =>
+      item.name === branch.name ? { ...item, isHidden: willHide } : item
+    );
+    setBranches(optimistic);
+    try {
+      const url = `/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/hidden`;
+      const method = willHide ? 'POST' : 'DELETE';
+      const res = await fetch(url, { method });
+      if (!res.ok) {
+        throw new Error('Failed to update branch visibility');
+      }
+      const data = (await res.json()) as { branches?: BranchSummary[]; branchName?: string; branchId?: string | null };
+      if (data.branchName) {
+        setBranchName(data.branchName);
+      }
+      if (data.branches) {
+        setBranches(data.branches);
+      }
+      if (willHide) {
+        setGraphHistories((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev };
+          delete next[branch.name];
+          return next;
+        });
+      } else {
+        void loadGraphHistories({ force: true });
+      }
+    } catch (err) {
+      setBranchActionError((err as Error).message ?? 'Failed to update branch visibility');
+      setBranches(prevBranches);
+    } finally {
+      setPendingHiddenBranchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(branchId);
+        return next;
+      });
+    }
+  };
+
   const submitEdit = () => {
     if (!editDraft.trim()) {
       setEditError('Content is required.');
@@ -2763,6 +2822,7 @@ export function WorkspaceClient({
                     {sortedBranches.map((branch) => {
                       const branchId = branch.id ?? branch.name;
                       const pinPending = pendingPinBranchIds.has(branchId);
+                      const hidePending = pendingHiddenBranchIds.has(branchId);
                       const isPending = pendingBranchNames.has(branch.name);
                       const isGhost = (branch as BranchListItem).isGhost ?? false;
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
@@ -2793,6 +2853,7 @@ export function WorkspaceClient({
                         data-testid="branch-switch"
                         data-branch-name={branch.name}
                         data-branch-trunk={branch.isTrunk ? 'true' : undefined}
+                        data-branch-hidden={branch.isHidden ? 'true' : undefined}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex min-w-0 items-center gap-2">
@@ -2807,10 +2868,15 @@ export function WorkspaceClient({
                                     ? 'font-semibold text-primary'
                                     : 'font-semibold text-slate-900'
                                   : ''
-                              }`}
+                              } ${branch.isHidden ? 'text-slate-500' : ''}`}
                             >
                               {displayBranchName(branch.name)}
                             </span>
+                            {branch.isHidden ? (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                Hidden
+                              </span>
+                            ) : null}
                             {isPending ? (
                               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                             ) : null}
@@ -2832,6 +2898,24 @@ export function WorkspaceClient({
                                 <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                               ) : (
                                 <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void toggleHiddenBranch(branch);
+                              }}
+                              disabled={isSwitching || isCreating || hidePending || isGhost}
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                isSwitching || isCreating || hidePending || isGhost ? 'cursor-not-allowed' : 'hover:bg-primary/10'
+                              } ${branch.isHidden ? 'text-slate-700' : 'text-slate-400 hover:text-slate-600'}`}
+                              aria-label={branch.isHidden ? 'Unhide branch' : 'Hide branch'}
+                            >
+                              {hidePending ? (
+                                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                              ) : (
+                                <BlueprintIcon icon={branch.isHidden ? 'eye-off' : 'eye-open'} className="h-3.5 w-3.5" />
                               )}
                             </button>
                             <button
@@ -3522,11 +3606,7 @@ export function WorkspaceClient({
                         ) : (
                           <div className="flex h-full min-h-0 flex-col">
                             <WorkspaceGraph
-                              branchHistories={
-                                graphHistories ?? {
-                                  [branchName]: visibleNodes
-                                }
-                              }
+                              branchHistories={visibleGraphHistories}
                               activeBranchName={branchName}
                               trunkName={trunkName}
                               branchColors={branchColorMap}
