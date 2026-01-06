@@ -10,6 +10,7 @@ import { resolveBranchConfig } from '@/src/server/branchConfig';
 import { resolveOpenAIProviderSelection } from '@/src/server/llm';
 import type { LLMProvider } from '@/src/server/llm';
 import { POST as chatPost } from '@/app/api/projects/[id]/chat/route';
+import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 
 interface RouteContext {
   params: { id: string };
@@ -193,7 +194,37 @@ export async function POST(request: Request, { params }: RouteContext) {
       headers: chatHeaders,
       body: chatBody
     });
-    return await chatPost(chatRequest, { params });
+    if (shouldSwitch) {
+      return await chatPost(chatRequest, { params });
+    }
+
+    const chatResponse = await chatPost(chatRequest, { params });
+    if (!chatResponse.ok) {
+      return chatResponse;
+    }
+    if (!chatResponse.body) {
+      throw new Error('Chat response missing body for question branch');
+    }
+
+    const reader = chatResponse.body.getReader();
+    const { errorMessage } = await consumeNdjsonStream(reader, {
+      defaultErrorMessage: 'Question branch failed'
+    });
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        branchName: createResult.branchName,
+        branchId: createResult.branchId ?? null,
+        branches: createResult.branches,
+        provider: createResult.provider,
+        model: createResult.model
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
   } catch (error) {
     return handleRouteError(error);
   }
