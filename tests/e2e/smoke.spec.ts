@@ -150,10 +150,10 @@ test('workspace smoke flow', async ({ page }) => {
   await saveCanvas(page, trunkCanvas);
 
   await page.getByTestId('branch-new-button').click();
-  await expect(page.getByTestId('branch-popover')).toBeVisible();
-  await page.getByTestId('branch-provider-select-popover').selectOption('gemini');
-  await page.getByTestId('branch-form-popover-input').fill(regularBranch);
-  await page.getByTestId('branch-form-popover-submit').click();
+  await expect(page.getByTestId('branch-modal')).toBeVisible();
+  await page.getByTestId('branch-provider-select').selectOption('gemini');
+  await page.getByTestId('branch-form-modal-input').fill(regularBranch);
+  await page.getByTestId('branch-form-modal-submit').click();
   await expect(page.locator(`[data-testid="branch-switch"][data-branch-name="${regularBranch}"]`)).toBeVisible();
   await expectActiveBranch(page, regularBranch);
 
@@ -171,10 +171,10 @@ test('workspace smoke flow', async ({ page }) => {
   await waitForAssistantResponse(page, geminiCount);
 
   await page.getByRole('button', { name: 'Create branch from message' }).last().click();
-  await expect(page.getByTestId('branch-popover')).toBeVisible();
-  await page.getByTestId('branch-provider-select-popover').selectOption('anthropic');
-  await page.getByTestId('branch-form-popover-input').fill(assistantBranch);
-  await page.getByTestId('branch-form-popover-submit').click();
+  await expect(page.getByTestId('branch-modal')).toBeVisible();
+  await page.getByTestId('branch-provider-select').selectOption('anthropic');
+  await page.getByTestId('branch-form-modal-input').fill(assistantBranch);
+  await page.getByTestId('branch-form-modal-submit').click();
   await expect(page.locator(`[data-testid="branch-switch"][data-branch-name="${assistantBranch}"]`)).toBeVisible();
   await expectActiveBranch(page, assistantBranch);
 
