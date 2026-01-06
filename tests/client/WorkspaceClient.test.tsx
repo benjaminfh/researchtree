@@ -624,6 +624,55 @@ describe('WorkspaceClient', () => {
     });
   });
 
+  it('keeps the previous graph when an incoming snapshot is empty', async () => {
+    const user = userEvent.setup();
+    let currentNodes = [...sampleNodes];
+
+    mockUseProjectData.mockImplementation(
+      () =>
+        ({
+          nodes: currentNodes,
+          artefact: '## Artefact state',
+          artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+          isLoading: false,
+          error: undefined,
+          mutateHistory: mutateHistoryMock,
+          mutateArtefact: mutateArtefactMock
+        }) as ReturnType<typeof useProjectData>
+    );
+
+    const { rerender } = render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /thred graph/i }));
+
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps?.branchHistories?.['feature/phase-2']?.length).toBe(2);
+    });
+
+    currentNodes = [];
+    rerender(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(capturedWorkspaceGraphProps?.branchHistories?.['feature/phase-2']?.length).toBe(2);
+    });
+  });
+
   it('scrolls to the bottom when switching branches', async () => {
     const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);

@@ -1571,8 +1571,14 @@ export function WorkspaceClient({
         nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
       const current = prev[branchName];
       if (current === nextNodes) return prev;
+      if (current && nextNodes.length === 0) {
+        // Keep the last known graph when the incoming snapshot is temporarily empty (e.g. during history refetch).
+        return prev;
+      }
+      const currentTailId = current?.[current.length - 1]?.id ?? null;
+      const nextTailId = nextNodes[nextNodes.length - 1]?.id ?? null;
       // Avoid thrashing the graph when the active history hasn't changed meaningfully.
-      if (current && current.length === nextNodes.length && current[current.length - 1]?.id === nextNodes[nextNodes.length - 1]?.id) {
+      if (current && current.length === nextNodes.length && currentTailId === nextTailId) {
         return prev;
       }
       return { ...prev, [branchName]: nextNodes };
