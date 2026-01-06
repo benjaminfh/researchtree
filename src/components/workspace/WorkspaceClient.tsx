@@ -2058,17 +2058,9 @@ export function WorkspaceClient({
     historyFetcher
   );
   const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
-  const sharedCountReadyRef = useRef<{ branch: string | null; ready: boolean; inFlight: boolean }>({
-    branch: null,
-    ready: false,
-    inFlight: false
-  });
+  const sharedCountCacheRef = useRef<Map<string, number>>(new Map());
+  const sharedCountInFlightRef = useRef<Set<string>>(new Set());
   const [sharedCount, setSharedCount] = useState(0);
-  useEffect(() => {
-    sharedCountReadyRef.current = { branch: null, ready: false, inFlight: false };
-    setSharedCount(0);
-  }, [branchName, trunkName]);
-
   useEffect(() => {
     const prefixLength = (a: NodeRecord[], b: NodeRecord[]) => {
       const min = Math.min(a.length, b.length);
@@ -2079,18 +2071,20 @@ export function WorkspaceClient({
       return idx;
     };
 
-    if (
-      sharedCountReadyRef.current.branch === branchName &&
-      (sharedCountReadyRef.current.ready || sharedCountReadyRef.current.inFlight)
-    ) {
+    const cache = sharedCountCacheRef.current;
+    if (cache.has(branchName)) {
+      setSharedCount(cache.get(branchName) ?? 0);
       return;
     }
 
-    sharedCountReadyRef.current = { branch: branchName, ready: false, inFlight: true };
     const persistedNodes = persistedNodesRef.current;
     if (branchName === trunkName) {
-      sharedCountReadyRef.current = { branch: branchName, ready: true, inFlight: false };
+      cache.set(branchName, 0);
       setSharedCount(0);
+      return;
+    }
+
+    if (sharedCountInFlightRef.current.has(branchName)) {
       return;
     }
 
@@ -2099,13 +2093,16 @@ export function WorkspaceClient({
       trunkNodes.length > 0 ? prefixLength(trunkNodes, persistedNodes) : Math.min(trunkNodeCount, persistedNodes.length);
     setSharedCount(trunkPrefix);
 
+    sharedCountInFlightRef.current.add(branchName);
     let cancelled = false;
     void (async () => {
       const others = branches.filter((b) => b.name !== branchName);
       if (others.length === 0) {
+        cache.set(branchName, trunkPrefix);
         if (!cancelled) {
-          sharedCountReadyRef.current = { branch: branchName, ready: true, inFlight: false };
+          setSharedCount(trunkPrefix);
         }
+        sharedCountInFlightRef.current.delete(branchName);
         return;
       }
       const histories = await Promise.all(
@@ -2131,20 +2128,15 @@ export function WorkspaceClient({
         }
         return Math.max(max, idx);
       }, trunkPrefix);
-      if (!cancelled && sharedCountReadyRef.current.branch !== branchName) {
-        return;
-      }
+      cache.set(branchName, longest);
+      sharedCountInFlightRef.current.delete(branchName);
       if (!cancelled) {
-        sharedCountReadyRef.current = { branch: branchName, ready: true, inFlight: false };
         setSharedCount(longest);
       }
     })();
 
     return () => {
       cancelled = true;
-      if (sharedCountReadyRef.current.branch === branchName) {
-        sharedCountReadyRef.current = { branch: branchName, ready: false, inFlight: false };
-      }
     };
   }, [branchName, trunkName, trunkHistory, trunkNodeCount, branches, project.id]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
