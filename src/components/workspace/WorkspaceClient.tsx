@@ -1598,6 +1598,10 @@ export function WorkspaceClient({
       const nextNodes =
         nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
       const current = prev[branchName];
+      // Avoid wiping the cached graph when history briefly revalidates to an empty snapshot.
+      if (nextNodes.length === 0 && current?.length) {
+        return prev;
+      }
       if (current === nextNodes) return prev;
       if (current && nextNodes.length === 0) {
         // Keep the last known graph when the incoming snapshot is temporarily empty (e.g. during history refetch).
