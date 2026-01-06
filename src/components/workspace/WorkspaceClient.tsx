@@ -2058,7 +2058,17 @@ export function WorkspaceClient({
     historyFetcher
   );
   const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
+  const sharedCountReadyRef = useRef<{ branch: string | null; ready: boolean; inFlight: boolean }>({
+    branch: null,
+    ready: false,
+    inFlight: false
+  });
   const [sharedCount, setSharedCount] = useState(0);
+  useEffect(() => {
+    sharedCountReadyRef.current = { branch: null, ready: false, inFlight: false };
+    setSharedCount(0);
+  }, [branchName, trunkName]);
+
   useEffect(() => {
     const prefixLength = (a: NodeRecord[], b: NodeRecord[]) => {
       const min = Math.min(a.length, b.length);
@@ -2069,63 +2079,74 @@ export function WorkspaceClient({
       return idx;
     };
 
+    if (
+      sharedCountReadyRef.current.branch === branchName &&
+      (sharedCountReadyRef.current.ready || sharedCountReadyRef.current.inFlight)
+    ) {
+      return;
+    }
+
+    sharedCountReadyRef.current = { branch: branchName, ready: false, inFlight: true };
+    const persistedNodes = persistedNodesRef.current;
     if (branchName === trunkName) {
+      sharedCountReadyRef.current = { branch: branchName, ready: true, inFlight: false };
       setSharedCount(0);
       return;
     }
 
-    const persistedNodes = persistedNodesRef.current;
     const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
     const trunkPrefix =
       trunkNodes.length > 0 ? prefixLength(trunkNodes, persistedNodes) : Math.min(trunkNodeCount, persistedNodes.length);
     setSharedCount(trunkPrefix);
 
-    if (state.isStreaming) {
-      return;
-    }
-
-    const aborted = { current: false };
-    const timeoutId = setTimeout(() => {
-      // Debounce shared-count recompute to coalesce rapid post-stream history updates.
-      if (aborted.current) {
+    let cancelled = false;
+    void (async () => {
+      const others = branches.filter((b) => b.name !== branchName);
+      if (others.length === 0) {
+        if (!cancelled) {
+          sharedCountReadyRef.current = { branch: branchName, ready: true, inFlight: false };
+        }
         return;
       }
-      void (async () => {
-        const others = branches.filter((b) => b.name !== branchName);
-        if (others.length === 0) return;
-        const histories = await Promise.all(
-          others.map(async (b) => {
-            try {
-              const res = await fetch(
-                `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${persistedNodes.length}`
-              );
-              if (!res.ok) return null;
-              const data = (await res.json()) as { nodes: NodeRecord[] };
-              return { name: b.name, nodes: (data.nodes ?? []).filter((node) => node.type !== 'state') };
-            } catch {
-              return null;
-            }
-          })
-        );
-        const longest = histories.reduce((max, entry) => {
-          if (!entry) return max;
-          const min = Math.min(entry.nodes.length, persistedNodes.length);
-          let idx = 0;
-          while (idx < min && entry.nodes[idx]?.id === persistedNodes[idx]?.id) {
-            idx += 1;
+      const histories = await Promise.all(
+        others.map(async (b) => {
+          try {
+            const res = await fetch(
+              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${persistedNodes.length}`
+            );
+            if (!res.ok) return null;
+            const data = (await res.json()) as { nodes: NodeRecord[] };
+            return { name: b.name, nodes: (data.nodes ?? []).filter((node) => node.type !== 'state') };
+          } catch {
+            return null;
           }
-          return Math.max(max, idx);
-        }, trunkPrefix);
-        if (!aborted.current) {
-          setSharedCount(longest);
+        })
+      );
+      const longest = histories.reduce((max, entry) => {
+        if (!entry) return max;
+        const min = Math.min(entry.nodes.length, persistedNodes.length);
+        let idx = 0;
+        while (idx < min && entry.nodes[idx]?.id === persistedNodes[idx]?.id) {
+          idx += 1;
         }
-      })();
-    }, 150);
+        return Math.max(max, idx);
+      }, trunkPrefix);
+      if (!cancelled && sharedCountReadyRef.current.branch !== branchName) {
+        return;
+      }
+      if (!cancelled) {
+        sharedCountReadyRef.current = { branch: branchName, ready: true, inFlight: false };
+        setSharedCount(longest);
+      }
+    })();
+
     return () => {
-      aborted.current = true;
-      clearTimeout(timeoutId);
+      cancelled = true;
+      if (sharedCountReadyRef.current.branch === branchName) {
+        sharedCountReadyRef.current = { branch: branchName, ready: false, inFlight: false };
+      }
     };
-  }, [branchName, trunkName, trunkHistory, trunkNodeCount, branches, project.id, historyEpoch, state.isStreaming]);
+  }, [branchName, trunkName, trunkHistory, trunkNodeCount, branches, project.id]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
