@@ -2059,8 +2059,21 @@ export function WorkspaceClient({
   );
   const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
   const sharedCountCacheRef = useRef<Map<string, number>>(new Map());
+  const sharedHistoryCacheRef = useRef<Map<string, NodeRecord[]>>(new Map());
   const sharedCountInFlightRef = useRef<Set<string>>(new Set());
   const [sharedCount, setSharedCount] = useState(0);
+
+  useEffect(() => {
+    const persistedNodes = persistedNodesRef.current;
+    if (persistedNodes.length > 0) {
+      sharedHistoryCacheRef.current.set(branchName, persistedNodes);
+    }
+    const trunkNodes = trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? [];
+    if (trunkNodes.length > 0) {
+      sharedHistoryCacheRef.current.set(trunkName, trunkNodes);
+    }
+  }, [branchName, trunkHistory, trunkName]);
+
   useEffect(() => {
     const prefixLength = (a: NodeRecord[], b: NodeRecord[]) => {
       const min = Math.min(a.length, b.length);
@@ -2107,13 +2120,19 @@ export function WorkspaceClient({
       }
       const histories = await Promise.all(
         others.map(async (b) => {
+          const cached = sharedHistoryCacheRef.current.get(b.name);
+          if (cached) {
+            return { name: b.name, nodes: cached };
+          }
           try {
             const res = await fetch(
               `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${persistedNodes.length}`
             );
             if (!res.ok) return null;
             const data = (await res.json()) as { nodes: NodeRecord[] };
-            return { name: b.name, nodes: (data.nodes ?? []).filter((node) => node.type !== 'state') };
+            const nodes = (data.nodes ?? []).filter((node) => node.type !== 'state');
+            sharedHistoryCacheRef.current.set(b.name, nodes);
+            return { name: b.name, nodes };
           } catch {
             return null;
           }
