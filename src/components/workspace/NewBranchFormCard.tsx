@@ -10,6 +10,7 @@ export function NewBranchFormCard({
   value,
   onValueChange,
   onSubmit,
+  children,
   providerSelector,
   disabled = false,
   submitting = false,
@@ -25,6 +26,7 @@ export function NewBranchFormCard({
   value: string;
   onValueChange: (value: string) => void;
   onSubmit: () => void;
+  children?: React.ReactNode;
   providerSelector?: React.ReactNode;
   disabled?: boolean;
   submitting?: boolean;
@@ -66,6 +68,7 @@ export function NewBranchFormCard({
           className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
           disabled={isDisabled}
           autoFocus={autoFocus}
+          required
           data-testid={inputTestId}
         />
         <button
@@ -85,6 +88,7 @@ export function NewBranchFormCard({
         </button>
       </div>
       {providerSelector ? <div>{providerSelector}</div> : null}
+      {children}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </form>
   );

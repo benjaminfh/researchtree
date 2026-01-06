@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   buildChatContext: vi.fn(),
   streamAssistantCompletion: vi.fn(),
   resolveLLMProvider: vi.fn(),
+  resolveOpenAIProviderSelection: vi.fn(),
   getDefaultModelForProvider: vi.fn(),
   getProviderTokenLimit: vi.fn(),
   rtCreateRefFromNodeParentShadowV2: vi.fn(),
@@ -25,7 +26,8 @@ const mocks = vi.hoisted(() => ({
   getBranchConfigMap: vi.fn(),
   resolveBranchConfig: vi.fn(),
   resolveRefByName: vi.fn(),
-  resolveCurrentRef: vi.fn()
+  resolveCurrentRef: vi.fn(),
+  requireUserApiKeyForProvider: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -53,6 +55,7 @@ vi.mock('@/src/server/context', () => ({
 vi.mock('@/src/server/llm', () => ({
   streamAssistantCompletion: mocks.streamAssistantCompletion,
   resolveLLMProvider: mocks.resolveLLMProvider,
+  resolveOpenAIProviderSelection: mocks.resolveOpenAIProviderSelection,
   getDefaultModelForProvider: mocks.getDefaultModelForProvider
 }));
 
@@ -89,6 +92,10 @@ vi.mock('@/src/server/pgRefs', () => ({
   resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
+vi.mock('@/src/server/llmUserKeys', () => ({
+  requireUserApiKeyForProvider: mocks.requireUserApiKeyForProvider
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/edit';
 
 function createRequest(body: unknown) {
@@ -122,6 +129,7 @@ describe('/api/projects/[id]/edit', () => {
       ]
     });
     mocks.resolveLLMProvider.mockReturnValue('mock');
+    mocks.resolveOpenAIProviderSelection.mockImplementation((provider?: string) => provider ?? 'openai');
     mocks.getDefaultModelForProvider.mockReturnValue('mock');
     mocks.getProviderTokenLimit.mockResolvedValue(4000);
     mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'mock', model: 'mock' } });
@@ -130,6 +138,7 @@ describe('/api/projects/[id]/edit', () => {
       yield { type: 'text', content: 'foo' };
       yield { type: 'text', content: 'bar' };
     });
+    mocks.requireUserApiKeyForProvider.mockResolvedValue('test-key');
     process.env.RT_STORE = 'git';
     mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
@@ -264,5 +273,159 @@ describe('/api/projects/[id]/edit', () => {
     );
     expect(mocks.appendNode).not.toHaveBeenCalled();
     expect(mocks.createBranch).not.toHaveBeenCalled();
+  });
+
+  it('uses parent assistant responseId when editing a user message on openai_responses (git)', async () => {
+    mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
+    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
+      provider: provider ?? fallback?.provider ?? 'openai_responses',
+      model: model ?? fallback?.model ?? 'gpt-5.2'
+    }));
+    mocks.readNodesFromRef.mockResolvedValueOnce([
+      { id: 'node-asst', type: 'message', role: 'assistant', responseId: 'resp-parent' },
+      { id: 'node-user', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: 'node-asst' }
+    ]);
+
+    const res = await POST(
+      createRequest({ content: 'Edited message', branchName: 'edit-123', fromRef: 'main', nodeId: 'node-user' }),
+      { params: { id: 'project-1' } }
+    );
+
+    expect(res.status).toBe(201);
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash', {
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: 'resp-parent'
+    });
+  });
+
+  it('clears previousResponseId when switching providers on edit (git)', async () => {
+    mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
+    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
+      provider: provider ?? fallback?.provider ?? 'openai_responses',
+      model: model ?? fallback?.model ?? 'gpt-5.2'
+    }));
+    mocks.readNodesFromRef.mockResolvedValueOnce([
+      { id: 'node-asst', type: 'message', role: 'assistant', responseId: 'resp-parent' },
+      { id: 'node-user', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: 'node-asst' }
+    ]);
+
+    const res = await POST(
+      createRequest({
+        content: 'Edited message',
+        branchName: 'edit-123',
+        fromRef: 'main',
+        nodeId: 'node-user',
+        llmProvider: 'gemini',
+        llmModel: 'gemini-3-pro-preview'
+      }),
+      { params: { id: 'project-1' } }
+    );
+
+    expect(res.status).toBe(201);
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'edit-123', 'commit-hash', {
+      provider: 'gemini',
+      model: 'gemini-3-pro-preview',
+      previousResponseId: null
+    });
+  });
+
+  it('uses parent assistant responseId when editing a user message on openai_responses (pg)', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
+    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
+      provider: provider ?? fallback?.provider ?? 'openai_responses',
+      model: model ?? fallback?.model ?? 'gpt-5.2'
+    }));
+    mocks.rtCreateRefFromNodeParentShadowV2.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
+    mocks.rtGetNodeContentShadowV1.mockImplementation(async ({ nodeId }: any) => {
+      if (nodeId === 'node-user') {
+        return { id: 'node-user', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: 'node-asst' };
+      }
+      return { id: 'node-asst', type: 'message', role: 'assistant', responseId: 'resp-parent' };
+    });
+    mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
+    mocks.rtAppendNodeToRefShadowV2.mockResolvedValue({
+      newCommitId: 'c1',
+      nodeId: 'node-1',
+      ordinal: 1,
+      artefactId: null,
+      artefactContentHash: null
+    });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-edit', name: 'edit-123' }]);
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
+
+    const res = await POST(
+      createRequest({ content: 'Edited message', branchName: 'edit-123', fromRef: 'main', nodeId: 'node-user' }),
+      { params: { id: 'project-1' } }
+    );
+
+    expect(res.status).toBe(201);
+    expect(mocks.rtCreateRefFromNodeParentShadowV2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        sourceRefId: 'ref-main',
+        newRefName: 'edit-123',
+        nodeId: 'node-user',
+        provider: 'openai_responses',
+        model: 'gpt-5.2',
+        previousResponseId: 'resp-parent'
+      })
+    );
+  });
+
+  it('clears previousResponseId when switching providers on edit (pg)', async () => {
+    process.env.RT_STORE = 'pg';
+    mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
+    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
+      provider: provider ?? fallback?.provider ?? 'openai_responses',
+      model: model ?? fallback?.model ?? 'gpt-5.2'
+    }));
+    mocks.rtCreateRefFromNodeParentShadowV2.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
+    mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
+    mocks.rtGetNodeContentShadowV1.mockImplementation(async ({ nodeId }: any) => {
+      if (nodeId === 'node-user') {
+        return { id: 'node-user', type: 'message', role: 'user', content: 'Original', timestamp: 0, parent: 'node-asst' };
+      }
+      return { id: 'node-asst', type: 'message', role: 'assistant', responseId: 'resp-parent' };
+    });
+    mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
+    mocks.rtAppendNodeToRefShadowV2.mockResolvedValue({
+      newCommitId: 'c1',
+      nodeId: 'node-1',
+      ordinal: 1,
+      artefactId: null,
+      artefactContentHash: null
+    });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-edit', name: 'edit-123' }]);
+    mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
+
+    const res = await POST(
+      createRequest({
+        content: 'Edited message',
+        branchName: 'edit-123',
+        fromRef: 'main',
+        nodeId: 'node-user',
+        llmProvider: 'gemini',
+        llmModel: 'gemini-3-pro-preview'
+      }),
+      { params: { id: 'project-1' } }
+    );
+
+    expect(res.status).toBe(201);
+    expect(mocks.rtCreateRefFromNodeParentShadowV2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        sourceRefId: 'ref-main',
+        newRefName: 'edit-123',
+        nodeId: 'node-user',
+        provider: 'gemini',
+        model: 'gemini-3-pro-preview',
+        previousResponseId: null
+      })
+    );
   });
 });

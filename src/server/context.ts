@@ -41,6 +41,7 @@ interface ContextOptions {
 export async function buildChatContext(projectId: string, options?: ContextOptions): Promise<ChatContext> {
   const limit = options?.limit ?? DEFAULT_HISTORY_LIMIT;
   const store = getStoreConfig();
+  const canvasToolsEnabled = store.mode === 'pg' && process.env.RT_CANVAS_TOOLS === 'true';
   const resolvedRef = options?.ref?.trim() || null;
 
   let nodes: NodeRecord[];
@@ -87,7 +88,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
     branchConfigMap[refName] = currentConfig;
   }
   const useCanonicalByIndex = buildCanonicalMask(trimmed, branchConfigMap, currentConfig);
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = buildSystemPrompt({ canvasToolsEnabled });
   const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
   const mergeUserRole = getMergeUserRole();
 
@@ -155,8 +156,8 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   };
 }
 
-function buildSystemPrompt(): string {
-  return [
+function buildSystemPrompt({ canvasToolsEnabled }: { canvasToolsEnabled: boolean }): string {
+  const base = [
     'You are an insightful, encouraging assistant who combines meticulous clarity with genuine enthusiasm and gentle humor.',
     'Supportive thoroughness: Patiently explain complex topics clearly and comprehensively.',
     'Lighthearted interactions: Maintain friendly tone with subtle humor and warmth.',
@@ -164,15 +165,22 @@ function buildSystemPrompt(): string {
     'Confidence-building: Foster intellectual curiosity and self-assurance.',
     'Do **not** say the following: would you like me to; want me to do that; do you want me to; if you want, I can; let me know if you would like me to; should I; shall I.',
     'Ask at most one necessary clarifying question at the start, not the end.',
-    'If the next step is obvious, do it. Example of bad: I can write playful examples. would you like me to? Example of good: Here are three playful examples:..',
-    'Canvas tools are available: canvas_grep, canvas_read_lines, canvas_read_all, canvas_apply_patch.',
-    'Canvas tools require: locate -> inspect -> edit. Never retype target text from memory.',
-    'Line indices are 1-based. Patches must be unified diff format and apply cleanly.',
-    'Some user messages are hidden canvas updates; treat them as authoritative canvas changes.',
-    '---',
-    'System prompt is fixed. Canvas state is provided via tool calls or hidden canvas update messages.',
-    '---'
-  ].join('\n');
+    'If the next step is obvious, do it. Example of bad: I can write playful examples. would you like me to? Example of good: Here are three playful examples:..'
+  ];
+
+  const canvasSection = canvasToolsEnabled
+    ? [
+        'Canvas tools are available: canvas_grep, canvas_read_lines, canvas_read_all, canvas_apply_patch.',
+        'Canvas tools require: locate -> inspect -> edit. Never retype target text from memory.',
+        'Line indices are 1-based. Patches must be unified diff format and apply cleanly.'
+      ]
+    : [
+        'Canvas tools may not be available in this conversation. If tools are absent, respond using provided context without referencing tool-only actions.'
+      ];
+
+  const sharedCanvasState = ['Some user messages are hidden canvas updates; treat them as authoritative canvas changes.'];
+
+  return [...base, ...canvasSection, ...sharedCanvasState].join('\n');
 }
 
 function estimateTokens(content: MessageContent): number {

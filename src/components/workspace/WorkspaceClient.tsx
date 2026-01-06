@@ -9,6 +9,7 @@ import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@g
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
+import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
@@ -31,16 +32,20 @@ import { InsightFrame } from './InsightFrame';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { RailPopover } from '@/src/components/layout/RailPopover';
 import { NewBranchFormCard } from '@/src/components/workspace/NewBranchFormCard';
+import { CommandEnterForm } from '@/src/components/forms/CommandEnterForm';
 import {
   ArrowUpIcon,
   CheckIcon,
   HomeIcon,
+  ConsoleIcon,
   PaperClipIcon,
   QuestionMarkCircleIcon,
   SearchIcon,
   Square2StackIcon,
   XMarkIcon
 } from './HeroIcons';
+import { MarkdownWithCopy } from './MarkdownWithCopy';
+import { copyTextToClipboard } from './clipboard';
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -70,9 +75,46 @@ const getNodeThinkingText = (node: NodeRecord): string => {
   return deriveThinkingFromBlocks(blocks);
 };
 
+const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
+
+const buildQuestionMessage = (question: string, highlight?: string) => {
+  const trimmedQuestion = question.trim();
+  const trimmedHighlight = highlight?.trim() ?? '';
+  if (!trimmedHighlight) {
+    return trimmedQuestion;
+  }
+  return ['Highlighted passage:', `"""${trimmedHighlight}"""`, '', 'Question:', trimmedQuestion].join('\n');
+};
+
+const createClientId = (): string => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+};
+
 type DiffLine = {
   type: 'context' | 'added' | 'removed';
   value: string;
+};
+
+type BackgroundTask = {
+  id: string;
+  branchName: string;
+  kind: 'edit' | 'question';
+  switchOnComplete: boolean;
+};
+
+type ToastTone = 'info' | 'success' | 'error';
+
+type ToastMessage = {
+  id: string;
+  tone: ToastTone;
+  message: string;
+};
+
+type BranchListItem = BranchSummary & {
+  isGhost?: boolean;
 };
 
 interface WorkspaceClientProps {
@@ -100,6 +142,7 @@ const NodeBubble: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
+  branchQuestionCandidate?: boolean;
   showOpenAiThinkingNote?: boolean;
 }> = ({
   node,
@@ -112,6 +155,7 @@ const NodeBubble: FC<{
   isCanvasDiffPinned = false,
   onPinCanvasDiff,
   highlighted = false,
+  branchQuestionCandidate = false,
   showOpenAiThinkingNote = false
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
@@ -148,29 +192,6 @@ const NodeBubble: FC<{
     ? 'bg-slate-50 text-slate-900'
     : 'bg-white text-slate-900';
   const align = isUser ? 'ml-auto items-end' : 'mr-auto items-start';
-
-  const copyToClipboard = async (text: string) => {
-    if (typeof navigator === 'undefined') return;
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // ignore and fall back
-    }
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    } catch {
-      // ignore
-    }
-  };
 
   useEffect(() => {
     return () => {
@@ -223,7 +244,7 @@ const NodeBubble: FC<{
         {node.type === 'message' && messageText ? (
           isAssistant ? (
             <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageText}</ReactMarkdown>
+              <MarkdownWithCopy content={messageText} />
             </div>
           ) : (
             <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{messageText}</p>
@@ -375,7 +396,7 @@ const NodeBubble: FC<{
               type="button"
               onClick={() => {
                 void (async () => {
-                  await copyToClipboard(messageText);
+                  await copyTextToClipboard(messageText);
                   setCopyFeedback(true);
                   if (copyFeedbackTimeoutRef.current) {
                     clearTimeout(copyFeedbackTimeoutRef.current);
@@ -401,10 +422,24 @@ const NodeBubble: FC<{
               type="button"
               data-branch-trigger={node.role === 'assistant' ? 'true' : undefined}
               onClick={() => onEdit(node)}
-              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none"
-              aria-label={node.role === 'assistant' ? 'Create branch from message' : 'Edit message'}
+              className={`rounded-full px-2 py-1 focus:outline-none ${
+                branchQuestionCandidate
+                  ? 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                  : 'bg-slate-100 text-slate-600 hover:bg-primary/10 hover:text-primary'
+              }`}
+              aria-label={
+                branchQuestionCandidate
+                  ? 'Ask a question on a new branch'
+                  : node.role === 'assistant'
+                    ? 'Create branch from message'
+                    : 'Edit message'
+              }
             >
-              <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+              {branchQuestionCandidate ? (
+                <QuestionMarkCircleIcon className="h-4 w-4" />
+              ) : (
+                <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+              )}
             </button>
           ) : null}
           {!isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
@@ -431,6 +466,7 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned?: boolean;
   onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
+  branchQuestionCandidate?: boolean;
   showBranchSplit?: boolean;
 }> = ({
   node,
@@ -449,6 +485,7 @@ const ChatNodeRow: FC<{
   isCanvasDiffPinned,
   onPinCanvasDiff,
   highlighted,
+  branchQuestionCandidate,
   showBranchSplit
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
@@ -481,6 +518,7 @@ const ChatNodeRow: FC<{
             isCanvasDiffPinned={isCanvasDiffPinned}
             onPinCanvasDiff={onPinCanvasDiff}
             highlighted={!!highlighted}
+            branchQuestionCandidate={branchQuestionCandidate}
             showOpenAiThinkingNote={showOpenAiThinkingNote}
           />
           {showBranchSplit ? (
@@ -510,6 +548,7 @@ export function WorkspaceClient({
   const [newBranchName, setNewBranchName] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [branchPopoverMode, setBranchPopoverMode] = useState<'standard' | 'question'>('standard');
   const [pendingPinBranchIds, setPendingPinBranchIds] = useState<Set<string>>(new Set());
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTarget, setRenameTarget] = useState<BranchSummary | null>(null);
@@ -533,13 +572,20 @@ export function WorkspaceClient({
   const [editBranchName, setEditBranchName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [switchToEditBranch, setSwitchToEditBranch] = useState(true);
   const [editProvider, setEditProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
   const [editThinking, setEditThinking] = useState<ThinkingSetting>('medium');
+  const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastTimeoutsRef = useRef<Map<string, number>>(new Map());
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
   const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
   const [newBranchThinking, setNewBranchThinking] = useState<ThinkingSetting>('medium');
+  const [newBranchQuestion, setNewBranchQuestion] = useState('');
+  const [newBranchHighlight, setNewBranchHighlight] = useState('');
+  const [switchToNewBranch, setSwitchToNewBranch] = useState(false);
   const autosaveControllerRef = useRef<AbortController | null>(null);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveSavingTokenRef = useRef(0);
@@ -565,6 +611,7 @@ export function WorkspaceClient({
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
+  const [composerCollapsed, setComposerCollapsed] = useState(false);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
@@ -580,19 +627,130 @@ export function WorkspaceClient({
   const INSIGHT_MIN_WIDTH = 360;
   const INSIGHT_COLLAPSED_WIDTH = 56;
   const SPLIT_GAP = 12;
+  const COLLAPSED_COMPOSER_PADDING = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
-  const openEditModal = (node: MessageNode) => {
+
+  const getSelectionForNode = useCallback((nodeId: string): string => {
+    if (typeof window === 'undefined') return '';
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return '';
+    const text = selection.toString().trim();
+    if (!text) return '';
+    const container = document.querySelector(`[data-node-id="${nodeId}"]`);
+    if (!container) return '';
+    const anchor = selection.anchorNode;
+    const focus = selection.focusNode;
+    if (anchor && focus && container.contains(anchor) && container.contains(focus)) {
+      return text;
+    }
+    return '';
+  }, []);
+
+  const getSelectionContext = useCallback((): { nodeId: string; text: string } | null => {
+    if (typeof window === 'undefined') return null;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return null;
+    const text = selection.toString().trim();
+    if (!text) return null;
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+    const anchorEl = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement;
+    const focusEl = focusNode instanceof Element ? focusNode : focusNode?.parentElement;
+    if (!anchorEl || !focusEl) return null;
+    const anchorContainer = anchorEl.closest('[data-node-id]');
+    const focusContainer = focusEl.closest('[data-node-id]');
+    if (!anchorContainer || anchorContainer !== focusContainer) return null;
+    const nodeId = anchorContainer.getAttribute('data-node-id');
+    if (!nodeId) return null;
+    return { nodeId, text };
+  }, []);
+
+  const resetBranchQuestionState = useCallback(() => {
+    setBranchSplitNodeId(null);
+    setNewBranchHighlight('');
+    setNewBranchQuestion('');
+    setSwitchToNewBranch(false);
+    setBranchPopoverMode('standard');
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    const timeout = toastTimeoutsRef.current.get(id);
+    if (timeout) {
+      clearTimeout(timeout);
+      toastTimeoutsRef.current.delete(id);
+    }
+  }, []);
+
+  const pushToast = useCallback(
+    (tone: ToastTone, message: string) => {
+      const id = createClientId();
+      setToasts((prev) => [...prev, { id, tone, message }]);
+      const timeout = window.setTimeout(() => {
+        removeToast(id);
+      }, 4500);
+      toastTimeoutsRef.current.set(id, timeout);
+    },
+    [removeToast]
+  );
+
+  useEffect(() => {
+    return () => {
+      for (const timeout of toastTimeoutsRef.current.values()) {
+        clearTimeout(timeout);
+      }
+      toastTimeoutsRef.current.clear();
+    };
+  }, []);
+
+  const startBackgroundTask = useCallback((task: Omit<BackgroundTask, 'id'>) => {
+    const id = createClientId();
+    setBackgroundTasks((prev) => [...prev, { id, ...task }]);
+    return id;
+  }, []);
+
+  const finishBackgroundTask = useCallback((id: string) => {
+    setBackgroundTasks((prev) => prev.filter((task) => task.id !== id));
+  }, []);
+
+  const openEditModal = (node: MessageNode, highlightText?: string) => {
     if (node.role === 'assistant') {
-      if (showNewBranchPopover && branchSplitNodeId === node.id) {
+      const selectionText = highlightText?.trim() || getSelectionForNode(node.id);
+      if (selectionText) {
+        if (showNewBranchPopover && branchSplitNodeId === node.id && branchPopoverMode === 'question') {
+          setShowNewBranchPopover(false);
+          resetBranchQuestionState();
+          return;
+        }
         setShowNewBranchPopover(false);
-        setBranchSplitNodeId(null);
+        resetBranchQuestionState();
+        setBranchActionError(null);
+        setNewBranchName('');
+        setBranchSplitNodeId(node.id);
+        setNewBranchHighlight(selectionText);
+        setNewBranchQuestion('');
+        setSwitchToNewBranch(false);
+        setBranchPopoverMode('question');
+        setShowNewBranchPopover(true);
         return;
       }
+      if (showNewBranchPopover && branchSplitNodeId === node.id && branchPopoverMode === 'standard') {
+        setShowNewBranchPopover(false);
+        resetBranchQuestionState();
+        return;
+      }
+      setShowNewBranchPopover(false);
+      resetBranchQuestionState();
       setBranchActionError(null);
       setNewBranchName('');
       setBranchSplitNodeId(node.id);
+      setBranchPopoverMode('standard');
       setShowNewBranchPopover(true);
       return;
+    }
+    if (showNewBranchPopover) {
+      setShowNewBranchPopover(false);
+      resetBranchQuestionState();
     }
     setBranchSplitNodeId(null);
     setEditingNode(node);
@@ -601,6 +759,7 @@ export function WorkspaceClient({
     setEditError(null);
     setEditProvider(normalizeProviderForUi(branchProvider));
     setEditThinking(thinking);
+    setSwitchToEditBranch(true);
     setShowEditModal(true);
   };
 
@@ -661,28 +820,6 @@ export function WorkspaceClient({
     }
   };
 
-  const copyTextToClipboard = async (text: string) => {
-    if (typeof navigator === 'undefined') return;
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // ignore and fall back
-    }
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    } catch {
-      // ignore
-    }
-  };
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
     ref: branchName
   });
@@ -698,10 +835,14 @@ export function WorkspaceClient({
     await mutateHistory();
     setHistoryEpoch((value) => value + 1);
   }, [mutateHistory]);
+  const refreshCoreData = useCallback(() => {
+    void Promise.allSettled([refreshHistory(), mutateArtefact()]);
+  }, [refreshHistory, mutateArtefact]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [draft, setDraft] = useState('');
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
+  const questionDraftRef = useRef<string | null>(null);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
@@ -755,7 +896,7 @@ export function WorkspaceClient({
     }
   }, [HAS_SENT_MESSAGE_KEY]);
 
-  const { sendMessage, interrupt, state } = useChatStream({
+  const { sendMessage, sendStreamRequest, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
     provider: branchProvider,
@@ -821,6 +962,7 @@ export function WorkspaceClient({
       setStreamBlocks([]);
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
+      questionDraftRef.current = null;
       hasReceivedAssistantChunkRef.current = false;
       if (assistantPendingTimerRef.current) {
         clearTimeout(assistantPendingTimerRef.current);
@@ -897,6 +1039,147 @@ export function WorkspaceClient({
     await sendMessage(sent);
   };
 
+  const sendQuestionWithStream = async ({
+    targetBranch,
+    question,
+    highlight,
+    provider,
+    model,
+    thinkingSetting,
+    fromRef,
+    fromNodeId,
+    onResponse,
+    onFailure
+  }: {
+    targetBranch: string;
+    question: string;
+    highlight?: string;
+    provider: LLMProvider;
+    model: string;
+    thinkingSetting: ThinkingSetting;
+    fromRef: string;
+    fromNodeId?: string | null;
+    onResponse?: () => void;
+    onFailure?: () => void;
+  }) => {
+    if (!question.trim() || state.isStreaming) return;
+    const optimisticContent = buildQuestionMessage(question, highlight);
+    shouldScrollToBottomRef.current = true;
+    questionDraftRef.current = optimisticContent;
+    setStreamBlocks([]);
+    hasReceivedAssistantChunkRef.current = false;
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    setAssistantPending(false);
+    setOptimisticUserNode({
+      id: 'optimistic-user',
+      type: 'message',
+      role: 'user',
+      content: optimisticContent,
+      contentBlocks: [{ type: 'text', text: optimisticContent }],
+      timestamp: Date.now(),
+      parent: null,
+      createdOnBranch: targetBranch
+    });
+    assistantPendingTimerRef.current = setTimeout(() => {
+      setAssistantPending(true);
+      assistantPendingTimerRef.current = null;
+    }, 100);
+    let responded = false;
+    await sendStreamRequest({
+      url: `/api/projects/${project.id}/branch-question`,
+      body: {
+        name: targetBranch,
+        fromRef,
+        fromNodeId,
+        provider,
+        model,
+        question,
+        highlight,
+        thinking: thinkingSetting,
+        switch: true
+      },
+      onResponse: () => {
+        responded = true;
+        onResponse?.();
+      },
+      debugLabel: 'branch-question'
+    });
+    if (!responded) {
+      onFailure?.();
+    }
+  };
+
+  const sendEditWithStream = async ({
+    targetBranch,
+    content,
+    fromRef,
+    nodeId,
+    provider,
+    model,
+    thinkingSetting,
+    onResponse,
+    onFailure
+  }: {
+    targetBranch: string;
+    content: string;
+    fromRef: string;
+    nodeId: string;
+    provider: LLMProvider;
+    model: string;
+    thinkingSetting: ThinkingSetting;
+    onResponse?: () => void;
+    onFailure?: () => void;
+  }) => {
+    if (!content.trim() || state.isStreaming) return;
+    shouldScrollToBottomRef.current = true;
+    questionDraftRef.current = content;
+    setStreamBlocks([]);
+    hasReceivedAssistantChunkRef.current = false;
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    setAssistantPending(false);
+    setOptimisticUserNode({
+      id: 'optimistic-user',
+      type: 'message',
+      role: 'user',
+      content,
+      contentBlocks: [{ type: 'text', text: content }],
+      timestamp: Date.now(),
+      parent: null,
+      createdOnBranch: targetBranch
+    });
+    assistantPendingTimerRef.current = setTimeout(() => {
+      setAssistantPending(true);
+      assistantPendingTimerRef.current = null;
+    }, 100);
+    let responded = false;
+    await sendStreamRequest({
+      url: `/api/projects/${project.id}/edit-stream`,
+      body: {
+        content,
+        branchName: targetBranch,
+        fromRef,
+        llmProvider: provider,
+        llmModel: model,
+        thinking: thinkingSetting,
+        nodeId
+      },
+      onResponse: () => {
+        responded = true;
+        onResponse?.();
+      },
+      debugLabel: 'edit-stream'
+    });
+    if (!responded) {
+      onFailure?.();
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await sendDraft();
@@ -933,16 +1216,32 @@ export function WorkspaceClient({
       : null;
   const isSending = state.isStreaming || assistantPending;
 
+  const toggleComposerCollapsed = useCallback(
+    (next?: boolean) => {
+      setComposerCollapsed((prev) => {
+        const target = typeof next === 'boolean' ? next : !prev;
+        if (state.isStreaming || target === prev) return prev;
+        return target;
+      });
+    },
+    [state.isStreaming]
+  );
+
+  const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
+
   useEffect(() => {
-    if (!state.error || !optimisticDraftRef.current) return;
+    if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
     const sent = optimisticDraftRef.current;
     optimisticDraftRef.current = null;
+    questionDraftRef.current = null;
     void Promise.all([refreshHistory(), mutateArtefact()]).catch(() => {});
     setOptimisticUserNode(null);
     setStreamPreview('');
     setStreamBlocks([]);
     if (!hasReceivedAssistantChunkRef.current) {
-      setDraft(sent);
+      if (sent) {
+        setDraft(sent);
+      }
     }
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
@@ -1137,29 +1436,53 @@ export function WorkspaceClient({
 
   const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
   const displayBranchName = (name: string) => (name === trunkName ? TRUNK_LABEL : name);
+  const toastToneClassName = (tone: ToastTone) => {
+    if (tone === 'success') {
+      return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+    }
+    if (tone === 'error') {
+      return 'border-red-200 bg-red-50 text-red-700';
+    }
+    return 'border-slate-200 bg-white text-slate-800';
+  };
+  const pendingBranchNames = useMemo(
+    () => new Set(backgroundTasks.map((task) => task.branchName)),
+    [backgroundTasks]
+  );
+  const displayBranches = useMemo<BranchListItem[]>(() => {
+    const ghostBranches = backgroundTasks
+      .filter((task) => !branches.some((branch) => branch.name === task.branchName))
+      .map((task) => ({
+        name: task.branchName,
+        headCommit: '',
+        nodeCount: 0,
+        isTrunk: false,
+        isPinned: false,
+        isGhost: true
+      }));
+    return [...branches, ...ghostBranches];
+  }, [branches, backgroundTasks]);
   const sortedBranches = useMemo(() => {
-    const pinned = branches.filter((branch) => branch.isPinned);
-    const unpinned = branches.filter((branch) => !branch.isPinned);
-    return [...pinned, ...unpinned];
-  }, [branches]);
+    const pinned = displayBranches.filter((branch) => branch.isPinned);
+    const pendingGhosts = displayBranches.filter((branch) => branch.isGhost);
+    const unpinned = displayBranches.filter((branch) => !branch.isPinned && !branch.isGhost);
+    return [...pinned, ...pendingGhosts, ...unpinned];
+  }, [displayBranches]);
   const branchColorMap = useMemo(
     () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
     [sortedBranches, trunkName]
   );
   const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
   const lastGraphRequestKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (insightCollapsed || insightTab !== 'graph') return;
-    if (graphHistories && lastGraphRequestKeyRef.current === graphRequestKey && !graphHistoryError) {
-      return;
-    }
-    const controller = new AbortController();
-    const load = async () => {
+  const loadGraphHistories = useCallback(
+    async ({ force = false, signal }: { force?: boolean; signal?: AbortSignal } = {}) => {
+      if (!force && (insightCollapsed || insightTab !== 'graph')) {
+        return;
+      }
       setGraphHistoryLoading(true);
       setGraphHistoryError(null);
       try {
-        const res = await fetch(`/api/projects/${project.id}/graph`, { signal: controller.signal });
+        const res = await fetch(`/api/projects/${project.id}/graph`, { signal });
         if (!res.ok) {
           throw new Error('Failed to load graph');
         }
@@ -1172,21 +1495,72 @@ export function WorkspaceClient({
       } finally {
         setGraphHistoryLoading(false);
       }
-    };
-    void load();
-    return () => controller.abort();
-  }, [insightCollapsed, insightTab, graphRequestKey, project.id, graphHistories, graphHistoryError]);
+    },
+    [graphRequestKey, insightCollapsed, insightTab, project.id]
+  );
+  const reloadBranches = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${project.id}/branches`);
+      if (!res.ok) {
+        throw new Error('Failed to reload branches');
+      }
+      const data = (await res.json()) as { branches?: BranchSummary[] };
+      if (Array.isArray(data.branches)) {
+        setBranches(data.branches);
+      }
+    } catch (err) {
+      console.error('[workspace] reload branches failed', err);
+    }
+  }, [project.id]);
+  const refreshInsights = useCallback(
+    (options?: { includeGraph?: boolean; includeBranches?: boolean }) => {
+      const tasks: Promise<unknown>[] = [];
+      if (options?.includeBranches) {
+        tasks.push(reloadBranches());
+      }
+      if (options?.includeGraph) {
+        tasks.push(loadGraphHistories({ force: true }));
+      }
+      if (tasks.length === 0) return;
+      void Promise.allSettled(tasks);
+    },
+    [loadGraphHistories, reloadBranches]
+  );
 
   useEffect(() => {
+    if (historyEpoch === 0) return;
+    refreshInsights({ includeGraph: true, includeBranches: true });
+  }, [historyEpoch, refreshInsights]);
+
+  useEffect(() => {
+    if (insightCollapsed || insightTab !== 'graph') return;
+    if (graphHistories && lastGraphRequestKeyRef.current === graphRequestKey && !graphHistoryError) {
+      return;
+    }
+    const controller = new AbortController();
+    void loadGraphHistories({ signal: controller.signal });
+    return () => controller.abort();
+  }, [insightCollapsed, insightTab, graphRequestKey, graphHistories, graphHistoryError, loadGraphHistories]);
+
+  useEffect(() => {
+    if (composerCollapsed) {
+      setComposerPadding(COLLAPSED_COMPOSER_PADDING);
+      return;
+    }
     const composer = composerRef.current;
-    if (!composer || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
+    if (!composer || typeof ResizeObserver === 'undefined') {
+      setComposerPadding(Math.max(116, COLLAPSED_COMPOSER_PADDING));
+      return;
+    }
+    const updatePadding = () => {
       const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
       setComposerPadding(next);
-    });
+    };
+    updatePadding();
+    const observer = new ResizeObserver(updatePadding);
     observer.observe(composer);
     return () => observer.disconnect();
-  }, []);
+  }, [composerCollapsed, COLLAPSED_COMPOSER_PADDING]);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -1197,8 +1571,14 @@ export function WorkspaceClient({
         nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
       const current = prev[branchName];
       if (current === nextNodes) return prev;
+      if (current && nextNodes.length === 0) {
+        // Keep the last known graph when the incoming snapshot is temporarily empty (e.g. during history refetch).
+        return prev;
+      }
+      const currentTailId = current?.[current.length - 1]?.id ?? null;
+      const nextTailId = nextNodes[nextNodes.length - 1]?.id ?? null;
       // Avoid thrashing the graph when the active history hasn't changed meaningfully.
-      if (current && current.length === nextNodes.length && current[current.length - 1]?.id === nextNodes[nextNodes.length - 1]?.id) {
+      if (current && current.length === nextNodes.length && currentTailId === nextTailId) {
         return prev;
       }
       return { ...prev, [branchName]: nextNodes };
@@ -1270,6 +1650,22 @@ export function WorkspaceClient({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [collapseInsights, expandInsights, insightCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.key.toLowerCase() !== 'j') return;
+      if (state.isStreaming) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      event.preventDefault();
+      toggleComposerCollapsed();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [state.isStreaming, toggleComposerCollapsed]);
 
   useEffect(() => {
     return () => {
@@ -1453,13 +1849,13 @@ export function WorkspaceClient({
       if (target.closest('[data-branch-trigger="true"]')) return;
       if (newBranchPopoverRef.current?.contains(target)) return;
       setShowNewBranchPopover(false);
-      setBranchSplitNodeId(null);
+      resetBranchQuestionState();
     }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setShowNewBranchPopover(false);
-        setBranchSplitNodeId(null);
+        resetBranchQuestionState();
       }
     }
 
@@ -1471,7 +1867,7 @@ export function WorkspaceClient({
       document.removeEventListener('touchstart', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [showNewBranchPopover]);
+  }, [showNewBranchPopover, resetBranchQuestionState]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -1484,6 +1880,7 @@ export function WorkspaceClient({
   const previousVisibleBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -1496,19 +1893,50 @@ export function WorkspaceClient({
   }, []);
 
   const combinedNodes = useMemo(() => {
-    const out: NodeRecord[] = [...nodes];
-    if (optimisticUserNode) {
-      out.push(optimisticUserNode);
+    const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
+    const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
+    const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
+    let baseNodes = nodes;
+    if (allowOptimistic && optimisticMessage?.content && optimisticBranch) {
+      const optimisticContent = normalizeMessageText(optimisticMessage.content);
+      const reversedIndex = [...nodes].reverse().findIndex((node) => {
+        if (node.type !== 'message') return false;
+        if (node.role !== 'user') return false;
+        if (normalizeMessageText(node.content) !== optimisticContent) return false;
+        const createdOn = node.createdOnBranch ?? branchName;
+        return createdOn === optimisticBranch;
+      });
+      if (reversedIndex >= 0) {
+        const index = nodes.length - 1 - reversedIndex;
+        baseNodes = nodes.filter((_, idx) => idx !== index);
+      }
     }
-    if (assistantPendingNode) {
-      out.push(assistantPendingNode);
-    }
-    if (streamingNode) {
-      out.push(streamingNode);
+    const out: NodeRecord[] = [...baseNodes];
+    if (allowOptimistic) {
+      if (optimisticUserNode) {
+        out.push(optimisticUserNode);
+      }
+      if (assistantPendingNode) {
+        out.push(assistantPendingNode);
+      }
+      if (streamingNode) {
+        out.push(streamingNode);
+      }
     }
     return out;
-  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode]);
+  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
+  const latestVisibleNodeId = useMemo(() => {
+    if (visibleNodes.length === 0) return null;
+    return visibleNodes[visibleNodes.length - 1]!.id;
+  }, [visibleNodes]);
+  const visibleNodeRoleMap = useMemo(() => {
+    return new Map(
+      visibleNodes
+        .filter((node) => node.type === 'message')
+        .map((node) => [node.id, (node as MessageNode).role] as const)
+    );
+  }, [visibleNodes]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -1533,6 +1961,41 @@ export function WorkspaceClient({
   );
   const persistedNodesRef = useRef<NodeRecord[]>([]);
   persistedNodesRef.current = nodes.filter((node) => node.type !== 'state');
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleSelectionChange = () => {
+      const selection = getSelectionContext();
+      if (!selection) {
+        setActiveBranchHighlight((prev) => (prev ? null : prev));
+        return;
+      }
+      if (visibleNodeRoleMap.get(selection.nodeId) !== 'assistant') {
+        setActiveBranchHighlight((prev) => (prev ? null : prev));
+        return;
+      }
+      setActiveBranchHighlight((prev) => {
+        if (prev?.nodeId === selection.nodeId && prev.text === selection.text) {
+          return prev;
+        }
+        return selection;
+      });
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    document.addEventListener('mouseup', handleSelectionChange);
+    document.addEventListener('keyup', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('mouseup', handleSelectionChange);
+      document.removeEventListener('keyup', handleSelectionChange);
+    };
+  }, [getSelectionContext, visibleNodeRoleMap]);
+
+  useEffect(() => {
+    if (!showNewBranchPopover || !latestVisibleNodeId) return;
+    setBranchSplitNodeId((prev) => prev ?? latestVisibleNodeId);
+  }, [showNewBranchPopover, latestVisibleNodeId]);
 
   useEffect(() => {
     if (previousVisibleBranchRef.current !== branchName) {
@@ -1863,6 +2326,91 @@ export function WorkspaceClient({
     }
   };
 
+  const startEditTask = useCallback(
+    ({
+      targetBranch,
+      fromRef,
+      content,
+      provider,
+      model,
+      thinkingSetting,
+      nodeId,
+      switchOnComplete,
+      onResponse,
+      onFailure
+    }: {
+      targetBranch: string;
+      fromRef: string;
+      content: string;
+      provider: LLMProvider;
+      model: string;
+      thinkingSetting: ThinkingSetting;
+      nodeId?: string | null;
+      switchOnComplete: boolean;
+      onResponse?: () => void;
+      onFailure?: () => void;
+    }) => {
+      const taskId = startBackgroundTask({
+        branchName: targetBranch,
+        kind: 'edit',
+        switchOnComplete
+      });
+      pushToast('info', `Edit queued for ${displayBranchName(targetBranch)}.`);
+      void (async () => {
+        let responded = false;
+        try {
+          const res = await fetch(`/api/projects/${project.id}/edit-stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content,
+              branchName: targetBranch,
+              fromRef,
+              llmProvider: provider,
+              llmModel: model,
+              thinking: thinkingSetting,
+              nodeId
+            })
+          });
+          if (!res.ok || !res.body) {
+            const data = await res.json().catch(() => null);
+            throw new Error(data?.error?.message ?? 'Edit failed');
+          }
+          responded = true;
+          onResponse?.();
+          const reader = res.body.getReader();
+          const { errorMessage } = await consumeNdjsonStream(reader, {
+            defaultErrorMessage: 'Edit failed'
+          });
+          if (errorMessage) {
+            throw new Error(errorMessage);
+          }
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(`researchtree:thinking:${project.id}:${targetBranch}`, thinkingSetting);
+          }
+          await refreshInsights({ includeGraph: true, includeBranches: true });
+          pushToast('success', `Edit completed on ${displayBranchName(targetBranch)}.`);
+        } catch (err) {
+          if (!responded) {
+            onFailure?.();
+          }
+          pushToast('error', (err as Error).message);
+        } finally {
+          finishBackgroundTask(taskId);
+        }
+      })();
+    },
+    [
+      displayBranchName,
+      finishBackgroundTask,
+      project.id,
+      pushToast,
+      refreshInsights,
+      startBackgroundTask,
+      switchBranch
+    ]
+  );
+
   const jumpToGraphNode = useCallback(
     async (nodeId: string) => {
       const resolved = resolveGraphNode(nodeId);
@@ -1875,8 +2423,11 @@ export function WorkspaceClient({
     [resolveGraphNode, branchName, switchBranch]
   );
 
-  const createBranch = async () => {
-    if (!newBranchName.trim()) return false;
+  const createBranch = async ({ switchToNew = true }: { switchToNew?: boolean } = {}) => {
+    if (!newBranchName.trim()) {
+      setBranchActionError('Branch name is required.');
+      return { ok: false as const };
+    }
     setIsCreating(true);
     setBranchActionError(null);
     try {
@@ -1891,29 +2442,121 @@ export function WorkspaceClient({
           fromRef: branchName,
           ...(branchSplitNodeId ? { fromNodeId: branchSplitNodeId } : {}),
           provider: newBranchProvider,
-          model: branchModel
+          model: branchModel,
+          switch: switchToNew
         })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error?.message ?? 'Failed to create branch');
       }
-      const data = (await res.json()) as { branchName: string; branches: BranchSummary[] };
-      setBranchName(data.branchName);
+      const data = (await res.json()) as { branchName: string; branchId?: string | null; branches: BranchSummary[] };
+      const createdBranchName = data.branchName ?? newBranchName.trim();
+      const createdBranch = data.branches?.find((branch) => branch.name === createdBranchName);
+      if (switchToNew && createdBranchName) {
+        setBranchName(createdBranchName);
+      }
       setBranches(data.branches);
       setNewBranchName('');
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, newBranchThinking);
+        window.localStorage.setItem(
+          `researchtree:thinking:${project.id}:${createdBranchName}`,
+          newBranchThinking
+        );
       }
-      await Promise.all([refreshHistory(), mutateArtefact()]);
-      return true;
+      refreshCoreData();
+      refreshInsights({ includeGraph: true, includeBranches: true });
+      return {
+        ok: true as const,
+        branchName: createdBranchName,
+        branchProvider: createdBranch?.provider,
+        branchModel: createdBranch?.model
+      };
     } catch (err) {
       setBranchActionError((err as Error).message);
-      return false;
+      return { ok: false as const };
     } finally {
       setIsCreating(false);
     }
   };
+
+  const startBranchQuestionTask = useCallback(
+    ({
+      targetBranch,
+      fromRef,
+      fromNodeId,
+      question,
+      highlight,
+      provider,
+      model,
+      thinkingSetting,
+      switchOnCreate,
+      onResponse,
+      onFailure
+    }: {
+      targetBranch: string;
+      fromRef: string;
+      fromNodeId?: string | null;
+      question: string;
+      highlight?: string;
+      provider: LLMProvider;
+      model: string;
+      thinkingSetting: ThinkingSetting;
+      switchOnCreate: boolean;
+      onResponse?: () => void;
+      onFailure?: () => void;
+    }) => {
+      const taskId = startBackgroundTask({
+        branchName: targetBranch,
+        kind: 'question',
+        switchOnComplete: false
+      });
+      pushToast('info', `Question queued for ${displayBranchName(targetBranch)}.`);
+      void (async () => {
+        let responded = false;
+        try {
+          const res = await fetch(`/api/projects/${project.id}/branch-question`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: targetBranch,
+              fromRef,
+              fromNodeId,
+              provider,
+              model,
+              question,
+              highlight,
+              thinking: thinkingSetting,
+              switch: switchOnCreate
+            })
+          });
+          if (!res.ok || !res.body) {
+            const data = await res.json().catch(() => null);
+            throw new Error(data?.error?.message ?? 'Failed to send question to new branch');
+          }
+          responded = true;
+          onResponse?.();
+          const reader = res.body.getReader();
+          const { errorMessage } = await consumeNdjsonStream(reader, {
+            defaultErrorMessage: 'Failed to send question to new branch'
+          });
+          if (errorMessage) {
+            throw new Error(errorMessage);
+          }
+          pushToast('success', `Question completed on ${displayBranchName(targetBranch)}.`);
+          await refreshInsights({ includeGraph: true, includeBranches: true });
+        } catch (err) {
+          if (!responded) {
+            onFailure?.();
+          }
+          pushToast('error', (err as Error).message);
+        } finally {
+          finishBackgroundTask(taskId);
+        }
+      })();
+    },
+    [displayBranchName, finishBackgroundTask, project.id, pushToast, refreshInsights, startBackgroundTask]
+  );
 
   const renameBranch = async () => {
     if (!renameTarget) return;
@@ -1994,6 +2637,80 @@ export function WorkspaceClient({
     }
   };
 
+  const submitEdit = () => {
+    if (!editDraft.trim()) {
+      setEditError('Content is required.');
+      return;
+    }
+    if (!editBranchName.trim()) {
+      setEditError('Branch name is required.');
+      return;
+    }
+    setIsEditing(true);
+    const editModel =
+      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
+      getDefaultModelForProviderFromCapabilities(editProvider);
+    const fromRef = editingNode?.createdOnBranch ?? branchName;
+    const targetBranch = editBranchName.trim();
+    const content = editDraft.trim();
+    const nodeId = editingNode?.id ?? null;
+    const shouldSwitch = switchToEditBranch;
+
+    setEditError(null);
+
+    if (shouldSwitch) {
+      if (!nodeId) {
+        setEditError('Unable to resolve edited node.');
+        setIsEditing(false);
+        return;
+      }
+      void sendEditWithStream({
+        targetBranch,
+        content,
+        fromRef,
+        nodeId,
+        provider: editProvider,
+        model: editModel,
+        thinkingSetting: editThinking,
+        onResponse: () => {
+          setIsEditing(false);
+          setBranchName(targetBranch);
+          setShowEditModal(false);
+          setEditDraft('');
+          setEditBranchName('');
+          setEditingNode(null);
+          setSwitchToEditBranch(true);
+        },
+        onFailure: () => {
+          setIsEditing(false);
+        }
+      });
+      return;
+    }
+
+    startEditTask({
+      targetBranch,
+      fromRef,
+      content,
+      provider: editProvider,
+      model: editModel,
+      thinkingSetting: editThinking,
+      nodeId,
+      switchOnComplete: shouldSwitch,
+      onResponse: () => {
+        setIsEditing(false);
+        setShowEditModal(false);
+        setEditDraft('');
+        setEditBranchName('');
+        setEditingNode(null);
+        setSwitchToEditBranch(true);
+      },
+      onFailure: () => {
+        setIsEditing(false);
+      }
+    });
+  };
+
   const closeMergeModal = () => {
     if (isMerging) return;
     setShowMergeModal(false);
@@ -2003,6 +2720,26 @@ export function WorkspaceClient({
 
   return (
     <>
+      {toasts.length > 0 ? (
+        <div className="fixed left-1/2 top-4 z-50 -translate-x-1/2 space-y-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm shadow-lg ${toastToneClassName(toast.tone)}`}
+            >
+              <span className="flex-1">{toast.message}</span>
+              <button
+                type="button"
+                onClick={() => removeToast(toast.id)}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+                aria-label="Dismiss toast"
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <RailPageLayout
         renderRail={(ctx) => (
           <div className="mt-6 flex h-full flex-col gap-6">
@@ -2016,7 +2753,7 @@ export function WorkspaceClient({
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
                     <span>Branches</span>
                     <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-2 py-1 text-xs font-medium text-slate-700">
-                      {isSwitching || isCreating ? (
+                      {isSwitching || isCreating || backgroundTasks.length > 0 ? (
                         <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                       ) : null}
                       {sortedBranches.length}
@@ -2026,7 +2763,9 @@ export function WorkspaceClient({
                     {sortedBranches.map((branch) => {
                       const branchId = branch.id ?? branch.name;
                       const pinPending = pendingPinBranchIds.has(branchId);
-                      const switchDisabled = isSwitching || isCreating || isRenaming;
+                      const isPending = pendingBranchNames.has(branch.name);
+                      const isGhost = (branch as BranchListItem).isGhost ?? false;
+                      const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       return (
                       <div
                         key={branch.name}
@@ -2072,6 +2811,9 @@ export function WorkspaceClient({
                             >
                               {displayBranchName(branch.name)}
                             </span>
+                            {isPending ? (
+                              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                            ) : null}
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <button
@@ -2080,9 +2822,9 @@ export function WorkspaceClient({
                                 event.stopPropagation();
                                 void togglePinnedBranch(branch);
                               }}
-                              disabled={isSwitching || isCreating || pinPending}
+                              disabled={isSwitching || isCreating || pinPending || isGhost}
                               className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                isSwitching || isCreating || pinPending ? 'cursor-not-allowed' : 'hover:bg-primary/10'
+                                isSwitching || isCreating || pinPending || isGhost ? 'cursor-not-allowed' : 'hover:bg-primary/10'
                               } ${branch.isPinned ? 'text-red-600 hover:text-red-700' : 'text-slate-400 hover:text-slate-600'}`}
                               aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
                             >
@@ -2098,9 +2840,9 @@ export function WorkspaceClient({
                                 event.stopPropagation();
                                 openRenameModal(branch);
                               }}
-                              disabled={branch.isTrunk || isSwitching || isCreating || isRenaming}
+                              disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
                               className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                branch.isTrunk || isSwitching || isCreating || isRenaming
+                                branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost
                                   ? 'cursor-not-allowed text-slate-300'
                                   : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
                               }`}
@@ -2223,7 +2965,13 @@ export function WorkspaceClient({
           </div>
         )}
         renderMain={(ctx) => (
-          <div className="relative flex h-full min-h-0 min-w-0 flex-col bg-white">
+          <div
+            className="relative flex h-full min-h-0 min-w-0 flex-col bg-white"
+            data-composer-collapsed={composerCollapsed ? 'true' : 'false'}
+          >
+            <div className="sr-only" aria-live="polite" data-testid="composer-collapsed-state">
+              {composerCollapsed ? 'Composer collapsed' : 'Composer expanded'}
+            </div>
             <div
               className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 pt-3 md:px-8 lg:px-3"
               style={{ paddingBottom: composerPadding }}
@@ -2311,13 +3059,25 @@ export function WorkspaceClient({
                                 isStarPending={pendingStarIds.has(node.id)}
                                 onToggleStar={() => void toggleStar(node.id)}
                                 onEdit={
-                                  node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
-                                    ? (n) => openEditModal(n)
+                                  node.type === 'message' &&
+                                  (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage)
+                                    ? (n) =>
+                                        openEditModal(
+                                          n,
+                                          activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
+                                        )
                                     : undefined
                                 }
                                 isCanvasDiffPinned={undefined}
                                 onPinCanvasDiff={undefined}
                                 highlighted={highlightedNodeId === node.id}
+                                branchQuestionCandidate={
+                                  node.type === 'message' &&
+                                  node.role === 'assistant' &&
+                                  activeBranchHighlight?.nodeId === node.id &&
+                                  Boolean(activeBranchHighlight.text.trim())
+                                }
+                                showBranchSplit={showNewBranchPopover && branchSplitNodeId === node.id}
                               />
                             ))}
                           </div>
@@ -2342,13 +3102,24 @@ export function WorkspaceClient({
                           isStarPending={pendingStarIds.has(node.id)}
                           onToggleStar={() => void toggleStar(node.id)}
                           onEdit={
-                            node.type === 'message' && (node.role === 'user' || features.uiEditAnyMessage)
-                              ? (n) => openEditModal(n)
+                            node.type === 'message' &&
+                            (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage)
+                              ? (n) =>
+                                  openEditModal(
+                                    n,
+                                    activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
+                                  )
                               : undefined
                           }
                           isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
                           onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToCurrentBranch : undefined}
                           highlighted={highlightedNodeId === node.id}
+                          branchQuestionCandidate={
+                            node.type === 'message' &&
+                            node.role === 'assistant' &&
+                            activeBranchHighlight?.nodeId === node.id &&
+                            Boolean(activeBranchHighlight.text.trim())
+                          }
                           showBranchSplit={showNewBranchPopover && branchSplitNodeId === node.id}
                         />
                       ))}
@@ -2379,6 +3150,19 @@ export function WorkspaceClient({
                       <div className="flex-1" />
                     )}
 
+                    {composerCollapsed ? (
+                      <button
+                        type="button"
+                        onClick={() => expandComposer()}
+                        disabled={state.isStreaming}
+                        className="flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Expand composer"
+                        data-testid="composer-expand-button"
+                      >
+                        <ConsoleIcon className="h-5 w-5" />
+                      </button>
+                    ) : null}
+
                     {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
                         <div ref={newBranchPopoverRef} className="relative h-11">
@@ -2391,7 +3175,7 @@ export function WorkspaceClient({
                                 type="button"
                                 onClick={() => {
                                   setShowNewBranchPopover(false);
-                                  setBranchSplitNodeId(null);
+                                  resetBranchQuestionState();
                                 }}
                                 className="flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-primary/10"
                                 aria-label="Hide branch creator"
@@ -2407,11 +3191,86 @@ export function WorkspaceClient({
                                   value={newBranchName}
                                   onValueChange={setNewBranchName}
                                   onSubmit={async () => {
-                                    const ok = await createBranch();
-                                    if (ok) {
-                                      setShowNewBranchPopover(false);
-                                      setBranchSplitNodeId(null);
+                                    const isQuestionMode =
+                                      branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim());
+                                    const question = newBranchQuestion.trim();
+                                    const highlight = newBranchHighlight.trim() || undefined;
+                                    const thinkingSetting = newBranchThinking;
+                                    if (isQuestionMode && !question) {
+                                      setBranchActionError('Question is required.');
+                                      return;
                                     }
+                                    if (isQuestionMode) {
+                                      const branchNameInput = newBranchName.trim();
+                                      if (!branchNameInput) {
+                                        setBranchActionError('Branch name is required.');
+                                        return;
+                                      }
+                                      const branchModel =
+                                        providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                                        getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                                      if (switchToNewBranch) {
+                                        setIsCreating(true);
+                                        void sendQuestionWithStream({
+                                          targetBranch: branchNameInput,
+                                          fromRef: branchName,
+                                          fromNodeId: branchSplitNodeId,
+                                          question,
+                                          highlight,
+                                          provider: newBranchProvider,
+                                          model: branchModel,
+                                          thinkingSetting,
+                                          onResponse: () => {
+                                            setIsCreating(false);
+                                            setBranchName(branchNameInput);
+                                            setBranchActionError(null);
+                                            setShowNewBranchPopover(false);
+                                            resetBranchQuestionState();
+                                            setNewBranchName('');
+                                          },
+                                          onFailure: () => {
+                                            setIsCreating(false);
+                                          }
+                                        });
+                                        return;
+                                      } else {
+                                        setIsCreating(true);
+                                        startBranchQuestionTask({
+                                          targetBranch: branchNameInput,
+                                          fromRef: branchName,
+                                          fromNodeId: branchSplitNodeId,
+                                          question,
+                                          highlight,
+                                          provider: newBranchProvider,
+                                          model: branchModel,
+                                          thinkingSetting,
+                                          switchOnCreate: false,
+                                          onResponse: () => {
+                                            setIsCreating(false);
+                                            setBranchActionError(null);
+                                            setShowNewBranchPopover(false);
+                                            resetBranchQuestionState();
+                                            setNewBranchName('');
+                                          },
+                                          onFailure: () => {
+                                            setIsCreating(false);
+                                          }
+                                        });
+                                        if (typeof window !== 'undefined') {
+                                          window.localStorage.setItem(
+                                            `researchtree:thinking:${project.id}:${branchNameInput}`,
+                                            thinkingSetting
+                                          );
+                                        }
+                                      }
+                                    } else {
+                                      const result = await createBranch();
+                                      if (!result.ok) return;
+                                    }
+                                    setBranchActionError(null);
+                                    setShowNewBranchPopover(false);
+                                    resetBranchQuestionState();
+                                    setNewBranchName('');
                                   }}
                                   disabled={isSwitching}
                                   submitting={isCreating}
@@ -2464,13 +3323,70 @@ export function WorkspaceClient({
                                   }
                                   autoFocus
                                   variant="plain"
-                                />
+                                >
+                                  {branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
+                                    <div className="mt-3 space-y-3">
+                                      <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-800" htmlFor="branch-highlight">
+                                          Highlight
+                                        </label>
+                                        <textarea
+                                          id="branch-highlight"
+                                          value={newBranchHighlight}
+                                          onChange={(event) => setNewBranchHighlight(event.target.value)}
+                                          rows={3}
+                                          className="w-full rounded-lg border border-divider/80 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                          readOnly={Boolean(newBranchHighlight)}
+                                          placeholder="No highlight captured"
+                                        />
+                                        <p className="text-xs text-muted">
+                                          Captured from your selection when branching from a message.
+                                        </p>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-800" htmlFor="branch-question">
+                                          Question<span className="text-rose-600">*</span>
+                                        </label>
+                                        <textarea
+                                          id="branch-question"
+                                          value={newBranchQuestion}
+                                          onChange={(event) => {
+                                            setNewBranchQuestion(event.target.value);
+                                            if (branchActionError) {
+                                              setBranchActionError(null);
+                                            }
+                                          }}
+                                          rows={3}
+                                          required
+                                          className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                                          placeholder="What do you want to ask on this branch?"
+                                          disabled={isSwitching || isCreating}
+                                        />
+                                      </div>
+                                      <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                                        <input
+                                          type="checkbox"
+                                          className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
+                                          checked={switchToNewBranch}
+                                          onChange={(event) => setSwitchToNewBranch(event.target.checked)}
+                                          disabled={isCreating || isSwitching}
+                                        />
+                                        Switch to the new branch after creating
+                                      </label>
+                                    </div>
+                                  ) : null}
+                                </NewBranchFormCard>
                               </div>
                             </div>
                           ) : (
                             <button
                               type="button"
-                              onClick={() => setShowNewBranchPopover(true)}
+                              onClick={() => {
+                                setBranchActionError(null);
+                                resetBranchQuestionState();
+                                setBranchSplitNodeId(latestVisibleNodeId);
+                                setShowNewBranchPopover(true);
+                              }}
                               disabled={isCreating || isSwitching}
                               className="inline-flex h-full items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
                               aria-label="Show branch creator"
@@ -2912,103 +3828,104 @@ export function WorkspaceClient({
           </div>
         </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
-          >
-            <div
-              className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
-              style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
+          {!composerCollapsed ? (
+            <form
+              onSubmit={handleSubmit}
+              className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
             >
               <div
-                ref={composerRef}
-                className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
+                style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
               >
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!webSearchAvailable || state.isStreaming) return;
-                      setWebSearchEnabled((prev) => !prev);
-                    }}
-                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
-                      webSearchEnabled
-                        ? 'border-primary/30 bg-primary/10 text-primary'
-                        : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
-                    } ${!webSearchAvailable ? 'opacity-50' : ''}`}
-                    aria-label="Toggle web search"
-                    aria-pressed={webSearchEnabled}
-                    disabled={state.isStreaming || !webSearchAvailable}
-                  >
-                    <SearchIcon className="h-4 w-4" />
-                    <span>Web search</span>
-                  </button>
-                  {/* <div className="flex h-10 w-10 items-center justify-center">
-                    {features.uiAttachments ? (
-                      <button
-                        type="button"
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                        aria-label="Add attachment"
-                      >
-                        <PaperClipIcon className="h-5 w-5" />
-                      </button>
-                    ) : (
-                      <span aria-hidden="true" />
-                    )}
-                  </div> */}
-                </div>
-                <div className="relative flex-1">
-                  <textarea
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder="Ask anything"
-                    rows={2}
-                    className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                    disabled={state.isStreaming}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter') {
-                        return;
-                      }
-                      if (event.metaKey) {
-                        event.preventDefault();
-                        void sendDraft();
-                        return;
-                      }
-                      if (event.shiftKey || event.altKey) {
-                        return;
-                      }
-                    }}
-                  />
-                  <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
-                    <span className="flex-1 text-left">
-                      {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
-                    </span>
-                    <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
-                      ⌘ + Enter to send · Shift + Enter adds a newline.
-                    </span>
-                    <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
-                      {state.isStreaming ? 'Streaming…' : ''}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div ref={thinkingMenuRef} className="relative hidden sm:block">
+                <div
+                  ref={composerRef}
+                  className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                >
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setThinkingMenuOpen((prev) => !prev)}
-                      className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label="Thinking mode"
-                      aria-haspopup="menu"
-                      aria-expanded={thinkingMenuOpen}
-                      disabled={state.isStreaming}
+                      onClick={() => {
+                        if (!webSearchAvailable || state.isStreaming) return;
+                        setWebSearchEnabled((prev) => !prev);
+                      }}
+                      className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
+                        webSearchEnabled
+                          ? 'border-primary/30 bg-primary/10 text-primary'
+                          : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
+                      } ${!webSearchAvailable ? 'opacity-50' : ''}`}
+                      aria-label="Toggle web search"
+                      aria-pressed={webSearchEnabled}
+                      disabled={state.isStreaming || !webSearchAvailable}
                     >
-                      Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                      <SearchIcon className="h-4 w-4" />
+                      <span>Web search</span>
                     </button>
-                    {thinkingMenuOpen ? (
-                      <div
-                        role="menu"
-                        className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                    {/* <div className="flex h-10 w-10 items-center justify-center">
+                      {features.uiAttachments ? (
+                        <button
+                          type="button"
+                          className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
+                          aria-label="Add attachment"
+                        >
+                          <PaperClipIcon className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <span aria-hidden="true" />
+                      )}
+                    </div> */}
+                  </div>
+                  <div className="relative flex-1">
+                    <textarea
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder="Ask anything"
+                      rows={2}
+                      className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                      disabled={state.isStreaming}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') {
+                          return;
+                        }
+                        if (event.metaKey) {
+                          event.preventDefault();
+                          void sendDraft();
+                          return;
+                        }
+                        if (event.shiftKey || event.altKey) {
+                          return;
+                        }
+                      }}
+                    />
+                    <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
+                      <span className="flex-1 text-left">
+                        {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
+                      </span>
+                      <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
+                        ⌘ + Enter to send · Shift + Enter adds a newline.
+                      </span>
+                      <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
+                        {state.isStreaming ? 'Streaming…' : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div ref={thinkingMenuRef} className="relative hidden sm:block">
+                      <button
+                        type="button"
+                        onClick={() => setThinkingMenuOpen((prev) => !prev)}
+                        className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Thinking mode"
+                        aria-haspopup="menu"
+                        aria-expanded={thinkingMenuOpen}
+                        disabled={state.isStreaming}
                       >
+                        Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                      </button>
+                      {thinkingMenuOpen ? (
+                        <div
+                          role="menu"
+                          className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                        >
 	                        {allowedThinking.map((setting) => {
 	                          const active = thinking === setting;
 	                          return (
@@ -3032,38 +3949,273 @@ export function WorkspaceClient({
 	                            </button>
 	                          );
 	                        })}
-                      </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    {state.isStreaming ? (
+                      <button
+                        type="button"
+                        onClick={interrupt}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
+                        aria-label="Stop streaming"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
                     ) : null}
-                  </div>
-                  {state.isStreaming ? (
                     <button
-                      type="button"
-                      onClick={interrupt}
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
-                      aria-label="Stop streaming"
+                      type="submit"
+                      disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="Send message"
                     >
-                      <XMarkIcon className="h-5 w-5" />
+                      {isSending ? (
+                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
+                      ) : (
+                        <ArrowUpIcon className="h-5 w-5" />
+                      )}
                     </button>
-                  ) : null}
-                  <button
-                    type="submit"
-                    disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Send message"
-                  >
-                    {isSending ? (
-                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
-                    ) : (
-                      <ArrowUpIcon className="h-5 w-5" />
-                    )}
-                  </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </form>
+            </form>
+          ) : null}
         </div>
         )}
       />
+
+      {showNewBranchPopover ? (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowNewBranchPopover(false);
+              resetBranchQuestionState();
+            }
+          }}
+          onTouchStart={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowNewBranchPopover(false);
+              resetBranchQuestionState();
+            }
+          }}
+        >
+          <div
+            ref={newBranchPopoverRef}
+            className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl"
+            data-testid="branch-popover"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                  <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+                </span>
+                New branch
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewBranchPopover(false);
+                  resetBranchQuestionState();
+                }}
+                className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                aria-label="Hide branch creator"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4">
+              <NewBranchFormCard
+                fromLabel={displayBranchName(branchName)}
+                value={newBranchName}
+                onValueChange={setNewBranchName}
+                onSubmit={async () => {
+                  const isQuestionMode = branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim());
+                  const question = newBranchQuestion.trim();
+                  const highlight = newBranchHighlight.trim() || undefined;
+                  const thinkingSetting = newBranchThinking;
+                  if (isQuestionMode && !question) {
+                    setBranchActionError('Question is required.');
+                    return;
+                  }
+                  if (isQuestionMode) {
+                    const branchNameInput = newBranchName.trim();
+                    if (!branchNameInput) {
+                      setBranchActionError('Branch name is required.');
+                      return;
+                    }
+                    const branchModel =
+                      providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                      getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                    if (switchToNewBranch) {
+                      setIsCreating(true);
+                      void sendQuestionWithStream({
+                        targetBranch: branchNameInput,
+                        fromRef: branchName,
+                        fromNodeId: branchSplitNodeId,
+                        question,
+                        highlight,
+                        provider: newBranchProvider,
+                        model: branchModel,
+                        thinkingSetting,
+                        onResponse: () => {
+                          setIsCreating(false);
+                          setBranchName(branchNameInput);
+                          setBranchActionError(null);
+                          setShowNewBranchPopover(false);
+                          resetBranchQuestionState();
+                          setNewBranchName('');
+                        },
+                        onFailure: () => {
+                          setIsCreating(false);
+                        }
+                      });
+                      return;
+                    }
+                    setIsCreating(true);
+                    startBranchQuestionTask({
+                      targetBranch: branchNameInput,
+                      fromRef: branchName,
+                      fromNodeId: branchSplitNodeId,
+                      question,
+                      highlight,
+                      provider: newBranchProvider,
+                      model: branchModel,
+                      thinkingSetting,
+                      switchOnCreate: false,
+                      onResponse: () => {
+                        setIsCreating(false);
+                        setBranchActionError(null);
+                        setShowNewBranchPopover(false);
+                        resetBranchQuestionState();
+                        setNewBranchName('');
+                      },
+                      onFailure: () => {
+                        setIsCreating(false);
+                      }
+                    });
+                    if (typeof window !== 'undefined') {
+                      window.localStorage.setItem(
+                        `researchtree:thinking:${project.id}:${branchNameInput}`,
+                        thinkingSetting
+                      );
+                    }
+                  } else {
+                    const result = await createBranch();
+                    if (!result.ok) return;
+                  }
+                  setBranchActionError(null);
+                  setShowNewBranchPopover(false);
+                  resetBranchQuestionState();
+                  setNewBranchName('');
+                }}
+                disabled={isSwitching}
+                submitting={isCreating}
+                error={branchActionError}
+                testId="branch-form-popover"
+                inputTestId="branch-form-popover-input"
+                submitTestId="branch-form-popover-submit"
+                providerSelector={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                      <span className="font-semibold text-slate-700">Provider</span>
+                      <select
+                        value={newBranchProvider}
+                        onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
+                        className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        disabled={isSwitching || isCreating || isRenaming}
+                        data-testid="branch-provider-select-popover"
+                      >
+                        {selectableProviderOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-2 text-xs shadow-sm">
+                      <span className="font-semibold text-slate-700">Thinking</span>
+                      <select
+                        value={newBranchThinking}
+                        onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
+                        className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        disabled={isSwitching || isCreating || isRenaming}
+                      >
+                        {(() => {
+                          const branchModel =
+                            providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
+                            getDefaultModelForProviderFromCapabilities(newBranchProvider);
+                          const allowed = branchModel
+                            ? getAllowedThinkingSettings(newBranchProvider, branchModel)
+                            : THINKING_SETTINGS;
+                          return allowed.map((setting) => (
+                            <option key={setting} value={setting}>
+                              {THINKING_SETTING_LABELS[setting]}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                  </div>
+                }
+                autoFocus
+                variant="plain"
+              >
+                {branchPopoverMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-highlight">
+                        Highlight
+                      </label>
+                      <textarea
+                        id="branch-highlight"
+                        value={newBranchHighlight}
+                        onChange={(event) => setNewBranchHighlight(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-lg border border-divider/80 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        readOnly={Boolean(newBranchHighlight)}
+                        placeholder="No highlight captured"
+                      />
+                      <p className="text-xs text-muted">
+                        Captured from your selection when branching from a message.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-800" htmlFor="branch-question">
+                        Question<span className="text-rose-600">*</span>
+                      </label>
+                      <textarea
+                        id="branch-question"
+                        value={newBranchQuestion}
+                        onChange={(event) => {
+                          setNewBranchQuestion(event.target.value);
+                          if (branchActionError) {
+                            setBranchActionError(null);
+                          }
+                        }}
+                        rows={3}
+                        required
+                        className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                        placeholder="What do you want to ask on this branch?"
+                        disabled={isSwitching || isCreating}
+                      />
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
+                        checked={switchToNewBranch}
+                        onChange={(event) => setSwitchToNewBranch(event.target.checked)}
+                        disabled={isCreating || isSwitching}
+                      />
+                      Switch to the new branch after creating
+                    </label>
+                  </div>
+                ) : null}
+              </NewBranchFormCard>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showMergeModal ? (
         <div
@@ -3350,8 +4502,15 @@ export function WorkspaceClient({
       {showEditModal && editingNode ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="edit-modal">
+            <CommandEnterForm
+              onSubmit={(event) => {
+                event.preventDefault();
+                submitEdit();
+              }}
+              className="space-y-4"
+            >
             <h3 className="text-lg font-semibold text-slate-900">Edit message (new branch)</h3>
-            <p className="text-sm text-muted">Editing creates a new branch from this message and switches you there.</p>
+            <p className="text-sm text-muted">Editing creates a new branch from this message.</p>
             <div className="mt-4 space-y-2">
               <label className="text-sm font-medium text-slate-800" htmlFor="edit-branch-name">
                 Branch name
@@ -3415,8 +4574,19 @@ export function WorkspaceClient({
                 className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                 disabled={isEditing}
                 data-testid="edit-content"
+                required
               />
             </div>
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-divider/80 text-primary focus:ring-primary/40"
+                checked={switchToEditBranch}
+                onChange={(event) => setSwitchToEditBranch(event.target.checked)}
+                disabled={isEditing}
+              />
+              Switch to the new branch after creating
+            </label>
             {editError ? <p className="mt-2 text-sm text-red-600">{editError}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -3428,6 +4598,7 @@ export function WorkspaceClient({
                   setEditBranchName('');
                   setEditingNode(null);
                   setEditError(null);
+                  setSwitchToEditBranch(true);
                 }}
                 className="rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-primary/10 disabled:opacity-60"
                 disabled={isEditing}
@@ -3435,61 +4606,7 @@ export function WorkspaceClient({
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={async () => {
-                  if (!editDraft.trim()) {
-                    setEditError('Content is required.');
-                    return;
-                  }
-                  if (!editBranchName.trim()) {
-                    setEditError('Branch name is required.');
-                    return;
-                  }
-                  setIsEditing(true);
-                  setEditError(null);
-                  try {
-                    const editModel =
-                      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
-                      getDefaultModelForProviderFromCapabilities(editProvider);
-                    const fromRef = editingNode?.createdOnBranch ?? branchName;
-                    const res = await fetch(`/api/projects/${project.id}/edit`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        content: editDraft.trim(),
-                        branchName: editBranchName.trim(),
-                        fromRef,
-                        llmProvider: editProvider,
-                        llmModel: editModel,
-                        thinking: editThinking,
-                        nodeId: editingNode?.id
-                      })
-                    });
-                    if (!res.ok) {
-                      const data = await res.json().catch(() => null);
-                      throw new Error(data?.error?.message ?? 'Edit failed');
-                    }
-                    const data = (await res.json()) as { branchName: string };
-                    setBranchName(data.branchName);
-                    const branchesRes = await fetch(`/api/projects/${project.id}/branches`);
-                    if (branchesRes.ok) {
-                      const branchesData = (await branchesRes.json()) as { branches: BranchSummary[]; currentBranch: string };
-                      setBranches(branchesData.branches);
-                    }
-                    if (typeof window !== 'undefined') {
-                      window.localStorage.setItem(`researchtree:thinking:${project.id}:${data.branchName}`, editThinking);
-                    }
-                    await Promise.all([refreshHistory(), mutateArtefact()]);
-                    setShowEditModal(false);
-                    setEditDraft('');
-                    setEditBranchName('');
-                    setEditingNode(null);
-                  } catch (err) {
-                    setEditError((err as Error).message);
-                  } finally {
-                    setIsEditing(false);
-                  }
-                }}
+                type="submit"
                 className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={isEditing}
                 data-testid="edit-submit"
@@ -3500,10 +4617,11 @@ export function WorkspaceClient({
                     <span>Creating branch…</span>
                   </span>
                 ) : (
-                  'Save & switch'
+                  switchToEditBranch ? 'Save & switch' : 'Save'
                 )}
               </button>
             </div>
+            </CommandEnterForm>
           </div>
         </div>
       ) : null}

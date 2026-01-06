@@ -34,7 +34,7 @@ describe('middleware auth redirects', () => {
   it('redirects unauthenticated users to login', async () => {
     mocks.getUser.mockResolvedValue({ data: { user: null } });
     const res = await middleware(new NextRequest('http://localhost/projects/p1'));
-    expect(res?.headers.get('location')).toBe('http://localhost/login?redirectTo=%2Fprojects%2Fp1');
+    expect(res?.headers.get('location')).toBe('http://localhost/login?redirectTo=%2Fprojects%2Fp1&mode=signin#existing-user');
   });
 
   it('redirects authenticated users away from login', async () => {
