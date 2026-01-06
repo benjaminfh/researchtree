@@ -61,6 +61,12 @@ function buildCanvasDiffMessage(diff: string): string {
   ].join('\n');
 }
 
+function formatHighlightBlock(highlight: string): string {
+  const fence = '```';
+  const escaped = highlight.replaceAll(fence, '\\`\\`\\`');
+  return `${fence}text\n${escaped}\n${fence}`;
+}
+
 function buildUserMessage(input: { message?: string | null; question?: string | null; highlight?: string | null }): string {
   const highlight = input.highlight?.trim() ?? '';
   const question = input.question?.trim() ?? '';
@@ -69,7 +75,7 @@ function buildUserMessage(input: { message?: string | null; question?: string | 
   const parts: string[] = [];
 
   if (highlight) {
-    parts.push('Highlighted passage:', `"""${highlight}"""`);
+    parts.push('Highlighted passage:', formatHighlightBlock(highlight));
   }
 
   if (question) {
