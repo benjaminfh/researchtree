@@ -2728,14 +2728,14 @@ export function WorkspaceClient({
       ) : null}
       <RailPageLayout
         renderRail={(ctx) => (
-          <div className="mt-6 flex h-full flex-col gap-6">
+          <div className="mt-6 flex h-full min-h-0 flex-col gap-6">
             {!ctx.railCollapsed ? (
-              <>
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
                 <div className="rounded-2xl border border-divider/70 bg-white/80 px-3 py-2 shadow-sm">
                   <div className="truncate text-xs font-semibold text-slate-800">{project.name}</div>
                   <div className="truncate text-[11px] text-muted">{project.description ?? 'No description provided.'}</div>
                 </div>
-                <div className="space-y-3 overflow-hidden">
+                <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
                   <div className="flex items-center justify-between px-3 text-sm text-muted">
                     <span>Branches</span>
                     <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-2 py-1 text-xs font-medium text-slate-700">
@@ -2745,7 +2745,7 @@ export function WorkspaceClient({
                       {sortedBranches.length}
                     </span>
                   </div>
-                  <div className="space-y-1 overflow-y-auto pr-1">
+                  <div className="flex-1 space-y-1 overflow-y-auto pr-1">
                     {sortedBranches.map((branch) => {
                       const branchId = branch.id ?? branch.name;
                       const pinPending = pendingPinBranchIds.has(branchId);
@@ -2753,92 +2753,92 @@ export function WorkspaceClient({
                       const isGhost = (branch as BranchListItem).isGhost ?? false;
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       return (
-                      <div
-                        key={branch.name}
-                        role="button"
-                        tabIndex={switchDisabled ? -1 : 0}
-                        onClick={() => {
-                          if (switchDisabled) return;
-                          void switchBranch(branch.name);
-                        }}
-                        onKeyDown={(event) => {
-                          if (switchDisabled) return;
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
+                        <div
+                          key={branch.name}
+                          role="button"
+                          tabIndex={switchDisabled ? -1 : 0}
+                          onClick={() => {
+                            if (switchDisabled) return;
                             void switchBranch(branch.name);
-                          }
-                        }}
-                        aria-disabled={switchDisabled}
-                        className={`w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
-                          branchName === branch.name
-                            ? 'bg-primary/15 text-primary shadow-sm'
-                            : switchDisabled
-                              ? 'text-slate-400'
-                              : 'text-slate-700 hover:bg-white/80'
-                        }`}
-                        data-testid="branch-switch"
-                        data-branch-name={branch.name}
-                        data-branch-trunk={branch.isTrunk ? 'true' : undefined}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="inline-flex min-w-0 items-center gap-2">
-                            <span
-                              className="inline-flex h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: getBranchColor(branch.name, trunkName, branchColorMap) }}
-                            />
-                            <span
-                              className={`truncate ${
-                                branch.isTrunk
-                                  ? branchName === branch.name
-                                    ? 'font-semibold text-primary'
-                                    : 'font-semibold text-slate-900'
-                                  : ''
-                              }`}
-                            >
-                              {displayBranchName(branch.name)}
-                            </span>
-                            {isPending ? (
-                              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                            ) : null}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void togglePinnedBranch(branch);
-                              }}
-                              disabled={isSwitching || isCreating || pinPending || isGhost}
-                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                isSwitching || isCreating || pinPending || isGhost ? 'cursor-not-allowed' : 'hover:bg-primary/10'
-                              } ${branch.isPinned ? 'text-red-600 hover:text-red-700' : 'text-slate-400 hover:text-slate-600'}`}
-                              aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                            >
-                              {pinPending ? (
+                          }}
+                          onKeyDown={(event) => {
+                            if (switchDisabled) return;
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              void switchBranch(branch.name);
+                            }
+                          }}
+                          aria-disabled={switchDisabled}
+                          className={`w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
+                            branchName === branch.name
+                              ? 'bg-primary/15 text-primary shadow-sm'
+                              : switchDisabled
+                                ? 'text-slate-400'
+                                : 'text-slate-700 hover:bg-white/80'
+                          }`}
+                          data-testid="branch-switch"
+                          data-branch-name={branch.name}
+                          data-branch-trunk={branch.isTrunk ? 'true' : undefined}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="inline-flex min-w-0 items-center gap-2">
+                              <span
+                                className="inline-flex h-2 w-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: getBranchColor(branch.name, trunkName, branchColorMap) }}
+                              />
+                              <span
+                                className={`truncate ${
+                                  branch.isTrunk
+                                    ? branchName === branch.name
+                                      ? 'font-semibold text-primary'
+                                      : 'font-semibold text-slate-900'
+                                    : ''
+                                }`}
+                              >
+                                {displayBranchName(branch.name)}
+                              </span>
+                              {isPending ? (
                                 <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                              ) : (
-                                <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openRenameModal(branch);
-                              }}
-                              disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
-                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost
-                                  ? 'cursor-not-allowed text-slate-300'
-                                  : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
-                              }`}
-                              aria-label="Rename branch"
-                            >
-                              <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
-                            </button>
-                          </span>
+                              ) : null}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void togglePinnedBranch(branch);
+                                }}
+                                disabled={isSwitching || isCreating || pinPending || isGhost}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                  isSwitching || isCreating || pinPending || isGhost ? 'cursor-not-allowed' : 'hover:bg-primary/10'
+                                } ${branch.isPinned ? 'text-red-600 hover:text-red-700' : 'text-slate-400 hover:text-slate-600'}`}
+                                aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                              >
+                                {pinPending ? (
+                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                ) : (
+                                  <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openRenameModal(branch);
+                                }}
+                                disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                  branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost
+                                    ? 'cursor-not-allowed text-slate-300'
+                                    : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
+                                }`}
+                                aria-label="Rename branch"
+                              >
+                                <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          </div>
                         </div>
-                      </div>
                       );
                     })}
                   </div>
@@ -2903,7 +2903,7 @@ export function WorkspaceClient({
                   />
                 ) : null}
 
-              </>
+              </div>
             ) : null}
 
             <div className="mt-auto flex flex-col items-start gap-3 pb-2">
