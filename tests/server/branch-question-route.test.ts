@@ -74,6 +74,21 @@ describe('/api/projects/[id]/branch-question', () => {
     process.env.RT_STORE = 'git';
   });
 
+  it('returns 400 when missing highlight or fromNodeId', async () => {
+    const res = await POST(
+      createRequest({
+        name: 'question',
+        question: 'why'
+      }),
+      { params: { id: 'project-1' } }
+    );
+
+    expect(res.status).toBe(400);
+    const payload = await res.json();
+    expect(payload.error.message).toBe('Invalid request body');
+    expect(payload.error.code).toBe('BAD_REQUEST');
+  });
+
   it('uses the assistant responseId for PG question branches on openai_responses', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });

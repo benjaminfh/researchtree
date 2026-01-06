@@ -46,13 +46,17 @@ export async function POST(request: Request, { params }: RouteContext) {
       thinking,
       switch: shouldSwitch
     } = parsed.data;
-    const fromNode = fromNodeId?.trim() || null;
+    const fromNode = fromNodeId.trim();
+    const highlightText = highlight.trim();
+    if (!fromNode || !highlightText) {
+      throw badRequest('Question branches require an assistant highlight and fromNodeId.');
+    }
 
     const createResult: BranchCreateResult = await (async () => {
       if (store.mode === 'pg') {
         return await withProjectLock(params.id, async () => {
           const { rtGetCurrentRefShadowV2, rtSetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
-          const { rtCreateRefFromNodeShadowV2, rtCreateRefFromRefShadowV2 } = await import('@/src/store/pg/branches');
+          const { rtCreateRefFromNodeShadowV2 } = await import('@/src/store/pg/branches');
           const { rtGetNodeContentShadowV1 } = await import('@/src/store/pg/nodes');
           const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
 
@@ -85,37 +89,26 @@ export async function POST(request: Request, { params }: RouteContext) {
           const shouldCopyPreviousResponseId =
             baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
 
-          if (fromNode) {
-            const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNode })) as any | null;
-            if (!node) {
-              throw badRequest(`Node ${fromNode} not found`);
-            }
-            if (node.type !== 'message' || node.role !== 'assistant') {
-              throw badRequest('Only assistant message nodes can be used to create a branch split');
-            }
-            const nodeResponseId =
-              shouldCopyPreviousResponseId && typeof node.responseId === 'string' && node.responseId.trim().length > 0
-                ? node.responseId
-                : null;
-            await rtCreateRefFromNodeShadowV2({
-              projectId: params.id,
-              newRefName: name,
-              sourceRefId: baseBranch.id,
-              nodeId: fromNode,
-              provider: resolvedConfig.provider,
-              model: resolvedConfig.model,
-              previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
-            });
-          } else {
-            await rtCreateRefFromRefShadowV2({
-              projectId: params.id,
-              newRefName: name,
-              fromRefId: baseBranch.id,
-              provider: resolvedConfig.provider,
-              model: resolvedConfig.model,
-              previousResponseId: null
-            });
+          const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNode })) as any | null;
+          if (!node) {
+            throw badRequest(`Node ${fromNode} not found`);
           }
+          if (node.type !== 'message' || node.role !== 'assistant') {
+            throw badRequest('Only assistant message nodes can be used to create a branch split');
+          }
+          const nodeResponseId =
+            shouldCopyPreviousResponseId && typeof node.responseId === 'string' && node.responseId.trim().length > 0
+              ? node.responseId
+              : null;
+          await rtCreateRefFromNodeShadowV2({
+            projectId: params.id,
+            newRefName: name,
+            sourceRefId: baseBranch.id,
+            nodeId: fromNode,
+            provider: resolvedConfig.provider,
+            model: resolvedConfig.model,
+            previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
+          });
 
           const branches = await rtListRefsShadowV2({ projectId: params.id });
           const newBranch = branches.find((branch) => branch.name === name);
@@ -156,35 +149,27 @@ export async function POST(request: Request, { params }: RouteContext) {
         const shouldCopyPreviousResponseId =
           baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
 
-        if (fromNode) {
-          const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
-          const sourceNodes = await readNodesFromRef(project.id, baseRef);
-          const node = sourceNodes.find((entry) => entry.id === fromNode);
-          if (!node) {
-            throw badRequest(`Node ${fromNode} not found on ref ${baseRef}`);
-          }
-          if (node.type !== 'message' || node.role !== 'assistant') {
-            throw badRequest('Only assistant message nodes can be used to create a branch split');
-          }
-          const commitHash = await getCommitHashForNode(project.id, baseRef, fromNode);
-          const nodeResponseId =
-            shouldCopyPreviousResponseId &&
-            typeof (node as any)?.responseId === 'string' &&
-            (node as any).responseId.trim().length > 0
-              ? (node as any).responseId
-              : null;
-          await createBranch(project.id, name, commitHash, {
-            provider: resolvedConfig.provider,
-            model: resolvedConfig.model,
-            previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
-          });
-        } else {
-          await createBranch(project.id, name, fromRef, {
-            provider: resolvedConfig.provider,
-            model: resolvedConfig.model,
-            previousResponseId: null
-          });
+        const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
+        const sourceNodes = await readNodesFromRef(project.id, baseRef);
+        const node = sourceNodes.find((entry) => entry.id === fromNode);
+        if (!node) {
+          throw badRequest(`Node ${fromNode} not found on ref ${baseRef}`);
         }
+        if (node.type !== 'message' || node.role !== 'assistant') {
+          throw badRequest('Only assistant message nodes can be used to create a branch split');
+        }
+        const commitHash = await getCommitHashForNode(project.id, baseRef, fromNode);
+        const nodeResponseId =
+          shouldCopyPreviousResponseId &&
+          typeof (node as any)?.responseId === 'string' &&
+          (node as any).responseId.trim().length > 0
+            ? (node as any).responseId
+            : null;
+        await createBranch(project.id, name, commitHash, {
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model,
+          previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
+        });
 
         const branches = await listBranches(project.id);
         if (shouldSwitch) {
@@ -198,7 +183,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     chatHeaders.set('content-type', 'application/json');
     const chatBody = JSON.stringify({
       question,
-      highlight,
+      highlight: highlightText,
       llmProvider: createResult.provider,
       ref: createResult.branchName,
       thinking

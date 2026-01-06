@@ -38,11 +38,11 @@ export const createBranchSchema = z.object({
 export const branchQuestionSchema = z.object({
   name: z.string().min(1).max(120),
   fromRef: z.string().max(120).optional(),
-  fromNodeId: z.string().min(1).optional(),
+  fromNodeId: z.string().trim().min(1),
   provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
   model: z.string().max(200).optional(),
   question: z.string().min(1).max(6000),
-  highlight: z.string().min(1).max(8000).optional(),
+  highlight: z.string().trim().min(1).max(8000),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   switch: z.boolean().optional()
 });
