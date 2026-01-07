@@ -1978,8 +1978,7 @@ export function WorkspaceClient({
     },
     [visibleNodes, graphHistories, branchName]
   );
-  const persistedNodesRef = useRef<NodeRecord[]>([]);
-  persistedNodesRef.current = nodes.filter((node) => node.type !== 'state');
+  const persistedNodes = useMemo(() => nodes.filter((node) => node.type !== 'state'), [nodes]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -2045,135 +2044,20 @@ export function WorkspaceClient({
     return buildLineDiff(mergePreview.target, mergePreview.source);
   }, [mergePreview]);
   const hasCanvasChanges = mergeDiff.some((line) => line.type !== 'context');
-  const shouldFetchTrunk = branchName !== trunkName;
-  const historyFetcher = async (url: string) => {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch ${url}`);
-    }
-    return res.json() as Promise<{ nodes: NodeRecord[] }>;
-  };
-  const { data: trunkHistory } = useSWR<{ nodes: NodeRecord[] }>(
-    shouldFetchTrunk ? `/api/projects/${project.id}/history?ref=${encodeURIComponent(trunkName)}` : null,
-    historyFetcher
-  );
-  const trunkHistoryNodes = useMemo(
-    () => trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? null,
-    [trunkHistory]
-  );
-  const trunkHistoryVersion = useMemo(() => {
-    if (!trunkHistoryNodes) {
-      return `pending:${trunkNodeCount}`;
-    }
-    const tail = trunkHistoryNodes[trunkHistoryNodes.length - 1]?.id ?? 'none';
-    return `${trunkHistoryNodes.length}:${tail}`;
-  }, [trunkHistoryNodes, trunkNodeCount]);
-  const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
-  const sharedCountCacheRef = useRef<Map<string, { count: number; version: string }>>(new Map());
-  const sharedHistoryCacheRef = useRef<Map<string, NodeRecord[]>>(new Map());
-  const sharedCountInFlightRef = useRef<Map<string, string>>(new Map());
-  const [sharedCount, setSharedCount] = useState(0);
-
-  useEffect(() => {
-    const persistedNodes = persistedNodesRef.current;
-    if (persistedNodes.length > 0) {
-      sharedHistoryCacheRef.current.set(branchName, persistedNodes);
-    }
-    if (trunkHistoryNodes && trunkHistoryNodes.length > 0) {
-      sharedHistoryCacheRef.current.set(trunkName, trunkHistoryNodes);
-    }
-  }, [branchName, trunkHistoryNodes, trunkName]);
-
-  useEffect(() => {
-    const prefixLength = (a: NodeRecord[], b: NodeRecord[]) => {
-      const min = Math.min(a.length, b.length);
-      let idx = 0;
-      while (idx < min && a[idx]?.id === b[idx]?.id) {
-        idx += 1;
-      }
-      return idx;
-    };
-
-    const cache = sharedCountCacheRef.current;
-    const cached = cache.get(branchName);
-    if (cached && cached.version === trunkHistoryVersion) {
-      setSharedCount(cached.count);
-      return;
-    }
-
-    const persistedNodes = persistedNodesRef.current;
+  const sharedCount = useMemo(() => {
     if (branchName === trunkName) {
-      cache.set(branchName, { count: 0, version: trunkHistoryVersion });
-      setSharedCount(0);
-      return;
+      return 0;
     }
-
-    const inFlightVersion = sharedCountInFlightRef.current.get(branchName);
-    if (inFlightVersion && inFlightVersion === trunkHistoryVersion) {
-      return;
+    let idx = 0;
+    while (idx < persistedNodes.length) {
+      const createdOn = persistedNodes[idx]?.createdOnBranch;
+      if (createdOn === branchName) {
+        break;
+      }
+      idx += 1;
     }
-
-    const trunkNodes = trunkHistoryNodes ?? [];
-    const trunkPrefix =
-      trunkNodes.length > 0 ? prefixLength(trunkNodes, persistedNodes) : Math.min(trunkNodeCount, persistedNodes.length);
-    setSharedCount(trunkPrefix);
-
-    sharedCountInFlightRef.current.set(branchName, trunkHistoryVersion);
-    let cancelled = false;
-    void (async () => {
-      const others = branches.filter((b) => b.name !== branchName);
-      if (others.length === 0) {
-        cache.set(branchName, { count: trunkPrefix, version: trunkHistoryVersion });
-        if (!cancelled) {
-          setSharedCount(trunkPrefix);
-        }
-        if (sharedCountInFlightRef.current.get(branchName) === trunkHistoryVersion) {
-          sharedCountInFlightRef.current.delete(branchName);
-        }
-        return;
-      }
-      const histories = await Promise.all(
-        others.map(async (b) => {
-          const cached = sharedHistoryCacheRef.current.get(b.name);
-          if (cached) {
-            return { name: b.name, nodes: cached };
-          }
-          try {
-            const res = await fetch(
-              `/api/projects/${project.id}/history?ref=${encodeURIComponent(b.name)}&limit=${persistedNodes.length}`
-            );
-            if (!res.ok) return null;
-            const data = (await res.json()) as { nodes: NodeRecord[] };
-            const nodes = (data.nodes ?? []).filter((node) => node.type !== 'state');
-            sharedHistoryCacheRef.current.set(b.name, nodes);
-            return { name: b.name, nodes };
-          } catch {
-            return null;
-          }
-        })
-      );
-      const longest = histories.reduce((max, entry) => {
-        if (!entry) return max;
-        const min = Math.min(entry.nodes.length, persistedNodes.length);
-        let idx = 0;
-        while (idx < min && entry.nodes[idx]?.id === persistedNodes[idx]?.id) {
-          idx += 1;
-        }
-        return Math.max(max, idx);
-      }, trunkPrefix);
-      cache.set(branchName, { count: longest, version: trunkHistoryVersion });
-      if (sharedCountInFlightRef.current.get(branchName) === trunkHistoryVersion) {
-        sharedCountInFlightRef.current.delete(branchName);
-      }
-      if (!cancelled) {
-        setSharedCount(longest);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [branchName, trunkName, trunkHistory, trunkNodeCount, branches, project.id]);
+    return idx;
+  }, [branchName, trunkName, persistedNodes]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
