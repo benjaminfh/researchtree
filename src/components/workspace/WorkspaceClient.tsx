@@ -2280,6 +2280,13 @@ export function WorkspaceClient({
     setIsSwitching(true);
     setBranchActionError(null);
     try {
+      const targetBranch = branches.find((branch) => branch.name === name);
+      if (targetBranch?.isHidden) {
+        const ok = await ensureBranchVisible(targetBranch);
+        if (!ok) {
+          return;
+        }
+      }
       const res = await fetch(`/api/projects/${project.id}/branches`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2663,6 +2670,46 @@ export function WorkspaceClient({
     }
   };
 
+  const ensureBranchVisible = async (branch: BranchSummary): Promise<boolean> => {
+    if (!branch.isHidden) return true;
+    const branchId = branch.id ?? branch.name;
+    if (pendingVisibilityBranchIds.has(branchId)) return false;
+    const prevBranches = branches;
+    setBranchActionError(null);
+    setPendingVisibilityBranchIds((prev) => new Set(prev).add(branchId));
+    setBranches((prev) => prev.map((item) => (item.name === branch.name ? { ...item, isHidden: false } : item)));
+    try {
+      const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/visibility`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isHidden: false })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? 'Visibility update failed');
+      }
+      const data = (await res.json()) as { branches?: BranchSummary[]; branchName?: string };
+      if (data.branchName) {
+        setBranchName(data.branchName);
+      }
+      if (data.branches) {
+        setBranches(data.branches);
+      }
+      await loadGraphHistories({ force: true });
+      return true;
+    } catch (err) {
+      setBranchActionError((err as Error).message);
+      setBranches(prevBranches);
+      return false;
+    } finally {
+      setPendingVisibilityBranchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(branchId);
+        return next;
+      });
+    }
+  };
+
   const submitEdit = () => {
     if (!editDraft.trim()) {
       setEditError('Content is required.');
@@ -2805,7 +2852,9 @@ export function WorkspaceClient({
                       const isPending = pendingBranchNames.has(branch.name);
                       const isGhost = (branch as BranchListItem).isGhost ?? false;
                       const isHidden = branch.isHidden ?? false;
+                      const isActiveBranch = branchName === branch.name;
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
+                      const visibilityDisabled = isSwitching || isCreating || visibilityPending || isGhost || isActiveBranch;
                       return (
                         <div
                           key={branch.name}
@@ -2876,26 +2925,28 @@ export function WorkspaceClient({
                                   <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
                                 )}
                               </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void toggleBranchVisibility(branch);
-                                }}
-                                disabled={isSwitching || isCreating || visibilityPending || isGhost}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                  isSwitching || isCreating || visibilityPending || isGhost
-                                    ? 'cursor-not-allowed text-slate-300'
-                                    : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
-                                }`}
-                                aria-label={isHidden ? 'Show branch' : 'Hide branch'}
-                              >
-                                {visibilityPending ? (
-                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                ) : (
-                                  <BlueprintIcon icon={isHidden ? 'eye-off' : 'eye-open'} className="h-3.5 w-3.5" />
-                                )}
-                              </button>
+                              <span title={isActiveBranch ? 'Cannot hide the current branch.' : undefined} className="inline-flex">
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void toggleBranchVisibility(branch);
+                                  }}
+                                  disabled={visibilityDisabled}
+                                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                    visibilityDisabled
+                                      ? 'cursor-not-allowed text-slate-300'
+                                      : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
+                                  }`}
+                                  aria-label={isHidden ? 'Show branch' : 'Hide branch'}
+                                >
+                                  {visibilityPending ? (
+                                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                  ) : (
+                                    <BlueprintIcon icon={isHidden ? 'eye-off' : 'eye-open'} className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </span>
                               <button
                                 type="button"
                                 onClick={(event) => {

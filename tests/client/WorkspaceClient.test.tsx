@@ -187,7 +187,15 @@ describe('WorkspaceClient', () => {
 
   it('renders metadata, nodes, and artefact content', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
 
     expect(screen.getByText('Workspace Project')).toBeInTheDocument();
     const featureBranch = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
@@ -481,7 +489,15 @@ describe('WorkspaceClient', () => {
       { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, provider: 'openai', model: 'gpt-5.2' },
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
     ];
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
     await waitFor(() => {
       expect(capturedChatOptions?.provider).toBe('gemini');
     });
@@ -512,7 +528,15 @@ describe('WorkspaceClient', () => {
       { name: 'hidden-pinned', headCommit: 'mno', nodeCount: 0, isTrunk: false, isPinned: true, isHidden: true }
     ];
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
 
     const branchOrder = screen.getAllByTestId('branch-switch').map((el) => el.getAttribute('data-branch-name'));
     expect(branchOrder).toEqual(['pinned-visible', 'main', 'feature/visible', 'hidden-a', 'hidden-pinned']);
@@ -532,7 +556,7 @@ describe('WorkspaceClient', () => {
           JSON.stringify({
             branches,
             trunkName: 'main',
-            currentBranch: 'feature/phase-2',
+            currentBranch: 'main',
             branchHistories: {
               main: sampleNodes.slice(0, 2),
               'feature/phase-2': sampleNodes
@@ -548,7 +572,7 @@ describe('WorkspaceClient', () => {
       if (url.includes('/branches/') && url.includes('/visibility') && init?.method === 'PATCH') {
         return new Response(
           JSON.stringify({
-            branchName: 'feature/phase-2',
+            branchName: 'main',
             branches: [
               branches[0],
               { ...branches[1], isHidden: true }
@@ -566,7 +590,15 @@ describe('WorkspaceClient', () => {
       return new Response(JSON.stringify({}), { status: 200 });
     });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
 
     const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
     expect(branchRow).toBeTruthy();
@@ -632,7 +664,15 @@ describe('WorkspaceClient', () => {
 
   it('updates and persists the thinking mode selection', async () => {
     const user = userEvent.setup();
-    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
 
     const thinkingTrigger = screen.getByRole('button', { name: 'Thinking mode' });
     expect(thinkingTrigger).toHaveTextContent('Thinking: Medium');
