@@ -101,6 +101,7 @@ export interface BranchSummary {
   nodeCount: number;
   isTrunk: boolean;
   isPinned?: boolean;
+  isHidden?: boolean;
   provider?: LLMProvider;
   model?: string;
 }

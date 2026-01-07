@@ -549,6 +549,7 @@ export function WorkspaceClient({
   const [isCreating, setIsCreating] = useState(false);
   const [branchModalMode, setBranchModalMode] = useState<'standard' | 'question'>('standard');
   const [pendingPinBranchIds, setPendingPinBranchIds] = useState<Set<string>>(new Set());
+  const [pendingVisibilityBranchIds, setPendingVisibilityBranchIds] = useState<Set<string>>(new Set());
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTarget, setRenameTarget] = useState<BranchSummary | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -1486,15 +1487,16 @@ export function WorkspaceClient({
         nodeCount: 0,
         isTrunk: false,
         isPinned: false,
-        isGhost: true
-      }));
+      isGhost: true
+    }));
     return [...branches, ...ghostBranches];
   }, [branches, backgroundTasks]);
   const sortedBranches = useMemo(() => {
-    const pinned = displayBranches.filter((branch) => branch.isPinned);
+    const pinned = displayBranches.filter((branch) => branch.isPinned && !branch.isHidden);
     const pendingGhosts = displayBranches.filter((branch) => branch.isGhost);
-    const unpinned = displayBranches.filter((branch) => !branch.isPinned && !branch.isGhost);
-    return [...pinned, ...pendingGhosts, ...unpinned];
+    const visible = displayBranches.filter((branch) => !branch.isPinned && !branch.isGhost && !branch.isHidden);
+    const hidden = displayBranches.filter((branch) => branch.isHidden);
+    return [...pinned, ...pendingGhosts, ...visible, ...hidden];
   }, [displayBranches]);
   const branchColorMap = useMemo(
     () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
@@ -2656,6 +2658,56 @@ export function WorkspaceClient({
     }
   };
 
+  const toggleBranchVisibility = async (branch: BranchSummary) => {
+    const branchId = branch.id ?? branch.name;
+    if (pendingVisibilityBranchIds.has(branchId)) return;
+    const previousGraphHistories = graphHistories;
+    setBranchActionError(null);
+    setPendingVisibilityBranchIds((prev) => new Set(prev).add(branchId));
+    const prevBranches = branches;
+    const optimistic = branches.map((item) =>
+      item.name === branch.name ? { ...item, isHidden: !item.isHidden } : item
+    );
+    setBranches(optimistic);
+    if (!branch.isHidden) {
+      setGraphHistories((prev) => {
+        if (!prev || !(branch.name in prev)) return prev;
+        const { [branch.name]: _omit, ...rest } = prev;
+        return rest;
+      });
+    } else {
+      void loadGraphHistories({ force: true });
+    }
+    try {
+      const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/visibility`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isHidden: !branch.isHidden })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? 'Visibility update failed');
+      }
+      const data = (await res.json()) as { branches?: BranchSummary[]; branchName?: string };
+      if (data.branchName) {
+        setBranchName(data.branchName);
+      }
+      if (data.branches) {
+        setBranches(data.branches);
+      }
+    } catch (err) {
+      setBranchActionError((err as Error).message);
+      setBranches(prevBranches);
+      setGraphHistories(previousGraphHistories ?? null);
+    } finally {
+      setPendingVisibilityBranchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(branchId);
+        return next;
+      });
+    }
+  };
+
   const submitEdit = () => {
     if (!editDraft.trim()) {
       setEditError('Content is required.');
@@ -2794,8 +2846,10 @@ export function WorkspaceClient({
                     {sortedBranches.map((branch) => {
                       const branchId = branch.id ?? branch.name;
                       const pinPending = pendingPinBranchIds.has(branchId);
+                      const visibilityPending = pendingVisibilityBranchIds.has(branchId);
                       const isPending = pendingBranchNames.has(branch.name);
                       const isGhost = (branch as BranchListItem).isGhost ?? false;
+                      const isHidden = branch.isHidden ?? false;
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       return (
                         <div
@@ -2837,7 +2891,9 @@ export function WorkspaceClient({
                                     ? branchName === branch.name
                                       ? 'font-semibold text-primary'
                                       : 'font-semibold text-slate-900'
-                                    : ''
+                                    : isHidden
+                                      ? 'text-slate-400'
+                                      : ''
                                 }`}
                               >
                                 {displayBranchName(branch.name)}
@@ -2863,6 +2919,26 @@ export function WorkspaceClient({
                                   <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                                 ) : (
                                   <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void toggleBranchVisibility(branch);
+                                }}
+                                disabled={isSwitching || isCreating || visibilityPending || isGhost}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
+                                  isSwitching || isCreating || visibilityPending || isGhost
+                                    ? 'cursor-not-allowed text-slate-300'
+                                    : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
+                                }`}
+                                aria-label={isHidden ? 'Show branch' : 'Hide branch'}
+                              >
+                                {visibilityPending ? (
+                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                ) : (
+                                  <BlueprintIcon icon={isHidden ? 'eye-off' : 'eye-open'} className="h-3.5 w-3.5" />
                                 )}
                               </button>
                               <button

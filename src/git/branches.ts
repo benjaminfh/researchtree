@@ -98,7 +98,12 @@ export async function createBranch(
     : getDefaultModelForProvider(provider);
   const previousResponseId =
     options?.previousResponseId !== undefined ? options.previousResponseId : sourceConfig?.previousResponseId ?? null;
-  await setBranchConfig(projectId, branchName, { provider, model, previousResponseId });
+  await setBranchConfig(projectId, branchName, {
+    provider,
+    model,
+    previousResponseId,
+    isHidden: false
+  });
 }
 
 export async function switchBranch(projectId: string, branchName: string): Promise<void> {
@@ -166,6 +171,7 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
       nodeCount: nodes.length,
       isTrunk: name === INITIAL_BRANCH,
       isPinned: pinnedBranch === name,
+      isHidden: config?.isHidden ?? false,
       provider,
       model,
       _lastModifiedAt: lastModifiedAt,
@@ -196,6 +202,28 @@ async function getBranchCreatedTimestamp(git: ReturnType<typeof simpleGit>, bran
   if (Number.isFinite(parsed)) return parsed;
   // Fallback: if reflog isn't available, treat "created" as last modified.
   return getRefCommitTimestamp(git, branch);
+}
+
+export async function setBranchHidden(projectId: string, branchName: string, isHidden: boolean): Promise<void> {
+  await assertProjectExists(projectId);
+  const git = simpleGit(getProjectPath(projectId));
+  const branches = await git.branchLocal();
+  if (!branches.all.includes(branchName)) {
+    throw new Error(`Branch ${branchName} does not exist`);
+  }
+
+  const configMap = await readBranchConfigMap(projectId);
+  const existing = configMap[branchName];
+  const provider = existing?.provider ?? resolveOpenAIProviderSelection();
+  const model = existing?.model ?? getDefaultModelForProvider(provider);
+  const previousResponseId = existing?.previousResponseId ?? null;
+
+  await setBranchConfig(projectId, branchName, {
+    provider,
+    model,
+    previousResponseId,
+    isHidden
+  });
 }
 
 interface MergeOptions {

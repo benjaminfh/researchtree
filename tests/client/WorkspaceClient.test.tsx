@@ -60,8 +60,8 @@ const baseProject: ProjectMetadata = {
 };
 
 const baseBranches: BranchSummary[] = [
-  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true },
-  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false }
+  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
 ];
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
@@ -501,6 +501,87 @@ describe('WorkspaceClient', () => {
       const bubble = assistantMessage.closest('article')?.querySelector('div');
       expect(bubble?.className).toContain('max-w-[85%]');
     });
+  });
+
+  it('sorts hidden branches after visible branches in the rail', async () => {
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+      { name: 'pinned-visible', headCommit: 'def', nodeCount: 1, isTrunk: false, isPinned: true, isHidden: false },
+      { name: 'feature/visible', headCommit: 'ghi', nodeCount: 1, isTrunk: false, isHidden: false },
+      { name: 'hidden-a', headCommit: 'jkl', nodeCount: 0, isTrunk: false, isHidden: true },
+      { name: 'hidden-pinned', headCommit: 'mno', nodeCount: 0, isTrunk: false, isPinned: true, isHidden: true }
+    ];
+
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const branchOrder = screen.getAllByTestId('branch-switch').map((el) => el.getAttribute('data-branch-name'));
+    expect(branchOrder).toEqual(['pinned-visible', 'main', 'feature/visible', 'hidden-a', 'hidden-pinned']);
+  });
+
+  it('toggles branch visibility using an eye icon instead of a label', async () => {
+    const user = userEvent.setup();
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+    ];
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches,
+            trunkName: 'main',
+            currentBranch: 'feature/phase-2',
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/branches/') && url.includes('/visibility') && init?.method === 'PATCH') {
+        return new Response(
+          JSON.stringify({
+            branchName: 'feature/phase-2',
+            branches: [
+              branches[0],
+              { ...branches[1], isHidden: true }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/branches') && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ branches, branchName: 'main' }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
+    expect(branchRow).toBeTruthy();
+    const toggle = within(branchRow as HTMLElement).getByRole('button', { name: 'Hide branch' });
+    await user.click(toggle);
+
+    const visibilityCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/visibility'));
+    expect(visibilityCall).toBeTruthy();
+    const [, init] = visibilityCall as [RequestInfo | URL, RequestInit];
+    expect(JSON.parse(init?.body as string)).toEqual({ isHidden: true });
+
+    await waitFor(() => {
+      expect(within(branchRow as HTMLElement).getByRole('button', { name: 'Show branch' })).toBeInTheDocument();
+    });
+    expect((branchRow as HTMLElement).textContent?.toLowerCase()).not.toContain('hidden');
   });
 
   it('keeps provider/thinking pinned to branch when switching branches', async () => {

@@ -181,3 +181,16 @@ export async function rtGetPinnedRefShadowV2(input: {
     refName: row?.ref_name ? String(row.ref_name) : null
   };
 }
+
+export async function rtSetRefHiddenShadowV1(input: { projectId: string; refId: string; isHidden: boolean }): Promise<void> {
+  const { rpc } = getPgStoreAdapter();
+  const { error } = await rpc('rt_set_ref_hidden_v1', {
+    p_project_id: input.projectId,
+    p_ref_id: input.refId,
+    p_is_hidden: input.isHidden
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

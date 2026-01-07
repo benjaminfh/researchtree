@@ -9,6 +9,7 @@ export interface BranchConfigRecord {
   provider: LLMProvider;
   model: string;
   previousResponseId?: string | null;
+  isHidden?: boolean;
 }
 
 interface BranchConfigFile {
