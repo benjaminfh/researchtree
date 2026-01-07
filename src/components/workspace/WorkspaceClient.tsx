@@ -2854,7 +2854,8 @@ export function WorkspaceClient({
                       const isHidden = branch.isHidden ?? false;
                       const isActiveBranch = branchName === branch.name;
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
-                      const visibilityDisabled = isSwitching || isCreating || visibilityPending || isGhost || isActiveBranch;
+                      const visibilityDisabled =
+                        isSwitching || isCreating || visibilityPending || isGhost || (!isHidden && isActiveBranch);
                       return (
                         <div
                           key={branch.name}
@@ -2925,7 +2926,10 @@ export function WorkspaceClient({
                                   <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
                                 )}
                               </button>
-                              <span title={isActiveBranch ? 'Cannot hide the current branch.' : undefined} className="inline-flex">
+                              <span
+                                title={!isHidden && isActiveBranch ? 'Cannot hide the current branch.' : undefined}
+                                className="inline-flex"
+                              >
                                 <button
                                   type="button"
                                   onClick={(event) => {
