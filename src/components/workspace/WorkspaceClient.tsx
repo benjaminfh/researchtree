@@ -2615,6 +2615,7 @@ export function WorkspaceClient({
     const branchId = branch.id ?? branch.name;
     if (pendingVisibilityBranchIds.has(branchId)) return;
     const previousGraphHistories = graphHistories;
+    const wasHidden = branch.isHidden;
     setBranchActionError(null);
     setPendingVisibilityBranchIds((prev) => new Set(prev).add(branchId));
     const prevBranches = branches;
@@ -2622,14 +2623,12 @@ export function WorkspaceClient({
       item.name === branch.name ? { ...item, isHidden: !item.isHidden } : item
     );
     setBranches(optimistic);
-    if (!branch.isHidden) {
+    if (!wasHidden) {
       setGraphHistories((prev) => {
         if (!prev || !(branch.name in prev)) return prev;
         const { [branch.name]: _omit, ...rest } = prev;
         return rest;
       });
-    } else {
-      void loadGraphHistories({ force: true });
     }
     try {
       const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/visibility`, {
@@ -2647,6 +2646,9 @@ export function WorkspaceClient({
       }
       if (data.branches) {
         setBranches(data.branches);
+      }
+      if (wasHidden) {
+        await loadGraphHistories({ force: true });
       }
     } catch (err) {
       setBranchActionError((err as Error).message);

@@ -94,8 +94,28 @@ describe('pg store RPC wrappers', () => {
 
     const result = await rtListRefsShadowV2({ projectId: 'p1' });
     expect(result).toEqual([
-      { id: 'r1', name: 'main', headCommit: 'c1', nodeCount: 2, isTrunk: true, isPinned: true, provider: undefined, model: undefined },
-      { id: 'r2', name: 'feat', headCommit: 'c2', nodeCount: 1, isTrunk: false, isPinned: false, provider: 'openai', model: 'gpt-5.2' }
+      {
+        id: 'r1',
+        name: 'main',
+        headCommit: 'c1',
+        nodeCount: 2,
+        isTrunk: true,
+        isPinned: true,
+        isHidden: false,
+        provider: undefined,
+        model: undefined
+      },
+      {
+        id: 'r2',
+        name: 'feat',
+        headCommit: 'c2',
+        nodeCount: 1,
+        isTrunk: false,
+        isPinned: false,
+        isHidden: false,
+        provider: 'openai',
+        model: 'gpt-5.2'
+      }
     ]);
   });
 

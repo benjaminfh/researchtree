@@ -22,6 +22,7 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
   rt_set_pinned_ref_v2: { params: ['p_project_id', 'p_ref_id'], returnType: 'void' },
   rt_clear_pinned_ref_v2: { params: ['p_project_id'], returnType: 'void' },
   rt_get_pinned_ref_v2: { params: ['p_project_id'], returnType: 'set' },
+  rt_set_ref_hidden_v1: { params: ['p_project_id', 'p_ref_id', 'p_is_hidden'], returnType: 'void' },
   rt_list_projects_v1: { params: [], returnType: 'set' },
   rt_get_project_v1: { params: ['p_project_id'], returnType: 'set' },
   rt_list_project_member_ids_v1: { params: ['p_user_id'], returnType: 'set' },
