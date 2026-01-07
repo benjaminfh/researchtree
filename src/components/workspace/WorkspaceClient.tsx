@@ -2044,20 +2044,41 @@ export function WorkspaceClient({
     return buildLineDiff(mergePreview.target, mergePreview.source);
   }, [mergePreview]);
   const hasCanvasChanges = mergeDiff.some((line) => line.type !== 'context');
+  const shouldFetchTrunk = branchName !== trunkName;
+  const historyFetcher = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch ${url}`);
+    }
+    return res.json() as Promise<{ nodes: NodeRecord[] }>;
+  };
+  const { data: trunkHistory } = useSWR<{ nodes: NodeRecord[] }>(
+    shouldFetchTrunk ? `/api/projects/${project.id}/history?ref=${encodeURIComponent(trunkName)}` : null,
+    historyFetcher
+  );
+  const trunkHistoryNodes = useMemo(
+    () => trunkHistory?.nodes?.filter((node) => node.type !== 'state') ?? null,
+    [trunkHistory]
+  );
+  const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
   const sharedCount = useMemo(() => {
     if (branchName === trunkName) {
       return 0;
     }
-    let idx = 0;
-    while (idx < persistedNodes.length) {
-      const createdOn = persistedNodes[idx]?.createdOnBranch;
-      if (createdOn === branchName) {
-        break;
-      }
-      idx += 1;
+    const splitIndex = persistedNodes.findIndex((node) => node.createdOnBranch === branchName);
+    if (splitIndex !== -1) {
+      return splitIndex;
     }
-    return idx;
-  }, [branchName, trunkName, persistedNodes]);
+    if (trunkHistoryNodes && trunkHistoryNodes.length > 0) {
+      const min = Math.min(trunkHistoryNodes.length, persistedNodes.length);
+      let idx = 0;
+      while (idx < min && trunkHistoryNodes[idx]?.id === persistedNodes[idx]?.id) {
+        idx += 1;
+      }
+      return idx;
+    }
+    return Math.min(trunkNodeCount, persistedNodes.length);
+  }, [branchName, trunkName, persistedNodes, trunkHistoryNodes, trunkNodeCount]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
