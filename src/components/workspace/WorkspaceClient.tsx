@@ -853,6 +853,7 @@ export function WorkspaceClient({
   });
   const HAS_SENT_MESSAGE_KEY = storageKey('user-has-sent-message');
   const [hasEverSentMessage, setHasEverSentMessage] = useState(false);
+  const [hasEverSentMessageHydrated, setHasEverSentMessageHydrated] = useState(false);
   const hasSentMessage = useMemo(
     () => nodes.some((node) => node.type === 'message' && node.role === 'user'),
     [nodes]
@@ -907,6 +908,7 @@ export function WorkspaceClient({
     if (stored === 'true') {
       setHasEverSentMessage(true);
     }
+    setHasEverSentMessageHydrated(true);
   }, [HAS_SENT_MESSAGE_KEY]);
 
   useEffect(() => {
@@ -1841,10 +1843,10 @@ export function WorkspaceClient({
   const newBranchModalRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (isLoading || !isNewUser || autoOpenedHintsRef.current) return;
+    if (isLoading || !hasEverSentMessageHydrated || !isNewUser || autoOpenedHintsRef.current) return;
     setShowHints(true);
     autoOpenedHintsRef.current = true;
-  }, [isLoading, isNewUser]);
+  }, [isLoading, isNewUser, hasEverSentMessageHydrated]);
 
   useEffect(() => {
     if (!showHints) return;
