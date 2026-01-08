@@ -61,16 +61,20 @@ function buildCanvasDiffMessage(diff: string): string {
   ].join('\n');
 }
 
+function escapeFence(text: string): string {
+  return text.replaceAll('```', '\\`\\`\\`');
+}
+
 function formatHighlightBlock(highlight: string): string {
   const fence = '```';
-  const escaped = highlight.replaceAll(fence, '\\`\\`\\`');
+  const escaped = escapeFence(highlight);
   return `${fence}text\n${escaped}\n${fence}`;
 }
 
 function buildUserMessage(input: { message?: string | null; question?: string | null; highlight?: string | null }): string {
   const highlight = input.highlight?.trim() ?? '';
-  const question = input.question?.trim() ?? '';
-  const message = input.message?.trim() ?? '';
+  const question = escapeFence(input.question?.trim() ?? '');
+  const message = escapeFence(input.message?.trim() ?? '');
 
   const parts: string[] = [];
 
