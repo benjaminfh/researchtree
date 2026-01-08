@@ -629,6 +629,7 @@ export function WorkspaceClient({
   const SPLIT_GAP = 12;
   const COLLAPSED_COMPOSER_PADDING = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const getSelectionForNode = useCallback((nodeId: string): string => {
     if (typeof window === 'undefined') return '';
@@ -1702,6 +1703,33 @@ export function WorkspaceClient({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [state.isStreaming, toggleComposerCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (state.isStreaming) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+      if (event.key.length !== 1 || event.key === ' ') return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      event.preventDefault();
+      if (composerCollapsed) {
+        expandComposer();
+      }
+      setDraft((prev) => `${prev}${event.key}`);
+      window.setTimeout(() => {
+        const input = composerInputRef.current;
+        if (!input) return;
+        input.focus();
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      }, 0);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [composerCollapsed, expandComposer, state.isStreaming]);
 
   useEffect(() => {
     return () => {
@@ -3779,6 +3807,7 @@ export function WorkspaceClient({
                   </div>
                   <div className="relative flex-1">
                     <textarea
+                      ref={composerInputRef}
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
                       placeholder="Ask anything"
