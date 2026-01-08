@@ -187,6 +187,13 @@ function buildMaintenanceResponse(request: NextRequest): NextResponse {
   });
 }
 
+function withSupabaseCookies(source: NextResponse, target: NextResponse): NextResponse {
+  for (const cookie of source.cookies.getAll()) {
+    target.cookies.set(cookie);
+  }
+  return target;
+}
+
 export async function middleware(request: NextRequest) {
   const maintenanceEnabled = isMaintenanceModeEnabled();
   const adminUserIds = maintenanceEnabled ? getAdminUserIds() : new Set<string>();
@@ -255,7 +262,7 @@ export async function middleware(request: NextRequest) {
   if (user && pathname === '/login') {
     const redirectTo = sanitizeRedirectTo(request.nextUrl.searchParams.get('redirectTo')) ?? '/';
     const redirectUrl = new URL(redirectTo, request.url);
-    response = NextResponse.redirect(redirectUrl);
+    response = withSupabaseCookies(response, NextResponse.redirect(redirectUrl));
     return response;
   }
 
@@ -269,7 +276,7 @@ export async function middleware(request: NextRequest) {
     redirectUrl.searchParams.set('redirectTo', `${request.nextUrl.pathname}${request.nextUrl.search}`);
     redirectUrl.searchParams.set('mode', 'signin');
     redirectUrl.hash = 'existing-user';
-    response = NextResponse.redirect(redirectUrl);
+    response = withSupabaseCookies(response, NextResponse.redirect(redirectUrl));
   }
 
   return response;
