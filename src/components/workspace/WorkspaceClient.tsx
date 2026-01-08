@@ -1694,7 +1694,13 @@ export function WorkspaceClient({
       if (!event.metaKey || event.key.toLowerCase() !== 'j') return;
       if (state.isStreaming) return;
       const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
         return;
       }
       event.preventDefault();
@@ -1711,7 +1717,13 @@ export function WorkspaceClient({
       if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       if (event.key.length !== 1 || event.key === ' ') return;
       const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
         return;
       }
       event.preventDefault();
