@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { FormEvent } from 'react';
 import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@git/types';
@@ -13,7 +13,7 @@ import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import { AUTO_FOLLOW_RESUME_DELAY_MS, storageKey, TRUNK_LABEL } from '@/src/config/app';
+import { AUTO_FOLLOW_RESUME_DELAY_MS, CHAT_COMPOSER_DEFAULT_LINES, storageKey, TRUNK_LABEL } from '@/src/config/app';
 import {
   deriveTextFromBlocks,
   deriveThinkingFromBlocks,
@@ -97,6 +97,8 @@ type DiffLine = {
   type: 'context' | 'added' | 'removed';
   value: string;
 };
+
+const CHAT_COMPOSER_MAX_LINES = 9;
 
 type BackgroundTask = {
   id: string;
@@ -629,7 +631,11 @@ export function WorkspaceClient({
   const SPLIT_GAP = 12;
   const COLLAPSED_COMPOSER_PADDING = 12;
   const composerRef = useRef<HTMLDivElement | null>(null);
-  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerBasePaddingRef = useRef<number>(composerPadding);
+  const [composerMinHeight, setComposerMinHeight] = useState<number | null>(null);
+  const [composerMaxHeight, setComposerMaxHeight] = useState<number | null>(null);
 
   const getSelectionForNode = useCallback((nodeId: string): string => {
     if (typeof window === 'undefined') return '';
@@ -1261,6 +1267,46 @@ export function WorkspaceClient({
 
   const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
 
+  const updateComposerMetrics = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const textarea = composerTextareaRef.current;
+    if (!textarea) return;
+    const styles = window.getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(styles.lineHeight || '');
+    const paddingTop = Number.parseFloat(styles.paddingTop || '0');
+    const paddingBottom = Number.parseFloat(styles.paddingBottom || '0');
+    if (!Number.isFinite(lineHeight)) return;
+    setComposerMinHeight(lineHeight * CHAT_COMPOSER_DEFAULT_LINES + paddingTop + paddingBottom);
+    setComposerMaxHeight(lineHeight * CHAT_COMPOSER_MAX_LINES + paddingTop + paddingBottom);
+  }, []);
+
+  const resizeComposer = useCallback(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const scrollHeight = textarea.scrollHeight;
+    const minHeight = composerMinHeight ?? scrollHeight;
+    const maxHeight = composerMaxHeight ?? scrollHeight;
+    const nextHeight = Math.min(maxHeight, Math.max(minHeight, scrollHeight));
+    textarea.style.height = `${nextHeight}px`;
+  }, [composerMaxHeight, composerMinHeight]);
+
+  const updateBaseComposerPadding = useCallback(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
+    composerBasePaddingRef.current = next;
+    setComposerPadding(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    updateComposerMetrics();
+  }, [updateComposerMetrics]);
+
+  useLayoutEffect(() => {
+    resizeComposer();
+  }, [draft, resizeComposer]);
+
   useEffect(() => {
     if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
     const sent = optimisticDraftRef.current;
@@ -1582,18 +1628,34 @@ export function WorkspaceClient({
     }
     const composer = composerRef.current;
     if (!composer || typeof ResizeObserver === 'undefined') {
-      setComposerPadding(Math.max(116, COLLAPSED_COMPOSER_PADDING));
+      updateBaseComposerPadding();
       return;
     }
     const updatePadding = () => {
-      const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
-      setComposerPadding(next);
+      if (!draft.trim()) {
+        updateBaseComposerPadding();
+        return;
+      }
+      setComposerPadding(composerBasePaddingRef.current);
     };
     updatePadding();
     const observer = new ResizeObserver(updatePadding);
     observer.observe(composer);
     return () => observer.disconnect();
-  }, [composerCollapsed, COLLAPSED_COMPOSER_PADDING]);
+  }, [composerCollapsed, COLLAPSED_COMPOSER_PADDING, draft, updateBaseComposerPadding]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      updateComposerMetrics();
+      resizeComposer();
+      if (!draft.trim()) {
+        updateBaseComposerPadding();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [draft, resizeComposer, updateBaseComposerPadding, updateComposerMetrics]);
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -1732,7 +1794,7 @@ export function WorkspaceClient({
       }
       setDraft((prev) => `${prev}${event.key}`);
       window.setTimeout(() => {
-        const input = composerInputRef.current;
+        const input = composerTextareaRef.current;
         if (!input) return;
         input.focus();
         const end = input.value.length;
@@ -3819,12 +3881,17 @@ export function WorkspaceClient({
                   </div>
                   <div className="relative flex-1">
                     <textarea
-                      ref={composerInputRef}
+
+                      ref={composerTextareaRef}
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
                       placeholder="Ask anything"
-                      rows={2}
-                      className="flex-1 w-full resize-none rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                      rows={CHAT_COMPOSER_DEFAULT_LINES}
+                      className="flex-1 w-full resize-none overflow-y-auto rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                      style={{
+                        minHeight: composerMinHeight ? `${composerMinHeight}px` : undefined,
+                        maxHeight: composerMaxHeight ? `${composerMaxHeight}px` : undefined
+                      }}
                       disabled={state.isStreaming}
                       onKeyDown={(event) => {
                         if (event.key !== 'Enter') {
