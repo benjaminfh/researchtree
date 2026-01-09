@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
 import { z } from 'zod';
+import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 
 export const createProjectSchema = z.object({
   name: z.string().min(1).max(120),
@@ -10,10 +11,10 @@ export const createProjectSchema = z.object({
 
 export const chatRequestSchema = z
   .object({
-    message: z.string().min(1).max(6000).optional(),
-    question: z.string().min(1).max(6000).optional(),
-    highlight: z.string().min(1).max(8000).optional(),
-    intent: z.string().max(280).optional(),
+    message: z.string().min(1).max(CHAT_LIMITS.messageMaxChars).optional(),
+    question: z.string().min(1).max(CHAT_LIMITS.questionMaxChars).optional(),
+    highlight: z.string().min(1).max(CHAT_LIMITS.highlightMaxChars).optional(),
+    intent: z.string().max(CHAT_LIMITS.intentMaxChars).optional(),
     llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
     ref: z.string().min(1).max(120).optional(),
     thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
@@ -41,8 +42,8 @@ export const branchQuestionSchema = z.object({
   fromNodeId: z.string().trim().min(1),
   provider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
   model: z.string().max(200).optional(),
-  question: z.string().min(1).max(6000),
-  highlight: z.string().trim().min(1).max(8000),
+  question: z.string().min(1).max(CHAT_LIMITS.questionMaxChars),
+  highlight: z.string().trim().min(1).max(CHAT_LIMITS.highlightMaxChars),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   switch: z.boolean().optional()
 });
