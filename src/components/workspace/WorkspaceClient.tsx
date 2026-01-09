@@ -621,7 +621,6 @@ export function WorkspaceClient({
   const [composerPadding, setComposerPadding] = useState(128);
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
-  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? null;
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
     setChatPaneWidth(null);
@@ -726,13 +725,6 @@ export function WorkspaceClient({
       toastTimeoutsRef.current.clear();
     };
   }, []);
-
-  useEffect(() => {
-    if (!composerError) return;
-    if (draft.length <= CHAT_LIMITS.messageMaxChars) {
-      setComposerError(null);
-    }
-  }, [composerError, draft]);
 
   const startBackgroundTask = useCallback((task: Omit<BackgroundTask, 'id'>) => {
     const id = createClientId();
@@ -894,6 +886,12 @@ export function WorkspaceClient({
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
   const questionDraftRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!composerError) return;
+    if (draft.length <= CHAT_LIMITS.messageMaxChars) {
+      setComposerError(null);
+    }
+  }, [composerError, draft]);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
@@ -1023,7 +1021,6 @@ export function WorkspaceClient({
       setAssistantPending(false);
     }
   });
-
   const activeProvider = useMemo(
     () => providerOptions.find((option) => option.id === branchProvider),
     [branchProvider, providerOptions]
@@ -1051,6 +1048,7 @@ export function WorkspaceClient({
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
+  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? null;
   const webSearchAvailable = branchProvider !== 'mock';
   const showOpenAISearchNote =
     webSearchEnabled &&
