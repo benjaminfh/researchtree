@@ -14,6 +14,7 @@ import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
 import { AUTO_FOLLOW_RESUME_DELAY_MS, CHAT_COMPOSER_DEFAULT_LINES, storageKey, TRUNK_LABEL } from '@/src/config/app';
+import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 import {
   deriveTextFromBlocks,
   deriveThinkingFromBlocks,
@@ -76,6 +77,10 @@ const getNodeThinkingText = (node: NodeRecord): string => {
 };
 
 const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
+
+const formatCharLimitMessage = (label: string, current: number, max: number) => {
+  return `${label} is too long (${current} chars). Max ${max} characters.`;
+};
 
 const buildQuestionMessage = (question: string, highlight?: string) => {
   const trimmedQuestion = question.trim();
@@ -546,6 +551,7 @@ export function WorkspaceClient({
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
+  const [composerError, setComposerError] = useState<string | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -880,6 +886,12 @@ export function WorkspaceClient({
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
   const questionDraftRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!composerError) return;
+    if (draft.length <= CHAT_LIMITS.messageMaxChars) {
+      setComposerError(null);
+    }
+  }, [composerError, draft]);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
@@ -1009,7 +1021,6 @@ export function WorkspaceClient({
       setAssistantPending(false);
     }
   });
-
   const activeProvider = useMemo(
     () => providerOptions.find((option) => option.id === branchProvider),
     [branchProvider, providerOptions]
@@ -1037,6 +1048,7 @@ export function WorkspaceClient({
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
+  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? null;
   const webSearchAvailable = branchProvider !== 'mock';
   const showOpenAISearchNote =
     webSearchEnabled &&
@@ -1045,6 +1057,12 @@ export function WorkspaceClient({
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
+    const draftLength = draft.length;
+    if (draftLength > CHAT_LIMITS.messageMaxChars) {
+      setComposerError(formatCharLimitMessage('Message', draftLength, CHAT_LIMITS.messageMaxChars));
+      return;
+    }
+    setComposerError(null);
     if (thinkingUnsupportedError) {
       setThinkingMenuOpen(true);
       return;
@@ -3352,11 +3370,11 @@ export function WorkspaceClient({
                   <p className="text-sm italic text-muted">No new messages on this branch yet.</p>
                 ) : null}
 
-                {sortedBranches.length > 0 || state.error || thinkingUnsupportedError ? (
+                {sortedBranches.length > 0 || chatErrorMessage ? (
                   <div className="absolute bottom-4 left-4 right-10 flex items-center gap-3">
-                    {state.error || thinkingUnsupportedError ? (
+                    {chatErrorMessage ? (
                       <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full border border-red-200 bg-red-50 px-4 text-sm text-red-700">
-                        <span className="min-w-0 flex-1 truncate">{state.error ?? thinkingUnsupportedError}</span>
+                        <span className="min-w-0 flex-1 truncate">{chatErrorMessage}</span>
                         {state.error ? (
                           <button
                             type="button"
@@ -4033,6 +4051,18 @@ export function WorkspaceClient({
                   const thinkingSetting = newBranchThinking;
                   if (isQuestionMode && !question) {
                     setBranchActionError('Question is required.');
+                    return;
+                  }
+                  if (isQuestionMode && highlight && highlight.length > CHAT_LIMITS.highlightMaxChars) {
+                    setBranchActionError(
+                      formatCharLimitMessage('Highlight', highlight.length, CHAT_LIMITS.highlightMaxChars)
+                    );
+                    return;
+                  }
+                  if (isQuestionMode && question.length > CHAT_LIMITS.questionMaxChars) {
+                    setBranchActionError(
+                      formatCharLimitMessage('Question', question.length, CHAT_LIMITS.questionMaxChars)
+                    );
                     return;
                   }
                   if (isQuestionMode) {
