@@ -26,6 +26,7 @@ import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
 import type { FC } from 'react';
 import { RailPageLayout } from '@/src/components/layout/RailPageLayout';
+import type { RailLayoutContext } from '@/src/components/layout/RailLayout';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { WorkspaceGraph } from './WorkspaceGraph';
 import { buildBranchColorMap, getBranchColor } from './branchColors';
@@ -610,6 +611,12 @@ export function WorkspaceClient({
   const [insightCollapsed, setInsightCollapsed] = useState(false);
   const [chatPaneWidth, setChatPaneWidth] = useState<number | null>(null);
   const [insightPaneWidth, setInsightPaneWidth] = useState<number | null>(null);
+  const railStateRef = useRef<RailLayoutContext | null>(null);
+  const collapseSnapshotRef = useRef<{
+    railCollapsed: boolean;
+    insightCollapsed: boolean;
+    composerCollapsed: boolean;
+  } | null>(null);
   const paneContainerRef = useRef<HTMLDivElement | null>(null);
   const insightPaneRef = useRef<HTMLDivElement | null>(null);
   const isResizingRef = useRef(false);
@@ -1284,6 +1291,49 @@ export function WorkspaceClient({
   );
 
   const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
+  const toggleAllWorkspacePanels = useCallback(() => {
+    const railState = railStateRef.current;
+    if (!railState) return;
+    const isAllCollapsed = railState.railCollapsed && insightCollapsed && composerCollapsed;
+    if (collapseSnapshotRef.current && isAllCollapsed) {
+      const snapshot = collapseSnapshotRef.current;
+      collapseSnapshotRef.current = null;
+      if (snapshot.railCollapsed !== railState.railCollapsed) {
+        railState.toggleRail();
+      }
+      if (snapshot.insightCollapsed) {
+        if (!insightCollapsed) {
+          collapseInsights();
+        }
+      } else if (insightCollapsed) {
+        expandInsights();
+      }
+      toggleComposerCollapsed(snapshot.composerCollapsed);
+      return;
+    }
+
+    collapseSnapshotRef.current = {
+      railCollapsed: railState.railCollapsed,
+      insightCollapsed,
+      composerCollapsed
+    };
+
+    if (!railState.railCollapsed) {
+      railState.toggleRail();
+    }
+    if (!insightCollapsed) {
+      collapseInsights();
+    }
+    if (!composerCollapsed) {
+      toggleComposerCollapsed(true);
+    }
+  }, [
+    collapseInsights,
+    composerCollapsed,
+    expandInsights,
+    insightCollapsed,
+    toggleComposerCollapsed
+  ]);
 
   const updateComposerMetrics = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -1771,7 +1821,31 @@ export function WorkspaceClient({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey || event.key.toLowerCase() !== 'j') return;
+      if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
+      if (event.key.toLowerCase() !== 'j') return;
+      if (state.isStreaming) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      toggleAllWorkspacePanels();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [state.isStreaming, toggleAllWorkspacePanels]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.shiftKey || event.ctrlKey || event.altKey) return;
+      if (event.key.toLowerCase() !== 'j') return;
       if (state.isStreaming) return;
       const target = event.target as HTMLElement | null;
       if (
@@ -2948,8 +3022,10 @@ export function WorkspaceClient({
         </div>
       ) : null}
       <RailPageLayout
-        renderRail={(ctx) => (
-          <div className="mt-6 flex h-full min-h-0 flex-col gap-6">
+        renderRail={(ctx) => {
+          railStateRef.current = ctx;
+          return (
+            <div className="mt-6 flex h-full min-h-0 flex-col gap-6">
             {!ctx.railCollapsed ? (
               <div className="flex min-h-0 flex-1 flex-col gap-3">
                 <div className="rounded-2xl border border-divider/70 bg-white/80 px-3 py-2 shadow-sm">
@@ -3183,6 +3259,8 @@ export function WorkspaceClient({
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                     <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
                     <li>⌘ + B to toggle the rail.</li>
+                    <li>⌘ + J to toggle the composer.</li>
+                    <li>⌘ + Shift + J to collapse or restore all panels.</li>
                     <li>⌘ + click a graph node to jump to its message.</li>
                     <li>← Thred graph · → Canvas.</li>
                     <li>↑ show graph/canvas · ↓ hide panel.</li>
@@ -3201,13 +3279,16 @@ export function WorkspaceClient({
                 <HomeIcon className="h-4 w-4" />
               </Link>
             </div>
-          </div>
-        )}
-        renderMain={(ctx) => (
-          <div
-            className="relative flex h-full min-h-0 min-w-0 flex-col bg-white"
-            data-composer-collapsed={composerCollapsed ? 'true' : 'false'}
-          >
+            </div>
+          );
+        }}
+        renderMain={(ctx) => {
+          railStateRef.current = ctx;
+          return (
+            <div
+              className="relative flex h-full min-h-0 min-w-0 flex-col bg-white"
+              data-composer-collapsed={composerCollapsed ? 'true' : 'false'}
+            >
             <div className="sr-only" aria-live="polite" data-testid="composer-collapsed-state">
               {composerCollapsed ? 'Composer collapsed' : 'Composer expanded'}
             </div>
@@ -4008,8 +4089,9 @@ export function WorkspaceClient({
               </div>
             </form>
           ) : null}
-        </div>
-        )}
+            </div>
+          );
+        }}
       />
 
       {showNewBranchModal ? (
