@@ -13,19 +13,22 @@ type MarkdownWithCopyProps = {
 };
 
 type CodeProps = {
-  inline?: boolean;
   className?: string;
   children?: React.ReactNode;
+  node?: {
+    type?: string;
+  };
 };
 
 type PreProps = {
   children?: React.ReactNode;
 };
 
-const CodeBlock = ({ inline, className, children }: CodeProps) => {
+const CodeBlock = ({ className, children, node }: CodeProps) => {
   const [copied, setCopied] = useState(false);
+  const isInline = node?.type === 'inlineCode';
 
-  if (inline) {
+  if (isInline) {
     return <code className={className}>{children}</code>;
   }
 
