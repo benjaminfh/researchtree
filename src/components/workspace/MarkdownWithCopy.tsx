@@ -12,22 +12,21 @@ type MarkdownWithCopyProps = {
   className?: string;
 };
 
-type CodeProps = {
-  inline?: boolean;
-  className?: string;
-  children?: React.ReactNode;
-};
-
 type PreProps = {
   children?: React.ReactNode;
 };
 
-const CodeBlock = ({ inline, className, children }: CodeProps) => {
-  const [copied, setCopied] = useState(false);
+type CodeProps = {
+  className?: string;
+  children?: React.ReactNode;
+};
 
-  if (inline) {
-    return <code className={className}>{children}</code>;
-  }
+const InlineCode = ({ className, children }: CodeProps) => (
+  <code className={className}>{children}</code>
+);
+
+const CodeBlock = ({ className, children }: CodeProps) => {
+  const [copied, setCopied] = useState(false);
 
   const text = String(children ?? '').replace(/\n$/, '');
 
@@ -66,11 +65,21 @@ const CodeBlock = ({ inline, className, children }: CodeProps) => {
   );
 };
 
+const PreBlock = ({ children }: PreProps) => {
+  const codeElement = React.Children.toArray(children).find((child) =>
+    React.isValidElement(child)
+  ) as React.ReactElement<CodeProps> | undefined;
+  const className = codeElement?.props?.className;
+  const codeChildren = codeElement?.props?.children ?? children;
+
+  return <CodeBlock className={className}>{codeChildren}</CodeBlock>;
+};
+
 export const MarkdownWithCopy = ({ content, className }: MarkdownWithCopyProps) => {
   const components = useMemo<Components>(
     () => ({
-      code: (props) => <CodeBlock {...props} />,
-      pre: ({ children }: PreProps) => <>{children}</>
+      code: (props) => <InlineCode {...props} />,
+      pre: (props) => <PreBlock {...props} />
     }),
     []
   );
