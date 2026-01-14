@@ -963,7 +963,7 @@ export function WorkspaceClient({
     provider: branchProvider,
     thinking,
     webSearch: webSearchEnabled,
-    leaseSessionId,
+    leaseSessionId: leaseSessionId ?? undefined,
     onChunk: (chunk) => {
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
