@@ -2,6 +2,7 @@
 
 import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
+import { getStoreConfig } from '@/src/server/storeConfig';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,11 @@ function normalizeSecret(value: string | null | undefined): string | null {
 export async function GET() {
   try {
     const user = await requireUser();
+    const store = getStoreConfig();
+    if (store.mode === 'pg' && user.email) {
+      const { rtAcceptProjectInvitesShadowV1 } = await import('@/src/store/pg/collaboration');
+      await rtAcceptProjectInvitesShadowV1().catch(() => null);
+    }
     const { rtGetUserLlmKeyStatusV1 } = await import('@/src/store/pg/userLlmKeys');
     const status = await rtGetUserLlmKeyStatusV1();
 

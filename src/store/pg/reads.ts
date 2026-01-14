@@ -12,6 +12,11 @@ export interface PgBranchSummary {
   isHidden: boolean;
   provider?: string;
   model?: string;
+  lease?: {
+    userId: string;
+    sessionId: string;
+    expiresAt: string;
+  } | null;
 }
 
 export async function rtGetHistoryShadowV2(input: {
@@ -156,7 +161,14 @@ export async function rtListRefsShadowV2(input: { projectId: string }): Promise<
     isPinned: Boolean(row.is_pinned),
     isHidden: Boolean(row.is_hidden),
     provider: row.provider ? String(row.provider) : undefined,
-    model: row.model ? String(row.model) : undefined
+    model: row.model ? String(row.model) : undefined,
+    lease: row.lease_user_id
+      ? {
+          userId: String(row.lease_user_id),
+          sessionId: String(row.lease_session_id ?? ''),
+          expiresAt: new Date(row.lease_expires_at).toISOString()
+        }
+      : null
   }));
 }
 

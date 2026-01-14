@@ -21,9 +21,11 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
 
   let project: { id: string; name: string; description?: string; createdAt: string; branchName?: string };
   let branches: any[];
+  let currentUserId: string | null = null;
 
   if (store.mode === 'pg') {
-    await requireUser();
+    const user = await requireUser();
+    currentUserId = user.id;
     const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
     const data = await rtGetProjectShadowV1({ projectId: params.id });
     if (!data) {
@@ -77,6 +79,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
         defaultProvider={resolveOpenAIProviderSelection()}
         providerOptions={providerOptions}
         openAIUseResponses={getOpenAIUseResponses()}
+        currentUserId={currentUserId}
       />
     </main>
   );

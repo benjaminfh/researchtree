@@ -7,6 +7,7 @@ import { completeAssistantWithCanvasTools, encodeChunk, streamAssistantCompletio
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { acquireProjectRefLock } from '@/src/server/locks';
+import { ensureBranchLease } from '@/src/server/leases';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
@@ -107,7 +108,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { message, question, highlight, intent, llmProvider, ref, thinking, webSearch } = parsed.data as typeof parsed.data & {
+    const { message, question, highlight, intent, llmProvider, ref, thinking, webSearch, leaseSessionId } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
       webSearch?: boolean;
     };
@@ -129,6 +130,9 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
     if (store.mode === 'pg' && !targetRefId) {
       throw badRequest(`Branch ${targetRefName} is missing ref id`);
+    }
+    if (store.mode === 'pg' && targetRefId) {
+      await ensureBranchLease({ projectId: params.id, refId: targetRefId, sessionId: leaseSessionId });
     }
     const branchConfigMap = await getBranchConfigMap(params.id);
     const activeConfig = branchConfigMap[targetRefName] ?? resolveBranchConfig();

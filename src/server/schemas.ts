@@ -18,7 +18,8 @@ export const chatRequestSchema = z
     llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
     ref: z.string().min(1).max(120).optional(),
     thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
-    webSearch: z.boolean().optional()
+    webSearch: z.boolean().optional(),
+    leaseSessionId: z.string().min(1).optional()
   })
   .refine((value) => Boolean(value.message?.trim() || value.question?.trim()), {
     message: 'Message or question is required.'
@@ -45,7 +46,8 @@ export const branchQuestionSchema = z.object({
   question: z.string().min(1).max(CHAT_LIMITS.questionMaxChars),
   highlight: z.string().trim().min(1).max(CHAT_LIMITS.highlightMaxChars),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
-  switch: z.boolean().optional()
+  switch: z.boolean().optional(),
+  leaseSessionId: z.string().min(1).optional()
 });
 
 export const switchBranchSchema = z.object({
@@ -65,7 +67,8 @@ export const mergeRequestSchema = z.object({
   sourceBranch: z.string().min(1).max(120),
   mergeSummary: z.string().min(1).max(4000),
   targetBranch: z.string().min(1).max(120).optional(),
-  sourceAssistantNodeId: z.string().min(1).optional()
+  sourceAssistantNodeId: z.string().min(1).optional(),
+  leaseSessionId: z.string().min(1).optional()
 });
 
 export const pinCanvasDiffSchema = z.object({
@@ -86,7 +89,8 @@ export const editMessageSchema = z.object({
 });
 
 export const updateArtefactSchema = z.object({
-  content: z.string().min(1).max(200000)
+  content: z.string().min(1).max(200000),
+  leaseSessionId: z.string().min(1).optional()
 });
 
 export type MergeRequestInput = z.infer<typeof mergeRequestSchema>;

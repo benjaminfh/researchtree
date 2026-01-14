@@ -7,6 +7,7 @@ import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
+import { ensureBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string };
@@ -83,6 +84,11 @@ export async function PUT(request: Request, { params }: RouteContext) {
         const resolved = ref?.trim()
           ? await resolveRefByName(params.id, ref)
           : await resolveCurrentRef(params.id, INITIAL_BRANCH);
+        await ensureBranchLease({
+          projectId: params.id,
+          refId: resolved.id,
+          sessionId: parsed.data.leaseSessionId
+        });
         await rtSaveArtefactDraftV2({ projectId: params.id, refId: resolved.id, content: parsed.data.content ?? '' });
         const canvas = await rtGetCanvasShadowV2({ projectId: params.id, refId: resolved.id });
         const updatedAtMs = canvas.updatedAt ? Date.parse(canvas.updatedAt) : null;

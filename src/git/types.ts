@@ -104,4 +104,9 @@ export interface BranchSummary {
   isHidden?: boolean;
   provider?: LLMProvider;
   model?: string;
+  lease?: {
+    userId: string;
+    sessionId: string;
+    expiresAt: string;
+  } | null;
 }

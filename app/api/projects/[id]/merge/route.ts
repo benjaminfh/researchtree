@@ -6,6 +6,7 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
+import { ensureBranchLease } from '@/src/server/leases';
 import type { NodeRecord } from '@git/types';
 import { INITIAL_BRANCH } from '@git/constants';
 import { v4 as uuidv4 } from 'uuid';
@@ -81,7 +82,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { sourceBranch, mergeSummary, targetBranch, sourceAssistantNodeId } = parsed.data;
+    const { sourceBranch, mergeSummary, targetBranch, sourceAssistantNodeId, leaseSessionId } = parsed.data;
     const resolvedTargetBranch = targetBranch ?? (await getPreferredBranch(params.id));
 
     return await withProjectLockAndRefLock(params.id, resolvedTargetBranch, async () => {
@@ -109,6 +110,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           if (!sourceBranchInfo?.id || !targetBranchInfo?.id) {
             throw badRequest('Branch is missing ref id');
           }
+          await ensureBranchLease({ projectId: params.id, refId: targetBranchInfo.id, sessionId: leaseSessionId });
           const sourceHeadCommit = sourceBranchInfo.headCommit ?? '';
 
           const [targetRows, sourceRows] = await Promise.all([

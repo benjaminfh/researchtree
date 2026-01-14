@@ -9,6 +9,7 @@ import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@g
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
+import { useLeaseSession } from '@/src/hooks/useLeaseSession';
 import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -131,6 +132,7 @@ interface WorkspaceClientProps {
   defaultProvider: LLMProvider;
   providerOptions: ProviderOption[];
   openAIUseResponses: boolean;
+  currentUserId?: string | null;
 }
 
 interface ProviderOption {
@@ -546,11 +548,13 @@ export function WorkspaceClient({
   initialBranches,
   defaultProvider,
   providerOptions,
-  openAIUseResponses
+  openAIUseResponses,
+  currentUserId
 }: WorkspaceClientProps) {
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
+  const leaseSessionId = useLeaseSession(project.id);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
@@ -959,6 +963,7 @@ export function WorkspaceClient({
     provider: branchProvider,
     thinking,
     webSearch: webSearchEnabled,
+    leaseSessionId,
     onChunk: (chunk) => {
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
@@ -1064,6 +1069,10 @@ export function WorkspaceClient({
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
+    if (!leaseSessionId) {
+      setComposerError('Lease session is still initializing. Please try again.');
+      return;
+    }
     const draftLength = draft.length;
     if (draftLength > CHAT_LIMITS.messageMaxChars) {
       setComposerError(formatCharLimitMessage('Message', draftLength, CHAT_LIMITS.messageMaxChars));
@@ -1126,6 +1135,10 @@ export function WorkspaceClient({
     onFailure?: () => void;
   }) => {
     if (!question.trim() || state.isStreaming) return;
+    if (!leaseSessionId) {
+      setComposerError('Lease session is still initializing. Please try again.');
+      return;
+    }
     const optimisticContent = buildQuestionMessage(question, highlight);
     shouldScrollToBottomRef.current = true;
     questionDraftRef.current = optimisticContent;
@@ -1162,7 +1175,8 @@ export function WorkspaceClient({
         question,
         highlight,
         thinking: thinkingSetting,
-        switch: true
+        switch: true,
+        leaseSessionId
       },
       onResponse: () => {
         responded = true;
@@ -1659,6 +1673,27 @@ export function WorkspaceClient({
       console.error('[workspace] reload branches failed', err);
     }
   }, [project.id]);
+
+  const releaseBranchLease = useCallback(
+    async (branch: BranchSummary) => {
+      if (!leaseSessionId || !branch.id) return;
+      try {
+        const res = await fetch(`/api/projects/${project.id}/leases`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refId: branch.id, sessionId: leaseSessionId })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to release lease');
+        }
+        await reloadBranches();
+      } catch (err) {
+        console.error('[workspace] release lease failed', err);
+      }
+    },
+    [leaseSessionId, project.id, reloadBranches]
+  );
   const refreshInsights = useCallback(
     (options?: { includeGraph?: boolean; includeBranches?: boolean }) => {
       const tasks: Promise<unknown>[] = [];
@@ -1908,6 +1943,7 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!leaseSessionId) return;
     if (artefactDraft === artefact) return;
 
     if (autosaveTimeoutRef.current) {
@@ -1936,7 +1972,7 @@ export function WorkspaceClient({
           const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(branchName)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: artefactDraft }),
+            body: JSON.stringify({ content: artefactDraft, leaseSessionId }),
             signal: controller.signal
           });
           if (!res.ok) {
@@ -1969,7 +2005,7 @@ export function WorkspaceClient({
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [artefactDraft, artefact, branchName, trunkName, project.id, mutateArtefact]);
+  }, [artefactDraft, artefact, branchName, trunkName, project.id, mutateArtefact, leaseSessionId]);
 
   useEffect(() => {
     return () => {
@@ -3054,6 +3090,12 @@ export function WorkspaceClient({
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       const visibilityDisabled =
                         isSwitching || isCreating || visibilityPending || isGhost || (!isHidden && isActiveBranch);
+                      const lease = branch.lease ?? null;
+                      const leaseActive = lease?.expiresAt ? Date.parse(lease.expiresAt) > Date.now() : false;
+                      const leaseOwnedByCurrent = Boolean(
+                        leaseActive && lease?.userId && currentUserId && lease.userId === currentUserId
+                      );
+                      const leaseLocked = Boolean(leaseActive && !leaseOwnedByCurrent);
                       return (
                         <div
                           key={branch.name}
@@ -3104,8 +3146,34 @@ export function WorkspaceClient({
                               {isPending ? (
                                 <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                               ) : null}
+                              {leaseOwnedByCurrent ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                  <BlueprintIcon icon="edit" className="h-3 w-3" />
+                                  Editing
+                                </span>
+                              ) : leaseLocked ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                  <BlueprintIcon icon="lock" className="h-3 w-3" />
+                                  Locked
+                                </span>
+                              ) : null}
                             </span>
                             <span className="inline-flex items-center gap-1">
+                              {leaseOwnedByCurrent ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void releaseBranchLease(branch);
+                                  }}
+                                  disabled={!branch.id}
+                                  className="inline-flex h-7 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Release lease"
+                                >
+                                  <BlueprintIcon icon="unlock" className="h-3 w-3" />
+                                  Release
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -4512,7 +4580,8 @@ export function WorkspaceClient({
                         sourceBranch: branchName,
                         targetBranch: mergeTargetBranch,
                         mergeSummary: mergeSummary.trim(),
-                        sourceAssistantNodeId: selectedMergePayload.id
+                        sourceAssistantNodeId: selectedMergePayload.id,
+                        leaseSessionId
                       })
                     });
                     if (!res.ok) {
