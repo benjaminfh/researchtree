@@ -180,6 +180,7 @@ declare
   v_email text;
   v_role text;
   v_user_id uuid;
+  v_owner_id uuid;
   v_invite_id uuid;
   v_accepted_at timestamp with time zone;
 begin
@@ -207,11 +208,20 @@ begin
   where lower(u.email) = v_email
   limit 1;
 
+  select p.owner_user_id
+  into v_owner_id
+  from public.projects p
+  where p.id = p_project_id;
+
+  if v_user_id is not null and v_owner_id is not null and v_user_id = v_owner_id then
+    v_role := 'owner';
+  end if;
+
   if v_user_id is not null then
     insert into public.project_members (project_id, user_id, role)
     values (p_project_id, v_user_id, v_role)
     on conflict (project_id, user_id)
-    do update set role = excluded.role;
+    do update set role = case when project_members.user_id = v_owner_id then 'owner' else excluded.role end;
     v_accepted_at := now();
   else
     v_accepted_at := null;
