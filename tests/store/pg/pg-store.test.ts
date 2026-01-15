@@ -103,7 +103,8 @@ describe('pg store RPC wrappers', () => {
         isPinned: true,
         isHidden: false,
         provider: undefined,
-        model: undefined
+        model: undefined,
+        lease: null
       },
       {
         id: 'r2',
@@ -114,7 +115,8 @@ describe('pg store RPC wrappers', () => {
         isPinned: false,
         isHidden: false,
         provider: 'openai',
-        model: 'gpt-5.2'
+        model: 'gpt-5.2',
+        lease: null
       }
     ]);
   });

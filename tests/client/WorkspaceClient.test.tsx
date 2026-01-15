@@ -418,12 +418,14 @@ describe('WorkspaceClient', () => {
     expect(mergeCall).toBeTruthy();
     const [, init] = mergeCall as [RequestInfo | URL, RequestInit];
     expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual({
+    const mergeBody = JSON.parse(init?.body as string) as Record<string, unknown>;
+    expect(mergeBody).toMatchObject({
       sourceBranch: 'feature/phase-2',
       targetBranch: 'main',
       mergeSummary: 'Bring back the final payload',
       sourceAssistantNodeId: 'node-assistant-branch'
     });
+    expect(typeof mergeBody.leaseSessionId).toBe('string');
 
     const branchSwitchCall = fetchMock.mock.calls.find(
       ([input, init]: [RequestInfo | URL, RequestInit]) => input.toString().includes('/branches') && init?.method === 'PATCH'
