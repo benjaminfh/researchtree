@@ -289,6 +289,10 @@ begin
   delete from public.project_members
   where project_id = p_project_id
     and user_id = p_user_id;
+
+  delete from public.project_invites
+  where project_id = p_project_id
+    and accepted_user_id = p_user_id;
 end;
 $$;
 
@@ -372,7 +376,7 @@ begin
     select id, project_id, role
     from public.project_invites
     where lower(email) = v_email
-      and (accepted_user_id is null or accepted_user_id = auth.uid())
+      and accepted_at is null
   ), upserts as (
     insert into public.project_members (project_id, user_id, role)
     select project_id, auth.uid(), role

@@ -85,7 +85,8 @@ export const editMessageSchema = z.object({
   llmModel: z.string().max(200).optional(),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   nodeId: z.string().min(1),
-  replaceNode: z.boolean().optional()
+  replaceNode: z.boolean().optional(),
+  leaseSessionId: z.string().min(1).optional()
 });
 
 export const updateArtefactSchema = z.object({

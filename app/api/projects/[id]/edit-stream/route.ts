@@ -10,6 +10,7 @@ import { encodeChunk, resolveOpenAIProviderSelection, streamAssistantCompletion 
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
+import { ensureBranchLease } from '@/src/server/leases';
 import { v4 as uuidv4 } from 'uuid';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -49,7 +50,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { content, branchName, fromRef, nodeId, llmProvider, llmModel, thinking } = parsed.data as typeof parsed.data & {
+    const { content, branchName, fromRef, nodeId, llmProvider, llmModel, thinking, leaseSessionId } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
     };
     const currentBranch = await getPreferredBranch(params.id);
@@ -116,6 +117,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           if (!sourceRefInfo.id) {
             throw badRequest(`Branch ${sourceRef} is missing ref id`);
           }
+          await ensureBranchLease({ projectId: params.id, refId: sourceRefInfo.id, sessionId: leaseSessionId });
 
           await rtCreateRefFromNodeParentShadowV2({
             projectId: params.id,

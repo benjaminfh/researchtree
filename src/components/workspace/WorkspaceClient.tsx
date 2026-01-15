@@ -1244,7 +1244,8 @@ export function WorkspaceClient({
         llmProvider: provider,
         llmModel: model,
         thinking: thinkingSetting,
-        nodeId
+        nodeId,
+        leaseSessionId
       },
       onResponse: () => {
         responded = true;
