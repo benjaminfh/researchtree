@@ -27,7 +27,8 @@ const mocks = vi.hoisted(() => ({
   resolveBranchConfig: vi.fn(),
   resolveRefByName: vi.fn(),
   resolveCurrentRef: vi.fn(),
-  requireUserApiKeyForProvider: vi.fn()
+  requireUserApiKeyForProvider: vi.fn(),
+  ensureBranchLease: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -96,13 +97,18 @@ vi.mock('@/src/server/llmUserKeys', () => ({
   requireUserApiKeyForProvider: mocks.requireUserApiKeyForProvider
 }));
 
+vi.mock('@/src/server/leases', () => ({
+  ensureBranchLease: mocks.ensureBranchLease,
+  getLeaseTtlSeconds: vi.fn(() => 300)
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/edit';
 
-function createRequest(body: unknown) {
+function createRequest(body: Record<string, unknown>) {
   return new Request(baseUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ leaseSessionId: 'lease-session', ...body })
   });
 }
 
@@ -144,6 +150,7 @@ describe('/api/projects/[id]/edit', () => {
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
     mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
     mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.ensureBranchLease.mockResolvedValue({ holderUserId: 'user-1', expiresAt: '2099-01-01T00:00:00Z' });
   });
 
   it('creates edit branch, appends edited user node, and generates assistant reply', async () => {

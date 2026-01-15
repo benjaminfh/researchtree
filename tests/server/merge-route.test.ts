@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   rtMergeOursShadowV2: vi.fn(),
   rtListRefsShadowV2: vi.fn(),
   rtGetHistoryShadowV2: vi.fn(),
-  rtGetCanvasShadowV2: vi.fn()
+  rtGetCanvasShadowV2: vi.fn(),
+  ensureBranchLease: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -35,6 +36,11 @@ vi.mock('@/src/store/pg/reads', () => ({
   rtGetCanvasShadowV2: mocks.rtGetCanvasShadowV2
 }));
 
+vi.mock('@/src/server/leases', () => ({
+  ensureBranchLease: mocks.ensureBranchLease,
+  getLeaseTtlSeconds: vi.fn(() => 300)
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/merge';
 
 function createRequest(body: Record<string, unknown>) {
@@ -51,6 +57,7 @@ describe('/api/projects/[id]/merge', () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.mergeBranch.mockResolvedValue({ id: 'merge-1', type: 'merge' });
     mocks.getCurrentBranchName.mockResolvedValue('main');
+    mocks.ensureBranchLease.mockResolvedValue({ holderUserId: 'user-1', expiresAt: '2099-01-01T00:00:00Z' });
     process.env.RT_STORE = 'git';
   });
 

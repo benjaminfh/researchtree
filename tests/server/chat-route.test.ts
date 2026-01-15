@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
   rtGetCanvasHashesShadowV2: vi.fn(),
   rtGetCanvasPairShadowV2: vi.fn(),
   resolveRefByName: vi.fn(),
-  resolveCurrentRef: vi.fn()
+  resolveCurrentRef: vi.fn(),
+  ensureBranchLease: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -79,6 +80,11 @@ vi.mock('@/src/server/llmUserKeys', () => ({
   requireUserApiKeyForProvider: vi.fn(async () => null)
 }));
 
+vi.mock('@/src/server/leases', () => ({
+  ensureBranchLease: mocks.ensureBranchLease,
+  getLeaseTtlSeconds: vi.fn(() => 300)
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/chat';
 
 function createRequest(body: Record<string, unknown>) {
@@ -121,6 +127,7 @@ describe('/api/projects/[id]/chat', () => {
     });
     mocks.resolveRefByName.mockResolvedValue({ id: 'ref-1', name: 'main' });
     mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-1', name: 'main' });
+    mocks.ensureBranchLease.mockResolvedValue({ holderUserId: 'user-1', expiresAt: '2099-01-01T00:00:00Z' });
     process.env.RT_STORE = 'git';
   });
 
