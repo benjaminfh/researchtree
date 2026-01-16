@@ -179,11 +179,11 @@ export function useChatStream({
   );
 
   const sendMessage = useCallback(
-    async (payload: ChatSendPayload) => {
+    async (input: ChatSendPayload) => {
       const normalized =
-        typeof payload === 'string'
-          ? { message: payload }
-          : payload ?? { message: '' };
+        typeof input === 'string'
+          ? { message: input }
+          : input ?? { message: '' };
       const userMessage = normalized.message ?? '';
       const userQuestion = normalized.question ?? '';
       if (!(userMessage.trim() || userQuestion.trim())) {
@@ -213,10 +213,10 @@ export function useChatStream({
         webSearch: normalized.webSearch ?? webSearch
       };
       const resolvedLeaseSessionId = normalized.leaseSessionId ?? leaseSessionId;
-      const payload = resolvedLeaseSessionId ? { ...basePayload, leaseSessionId: resolvedLeaseSessionId } : basePayload;
+      const requestBody = resolvedLeaseSessionId ? { ...basePayload, leaseSessionId: resolvedLeaseSessionId } : basePayload;
       await sendStreamRequest({
         url: `/api/projects/${projectId}/chat`,
-        body: payload
+        body: requestBody
       });
     },
     [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
