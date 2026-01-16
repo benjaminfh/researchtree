@@ -955,6 +955,17 @@ export function WorkspaceClient({
     },
     [branchName, mutateArtefact, project.id]
   );
+  const scheduleAutosave = useCallback(
+    ({ content, ref }: { content: string; ref: string }) => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+      autosaveTimeoutRef.current = setTimeout(() => {
+        void saveArtefactSnapshot({ content, ref });
+      }, 2000);
+    },
+    [saveArtefactSnapshot]
+  );
   const confirmDiscardUnsavedChanges = useCallback(() => {
     if (typeof window === 'undefined') return false;
     return window.confirm('Canvas changes could not be saved. Switch branches and discard those changes?');
@@ -964,8 +975,20 @@ export function WorkspaceClient({
     clearPendingAutosave();
     const saved = await saveArtefactSnapshot({ content: artefactDraft, ref: branchName });
     if (saved) return true;
-    return confirmDiscardUnsavedChanges();
-  }, [artefact, artefactDraft, branchName, clearPendingAutosave, confirmDiscardUnsavedChanges, saveArtefactSnapshot]);
+    const discard = confirmDiscardUnsavedChanges();
+    if (!discard) {
+      scheduleAutosave({ content: artefactDraft, ref: branchName });
+    }
+    return discard;
+  }, [
+    artefact,
+    artefactDraft,
+    branchName,
+    clearPendingAutosave,
+    confirmDiscardUnsavedChanges,
+    saveArtefactSnapshot,
+    scheduleAutosave
+  ]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [draft, setDraft] = useState('');
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
@@ -1988,15 +2011,9 @@ export function WorkspaceClient({
     if (typeof window === 'undefined') return;
     if (artefactDraft === artefact) return;
 
-    if (autosaveTimeoutRef.current) {
-      clearTimeout(autosaveTimeoutRef.current);
-    }
-
     const snapshotContent = artefactDraft;
     const snapshotRef = branchName;
-    autosaveTimeoutRef.current = setTimeout(() => {
-      void saveArtefactSnapshot({ content: snapshotContent, ref: snapshotRef });
-    }, 2000);
+    scheduleAutosave({ content: snapshotContent, ref: snapshotRef });
 
     return () => {
       if (autosaveTimeoutRef.current) {
@@ -2004,7 +2021,7 @@ export function WorkspaceClient({
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [artefactDraft, artefact, branchName, trunkName, saveArtefactSnapshot]);
+  }, [artefactDraft, artefact, branchName, trunkName, scheduleAutosave]);
 
   useEffect(() => {
     return () => {
