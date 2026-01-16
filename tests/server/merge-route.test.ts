@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   rtMergeOursShadowV2: vi.fn(),
   rtListRefsShadowV2: vi.fn(),
   rtGetHistoryShadowV2: vi.fn(),
-  rtGetCanvasShadowV2: vi.fn()
+  rtGetCanvasShadowV2: vi.fn(),
+  rtAcquireRefLeaseShadowV1: vi.fn()
 }));
 const authzMocks = vi.hoisted(() => ({
   requireProjectEditor: vi.fn()
@@ -36,6 +37,10 @@ vi.mock('@/src/store/pg/reads', () => ({
   rtListRefsShadowV2: mocks.rtListRefsShadowV2,
   rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
   rtGetCanvasShadowV2: mocks.rtGetCanvasShadowV2
+}));
+
+vi.mock('@/src/store/pg/leases', () => ({
+  rtAcquireRefLeaseShadowV1: mocks.rtAcquireRefLeaseShadowV1
 }));
 
 vi.mock('@/src/server/authz', () => ({

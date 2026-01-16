@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess, requireProjectOwner } from '@/src/server/authz';
+import { requireProjectAccess, requireProjectEditor, requireProjectOwner } from '@/src/server/authz';
 import { getRefLeaseTtlSeconds } from '@/src/server/leases';
 
 interface RouteContext {
@@ -24,13 +24,12 @@ const releaseSchema = z.object({
 
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
-
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
+    await requireUser();
+    await requireProjectAccess({ id: params.id });
 
     const { rtListRefLeasesShadowV1 } = await import('@/src/store/pg/leases');
     const leases = await rtListRefLeasesShadowV1({ projectId: params.id });
@@ -42,13 +41,12 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
-
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
+    await requireUser();
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = acquireSchema.safeParse(body);
@@ -74,13 +72,12 @@ export async function POST(request: Request, { params }: RouteContext) {
 
 export async function DELETE(request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
-
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
+    await requireUser();
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = releaseSchema.safeParse(body);

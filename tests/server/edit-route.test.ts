@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   rtGetCurrentRefShadowV2: vi.fn(),
   rtGetNodeContentShadowV1: vi.fn(),
   rtListRefsShadowV2: vi.fn(),
+  rtAcquireRefLeaseShadowV1: vi.fn(),
   getBranchConfigMap: vi.fn(),
   resolveBranchConfig: vi.fn(),
   resolveRefByName: vi.fn(),
@@ -88,6 +89,10 @@ vi.mock('@/src/store/pg/prefs', () => ({
 vi.mock('@/src/store/pg/reads', () => ({
   rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
   rtListRefsShadowV2: mocks.rtListRefsShadowV2
+}));
+
+vi.mock('@/src/store/pg/leases', () => ({
+  rtAcquireRefLeaseShadowV1: mocks.rtAcquireRefLeaseShadowV1
 }));
 
 vi.mock('@/src/server/pgRefs', () => ({

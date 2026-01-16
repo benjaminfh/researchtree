@@ -37,13 +37,12 @@ async function loadMembers(projectId: string) {
 
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
     const store = getStoreConfig();
-    await requireProjectOwner({ id: params.id });
-
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
+    await requireUser();
+    await requireProjectOwner({ id: params.id });
 
     const data = await loadMembers(params.id);
     return Response.json(data);
@@ -54,13 +53,12 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
     const store = getStoreConfig();
-    await requireProjectOwner({ id: params.id });
-
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
+    await requireUser();
+    await requireProjectOwner({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = inviteSchema.safeParse(body);
@@ -84,13 +82,12 @@ export async function POST(request: Request, { params }: RouteContext) {
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
     const store = getStoreConfig();
-    await requireProjectOwner({ id: params.id });
-
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
+    await requireUser();
+    await requireProjectOwner({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = updateSchema.safeParse(body);
@@ -123,13 +120,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
 export async function DELETE(request: Request, { params }: RouteContext) {
   try {
-    await requireUser();
     const store = getStoreConfig();
-    await requireProjectOwner({ id: params.id });
-
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
+    await requireUser();
+    await requireProjectOwner({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = removeSchema.safeParse(body);

@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   rtAppendNodeToRefShadowV2: vi.fn(),
   rtGetHistoryShadowV2: vi.fn(),
   resolveRefByName: vi.fn(),
-  resolveCurrentRef: vi.fn()
+  resolveCurrentRef: vi.fn(),
+  rtAcquireRefLeaseShadowV1: vi.fn()
 }));
 const authzMocks = vi.hoisted(() => ({
   requireProjectEditor: vi.fn()
@@ -36,6 +37,10 @@ vi.mock('@/src/store/pg/nodes', () => ({
 
 vi.mock('@/src/store/pg/reads', () => ({
   rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2
+}));
+
+vi.mock('@/src/store/pg/leases', () => ({
+  rtAcquireRefLeaseShadowV1: mocks.rtAcquireRefLeaseShadowV1
 }));
 
 vi.mock('@/src/server/pgRefs', () => ({

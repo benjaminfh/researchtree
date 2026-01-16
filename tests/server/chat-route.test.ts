@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
   rtGetCanvasHashesShadowV2: vi.fn(),
   rtGetCanvasPairShadowV2: vi.fn(),
   resolveRefByName: vi.fn(),
-  resolveCurrentRef: vi.fn()
+  resolveCurrentRef: vi.fn(),
+  rtAcquireRefLeaseShadowV1: vi.fn()
 }));
 const authzMocks = vi.hoisted(() => ({
   requireProjectEditor: vi.fn()
@@ -67,6 +68,10 @@ vi.mock('@/src/store/pg/reads', () => ({
 
 vi.mock('@/src/store/pg/prefs', () => ({
   rtGetCurrentRefShadowV2: mocks.rtGetCurrentRefShadowV2
+}));
+
+vi.mock('@/src/store/pg/leases', () => ({
+  rtAcquireRefLeaseShadowV1: mocks.rtAcquireRefLeaseShadowV1
 }));
 
 vi.mock('@/src/server/pgRefs', () => ({
