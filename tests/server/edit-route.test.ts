@@ -98,11 +98,11 @@ vi.mock('@/src/server/llmUserKeys', () => ({
 
 const baseUrl = 'http://localhost/api/projects/project-1/edit';
 
-function createRequest(body: unknown) {
+function createRequest(body: Record<string, unknown>) {
   return new Request(baseUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ leaseSessionId: 'lease-test', ...body })
   });
 }
 
