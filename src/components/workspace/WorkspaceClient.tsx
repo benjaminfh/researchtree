@@ -2674,10 +2674,15 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branchName: string; branchId?: string | null; branches: BranchSummary[] };
       const createdBranchName = data.branchName ?? newBranchName.trim();
       const createdBranch = data.branches?.find((branch) => branch.name === createdBranchName);
-      if (switchToNew && createdBranchName) {
-        setBranchName(createdBranchName);
-      }
       setBranches(data.branches);
+      if (switchToNew && createdBranchName) {
+        const canSwitch = await ensureCanvasSavedForBranchSwitch();
+        if (canSwitch) {
+          setBranchName(createdBranchName);
+        } else {
+          setBranchActionError('Branch created, but staying on the current branch due to unsaved canvas changes.');
+        }
+      }
       setNewBranchName('');
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(
