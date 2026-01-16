@@ -105,6 +105,32 @@ $$;
 revoke all on function public.rt_list_project_members_v1(uuid) from public;
 grant execute on function public.rt_list_project_members_v1(uuid) to authenticated;
 
+create or replace function public.rt_get_project_owner_v1(p_project_id uuid)
+returns table (owner_user_id uuid)
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Sign in required';
+  end if;
+
+  if not public.rt_is_project_member(p_project_id) then
+    raise exception 'Not authorized';
+  end if;
+
+  return query
+    select p.owner_user_id
+    from public.projects p
+    where p.id = p_project_id
+    limit 1;
+end;
+$$;
+
+revoke all on function public.rt_get_project_owner_v1(uuid) from public;
+grant execute on function public.rt_get_project_owner_v1(uuid) to authenticated;
+
 create or replace function public.rt_list_project_invites_v1(p_project_id uuid)
 returns table (
   id uuid,
@@ -574,6 +600,8 @@ $$;
 
 revoke all on function public.rt_release_ref_lease_v1(uuid, uuid, text, boolean) from public;
 grant execute on function public.rt_release_ref_lease_v1(uuid, uuid, text, boolean) to authenticated;
+
+drop function if exists public.rt_list_refs_v2(uuid);
 
 create or replace function public.rt_list_refs_v2(
   p_project_id uuid

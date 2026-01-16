@@ -984,6 +984,49 @@ export function WorkspaceClient({
     setPendingShareIds(new Set());
   }, [isShareSaving]);
 
+  const {
+    data: starsData,
+    mutate: mutateStars
+  } = useSWR<{ starredNodeIds: string[] }>(`/api/projects/${project.id}/stars`, fetchJson, { revalidateOnFocus: true });
+  const {
+    data: shareData,
+    mutate: mutateShare
+  } = useSWR<{ members: ProjectMember[]; invites: ProjectInvite[] }>(
+    canShare && showShareModal ? `/api/projects/${project.id}/members` : null,
+    fetchJson,
+    { revalidateOnFocus: true }
+  );
+  const {
+    data: leaseData,
+    mutate: mutateLeases
+  } = useSWR<{ leases: RefLease[] }>(
+    isPgMode ? `/api/projects/${project.id}/leases` : null,
+    fetchJson,
+    { revalidateOnFocus: true, refreshInterval: 10000 }
+  );
+
+  const starredNodeIds = starsData?.starredNodeIds ?? [];
+  const starredKey = useMemo(() => [...new Set(starredNodeIds)].sort().join('|'), [starredNodeIds]);
+  const stableStarredNodeIds = useMemo(() => (starredKey ? starredKey.split('|') : []), [starredKey]);
+  const starredSet = useMemo(() => new Set(stableStarredNodeIds), [stableStarredNodeIds]);
+  const shareMembers = shareData?.members ?? [];
+  const shareInvites = shareData?.invites ?? [];
+  const leasesByRefId = useMemo(() => {
+    const map = new Map<string, RefLease>();
+    for (const lease of leaseData?.leases ?? []) {
+      map.set(lease.refId, lease);
+    }
+    return map;
+  }, [leaseData]);
+  const getLeaseForBranchName = useCallback(
+    (name: string) => {
+      const branch = branches.find((entry) => entry.name === name);
+      const lease = branch?.id ? leasesByRefId.get(branch.id) ?? null : null;
+      return { branch, lease };
+    },
+    [branches, leasesByRefId]
+  );
+
   const updateShareData = useCallback(
     async (data: { members: ProjectMember[]; invites: ProjectInvite[] }) => {
       await mutateShare(data, false);
@@ -1107,49 +1150,6 @@ export function WorkspaceClient({
       }
     },
     [ensureLeaseSessionReady, leaseSessionId, mutateLeases, project.id, pushToast]
-  );
-
-  const {
-    data: starsData,
-    mutate: mutateStars
-  } = useSWR<{ starredNodeIds: string[] }>(`/api/projects/${project.id}/stars`, fetchJson, { revalidateOnFocus: true });
-  const {
-    data: shareData,
-    mutate: mutateShare
-  } = useSWR<{ members: ProjectMember[]; invites: ProjectInvite[] }>(
-    canShare && showShareModal ? `/api/projects/${project.id}/members` : null,
-    fetchJson,
-    { revalidateOnFocus: true }
-  );
-  const {
-    data: leaseData,
-    mutate: mutateLeases
-  } = useSWR<{ leases: RefLease[] }>(
-    isPgMode ? `/api/projects/${project.id}/leases` : null,
-    fetchJson,
-    { revalidateOnFocus: true, refreshInterval: 10000 }
-  );
-
-  const starredNodeIds = starsData?.starredNodeIds ?? [];
-  const starredKey = useMemo(() => [...new Set(starredNodeIds)].sort().join('|'), [starredNodeIds]);
-  const stableStarredNodeIds = useMemo(() => (starredKey ? starredKey.split('|') : []), [starredKey]);
-  const starredSet = useMemo(() => new Set(stableStarredNodeIds), [stableStarredNodeIds]);
-  const shareMembers = shareData?.members ?? [];
-  const shareInvites = shareData?.invites ?? [];
-  const leasesByRefId = useMemo(() => {
-    const map = new Map<string, RefLease>();
-    for (const lease of leaseData?.leases ?? []) {
-      map.set(lease.refId, lease);
-    }
-    return map;
-  }, [leaseData]);
-  const getLeaseForBranchName = useCallback(
-    (name: string) => {
-      const branch = branches.find((entry) => entry.name === name);
-      const lease = branch?.id ? leasesByRefId.get(branch.id) ?? null : null;
-      return { branch, lease };
-    },
-    [branches, leasesByRefId]
   );
   const [pendingStarIds, setPendingStarIds] = useState<Set<string>>(new Set());
 

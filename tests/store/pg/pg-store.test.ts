@@ -17,7 +17,7 @@ import {
   rtClearPinnedRefShadowV2,
   rtGetPinnedRefShadowV2
 } from '@/src/store/pg/branches';
-import { rtCreateProjectShadow, rtGetProjectShadowV1, rtListProjectsShadowV1 } from '@/src/store/pg/projects';
+import { rtCreateProjectShadow, rtGetProjectOwnerShadowV1, rtGetProjectShadowV1, rtListProjectsShadowV1 } from '@/src/store/pg/projects';
 import { rtGetCurrentRefShadowV2, rtSetCurrentRefShadowV2 } from '@/src/store/pg/prefs';
 import { rtGetRefPreviousResponseIdV2, rtSetRefPreviousResponseIdV2 } from '@/src/store/pg/refs';
 import { rtUpdateArtefactShadowV2 } from '@/src/store/pg/artefacts';
@@ -232,6 +232,15 @@ describe('pg store RPC wrappers', () => {
 
     mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
     expect(await rtGetProjectShadowV1({ projectId: 'p1' })).toBeNull();
+  });
+
+  it('rtGetProjectOwnerShadowV1 maps owner id', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ owner_user_id: 'u1' }], error: null });
+    expect(await rtGetProjectOwnerShadowV1({ projectId: 'p1' })).toBe('u1');
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_get_project_owner_v1', { p_project_id: 'p1' });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    expect(await rtGetProjectOwnerShadowV1({ projectId: 'p1' })).toBeNull();
   });
 
   it('rtGetProjectMainRefUpdatesShadowV1 maps rows', async () => {
