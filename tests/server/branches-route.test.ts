@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   getPreviousResponseId: vi.fn(),
   rtGetNodeContentShadowV1: vi.fn()
 }));
+const authzMocks = vi.hoisted(() => ({
+  requireProjectAccess: vi.fn(),
+  requireProjectEditor: vi.fn()
+}));
 
 vi.mock('@git/projects', () => ({
   getProject: mocks.getProject
@@ -58,6 +62,11 @@ vi.mock('@/src/server/llmState', () => ({
   getPreviousResponseId: mocks.getPreviousResponseId
 }));
 
+vi.mock('@/src/server/authz', () => ({
+  requireProjectAccess: authzMocks.requireProjectAccess,
+  requireProjectEditor: authzMocks.requireProjectEditor
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/branches';
 
 function createRequest(body: unknown, method: 'POST' | 'PATCH') {
@@ -71,6 +80,7 @@ function createRequest(body: unknown, method: 'POST' | 'PATCH') {
 describe('/api/projects/[id]/branches', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.listBranches.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true }]);
     mocks.getCurrentBranchName.mockResolvedValue('main');

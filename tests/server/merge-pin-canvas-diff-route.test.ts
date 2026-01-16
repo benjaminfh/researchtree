@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   resolveRefByName: vi.fn(),
   resolveCurrentRef: vi.fn()
 }));
+const authzMocks = vi.hoisted(() => ({
+  requireProjectEditor: vi.fn()
+}));
 
 vi.mock('@git/projects', () => ({
   getProject: mocks.getProject
@@ -40,6 +43,10 @@ vi.mock('@/src/server/pgRefs', () => ({
   resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
+vi.mock('@/src/server/authz', () => ({
+  requireProjectEditor: authzMocks.requireProjectEditor
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/merge/pin-canvas-diff';
 
 function createRequest(body: Record<string, unknown>) {
@@ -53,6 +60,7 @@ function createRequest(body: Record<string, unknown>) {
 describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.readNodesFromRef.mockResolvedValue([

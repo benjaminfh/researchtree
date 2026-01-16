@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   rtGetHistoryShadowV2: vi.fn(),
   rtGetCanvasShadowV2: vi.fn()
 }));
+const authzMocks = vi.hoisted(() => ({
+  requireProjectEditor: vi.fn()
+}));
 
 vi.mock('@git/projects', () => ({
   getProject: mocks.getProject
@@ -35,6 +38,10 @@ vi.mock('@/src/store/pg/reads', () => ({
   rtGetCanvasShadowV2: mocks.rtGetCanvasShadowV2
 }));
 
+vi.mock('@/src/server/authz', () => ({
+  requireProjectEditor: authzMocks.requireProjectEditor
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/merge';
 
 function createRequest(body: Record<string, unknown>) {
@@ -48,6 +55,7 @@ function createRequest(body: Record<string, unknown>) {
 describe('/api/projects/[id]/merge', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.mergeBranch.mockResolvedValue({ id: 'merge-1', type: 'merge' });
     mocks.getCurrentBranchName.mockResolvedValue('main');
