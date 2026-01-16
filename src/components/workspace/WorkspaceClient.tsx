@@ -2676,12 +2676,7 @@ export function WorkspaceClient({
       const createdBranch = data.branches?.find((branch) => branch.name === createdBranchName);
       setBranches(data.branches);
       if (switchToNew && createdBranchName) {
-        const canSwitch = await ensureCanvasSavedForBranchSwitch();
-        if (canSwitch) {
-          setBranchName(createdBranchName);
-        } else {
-          setBranchActionError('Branch created, but staying on the current branch due to unsaved canvas changes.');
-        }
+        setBranchName(createdBranchName);
       }
       setNewBranchName('');
       if (typeof window !== 'undefined') {
@@ -2990,12 +2985,9 @@ export function WorkspaceClient({
         provider: editProvider,
         model: editModel,
         thinkingSetting: editThinking,
-        onResponse: async () => {
+        onResponse: () => {
           setIsEditing(false);
-          const canSwitch = await ensureCanvasSavedForBranchSwitch();
-          if (canSwitch) {
-            setBranchName(targetBranch);
-          }
+          setBranchName(targetBranch);
           resetEditState();
         },
         onFailure: () => {
@@ -4223,12 +4215,9 @@ export function WorkspaceClient({
                         provider: newBranchProvider,
                         model: branchModel,
                         thinkingSetting,
-                        onResponse: async () => {
+                        onResponse: () => {
                           setIsCreating(false);
-                          const canSwitch = await ensureCanvasSavedForBranchSwitch();
-                          if (canSwitch) {
-                            setBranchName(branchNameInput);
-                          }
+                          setBranchName(branchNameInput);
                           setBranchActionError(null);
                           closeNewBranchModal();
                           setNewBranchName('');
