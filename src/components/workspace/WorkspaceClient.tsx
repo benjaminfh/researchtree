@@ -888,6 +888,109 @@ export function WorkspaceClient({
   const refreshCoreData = useCallback(() => {
     void Promise.allSettled([refreshHistory(), mutateArtefact()]);
   }, [refreshHistory, mutateArtefact]);
+  const clearPendingAutosave = useCallback(() => {
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+    if (autosaveControllerRef.current) {
+      autosaveControllerRef.current.abort();
+      autosaveControllerRef.current = null;
+    }
+    if (autosaveSpinnerTimeoutRef.current) {
+      clearTimeout(autosaveSpinnerTimeoutRef.current);
+      autosaveSpinnerTimeoutRef.current = null;
+    }
+    autosaveSpinnerUntilRef.current = null;
+    setIsSavingArtefact(false);
+  }, []);
+  const saveArtefactSnapshot = useCallback(
+    async ({ content, ref }: { content: string; ref: string }) => {
+      if (autosaveControllerRef.current) {
+        autosaveControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      autosaveControllerRef.current = controller;
+
+      autosaveSavingTokenRef.current += 1;
+      const token = autosaveSavingTokenRef.current;
+      autosaveSpinnerUntilRef.current = Date.now() + 2000;
+      if (autosaveSpinnerTimeoutRef.current) {
+        clearTimeout(autosaveSpinnerTimeoutRef.current);
+        autosaveSpinnerTimeoutRef.current = null;
+      }
+
+      setIsSavingArtefact(true);
+      setArtefactError(null);
+      try {
+        const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(ref)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+          signal: controller.signal
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to save canvas');
+        }
+        if (ref === branchName) {
+          await mutateArtefact();
+        }
+        return true;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return false;
+        setArtefactError((err as Error).message);
+        return false;
+      } finally {
+        if (autosaveSavingTokenRef.current !== token) return;
+        const until = autosaveSpinnerUntilRef.current ?? Date.now();
+        const remaining = Math.max(0, until - Date.now());
+        if (remaining === 0) {
+          setIsSavingArtefact(false);
+          return;
+        }
+        autosaveSpinnerTimeoutRef.current = setTimeout(() => {
+          if (autosaveSavingTokenRef.current !== token) return;
+          setIsSavingArtefact(false);
+        }, remaining);
+      }
+    },
+    [branchName, mutateArtefact, project.id]
+  );
+  const scheduleAutosave = useCallback(
+    ({ content, ref }: { content: string; ref: string }) => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+      autosaveTimeoutRef.current = setTimeout(() => {
+        void saveArtefactSnapshot({ content, ref });
+      }, 2000);
+    },
+    [saveArtefactSnapshot]
+  );
+  const confirmDiscardUnsavedChanges = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    return window.confirm('Canvas changes could not be saved. Switch branches and discard those changes?');
+  }, []);
+  const ensureCanvasSavedForBranchSwitch = useCallback(async () => {
+    if (artefactDraft === artefact) return true;
+    clearPendingAutosave();
+    const saved = await saveArtefactSnapshot({ content: artefactDraft, ref: branchName });
+    if (saved) return true;
+    const discard = confirmDiscardUnsavedChanges();
+    if (!discard) {
+      scheduleAutosave({ content: artefactDraft, ref: branchName });
+    }
+    return discard;
+  }, [
+    artefact,
+    artefactDraft,
+    branchName,
+    clearPendingAutosave,
+    confirmDiscardUnsavedChanges,
+    saveArtefactSnapshot,
+    scheduleAutosave
+  ]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [draft, setDraft] = useState('');
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
@@ -1910,58 +2013,9 @@ export function WorkspaceClient({
     if (typeof window === 'undefined') return;
     if (artefactDraft === artefact) return;
 
-    if (autosaveTimeoutRef.current) {
-      clearTimeout(autosaveTimeoutRef.current);
-    }
-
-    autosaveTimeoutRef.current = setTimeout(() => {
-      if (autosaveControllerRef.current) {
-        autosaveControllerRef.current.abort();
-      }
-      const controller = new AbortController();
-      autosaveControllerRef.current = controller;
-
-      autosaveSavingTokenRef.current += 1;
-      const token = autosaveSavingTokenRef.current;
-      autosaveSpinnerUntilRef.current = Date.now() + 2000;
-      if (autosaveSpinnerTimeoutRef.current) {
-        clearTimeout(autosaveSpinnerTimeoutRef.current);
-        autosaveSpinnerTimeoutRef.current = null;
-      }
-
-      setIsSavingArtefact(true);
-      setArtefactError(null);
-      void (async () => {
-        try {
-          const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(branchName)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: artefactDraft }),
-            signal: controller.signal
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => null);
-            throw new Error(data?.error?.message ?? 'Failed to save canvas');
-          }
-          await mutateArtefact();
-        } catch (err) {
-          if ((err as Error).name === 'AbortError') return;
-          setArtefactError((err as Error).message);
-        } finally {
-          if (autosaveSavingTokenRef.current !== token) return;
-          const until = autosaveSpinnerUntilRef.current ?? Date.now();
-          const remaining = Math.max(0, until - Date.now());
-          if (remaining === 0) {
-            setIsSavingArtefact(false);
-            return;
-          }
-          autosaveSpinnerTimeoutRef.current = setTimeout(() => {
-            if (autosaveSavingTokenRef.current !== token) return;
-            setIsSavingArtefact(false);
-          }, remaining);
-        }
-      })();
-    }, 2000);
+    const snapshotContent = artefactDraft;
+    const snapshotRef = branchName;
+    scheduleAutosave({ content: snapshotContent, ref: snapshotRef });
 
     return () => {
       if (autosaveTimeoutRef.current) {
@@ -1969,7 +2023,7 @@ export function WorkspaceClient({
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [artefactDraft, artefact, branchName, trunkName, project.id, mutateArtefact]);
+  }, [artefactDraft, artefact, branchName, trunkName, scheduleAutosave]);
 
   useEffect(() => {
     return () => {
@@ -2476,6 +2530,11 @@ export function WorkspaceClient({
     setIsSwitching(true);
     setBranchActionError(null);
     try {
+      clearPendingAutosave();
+      const canSwitch = await ensureCanvasSavedForBranchSwitch();
+      if (!canSwitch) {
+        return;
+      }
       const targetBranch = branches.find((branch) => branch.name === name);
       if (targetBranch?.isHidden) {
         const ok = await ensureBranchVisible(targetBranch);
@@ -2605,6 +2664,10 @@ export function WorkspaceClient({
       setBranchActionError('Branch name is required.');
       return { ok: false as const };
     }
+    const canCreate = await ensureCanvasSavedForBranchSwitch();
+    if (!canCreate) {
+      return { ok: false as const };
+    }
     setIsCreating(true);
     setBranchActionError(null);
     try {
@@ -2630,10 +2693,10 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branchName: string; branchId?: string | null; branches: BranchSummary[] };
       const createdBranchName = data.branchName ?? newBranchName.trim();
       const createdBranch = data.branches?.find((branch) => branch.name === createdBranchName);
+      setBranches(data.branches);
       if (switchToNew && createdBranchName) {
         setBranchName(createdBranchName);
       }
-      setBranches(data.branches);
       setNewBranchName('');
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(
@@ -4148,6 +4211,10 @@ export function WorkspaceClient({
                     return;
                   }
                   if (isQuestionMode) {
+                    const canCreate = await ensureCanvasSavedForBranchSwitch();
+                    if (!canCreate) {
+                      return;
+                    }
                     const branchNameInput = newBranchName.trim();
                     if (!branchNameInput) {
                       setBranchActionError('Branch name is required.');
@@ -4500,6 +4567,10 @@ export function WorkspaceClient({
                   }
                   if (mergeTargetBranch === branchName) {
                     setMergeError('Target branch must be different from the source branch.');
+                    return;
+                  }
+                  const canMerge = await ensureCanvasSavedForBranchSwitch();
+                  if (!canMerge) {
                     return;
                   }
                   setIsMerging(true);
