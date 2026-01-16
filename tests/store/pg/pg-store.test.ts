@@ -25,7 +25,8 @@ import { rtSaveArtefactDraftV2 } from '@/src/store/pg/drafts';
 import { rtMergeOursShadowV2 } from '@/src/store/pg/merge';
 import { rtToggleStarV1 } from '@/src/store/pg/stars';
 import { rtGetUserLlmKeyStatusV1, rtSetUserLlmKeyV1, rtGetUserLlmKeyServerV1 } from '@/src/store/pg/userLlmKeys';
-import { rtListProjectMemberIdsShadowV1 } from '@/src/store/pg/members';
+import { rtListProjectInvitesShadowV1, rtListProjectMemberIdsShadowV1, rtListProjectMembersShadowV1 } from '@/src/store/pg/members';
+import { rtListRefLeasesShadowV1 } from '@/src/store/pg/leases';
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -222,6 +223,48 @@ describe('pg store RPC wrappers', () => {
   it('rtListProjectMemberIdsShadowV1 maps rows', async () => {
     mocks.rpc.mockResolvedValue({ data: [{ project_id: 'p1' }, { project_id: 'p2' }], error: null });
     await expect(rtListProjectMemberIdsShadowV1({ userId: 'u1' })).resolves.toEqual(['p1', 'p2']);
+  });
+
+  it('rtListProjectMembersShadowV1 maps rows', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ user_id: 'u1', role: 'owner', created_at: '2025-01-01T00:00:00Z' }], error: null });
+    await expect(rtListProjectMembersShadowV1({ projectId: 'p1' })).resolves.toEqual([
+      { userId: 'u1', role: 'owner', createdAt: '2025-01-01T00:00:00.000Z' }
+    ]);
+  });
+
+  it('rtListProjectInvitesShadowV1 maps rows', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [{ email: 'invite@example.com', role: 'viewer', invited_by_user_id: 'u2', created_at: '2025-01-02T00:00:00Z' }],
+      error: null
+    });
+    await expect(rtListProjectInvitesShadowV1({ projectId: 'p1' })).resolves.toEqual([
+      { email: 'invite@example.com', role: 'viewer', invitedByUserId: 'u2', createdAt: '2025-01-02T00:00:00.000Z' }
+    ]);
+  });
+
+  it('rtListRefLeasesShadowV1 maps rows', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [
+        {
+          ref_id: 'ref-1',
+          holder_user_id: 'u1',
+          holder_session_id: 'session-1',
+          expires_at: '2025-01-03T00:00:00Z',
+          updated_at: '2025-01-03T00:00:00Z'
+        }
+      ],
+      error: null
+    });
+
+    await expect(rtListRefLeasesShadowV1({ projectId: 'p1' })).resolves.toEqual([
+      {
+        refId: 'ref-1',
+        holderUserId: 'u1',
+        holderSessionId: 'session-1',
+        expiresAt: '2025-01-03T00:00:00.000Z',
+        updatedAt: '2025-01-03T00:00:00.000Z'
+      }
+    ]);
   });
 
   it('rtGetStarredNodeIdsShadowV1 normalizes response', async () => {

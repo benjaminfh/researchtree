@@ -26,3 +26,19 @@ export async function requireProjectAccess(project: ProjectForAuthz): Promise<vo
     throw forbidden('Not authorized');
   }
 }
+
+export async function requireProjectOwner(project: ProjectForAuthz): Promise<void> {
+  if (isLocalPgMode()) {
+    assertLocalPgModeConfig();
+    return;
+  }
+  const user = await requireUser();
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.from('projects').select('owner_user_id').eq('id', project.id).maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!data || data.owner_user_id !== user.id) {
+    throw forbidden('Not authorized');
+  }
+}

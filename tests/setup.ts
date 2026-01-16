@@ -17,7 +17,8 @@ vi.mock('@/src/server/auth', () => ({
 }));
 
 vi.mock('@/src/server/authz', () => ({
-  requireProjectAccess: vi.fn(async () => undefined)
+  requireProjectAccess: vi.fn(async () => undefined),
+  requireProjectOwner: vi.fn(async () => undefined)
 }));
 
 function createInMemoryStorage() {
