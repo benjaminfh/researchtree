@@ -28,6 +28,7 @@ export async function acquireBranchLease(input: {
 }): Promise<void> {
   const store = getStoreConfig();
   if (store.mode !== 'pg') return;
+  if (!input.leaseSessionId?.trim()) return;
   const sessionId = assertLeaseSession(input.leaseSessionId);
   const { rtAcquireRefLeaseShadowV1 } = await import('@/src/store/pg/leases');
   try {

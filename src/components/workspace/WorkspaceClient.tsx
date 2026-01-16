@@ -669,6 +669,13 @@ const ChatNodeRow: FC<{
   );
 };
 
+const withLeaseSessionId = <T extends Record<string, unknown>>(payload: T, leaseSessionId?: string | null): T | (T & { leaseSessionId: string }) => {
+  if (!leaseSessionId) {
+    return payload;
+  }
+  return { ...payload, leaseSessionId };
+};
+
 export function WorkspaceClient({
   project,
   initialBranches,
@@ -1130,11 +1137,15 @@ export function WorkspaceClient({
         const res = await fetch(`/api/projects/${project.id}/leases`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            refId: payload.refId,
-            leaseSessionId,
-            force: payload.force ?? false
-          })
+          body: JSON.stringify(
+            withLeaseSessionId(
+              {
+                refId: payload.refId,
+                force: payload.force ?? false
+              },
+              leaseSessionId
+            )
+          )
         });
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -1252,7 +1263,7 @@ export function WorkspaceClient({
         const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(ref)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, leaseSessionId }),
+          body: JSON.stringify(withLeaseSessionId({ content }, leaseSessionId)),
           signal: controller.signal
         });
         if (!res.ok) {
@@ -1622,18 +1633,20 @@ export function WorkspaceClient({
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/branch-question`,
-      body: {
-        name: targetBranch,
-        fromRef,
-        fromNodeId,
-        provider,
-        model,
-        question,
-        highlight,
-        thinking: thinkingSetting,
-        switch: true,
+      body: withLeaseSessionId(
+        {
+          name: targetBranch,
+          fromRef,
+          fromNodeId,
+          provider,
+          model,
+          question,
+          highlight,
+          thinking: thinkingSetting,
+          switch: true
+        },
         leaseSessionId
-      },
+      ),
       onResponse: () => {
         responded = true;
         onResponse?.();
@@ -1701,16 +1714,18 @@ export function WorkspaceClient({
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/edit-stream`,
-      body: {
-        content,
-        branchName: targetBranch,
-        fromRef,
-        llmProvider: provider,
-        llmModel: model,
-        thinking: thinkingSetting,
-        nodeId,
+      body: withLeaseSessionId(
+        {
+          content,
+          branchName: targetBranch,
+          fromRef,
+          llmProvider: provider,
+          llmModel: model,
+          thinking: thinkingSetting,
+          nodeId
+        },
         leaseSessionId
-      },
+      ),
       onResponse: () => {
         responded = true;
         onResponse?.();
@@ -2792,7 +2807,7 @@ export function WorkspaceClient({
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mergeNodeId, targetBranch, leaseSessionId })
+      body: JSON.stringify(withLeaseSessionId({ mergeNodeId, targetBranch }, leaseSessionId))
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
@@ -3000,16 +3015,20 @@ export function WorkspaceClient({
           const res = await fetch(`/api/projects/${project.id}/edit-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content,
-              branchName: targetBranch,
-              fromRef,
-              llmProvider: provider,
-              llmModel: model,
-              thinking: thinkingSetting,
-              nodeId,
-              leaseSessionId
-            })
+            body: JSON.stringify(
+              withLeaseSessionId(
+                {
+                  content,
+                  branchName: targetBranch,
+                  fromRef,
+                  llmProvider: provider,
+                  llmModel: model,
+                  thinking: thinkingSetting,
+                  nodeId
+                },
+                leaseSessionId
+              )
+            )
           });
           if (!res.ok || !res.body) {
             const data = await res.json().catch(() => null);
@@ -3169,18 +3188,22 @@ export function WorkspaceClient({
           const res = await fetch(`/api/projects/${project.id}/branch-question`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: targetBranch,
-              fromRef,
-              fromNodeId,
-              provider,
-              model,
-              question,
-              highlight,
-              thinking: thinkingSetting,
-              switch: switchOnCreate,
-              leaseSessionId
-            })
+            body: JSON.stringify(
+              withLeaseSessionId(
+                {
+                  name: targetBranch,
+                  fromRef,
+                  fromNodeId,
+                  provider,
+                  model,
+                  question,
+                  highlight,
+                  thinking: thinkingSetting,
+                  switch: switchOnCreate
+                },
+                leaseSessionId
+              )
+            )
           });
           if (!res.ok || !res.body) {
             const data = await res.json().catch(() => null);
@@ -3244,7 +3267,7 @@ export function WorkspaceClient({
       const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nextName, leaseSessionId })
+        body: JSON.stringify(withLeaseSessionId({ name: nextName }, leaseSessionId))
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -5105,13 +5128,17 @@ export function WorkspaceClient({
                     const res = await fetch(`/api/projects/${project.id}/merge`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        sourceBranch: branchName,
-                        targetBranch: mergeTargetBranch,
-                        mergeSummary: mergeSummary.trim(),
-                        sourceAssistantNodeId: selectedMergePayload.id,
-                        leaseSessionId
-                      })
+                      body: JSON.stringify(
+                        withLeaseSessionId(
+                          {
+                            sourceBranch: branchName,
+                            targetBranch: mergeTargetBranch,
+                            mergeSummary: mergeSummary.trim(),
+                            sourceAssistantNodeId: selectedMergePayload.id
+                          },
+                          leaseSessionId
+                        )
+                      )
                     });
                     if (!res.ok) {
                       const data = await res.json().catch(() => null);

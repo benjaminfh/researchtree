@@ -202,19 +202,21 @@ export function useChatStream({
           highlightLength: (normalized.highlight ?? '').length
         });
       }
+      const basePayload: Record<string, unknown> = {
+        message: normalized.message,
+        question: normalized.question,
+        highlight: normalized.highlight,
+        intent: normalized.intent,
+        llmProvider: normalized.llmProvider ?? provider,
+        ref: normalized.ref ?? ref,
+        thinking: normalized.thinking ?? thinking,
+        webSearch: normalized.webSearch ?? webSearch
+      };
+      const resolvedLeaseSessionId = normalized.leaseSessionId ?? leaseSessionId;
+      const payload = resolvedLeaseSessionId ? { ...basePayload, leaseSessionId: resolvedLeaseSessionId } : basePayload;
       await sendStreamRequest({
         url: `/api/projects/${projectId}/chat`,
-        body: {
-          message: normalized.message,
-          question: normalized.question,
-          highlight: normalized.highlight,
-          intent: normalized.intent,
-          llmProvider: normalized.llmProvider ?? provider,
-          ref: normalized.ref ?? ref,
-          thinking: normalized.thinking ?? thinking,
-          webSearch: normalized.webSearch ?? webSearch,
-          leaseSessionId: normalized.leaseSessionId ?? leaseSessionId
-        }
+        body: payload
       });
     },
     [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
