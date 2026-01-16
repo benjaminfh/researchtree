@@ -166,6 +166,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest(`Branch ${targetBranch} is missing ref id`);
           }
 
+          await acquireBranchLease({ projectId: params.id, refId: targetRef.id, leaseSessionId });
           await rtSetCurrentRefShadowV2({ projectId: params.id, refId: targetRef.id });
 
           const lastTargetRows = await rtGetHistoryShadowV2({
