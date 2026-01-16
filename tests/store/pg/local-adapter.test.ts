@@ -36,6 +36,16 @@ describe('local pg adapter', () => {
     expect(values).toEqual(['p1']);
   });
 
+  it('builds SQL for collaboration list RPCs', () => {
+    const rpcs = ['rt_list_project_members_v1', 'rt_list_project_invites_v1', 'rt_list_ref_leases_v1'];
+    for (const rpc of rpcs) {
+      const { sql, values, returnType } = buildRpcCall(rpc, { p_project_id: 'p1' });
+      expect(returnType).toBe('set');
+      expect(sql).toBe(`select * from ${rpc}($1);`);
+      expect(values).toEqual(['p1']);
+    }
+  });
+
   it('throws when missing a non-trailing param', () => {
     expect(() => buildRpcCall('rt_get_history_v2', { p_project_id: 'p1', p_limit: 2 })).toThrow(
       'Missing parameter p_ref_id for rt_get_history_v2'
