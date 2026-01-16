@@ -901,6 +901,8 @@ export function WorkspaceClient({
       clearTimeout(autosaveSpinnerTimeoutRef.current);
       autosaveSpinnerTimeoutRef.current = null;
     }
+    autosaveSpinnerUntilRef.current = null;
+    setIsSavingArtefact(false);
   }, []);
   const saveArtefactSnapshot = useCallback(
     async ({ content, ref }: { content: string; ref: string }) => {
