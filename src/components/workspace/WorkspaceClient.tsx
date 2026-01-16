@@ -2645,11 +2645,9 @@ export function WorkspaceClient({
       setBranchActionError('Branch name is required.');
       return { ok: false as const };
     }
-    if (switchToNew) {
-      const canSwitch = await ensureCanvasSavedForBranchSwitch();
-      if (!canSwitch) {
-        return { ok: false as const };
-      }
+    const canCreate = await ensureCanvasSavedForBranchSwitch();
+    if (!canCreate) {
+      return { ok: false as const };
     }
     setIsCreating(true);
     setBranchActionError(null);
@@ -4197,6 +4195,10 @@ export function WorkspaceClient({
                     return;
                   }
                   if (isQuestionMode) {
+                    const canCreate = await ensureCanvasSavedForBranchSwitch();
+                    if (!canCreate) {
+                      return;
+                    }
                     const branchNameInput = newBranchName.trim();
                     if (!branchNameInput) {
                       setBranchActionError('Branch name is required.');
@@ -4216,9 +4218,12 @@ export function WorkspaceClient({
                         provider: newBranchProvider,
                         model: branchModel,
                         thinkingSetting,
-                        onResponse: () => {
+                        onResponse: async () => {
                           setIsCreating(false);
-                          setBranchName(branchNameInput);
+                          const canSwitch = await ensureCanvasSavedForBranchSwitch();
+                          if (canSwitch) {
+                            setBranchName(branchNameInput);
+                          }
                           setBranchActionError(null);
                           closeNewBranchModal();
                           setNewBranchName('');
@@ -4549,6 +4554,10 @@ export function WorkspaceClient({
                   }
                   if (mergeTargetBranch === branchName) {
                     setMergeError('Target branch must be different from the source branch.');
+                    return;
+                  }
+                  const canMerge = await ensureCanvasSavedForBranchSwitch();
+                  if (!canMerge) {
                     return;
                   }
                   setIsMerging(true);
