@@ -11,7 +11,7 @@ import { type ThinkingSetting } from '@/src/shared/thinking';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { v4 as uuidv4 } from 'uuid';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -100,7 +100,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const user = await requireUser();
     const store = getStoreConfig();
     const canvasToolsEnabled = store.mode === 'pg' && process.env.RT_CANVAS_TOOLS === 'true';
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = chatRequestSchema.safeParse(body);

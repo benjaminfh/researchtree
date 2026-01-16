@@ -63,6 +63,17 @@ async function ensureLocalSchemas(pool: Pool): Promise<void> {
     $$;
   `
   );
+  await pool.query(
+    `
+    create or replace function auth.jwt()
+    returns jsonb
+    language sql
+    stable
+    as $$
+      select jsonb_build_object('email', 'local@example.com')
+    $$;
+  `
+  );
   await pool.query('create schema if not exists extensions;');
   await pool.query('create extension if not exists pgcrypto;');
   await pool.query(

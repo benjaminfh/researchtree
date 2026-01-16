@@ -3,7 +3,7 @@
 import { handleRouteError, badRequest, notFound } from '@/src/server/http';
 import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import { getStoreConfig } from '@/src/server/storeConfig';
 
 interface RouteContext {
@@ -14,7 +14,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     if (store.mode === 'pg') {
       return await withProjectLock(params.id, async () => {

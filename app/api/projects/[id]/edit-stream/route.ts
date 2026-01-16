@@ -9,7 +9,7 @@ import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { encodeChunk, resolveOpenAIProviderSelection, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -42,7 +42,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = editMessageSchema.safeParse(body);

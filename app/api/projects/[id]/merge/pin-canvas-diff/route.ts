@@ -5,7 +5,7 @@ import { badRequest, handleRouteError, notFound } from '@/src/server/http';
 import { pinCanvasDiffSchema } from '@/src/server/schemas';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTextBlock } from '@/src/server/llmContentBlocks';
 import { acquireBranchLease } from '@/src/server/leases';
@@ -28,7 +28,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = pinCanvasDiffSchema.safeParse(body);

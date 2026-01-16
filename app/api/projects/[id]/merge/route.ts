@@ -5,7 +5,7 @@ import { mergeRequestSchema } from '@/src/server/schemas';
 import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import type { NodeRecord } from '@git/types';
 import { INITIAL_BRANCH } from '@git/constants';
 import { v4 as uuidv4 } from 'uuid';
@@ -74,7 +74,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = mergeRequestSchema.safeParse(body);

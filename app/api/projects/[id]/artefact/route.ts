@@ -6,7 +6,7 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { INITIAL_BRANCH } from '@git/constants';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectAccess, requireProjectEditor } from '@/src/server/authz';
 import { acquireBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
@@ -65,7 +65,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = updateArtefactSchema.safeParse(body);

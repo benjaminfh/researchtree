@@ -4,7 +4,7 @@ import { handleRouteError, badRequest, notFound } from '@/src/server/http';
 import { renameBranchSchema } from '@/src/server/schemas';
 import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { acquireBranchLease } from '@/src/server/leases';
 
@@ -16,7 +16,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
     const body = await request.json().catch(() => null);
     const parsed = renameBranchSchema.safeParse(body);
     if (!parsed.success) {
