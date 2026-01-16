@@ -532,6 +532,7 @@ declare
   v_expires_at timestamptz;
   v_now timestamptz := now();
   v_ttl integer := greatest(coalesce(p_ttl_seconds, 60), 10);
+  v_rowcount integer;
 begin
   if auth.uid() is null then
     raise exception 'Sign in required';
@@ -563,7 +564,14 @@ begin
       holder_user_id = excluded.holder_user_id,
       holder_session_id = excluded.holder_session_id,
       expires_at = excluded.expires_at,
-      updated_at = now();
+      updated_at = now()
+    where public.ref_leases.expires_at <= v_now
+       or (public.ref_leases.holder_user_id = auth.uid() and public.ref_leases.holder_session_id = p_session_id);
+
+  get diagnostics v_rowcount = row_count;
+  if v_rowcount = 0 then
+    raise exception 'Lease held';
+  end if;
 end;
 $$;
 
