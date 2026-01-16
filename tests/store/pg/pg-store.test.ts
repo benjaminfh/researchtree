@@ -25,7 +25,18 @@ import { rtSaveArtefactDraftV2 } from '@/src/store/pg/drafts';
 import { rtMergeOursShadowV2 } from '@/src/store/pg/merge';
 import { rtToggleStarV1 } from '@/src/store/pg/stars';
 import { rtGetUserLlmKeyStatusV1, rtSetUserLlmKeyV1, rtGetUserLlmKeyServerV1 } from '@/src/store/pg/userLlmKeys';
-import { rtListProjectMemberIdsShadowV1 } from '@/src/store/pg/members';
+import {
+  rtAcceptProjectInvitesShadowV1,
+  rtInviteProjectMemberShadowV1,
+  rtListProjectInvitesShadowV1,
+  rtListProjectMemberIdsShadowV1,
+  rtListProjectMembersShadowV1,
+  rtRemoveProjectMemberShadowV1,
+  rtRevokeProjectInviteShadowV1,
+  rtUpdateProjectInviteRoleShadowV1,
+  rtUpdateProjectMemberRoleShadowV1
+} from '@/src/store/pg/members';
+import { rtAcquireRefLeaseShadowV1, rtListRefLeasesShadowV1, rtReleaseRefLeaseShadowV1 } from '@/src/store/pg/leases';
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -86,8 +97,27 @@ describe('pg store RPC wrappers', () => {
   it('rtListRefsShadowV2 maps rows', async () => {
     mocks.rpc.mockResolvedValue({
       data: [
-        { id: 'r1', name: 'main', head_commit: 'c1', node_count: 2, is_trunk: true, is_pinned: true },
-        { id: 'r2', name: 'feat', head_commit: 'c2', node_count: 1, is_trunk: false, is_pinned: false, provider: 'openai', model: 'gpt-5.2' }
+        {
+          id: 'r1',
+          name: 'main',
+          head_commit: 'c1',
+          node_count: 2,
+          is_trunk: true,
+          is_pinned: true,
+          lease_holder_user_id: 'u1',
+          lease_holder_session_id: 's1',
+          lease_expires_at: '2025-01-01T00:00:00Z'
+        },
+        {
+          id: 'r2',
+          name: 'feat',
+          head_commit: 'c2',
+          node_count: 1,
+          is_trunk: false,
+          is_pinned: false,
+          provider: 'openai',
+          model: 'gpt-5.2'
+        }
       ],
       error: null
     });
@@ -103,7 +133,10 @@ describe('pg store RPC wrappers', () => {
         isPinned: true,
         isHidden: false,
         provider: undefined,
-        model: undefined
+        model: undefined,
+        leaseHolderUserId: 'u1',
+        leaseHolderSessionId: 's1',
+        leaseExpiresAt: '2025-01-01T00:00:00.000Z'
       },
       {
         id: 'r2',
@@ -114,7 +147,10 @@ describe('pg store RPC wrappers', () => {
         isPinned: false,
         isHidden: false,
         provider: 'openai',
-        model: 'gpt-5.2'
+        model: 'gpt-5.2',
+        leaseHolderUserId: null,
+        leaseHolderSessionId: null,
+        leaseExpiresAt: null
       }
     ]);
   });
@@ -628,5 +664,113 @@ describe('pg store RPC wrappers', () => {
 
     mocks.adminRpc.mockResolvedValue({ data: null, error: { message: 'fail' } });
     await expect(rtGetUserLlmKeyServerV1({ userId: 'u1', provider: 'openai' })).rejects.toThrow('fail');
+  });
+
+  it('member and invite RPCs map params and rows', async () => {
+    mocks.rpc.mockResolvedValueOnce({
+      data: [{ user_id: 'u1', email: 'a@example.com', role: 'owner', created_at: '2025-01-01T00:00:00Z' }],
+      error: null
+    });
+    expect(await rtListProjectMembersShadowV1({ projectId: 'p1' })).toEqual([
+      { userId: 'u1', email: 'a@example.com', role: 'owner', createdAt: '2025-01-01T00:00:00.000Z' }
+    ]);
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_list_project_members_v1', { p_project_id: 'p1' });
+
+    mocks.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'i1',
+          email: 'b@example.com',
+          role: 'viewer',
+          invited_by: 'u2',
+          invited_by_email: 'owner@example.com',
+          created_at: '2025-01-02T00:00:00Z'
+        }
+      ],
+      error: null
+    });
+    expect(await rtListProjectInvitesShadowV1({ projectId: 'p1' })).toEqual([
+      {
+        id: 'i1',
+        email: 'b@example.com',
+        role: 'viewer',
+        invitedBy: 'u2',
+        invitedByEmail: 'owner@example.com',
+        createdAt: '2025-01-02T00:00:00.000Z'
+      }
+    ]);
+
+    mocks.rpc.mockResolvedValueOnce({ data: [{ invite_id: 'i2', member_user_id: null }], error: null });
+    expect(await rtInviteProjectMemberShadowV1({ projectId: 'p1', email: 'c@example.com', role: 'editor' })).toEqual({
+      inviteId: 'i2',
+      memberUserId: null
+    });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await rtUpdateProjectMemberRoleShadowV1({ projectId: 'p1', userId: 'u3', role: 'viewer' });
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_update_project_member_role_v1', {
+      p_project_id: 'p1',
+      p_user_id: 'u3',
+      p_role: 'viewer'
+    });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await rtRemoveProjectMemberShadowV1({ projectId: 'p1', userId: 'u4' });
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_remove_project_member_v1', {
+      p_project_id: 'p1',
+      p_user_id: 'u4'
+    });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await rtUpdateProjectInviteRoleShadowV1({ projectId: 'p1', inviteId: 'i9', role: 'editor' });
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_update_project_invite_role_v1', {
+      p_project_id: 'p1',
+      p_invite_id: 'i9',
+      p_role: 'editor'
+    });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await rtRevokeProjectInviteShadowV1({ projectId: 'p1', inviteId: 'i9' });
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_revoke_project_invite_v1', {
+      p_project_id: 'p1',
+      p_invite_id: 'i9'
+    });
+  });
+
+  it('invite acceptance and lease RPCs map params', async () => {
+    mocks.rpc.mockResolvedValueOnce({
+      data: [{ project_id: 'p1', role: 'editor' }],
+      error: null
+    });
+    expect(await rtAcceptProjectInvitesShadowV1({ email: 'user@example.com' })).toEqual([
+      { projectId: 'p1', role: 'editor' }
+    ]);
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_accept_project_invites_v1', { p_email: 'user@example.com' });
+
+    mocks.rpc.mockResolvedValueOnce({
+      data: [{ ref_id: 'r1', holder_user_id: 'u1', holder_session_id: 's1', expires_at: '2025-01-03T00:00:00Z' }],
+      error: null
+    });
+    expect(await rtListRefLeasesShadowV1({ projectId: 'p1' })).toEqual([
+      { refId: 'r1', holderUserId: 'u1', holderSessionId: 's1', expiresAt: '2025-01-03T00:00:00.000Z' }
+    ]);
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await rtAcquireRefLeaseShadowV1({ projectId: 'p1', refId: 'r1', sessionId: 's1', ttlSeconds: 120 });
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_acquire_ref_lease_v1', {
+      p_project_id: 'p1',
+      p_ref_id: 'r1',
+      p_session_id: 's1',
+      p_ttl_seconds: 120
+    });
+
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await rtReleaseRefLeaseShadowV1({ projectId: 'p1', refId: 'r1', sessionId: 's1', force: true });
+    expect(mocks.rpc).toHaveBeenCalledWith('rt_release_ref_lease_v1', {
+      p_project_id: 'p1',
+      p_ref_id: 'r1',
+      p_session_id: 's1',
+      p_force: true
+    });
   });
 });

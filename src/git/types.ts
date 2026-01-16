@@ -92,6 +92,7 @@ export interface ProjectMetadata {
   createdAt: string;
   branchName?: string;
   pinnedBranchName?: string;
+  isOwner?: boolean;
 }
 
 export interface BranchSummary {
@@ -104,4 +105,7 @@ export interface BranchSummary {
   isHidden?: boolean;
   provider?: LLMProvider;
   model?: string;
+  leaseHolderUserId?: string | null;
+  leaseHolderSessionId?: string | null;
+  leaseExpiresAt?: string | null;
 }

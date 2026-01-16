@@ -8,6 +8,7 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTextBlock } from '@/src/server/llmContentBlocks';
+import { acquireBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string };
@@ -35,7 +36,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { mergeNodeId, targetBranch } = parsed.data;
+    const { mergeNodeId, targetBranch, leaseSessionId } = parsed.data;
     const resolvedTargetBranch = targetBranch ?? (await getPreferredBranch(params.id));
 
     return await withProjectRefLock(params.id, resolvedTargetBranch, async () => {
@@ -44,6 +45,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         const { rtAppendNodeToRefShadowV2 } = await import('@/src/store/pg/nodes');
         const { resolveRefByName } = await import('@/src/server/pgRefs');
         const targetRef = await resolveRefByName(params.id, resolvedTargetBranch);
+        await acquireBranchLease({ projectId: params.id, refId: targetRef.id, leaseSessionId });
         const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: targetRef.id, limit: 500 });
         const nodes = rows.map((r) => r.nodeJson).filter(Boolean) as any[];
         const mergeNode = nodes.find((node) => node.type === 'merge' && String(node.id) === mergeNodeId);

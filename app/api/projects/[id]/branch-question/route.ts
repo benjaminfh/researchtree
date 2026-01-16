@@ -45,7 +45,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       question,
       highlight,
       thinking,
-      switch: shouldSwitch
+      switch: shouldSwitch,
+      leaseSessionId
     } = parsed.data;
     const fromNode = fromNodeId.trim();
     const highlightText = highlight.trim();
@@ -187,7 +188,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       highlight: highlightText,
       llmProvider: createResult.provider,
       ref: createResult.branchName,
-      thinking
+      thinking,
+      leaseSessionId
     });
     const chatRequest = new Request(request.url, {
       method: 'POST',

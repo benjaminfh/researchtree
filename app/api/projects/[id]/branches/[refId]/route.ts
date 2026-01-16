@@ -6,6 +6,7 @@ import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { requireProjectAccess } from '@/src/server/authz';
 import { getStoreConfig } from '@/src/server/storeConfig';
+import { acquireBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string; refId: string };
@@ -31,6 +32,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         if (!params.refId?.trim()) {
           throw badRequest('Branch id is required');
         }
+
+        await acquireBranchLease({
+          projectId: params.id,
+          refId: params.refId,
+          leaseSessionId: parsed.data.leaseSessionId
+        });
 
         await rtRenameRefShadowV2({
           projectId: params.id,

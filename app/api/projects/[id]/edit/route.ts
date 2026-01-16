@@ -19,6 +19,7 @@ import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmC
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 import { toJsonValue } from '@/src/server/json';
+import { acquireBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string };
@@ -54,7 +55,16 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { content, branchName, fromRef, nodeId, llmProvider, llmModel, thinking } = parsed.data as typeof parsed.data & {
+    const {
+      content,
+      branchName,
+      fromRef,
+      nodeId,
+      llmProvider,
+      llmModel,
+      thinking,
+      leaseSessionId
+    } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
     };
     const currentBranch = await getPreferredBranch(params.id);
@@ -88,6 +98,15 @@ export async function POST(request: Request, { params }: RouteContext) {
         thinking: effectiveThinking,
         allowed: thinkingValidation.allowed
       });
+    }
+
+    if (store.mode === 'pg') {
+      const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+      const branches = await rtListRefsShadowV2({ projectId: params.id });
+      const existingTarget = branches.find((branch) => branch.name === targetBranch);
+      if (existingTarget?.id) {
+        await acquireBranchLease({ projectId: params.id, refId: existingTarget.id, leaseSessionId });
+      }
     }
 
     return await withProjectLock(params.id, async () => {

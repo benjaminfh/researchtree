@@ -28,6 +28,7 @@ export type ChatSendPayload =
       llmProvider?: LLMProvider;
       thinking?: ThinkingSetting;
       webSearch?: boolean;
+      leaseSessionId?: string;
     };
 
 export interface StreamRequestOptions {
@@ -43,11 +44,21 @@ interface UseChatStreamOptions {
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
   webSearch?: boolean;
+  leaseSessionId?: string | null;
   onChunk?: (chunk: ChatStreamChunk) => void;
   onComplete?: () => void;
 }
 
-export function useChatStream({ projectId, ref, provider, thinking, webSearch, onChunk, onComplete }: UseChatStreamOptions) {
+export function useChatStream({
+  projectId,
+  ref,
+  provider,
+  thinking,
+  webSearch,
+  leaseSessionId,
+  onChunk,
+  onComplete
+}: UseChatStreamOptions) {
   const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
   const activeRequest = useRef<AbortController | null>(null);
   const activeRequestId = useRef<string | null>(null);
@@ -201,11 +212,12 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
           llmProvider: normalized.llmProvider ?? provider,
           ref: normalized.ref ?? ref,
           thinking: normalized.thinking ?? thinking,
-          webSearch: normalized.webSearch ?? webSearch
+          webSearch: normalized.webSearch ?? webSearch,
+          leaseSessionId: normalized.leaseSessionId ?? leaseSessionId
         }
       });
     },
-    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled]
+    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
   );
 
   const interrupt = useCallback(async () => {

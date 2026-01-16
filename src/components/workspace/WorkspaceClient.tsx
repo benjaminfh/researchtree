@@ -9,6 +9,7 @@ import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@g
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
+import { useLeaseSession } from '@/src/hooks/useLeaseSession';
 import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -131,12 +132,38 @@ type BranchListItem = BranchSummary & {
   isGhost?: boolean;
 };
 
+type StoreMode = 'pg' | 'git';
+
+type ProjectMember = {
+  userId: string;
+  email: string | null;
+  role: string;
+  createdAt: string;
+};
+
+type ProjectInvite = {
+  id: string;
+  email: string;
+  role: string;
+  invitedBy: string | null;
+  invitedByEmail: string | null;
+  createdAt: string;
+};
+
+type RefLease = {
+  refId: string;
+  holderUserId: string;
+  holderSessionId: string;
+  expiresAt: string;
+};
+
 interface WorkspaceClientProps {
   project: ProjectMetadata;
   initialBranches: BranchSummary[];
   defaultProvider: LLMProvider;
   providerOptions: ProviderOption[];
   openAIUseResponses: boolean;
+  storeMode: StoreMode;
 }
 
 interface ProviderOption {
@@ -647,9 +674,11 @@ export function WorkspaceClient({
   initialBranches,
   defaultProvider,
   providerOptions,
-  openAIUseResponses
+  openAIUseResponses,
+  storeMode
 }: WorkspaceClientProps) {
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
+  const isPgMode = storeMode === 'pg';
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
@@ -688,6 +717,15 @@ export function WorkspaceClient({
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const { sessionId: leaseSessionId, ready: leaseSessionReady } = useLeaseSession(project.id, isPgMode);
+  const canShare = isPgMode && Boolean(project.isOwner);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareRole, setShareRole] = useState<'viewer' | 'editor'>('viewer');
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [isShareSaving, setIsShareSaving] = useState(false);
+  const [pendingShareIds, setPendingShareIds] = useState<Set<string>>(new Set());
+  const [isReleasingLease, setIsReleasingLease] = useState(false);
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
@@ -825,6 +863,15 @@ export function WorkspaceClient({
     [removeToast]
   );
 
+  const ensureLeaseSessionReady = useCallback(() => {
+    if (!isPgMode) return true;
+    if (!leaseSessionReady || !leaseSessionId) {
+      pushToast('error', 'Lease session is still initializing. Please try again in a moment.');
+      return false;
+    }
+    return true;
+  }, [isPgMode, leaseSessionId, leaseSessionReady, pushToast]);
+
   useEffect(() => {
     return () => {
       for (const timeout of toastTimeoutsRef.current.values()) {
@@ -928,15 +975,182 @@ export function WorkspaceClient({
     resetEditState();
   }, [isEditing, resetEditState]);
 
+  const closeShareModal = useCallback(() => {
+    if (isShareSaving) return;
+    setShowShareModal(false);
+    setShareEmail('');
+    setShareRole('viewer');
+    setShareError(null);
+    setPendingShareIds(new Set());
+  }, [isShareSaving]);
+
+  const updateShareData = useCallback(
+    async (data: { members: ProjectMember[]; invites: ProjectInvite[] }) => {
+      await mutateShare(data, false);
+    },
+    [mutateShare]
+  );
+
+  const submitShareInvite = useCallback(async () => {
+    if (!shareEmail.trim()) {
+      setShareError('Email is required.');
+      return;
+    }
+    setIsShareSaving(true);
+    setShareError(null);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: shareEmail.trim(), role: shareRole })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? 'Failed to send invite');
+      }
+      const data = (await res.json()) as { members: ProjectMember[]; invites: ProjectInvite[] };
+      await updateShareData(data);
+      setShareEmail('');
+      pushToast('success', 'Invite sent.');
+    } catch (err) {
+      setShareError((err as Error).message);
+    } finally {
+      setIsShareSaving(false);
+    }
+  }, [project.id, pushToast, shareEmail, shareRole, updateShareData]);
+
+  const updateShareRole = useCallback(
+    async (payload: { type: 'member' | 'invite'; id: string; role: 'viewer' | 'editor' }) => {
+      setShareError(null);
+      setPendingShareIds((prev) => new Set(prev).add(payload.id));
+      try {
+        const res = await fetch(`/api/projects/${project.id}/members`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to update role');
+        }
+        const data = (await res.json()) as { members: ProjectMember[]; invites: ProjectInvite[] };
+        await updateShareData(data);
+        pushToast('success', 'Role updated.');
+      } catch (err) {
+        setShareError((err as Error).message);
+      } finally {
+        setPendingShareIds((prev) => {
+          const next = new Set(prev);
+          next.delete(payload.id);
+          return next;
+        });
+      }
+    },
+    [project.id, pushToast, updateShareData]
+  );
+
+  const removeShareEntry = useCallback(
+    async (payload: { type: 'member' | 'invite'; id: string }) => {
+      setShareError(null);
+      setPendingShareIds((prev) => new Set(prev).add(payload.id));
+      try {
+        const res = await fetch(`/api/projects/${project.id}/members`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to remove entry');
+        }
+        const data = (await res.json()) as { members: ProjectMember[]; invites: ProjectInvite[] };
+        await updateShareData(data);
+        pushToast('success', payload.type === 'member' ? 'Member removed.' : 'Invite revoked.');
+      } catch (err) {
+        setShareError((err as Error).message);
+      } finally {
+        setPendingShareIds((prev) => {
+          const next = new Set(prev);
+          next.delete(payload.id);
+          return next;
+        });
+      }
+    },
+    [project.id, pushToast, updateShareData]
+  );
+
+  const releaseLease = useCallback(
+    async (payload: { refId: string; force?: boolean }) => {
+      if (!ensureLeaseSessionReady()) return;
+      setIsReleasingLease(true);
+      try {
+        const res = await fetch(`/api/projects/${project.id}/leases`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            refId: payload.refId,
+            leaseSessionId,
+            force: payload.force ?? false
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to release lease');
+        }
+        const data = (await res.json()) as { leases: RefLease[] };
+        await mutateLeases(data, false);
+        pushToast('success', 'Lease released.');
+      } catch (err) {
+        pushToast('error', (err as Error).message);
+      } finally {
+        setIsReleasingLease(false);
+      }
+    },
+    [ensureLeaseSessionReady, leaseSessionId, mutateLeases, project.id, pushToast]
+  );
+
   const {
     data: starsData,
     mutate: mutateStars
   } = useSWR<{ starredNodeIds: string[] }>(`/api/projects/${project.id}/stars`, fetchJson, { revalidateOnFocus: true });
+  const {
+    data: shareData,
+    mutate: mutateShare
+  } = useSWR<{ members: ProjectMember[]; invites: ProjectInvite[] }>(
+    canShare && showShareModal ? `/api/projects/${project.id}/members` : null,
+    fetchJson,
+    { revalidateOnFocus: true }
+  );
+  const {
+    data: leaseData,
+    mutate: mutateLeases
+  } = useSWR<{ leases: RefLease[] }>(
+    isPgMode ? `/api/projects/${project.id}/leases` : null,
+    fetchJson,
+    { revalidateOnFocus: true, refreshInterval: 10000 }
+  );
 
   const starredNodeIds = starsData?.starredNodeIds ?? [];
   const starredKey = useMemo(() => [...new Set(starredNodeIds)].sort().join('|'), [starredNodeIds]);
   const stableStarredNodeIds = useMemo(() => (starredKey ? starredKey.split('|') : []), [starredKey]);
   const starredSet = useMemo(() => new Set(stableStarredNodeIds), [stableStarredNodeIds]);
+  const shareMembers = shareData?.members ?? [];
+  const shareInvites = shareData?.invites ?? [];
+  const leasesByRefId = useMemo(() => {
+    const map = new Map<string, RefLease>();
+    for (const lease of leaseData?.leases ?? []) {
+      map.set(lease.refId, lease);
+    }
+    return map;
+  }, [leaseData]);
+  const getLeaseForBranchName = useCallback(
+    (name: string) => {
+      const branch = branches.find((entry) => entry.name === name);
+      const lease = branch?.id ? leasesByRefId.get(branch.id) ?? null : null;
+      return { branch, lease };
+    },
+    [branches, leasesByRefId]
+  );
   const [pendingStarIds, setPendingStarIds] = useState<Set<string>>(new Set());
 
   const toggleStar = async (nodeId: string) => {
@@ -1007,6 +1221,17 @@ export function WorkspaceClient({
   }, []);
   const saveArtefactSnapshot = useCallback(
     async ({ content, ref }: { content: string; ref: string }) => {
+      if (isPgMode) {
+        if (!leaseSessionReady || !leaseSessionId) {
+          setArtefactError('Lease session is still initializing. Please try again.');
+          return false;
+        }
+        const { lease } = getLeaseForBranchName(ref);
+        if (lease && lease.holderSessionId !== leaseSessionId) {
+          setArtefactError('Branch is locked for editing.');
+          return false;
+        }
+      }
       if (autosaveControllerRef.current) {
         autosaveControllerRef.current.abort();
       }
@@ -1027,7 +1252,7 @@ export function WorkspaceClient({
         const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(ref)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content, leaseSessionId }),
           signal: controller.signal
         });
         if (!res.ok) {
@@ -1056,7 +1281,7 @@ export function WorkspaceClient({
         }, remaining);
       }
     },
-    [branchName, mutateArtefact, project.id]
+    [branchName, getLeaseForBranchName, isPgMode, leaseSessionId, leaseSessionReady, mutateArtefact, project.id]
   );
   const scheduleAutosave = useCallback(
     ({ content, ref }: { content: string; ref: string }) => {
@@ -1110,6 +1335,29 @@ export function WorkspaceClient({
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
   const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
+  const activeBranchLease = useMemo(() => {
+    if (!activeBranch?.id) return null;
+    const lease = leasesByRefId.get(activeBranch.id);
+    if (lease) return lease;
+    if (activeBranch.leaseHolderSessionId) {
+      return {
+        refId: activeBranch.id,
+        holderUserId: activeBranch.leaseHolderUserId ?? '',
+        holderSessionId: activeBranch.leaseHolderSessionId ?? '',
+        expiresAt: activeBranch.leaseExpiresAt ?? ''
+      };
+    }
+    return null;
+  }, [activeBranch?.id, activeBranch?.leaseExpiresAt, activeBranch?.leaseHolderSessionId, activeBranch?.leaseHolderUserId, leasesByRefId]);
+  const leaseHeldBySession = useMemo(
+    () => Boolean(activeBranchLease && activeBranchLease.holderSessionId === leaseSessionId),
+    [activeBranchLease, leaseSessionId]
+  );
+  const leaseLocked = useMemo(
+    () => Boolean(activeBranchLease && activeBranchLease.holderSessionId !== leaseSessionId),
+    [activeBranchLease, leaseSessionId]
+  );
+  const isBranchWriteLocked = isPgMode && leaseLocked;
   const branchProvider = useMemo(
     () => activeBranch?.provider ?? defaultProvider,
     [activeBranch?.provider, defaultProvider]
@@ -1163,6 +1411,7 @@ export function WorkspaceClient({
     provider: branchProvider,
     thinking,
     webSearch: webSearchEnabled,
+    leaseSessionId,
     onChunk: (chunk) => {
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
@@ -1259,7 +1508,15 @@ export function WorkspaceClient({
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
-  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? null;
+  const leaseStatusError =
+    isPgMode && !leaseSessionReady
+      ? 'Initializing lease session…'
+      : isBranchWriteLocked
+        ? 'Branch is locked for editing.'
+        : null;
+  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
+  const composerDisabled = state.isStreaming || isBranchWriteLocked || (isPgMode && !leaseSessionReady);
+  const canvasDisabled = isPgMode && (!leaseSessionReady || isBranchWriteLocked);
   const webSearchAvailable = branchProvider !== 'mock';
   const showOpenAISearchNote =
     webSearchEnabled &&
@@ -1276,6 +1533,13 @@ export function WorkspaceClient({
     setComposerError(null);
     if (thinkingUnsupportedError) {
       setThinkingMenuOpen(true);
+      return;
+    }
+    if (!ensureLeaseSessionReady()) {
+      return;
+    }
+    if (isBranchWriteLocked) {
+      pushToast('error', 'Branch is locked for editing.');
       return;
     }
     shouldScrollToBottomRef.current = true;
@@ -1330,6 +1594,7 @@ export function WorkspaceClient({
     onFailure?: () => void;
   }) => {
     if (!question.trim() || state.isStreaming) return;
+    if (!ensureLeaseSessionReady()) return;
     const optimisticContent = buildQuestionMessage(question, highlight);
     shouldScrollToBottomRef.current = true;
     questionDraftRef.current = optimisticContent;
@@ -1366,7 +1631,8 @@ export function WorkspaceClient({
         question,
         highlight,
         thinking: thinkingSetting,
-        switch: true
+        switch: true,
+        leaseSessionId
       },
       onResponse: () => {
         responded = true;
@@ -1401,6 +1667,14 @@ export function WorkspaceClient({
     onFailure?: () => void;
   }) => {
     if (!content.trim() || state.isStreaming) return;
+    if (!ensureLeaseSessionReady()) return;
+    if (isPgMode) {
+      const { lease } = getLeaseForBranchName(targetBranch);
+      if (lease && lease.holderSessionId !== leaseSessionId) {
+        pushToast('error', 'Branch is locked for editing.');
+        return;
+      }
+    }
     shouldScrollToBottomRef.current = true;
     questionDraftRef.current = content;
     setStreamBlocks([]);
@@ -1434,7 +1708,8 @@ export function WorkspaceClient({
         llmProvider: provider,
         llmModel: model,
         thinking: thinkingSetting,
-        nodeId
+        nodeId,
+        leaseSessionId
       },
       onResponse: () => {
         responded = true;
@@ -2505,10 +2780,19 @@ export function WorkspaceClient({
   }, [visibleNodes]);
 
   const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
+    if (!ensureLeaseSessionReady()) {
+      throw new Error('Lease session is still initializing.');
+    }
+    if (isPgMode) {
+      const { lease } = getLeaseForBranchName(targetBranch);
+      if (lease && lease.holderSessionId !== leaseSessionId) {
+        throw new Error('Branch is locked for editing.');
+      }
+    }
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mergeNodeId, targetBranch })
+      body: JSON.stringify({ mergeNodeId, targetBranch, leaseSessionId })
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
@@ -2657,6 +2941,9 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branchName: string; branches: BranchSummary[] };
       setBranchName(data.branchName);
       setBranches(data.branches);
+      if (isPgMode) {
+        await mutateLeases();
+      }
       await Promise.all([refreshHistory(), mutateArtefact()]);
     } catch (err) {
       setBranchActionError((err as Error).message);
@@ -2689,6 +2976,18 @@ export function WorkspaceClient({
       onResponse?: () => void;
       onFailure?: () => void;
     }) => {
+      if (!ensureLeaseSessionReady()) {
+        onFailure?.();
+        return;
+      }
+      if (isPgMode) {
+        const { lease } = getLeaseForBranchName(targetBranch);
+        if (lease && lease.holderSessionId !== leaseSessionId) {
+          pushToast('error', 'Branch is locked for editing.');
+          onFailure?.();
+          return;
+        }
+      }
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'edit',
@@ -2708,7 +3007,8 @@ export function WorkspaceClient({
               llmProvider: provider,
               llmModel: model,
               thinking: thinkingSetting,
-              nodeId
+              nodeId,
+              leaseSessionId
             })
           });
           if (!res.ok || !res.body) {
@@ -2741,7 +3041,11 @@ export function WorkspaceClient({
     },
     [
       displayBranchName,
+      ensureLeaseSessionReady,
       finishBackgroundTask,
+      getLeaseForBranchName,
+      isPgMode,
+      leaseSessionId,
       project.id,
       pushToast,
       refreshInsights,
@@ -2849,6 +3153,10 @@ export function WorkspaceClient({
       onResponse?: () => void;
       onFailure?: () => void;
     }) => {
+      if (!ensureLeaseSessionReady()) {
+        onFailure?.();
+        return;
+      }
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'question',
@@ -2870,7 +3178,8 @@ export function WorkspaceClient({
               question,
               highlight,
               thinking: thinkingSetting,
-              switch: switchOnCreate
+              switch: switchOnCreate,
+              leaseSessionId
             })
           });
           if (!res.ok || !res.body) {
@@ -2898,7 +3207,16 @@ export function WorkspaceClient({
         }
       })();
     },
-    [displayBranchName, finishBackgroundTask, project.id, pushToast, refreshInsights, startBackgroundTask]
+    [
+      displayBranchName,
+      ensureLeaseSessionReady,
+      finishBackgroundTask,
+      leaseSessionId,
+      project.id,
+      pushToast,
+      refreshInsights,
+      startBackgroundTask
+    ]
   );
 
   const renameBranch = async () => {
@@ -2908,6 +3226,16 @@ export function WorkspaceClient({
       setRenameError('Branch name is required.');
       return;
     }
+    if (!ensureLeaseSessionReady()) {
+      return;
+    }
+    if (isPgMode) {
+      const { lease } = getLeaseForBranchName(renameTarget.name);
+      if (lease && lease.holderSessionId !== leaseSessionId) {
+        setRenameError('Branch is locked for editing.');
+        return;
+      }
+    }
     setIsRenaming(true);
     setRenameError(null);
     setBranchActionError(null);
@@ -2916,7 +3244,7 @@ export function WorkspaceClient({
       const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nextName })
+        body: JSON.stringify({ name: nextName, leaseSessionId })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -3164,6 +3492,10 @@ export function WorkspaceClient({
     () => buildModalBackdropHandler(closeEditModal),
     [buildModalBackdropHandler, closeEditModal]
   );
+  const handleShareBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeShareModal),
+    [buildModalBackdropHandler, closeShareModal]
+  );
 
   return (
     <>
@@ -3220,6 +3552,20 @@ export function WorkspaceClient({
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       const visibilityDisabled =
                         isSwitching || isCreating || visibilityPending || isGhost || (!isHidden && isActiveBranch);
+                      const branchLease =
+                        branch.id && leasesByRefId.has(branch.id)
+                          ? leasesByRefId.get(branch.id) ?? null
+                          : branch.leaseHolderSessionId
+                            ? {
+                                refId: branch.id ?? branch.name,
+                                holderUserId: branch.leaseHolderUserId ?? '',
+                                holderSessionId: branch.leaseHolderSessionId ?? '',
+                                expiresAt: branch.leaseExpiresAt ?? ''
+                              }
+                            : null;
+                      const leaseHeldBySession =
+                        Boolean(branchLease?.holderSessionId) && branchLease?.holderSessionId === leaseSessionId;
+                      const leaseLockedForOther = Boolean(branchLease?.holderSessionId) && !leaseHeldBySession;
                       return (
                         <div
                           key={branch.name}
@@ -3269,6 +3615,19 @@ export function WorkspaceClient({
                               </span>
                               {isPending ? (
                                 <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                              ) : null}
+                              {branchLease ? (
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                    leaseHeldBySession
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : leaseLockedForOther
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {leaseHeldBySession ? 'Editing' : 'Locked'}
+                                </span>
                               ) : null}
                             </span>
                             <span className="inline-flex items-center gap-1">
@@ -3502,6 +3861,37 @@ export function WorkspaceClient({
                           {branchProviderLabel}
                         </span>
                       </div>
+                      {isPgMode ? (
+                        <div className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs shadow-sm">
+                          <span className="font-medium text-slate-700">Lease</span>
+                          <span
+                            className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                              leaseHeldBySession
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : leaseLocked
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {leaseHeldBySession ? 'Editing' : leaseLocked ? 'Locked' : 'Available'}
+                          </span>
+                          {activeBranch?.id && activeBranchLease ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                releaseLease({
+                                  refId: activeBranch.id!,
+                                  force: !leaseHeldBySession && Boolean(project.isOwner)
+                                })
+                              }
+                              disabled={isReleasingLease || (!leaseHeldBySession && !project.isOwner)}
+                              className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {leaseHeldBySession ? 'Release' : project.isOwner ? 'Force release' : 'Release'}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -3687,6 +4077,23 @@ export function WorkspaceClient({
                               <BlueprintIcon icon="git-merge" className="h-4 w-4" />
                             </span>
                             Merge…
+                          </button>
+                        ) : null}
+
+                        {canShare ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShareError(null);
+                              setShowShareModal(true);
+                            }}
+                            className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                            data-testid="share-open-button"
+                          >
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                              <BlueprintIcon icon="share" className="h-4 w-4" />
+                            </span>
+                            Share
                           </button>
                         ) : null}
                       </div>
@@ -4062,8 +4469,9 @@ export function WorkspaceClient({
                                     onChange={(event) => setArtefactDraft(event.target.value)}
                                     onFocus={() => setIsCanvasFocused(true)}
                                     onBlur={() => setIsCanvasFocused(false)}
-                                    className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
+                                    className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none disabled:opacity-60"
                                     data-testid="canvas-editor"
+                                    disabled={canvasDisabled}
                                   />
                                   {!isCanvasFocused && artefactDraft.length === 0 ? (
                                     <div className="pointer-events-none absolute left-4 top-4 text-sm text-slate-400">
@@ -4125,7 +4533,7 @@ export function WorkspaceClient({
                       } ${!webSearchAvailable ? 'opacity-50' : ''}`}
                       aria-label="Toggle web search"
                       aria-pressed={webSearchEnabled}
-                      disabled={state.isStreaming || !webSearchAvailable}
+                      disabled={composerDisabled || !webSearchAvailable}
                     >
                       <SearchIcon className="h-4 w-4" />
                       <span>Web search</span>
@@ -4157,7 +4565,7 @@ export function WorkspaceClient({
                         minHeight: composerMinHeight ? `${composerMinHeight}px` : undefined,
                         maxHeight: composerMaxHeight ? `${composerMaxHeight}px` : undefined
                       }}
-                      disabled={state.isStreaming}
+                      disabled={composerDisabled}
                       onKeyDown={(event) => {
                         if (event.key !== 'Enter') {
                           return;
@@ -4240,7 +4648,7 @@ export function WorkspaceClient({
                     ) : null}
                     <button
                       type="submit"
-                      disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+                      disabled={composerDisabled || !draft.trim() || Boolean(thinkingUnsupportedError)}
                       className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Send message"
                     >
@@ -4676,6 +5084,21 @@ export function WorkspaceClient({
                   if (!canMerge) {
                     return;
                   }
+                  if (!ensureLeaseSessionReady()) {
+                    return;
+                  }
+                  if (isPgMode) {
+                    const { lease: sourceLease } = getLeaseForBranchName(branchName);
+                    const { lease: targetLease } = getLeaseForBranchName(mergeTargetBranch);
+                    if (sourceLease && sourceLease.holderSessionId !== leaseSessionId) {
+                      setMergeError('Source branch is locked for editing.');
+                      return;
+                    }
+                    if (targetLease && targetLease.holderSessionId !== leaseSessionId) {
+                      setMergeError('Target branch is locked for editing.');
+                      return;
+                    }
+                  }
                   setIsMerging(true);
                   setMergeError(null);
                   try {
@@ -4686,7 +5109,8 @@ export function WorkspaceClient({
                         sourceBranch: branchName,
                         targetBranch: mergeTargetBranch,
                         mergeSummary: mergeSummary.trim(),
-                        sourceAssistantNodeId: selectedMergePayload.id
+                        sourceAssistantNodeId: selectedMergePayload.id,
+                        leaseSessionId
                       })
                     });
                     if (!res.ok) {
@@ -4899,6 +5323,180 @@ export function WorkspaceClient({
               </button>
             </div>
             </CommandEnterForm>
+          </div>
+        </div>
+      ) : null}
+
+      {showShareModal ? (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={handleShareBackdrop}
+          onTouchStart={handleShareBackdrop}
+        >
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="share-modal">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Share project</h3>
+                <p className="text-sm text-muted">Invite collaborators and manage roles.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeShareModal}
+                className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                disabled={isShareSaving}
+              >
+                Close
+              </button>
+            </div>
+
+            <CommandEnterForm
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitShareInvite();
+              }}
+              enableCommandEnter={!isShareSaving && Boolean(shareEmail.trim())}
+              className="mt-4 space-y-3 rounded-2xl border border-divider/80 bg-slate-50/70 p-4"
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="email"
+                  value={shareEmail}
+                  onChange={(event) => setShareEmail(event.target.value)}
+                  placeholder="Invite by email"
+                  className="min-w-[220px] flex-1 rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                  disabled={isShareSaving}
+                  required
+                />
+                <select
+                  value={shareRole}
+                  onChange={(event) => setShareRole(event.target.value as 'viewer' | 'editor')}
+                  className="rounded-lg border border-divider/80 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                  disabled={isShareSaving}
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                </select>
+                <button
+                  type="submit"
+                  className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={isShareSaving || !shareEmail.trim()}
+                >
+                  {isShareSaving ? 'Inviting…' : 'Invite'}
+                </button>
+              </div>
+            </CommandEnterForm>
+
+            <div className="mt-6 grid gap-6 md:grid-cols-2">
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-800">Members</h4>
+                {shareData ? (
+                  shareMembers.length > 0 ? (
+                    <div className="space-y-2">
+                      {shareMembers.map((member) => {
+                        const isOwnerRole = member.role === 'owner';
+                        const pending = pendingShareIds.has(member.userId);
+                        return (
+                          <div
+                            key={member.userId}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-divider/80 bg-white px-3 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-800">{member.email ?? member.userId}</div>
+                              <div className="text-[11px] text-muted">Joined {new Date(member.createdAt).toLocaleDateString()}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={member.role}
+                                onChange={(event) =>
+                                  updateShareRole({
+                                    type: 'member',
+                                    id: member.userId,
+                                    role: event.target.value as 'viewer' | 'editor'
+                                  })
+                                }
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                                disabled={isOwnerRole || pending}
+                              >
+                                <option value="viewer">Viewer</option>
+                                <option value="editor">Editor</option>
+                                {isOwnerRole ? <option value="owner">Owner</option> : null}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeShareEntry({ type: 'member', id: member.userId })}
+                                disabled={isOwnerRole || pending}
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">No members yet.</p>
+                  )
+                ) : (
+                  <p className="text-xs text-muted">Loading members…</p>
+                )}
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-800">Invites</h4>
+                {shareData ? (
+                  shareInvites.length > 0 ? (
+                    <div className="space-y-2">
+                      {shareInvites.map((invite) => {
+                        const pending = pendingShareIds.has(invite.id);
+                        return (
+                          <div
+                            key={invite.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-divider/80 bg-white px-3 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-800">{invite.email}</div>
+                              <div className="text-[11px] text-muted">
+                                Invited {new Date(invite.createdAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={invite.role}
+                                onChange={(event) =>
+                                  updateShareRole({
+                                    type: 'invite',
+                                    id: invite.id,
+                                    role: event.target.value as 'viewer' | 'editor'
+                                  })
+                                }
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                                disabled={pending}
+                              >
+                                <option value="viewer">Viewer</option>
+                                <option value="editor">Editor</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeShareEntry({ type: 'invite', id: invite.id })}
+                                disabled={pending}
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Revoke
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">No pending invites.</p>
+                  )
+                ) : (
+                  <p className="text-xs text-muted">Loading invites…</p>
+                )}
+              </div>
+            </div>
+            {shareError ? <p className="mt-4 text-sm text-red-600">{shareError}</p> : null}
           </div>
         </div>
       ) : null}

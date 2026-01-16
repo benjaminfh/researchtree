@@ -7,6 +7,7 @@ import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMPro
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
+import { createSupabaseServerClient } from '@/src/server/supabase/server';
 
 export const runtime = 'nodejs';
 
@@ -19,15 +20,24 @@ interface ProjectPageProps {
 export default async function ProjectWorkspace({ params }: ProjectPageProps) {
   const store = getStoreConfig();
 
-  let project: { id: string; name: string; description?: string; createdAt: string; branchName?: string };
+  let project: { id: string; name: string; description?: string; createdAt: string; branchName?: string; isOwner?: boolean };
   let branches: any[];
 
   if (store.mode === 'pg') {
-    await requireUser();
+    const user = await requireUser();
     const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
     const data = await rtGetProjectShadowV1({ projectId: params.id });
     if (!data) {
       notFound();
+    }
+    const supabase = createSupabaseServerClient();
+    const { data: ownerData, error: ownerError } = await supabase
+      .from('projects')
+      .select('owner_user_id')
+      .eq('id', params.id)
+      .maybeSingle();
+    if (ownerError) {
+      throw new Error(ownerError.message);
     }
 
     const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
@@ -42,7 +52,8 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       name: data.name,
       description: data.description ?? undefined,
       createdAt: data.createdAt,
-      branchName: current.refName
+      branchName: current.refName,
+      isOwner: ownerData?.owner_user_id === user.id
     };
     branches = await rtListRefsShadowV2({ projectId: params.id });
   } else {
@@ -77,6 +88,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
         defaultProvider={resolveOpenAIProviderSelection()}
         providerOptions={providerOptions}
         openAIUseResponses={getOpenAIUseResponses()}
+        storeMode={store.mode}
       />
     </main>
   );
