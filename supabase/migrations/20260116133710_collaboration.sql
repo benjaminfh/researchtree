@@ -428,12 +428,22 @@ set search_path to 'public'
 as $$
 declare
   v_email text;
+  v_auth_email text;
 begin
   if auth.uid() is null then
     raise exception 'Sign in required';
   end if;
 
-  v_email := lower(trim(coalesce(p_email, '')));
+  v_auth_email := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
+  if v_auth_email = '' then
+    raise exception 'Email not available';
+  end if;
+
+  v_email := lower(trim(coalesce(p_email, v_auth_email)));
+  if v_email <> v_auth_email then
+    raise exception 'Not authorized';
+  end if;
+
   if v_email = '' then
     return;
   end if;

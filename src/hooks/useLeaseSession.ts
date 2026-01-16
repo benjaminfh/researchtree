@@ -21,13 +21,13 @@ export function useLeaseSession(projectId: string, enabled: boolean) {
       setSessionId(null);
       return;
     }
-    const existing = window.localStorage.getItem(key);
+    const existing = window.sessionStorage.getItem(key);
     if (existing) {
       setSessionId(existing);
       return;
     }
     const next = createSessionId();
-    window.localStorage.setItem(key, next);
+    window.sessionStorage.setItem(key, next);
     setSessionId(next);
   }, [enabled, key]);
 
