@@ -3727,15 +3727,15 @@ export function WorkspaceClient({
                                     open={branchMenuOpen}
                                     anchorRef={branchMenuAnchorRef}
                                     ariaLabel={`Branch actions for ${displayBranchName(branch.name)}`}
-                                    className="w-10 p-2"
+                                    className="flex w-auto items-center gap-2 p-2"
                                   >
                                     <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void togglePinnedBranch(branch);
-                                      setOpenBranchMenu(null);
-                                    }}
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void togglePinnedBranch(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
                                     disabled={isSwitching || isCreating || pinPending || isGhost}
                                     title={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
                                     aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
@@ -3754,12 +3754,12 @@ export function WorkspaceClient({
                                       )}
                                     </button>
                                     <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void toggleBranchVisibility(branch);
-                                      setOpenBranchMenu(null);
-                                    }}
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void toggleBranchVisibility(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
                                     disabled={visibilityDisabled}
                                     title={
                                       visibilityDisabled && !isHidden && isActiveBranch
@@ -3780,11 +3780,11 @@ export function WorkspaceClient({
                                       )}
                                     </button>
                                     <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void releaseLease({
-                                        refId: branch.id!,
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void releaseLease({
+                                          refId: branch.id!,
                                         force: !branchLeaseHeldBySession && Boolean(project.isOwner)
                                       });
                                       setOpenBranchMenu(null);
@@ -3815,12 +3815,12 @@ export function WorkspaceClient({
                                     <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
                                     </button>
                                     <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openRenameModal(branch);
-                                      setOpenBranchMenu(null);
-                                    }}
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openRenameModal(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
                                     disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
                                     title="Rename branch"
                                     aria-label="Rename branch"
@@ -4225,8 +4225,7 @@ export function WorkspaceClient({
                               type="button"
                               ref={branchSettingsButtonRef}
                               onClick={() => setShowBranchSettings((prev) => !prev)}
-                              disabled={showShareModal}
-                              className="relative z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                               aria-label="Branch settings"
                               aria-expanded={showBranchSettings}
                             >
