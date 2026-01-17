@@ -1229,14 +1229,14 @@ describe('WorkspaceClient', () => {
     window.getSelection = () =>
       ({
         isCollapsed: false,
-        toString: () => 'All tasks queued.',
-        anchorNode: assistantMessage.firstChild,
-        focusNode: assistantMessage.firstChild
+        toString: () => assistantMessage.textContent ?? '',
+        anchorNode: assistantMessage,
+        focusNode: assistantMessage
       }) as unknown as Selection;
 
     try {
       document.dispatchEvent(new Event('selectionchange'));
-      document.dispatchEvent(new Event('mouseup'));
+      assistantMessage.dispatchEvent(new Event('mouseup'));
 
       const questionButton = await screen.findByRole('button', { name: 'Ask a question on a new branch' });
       await user.click(questionButton);
@@ -1245,7 +1245,7 @@ describe('WorkspaceClient', () => {
       expect(modal).toBeInTheDocument();
 
       await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
-      await user.type(await screen.findByLabelText('Question'), 'What should we do next?');
+      await user.type(await within(modal).findByLabelText('Question'), 'What should we do next?');
 
       await user.click(screen.getByTestId('branch-form-modal-submit'));
     } finally {
