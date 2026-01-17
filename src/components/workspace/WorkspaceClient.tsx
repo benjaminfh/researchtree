@@ -734,6 +734,7 @@ export function WorkspaceClient({
   const [pendingShareIds, setPendingShareIds] = useState<Set<string>>(new Set());
   const [isReleasingLease, setIsReleasingLease] = useState(false);
   const [showBranchSettings, setShowBranchSettings] = useState(false);
+  const [openBranchMenu, setOpenBranchMenu] = useState<string | null>(null);
   const branchSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const branchSettingsPopoverRef = useRef<HTMLDivElement | null>(null);
   const [artefactDraft, setArtefactDraft] = useState('');
@@ -876,7 +877,7 @@ export function WorkspaceClient({
   const ensureLeaseSessionReady = useCallback(() => {
     if (!isPgMode) return true;
     if (!leaseSessionReady || !leaseSessionId) {
-      pushToast('error', 'Lease session is still initializing. Please try again in a moment.');
+      pushToast('error', 'Editing session is still initializing. Please try again in a moment.');
       return false;
     }
     return true;
@@ -1156,11 +1157,11 @@ export function WorkspaceClient({
         });
         if (!res.ok) {
           const data = await res.json().catch(() => null);
-          throw new Error(data?.error?.message ?? 'Failed to release lease');
+          throw new Error(data?.error?.message ?? 'Failed to unlock editing');
         }
         const data = (await res.json()) as { leases: RefLease[] };
         await mutateLeases(data, false);
-        pushToast('success', 'Lease released.');
+        pushToast('success', 'Edit lock released.');
       } catch (err) {
         pushToast('error', (err as Error).message);
       } finally {
@@ -1241,12 +1242,12 @@ export function WorkspaceClient({
     async ({ content, ref }: { content: string; ref: string }) => {
       if (isPgMode) {
         if (!leaseSessionReady || !leaseSessionId) {
-          setArtefactError('Lease session is still initializing. Please try again.');
+          setArtefactError('Editing session is still initializing. Please try again.');
           return false;
         }
         const { lease } = getLeaseForBranchName(ref);
         if (lease && lease.holderSessionId !== leaseSessionId) {
-          setArtefactError('Branch is locked for editing.');
+          setArtefactError('Editing locked. Editor access required.');
           return false;
         }
       }
@@ -1528,9 +1529,9 @@ export function WorkspaceClient({
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
   const leaseStatusError =
     isPgMode && !leaseSessionReady
-      ? 'Initializing lease session…'
+      ? 'Initializing editing session…'
       : isBranchWriteLocked
-        ? 'Branch is locked for editing.'
+        ? 'Editing locked. Editor access required.'
         : null;
   const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
   const composerDisabled = state.isStreaming || isBranchWriteLocked || (isPgMode && !leaseSessionReady);
@@ -1557,7 +1558,7 @@ export function WorkspaceClient({
       return;
     }
     if (isBranchWriteLocked) {
-      pushToast('error', 'Branch is locked for editing.');
+      pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
     shouldScrollToBottomRef.current = true;
@@ -1691,7 +1692,7 @@ export function WorkspaceClient({
     if (isPgMode) {
       const { lease } = getLeaseForBranchName(targetBranch);
       if (lease && lease.holderSessionId !== leaseSessionId) {
-        pushToast('error', 'Branch is locked for editing.');
+        pushToast('error', 'Editing locked. Editor access required.');
         return;
       }
     }
@@ -2459,6 +2460,26 @@ export function WorkspaceClient({
   }, [showBranchSettings]);
 
   useEffect(() => {
+    if (!openBranchMenu) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-branch-menu]')) return;
+      setOpenBranchMenu(null);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenBranchMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [openBranchMenu]);
+
+  useEffect(() => {
     if (!showMergeModal) {
       setMergePreview(null);
       setMergePreviewError(null);
@@ -2824,12 +2845,12 @@ export function WorkspaceClient({
 
   const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
     if (!ensureLeaseSessionReady()) {
-      throw new Error('Lease session is still initializing.');
+      throw new Error('Editing session is still initializing.');
     }
     if (isPgMode) {
       const { lease } = getLeaseForBranchName(targetBranch);
       if (lease && lease.holderSessionId !== leaseSessionId) {
-        throw new Error('Branch is locked for editing.');
+        throw new Error('Editing locked. Editor access required.');
       }
     }
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
@@ -3026,7 +3047,7 @@ export function WorkspaceClient({
       if (isPgMode) {
         const { lease } = getLeaseForBranchName(targetBranch);
         if (lease && lease.holderSessionId !== leaseSessionId) {
-          pushToast('error', 'Branch is locked for editing.');
+          pushToast('error', 'Editing locked. Editor access required.');
           onFailure?.();
           return;
         }
@@ -3283,7 +3304,7 @@ export function WorkspaceClient({
     if (isPgMode) {
       const { lease } = getLeaseForBranchName(renameTarget.name);
       if (lease && lease.holderSessionId !== leaseSessionId) {
-        setRenameError('Branch is locked for editing.');
+        setRenameError('Editing locked. Editor access required.');
         return;
       }
     }
@@ -3603,6 +3624,10 @@ export function WorkspaceClient({
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       const visibilityDisabled =
                         isSwitching || isCreating || visibilityPending || isGhost || (!isHidden && isActiveBranch);
+                      const { lease: branchLease } = getLeaseForBranchName(branch.name);
+                      const branchLeaseHeldBySession = Boolean(branchLease && branchLease.holderSessionId === leaseSessionId);
+                      const branchLeaseLocked = Boolean(branchLease && branchLease.holderSessionId !== leaseSessionId);
+                      const branchMenuOpen = openBranchMenu === branch.name;
                       return (
                         <div
                           key={branch.name}
@@ -3654,66 +3679,126 @@ export function WorkspaceClient({
                                 <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                               ) : null}
                             </span>
-                            <span className="inline-flex items-center gap-1">
+                            <span className="relative inline-flex items-center gap-1" data-branch-menu data-branch-menu-name={branch.name}>
                               <button
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  void togglePinnedBranch(branch);
+                                  setOpenBranchMenu((prev) => (prev === branch.name ? null : branch.name));
                                 }}
-                                disabled={isSwitching || isCreating || pinPending || isGhost}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                  isSwitching || isCreating || pinPending || isGhost ? 'cursor-not-allowed' : 'hover:bg-primary/10'
-                                } ${branch.isPinned ? 'text-red-600 hover:text-red-700' : 'text-slate-400 hover:text-slate-600'}`}
-                                aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-500 shadow-sm transition hover:bg-primary/10 hover:text-slate-700"
+                                aria-label={`Branch options for ${displayBranchName(branch.name)}`}
+                                aria-expanded={branchMenuOpen}
                               >
-                                {pinPending ? (
-                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                ) : (
-                                  <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
-                                )}
+                                <BlueprintIcon icon="cog" className="h-3.5 w-3.5" />
                               </button>
-                              <span
-                                title={!isHidden && isActiveBranch ? 'Cannot hide the current branch.' : undefined}
-                                className="inline-flex"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void toggleBranchVisibility(branch);
-                                  }}
-                                  disabled={visibilityDisabled}
-                                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                    visibilityDisabled
-                                      ? 'cursor-not-allowed text-slate-300'
-                                      : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
-                                  }`}
-                                  aria-label={isHidden ? 'Show branch' : 'Hide branch'}
-                                >
-                                  {visibilityPending ? (
-                                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                  ) : (
-                                    <BlueprintIcon icon={isHidden ? 'eye-off' : 'eye-open'} className="h-3.5 w-3.5" />
-                                  )}
-                                </button>
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openRenameModal(branch);
-                                }}
-                                disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                  branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost
-                                    ? 'cursor-not-allowed text-slate-300'
-                                    : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
-                                }`}
-                                aria-label="Rename branch"
-                              >
-                                <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
-                              </button>
+                              {branchMenuOpen ? (
+                                <div className="absolute left-full top-1/2 z-40 ml-2 flex w-10 -translate-y-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 py-2 text-slate-700 shadow-lg backdrop-blur">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void togglePinnedBranch(branch);
+                                      setOpenBranchMenu(null);
+                                    }}
+                                    disabled={isSwitching || isCreating || pinPending || isGhost}
+                                    title={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                    aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                      isSwitching || isCreating || pinPending || isGhost
+                                        ? 'cursor-not-allowed text-slate-300'
+                                        : branch.isPinned
+                                          ? 'text-red-600 hover:bg-red-50'
+                                          : 'text-slate-600 hover:bg-primary/10'
+                                    }`}
+                                  >
+                                    {pinPending ? (
+                                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                    ) : (
+                                      <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void toggleBranchVisibility(branch);
+                                      setOpenBranchMenu(null);
+                                    }}
+                                    disabled={visibilityDisabled}
+                                    title={
+                                      visibilityDisabled && !isHidden && isActiveBranch
+                                        ? 'Cannot hide the current branch'
+                                        : isHidden
+                                          ? 'Show branch'
+                                          : 'Hide branch'
+                                    }
+                                    aria-label={isHidden ? 'Show branch' : 'Hide branch'}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                      visibilityDisabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-600 hover:bg-primary/10'
+                                    }`}
+                                  >
+                                    {visibilityPending ? (
+                                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                    ) : (
+                                      <BlueprintIcon icon={isHidden ? 'eye-open' : 'eye-off'} className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void releaseLease({
+                                        refId: branch.id!,
+                                        force: !branchLeaseHeldBySession && Boolean(project.isOwner)
+                                      });
+                                      setOpenBranchMenu(null);
+                                    }}
+                                    disabled={
+                                      isReleasingLease ||
+                                      !branchLease ||
+                                      (!branchLeaseHeldBySession && !project.isOwner)
+                                    }
+                                    title={
+                                      !branchLease
+                                        ? 'No edit lock to release'
+                                        : branchLeaseHeldBySession
+                                          ? 'Release edit lock'
+                                          : project.isOwner
+                                            ? 'Force unlock editing'
+                                            : 'Editing locked elsewhere'
+                                    }
+                                    aria-label="Release edit lock"
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                      !branchLease || (!branchLeaseHeldBySession && !project.isOwner)
+                                        ? 'cursor-not-allowed text-slate-300'
+                                        : branchLeaseLocked && !project.isOwner
+                                          ? 'text-slate-300'
+                                          : 'text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openRenameModal(branch);
+                                      setOpenBranchMenu(null);
+                                    }}
+                                    disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
+                                    title="Rename branch"
+                                    aria-label="Rename branch"
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                      branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost
+                                        ? 'cursor-not-allowed text-slate-300'
+                                        : 'text-slate-600 hover:bg-primary/10'
+                                    }`}
+                                  >
+                                    <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : null}
                             </span>
                           </div>
                         </div>
@@ -4037,8 +4122,8 @@ export function WorkspaceClient({
                         {isPgMode && leaseLocked ? (
                           <div
                             className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-amber-50 text-amber-700 shadow-sm"
-                            aria-label="Branch locked for editing"
-                            title="Branch locked for editing"
+                            aria-label="Editing locked (editor access required)"
+                            title="Editing locked (editor access required)"
                           >
                             <BlueprintIcon icon="lock" className="h-4 w-4" />
                           </div>
@@ -4113,7 +4198,7 @@ export function WorkspaceClient({
                             {showBranchSettings ? (
                               <div
                                 ref={branchSettingsPopoverRef}
-                                className="absolute left-1/2 bottom-0 z-40 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 py-2 text-slate-700 shadow-lg backdrop-blur"
+                                className="absolute left-1/2 bottom-0 z-40 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 pb-[44px] pt-2 text-slate-700 shadow-lg backdrop-blur"
                                 role="dialog"
                                 aria-label="Branch settings"
                               >
@@ -4133,12 +4218,12 @@ export function WorkspaceClient({
                                   }
                                   title={
                                     !activeBranchLease
-                                      ? 'No lease to release'
+                                      ? 'No edit lock to release'
                                       : leaseHeldBySession
-                                        ? 'Release lease'
+                                        ? 'Release edit lock'
                                         : project.isOwner
-                                          ? 'Force release lease'
-                                          : 'Lease held by another user'
+                                          ? 'Force unlock editing'
+                                          : 'Editing locked elsewhere'
                                   }
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
@@ -4155,23 +4240,6 @@ export function WorkspaceClient({
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <BlueprintIcon icon="pin" className="h-4 w-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void toggleBranchVisibility(activeBranch);
-                                    closeBranchSettings();
-                                  }}
-                                  disabled={
-                                    isSwitching ||
-                                    isCreating ||
-                                    pendingVisibilityBranchIds.has(activeBranch.id ?? activeBranch.name) ||
-                                    (branchName === activeBranch.name && !(activeBranch.isHidden ?? false))
-                                  }
-                                  title={activeBranch.isHidden ? 'Show branch' : 'Hide branch'}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <BlueprintIcon icon={activeBranch.isHidden ? 'eye-open' : 'eye-off'} className="h-4 w-4" />
                                 </button>
                                 <button
                                   type="button"
@@ -5184,11 +5252,11 @@ export function WorkspaceClient({
                     const { lease: sourceLease } = getLeaseForBranchName(branchName);
                     const { lease: targetLease } = getLeaseForBranchName(mergeTargetBranch);
                     if (sourceLease && sourceLease.holderSessionId !== leaseSessionId) {
-                      setMergeError('Source branch is locked for editing.');
+                      setMergeError('Source branch editing is locked. Editor access required.');
                       return;
                     }
                     if (targetLease && targetLease.holderSessionId !== leaseSessionId) {
-                      setMergeError('Target branch is locked for editing.');
+                      setMergeError('Target branch editing is locked. Editor access required.');
                       return;
                     }
                   }

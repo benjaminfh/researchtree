@@ -659,7 +659,9 @@ describe('WorkspaceClient', () => {
 
     const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
     expect(branchRow).toBeTruthy();
-    const toggle = within(branchRow as HTMLElement).getByRole('button', { name: 'Hide branch' });
+    const menuButton = within(branchRow as HTMLElement).getByRole('button', { name: /branch options/i });
+    await user.click(menuButton);
+    const toggle = screen.getByRole('button', { name: 'Hide branch' });
     await user.click(toggle);
 
     const visibilityCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/visibility'));
@@ -668,7 +670,8 @@ describe('WorkspaceClient', () => {
     expect(JSON.parse(init?.body as string)).toEqual({ isHidden: true });
 
     await waitFor(() => {
-      expect(within(branchRow as HTMLElement).getByRole('button', { name: 'Show branch' })).toBeInTheDocument();
+      await user.click(menuButton);
+      expect(screen.getByRole('button', { name: 'Show branch' })).toBeInTheDocument();
     });
     expect((branchRow as HTMLElement).textContent?.toLowerCase()).not.toContain('hidden');
   });
