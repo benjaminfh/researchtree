@@ -226,16 +226,35 @@ const NodeBubble: FC<{
 
   const measureUserMessageOverflow = useCallback(() => {
     if (!isUser || !messageText) return;
-    if (isUserMessageExpanded) return;
     const element = userMessageRef.current;
     if (!element) return;
+
+    const prevDisplay = element.style.display;
+    const prevOrient = element.style.webkitBoxOrient;
+    const prevClamp = element.style.webkitLineClamp;
+    const prevOverflow = element.style.overflow;
+
+    element.style.display = '-webkit-box';
+    element.style.webkitBoxOrient = 'vertical';
+    element.style.webkitLineClamp = String(USER_MESSAGE_MAX_LINES);
+    element.style.overflow = 'hidden';
+
     const isOverflowing = element.scrollHeight > element.clientHeight + 1;
+
+    element.style.display = prevDisplay;
+    element.style.webkitBoxOrient = prevOrient;
+    element.style.webkitLineClamp = prevClamp;
+    element.style.overflow = prevOverflow;
+
     setCanExpandUserMessage(isOverflowing);
+    if (!isOverflowing && isUserMessageExpanded) {
+      setIsUserMessageExpanded(false);
+    }
   }, [isUser, messageText, isUserMessageExpanded]);
 
   useLayoutEffect(() => {
     measureUserMessageOverflow();
-    if (!isUser || !messageText || isUserMessageExpanded) return;
+    if (!isUser || !messageText) return;
     const element = userMessageRef.current;
     if (!element) return;
 
