@@ -96,7 +96,7 @@ export function RailPopover({
   return (
     <div
       ref={popoverRef}
-      style={popoverStyle}
+      style={{ position: 'fixed', ...popoverStyle }}
       className={[
         'z-50 overflow-y-auto rounded-2xl border border-divider/80 bg-white/95 shadow-lg backdrop-blur',
         'transition-opacity',
