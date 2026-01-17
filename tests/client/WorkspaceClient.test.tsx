@@ -243,6 +243,59 @@ describe('WorkspaceClient', () => {
     expect(bold.tagName).toBe('STRONG');
   });
 
+  it('stars a message node and updates the stars API', async () => {
+    const user = userEvent.setup();
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches: baseBranches,
+            trunkName: 'main',
+            currentBranch: baseProject.branchName,
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes.slice(0, 2)
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/stars') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ starredNodeIds: ['node-user'] }), { status: 200 });
+      }
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+
+    const messageRow = screen.getByText('How is progress going?').closest('article');
+    expect(messageRow).toBeTruthy();
+    const starButton = within(messageRow as HTMLElement).getByRole('button', { name: 'Star node' });
+    await user.click(starButton);
+
+    const starCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/stars') && call[1]?.method === 'POST');
+    expect(starCall).toBeTruthy();
+    expect(JSON.parse(starCall?.[1]?.body as string)).toEqual({ nodeId: 'node-user' });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Unstar node' }).length).toBeGreaterThan(0);
+    });
+  });
+
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
@@ -614,6 +667,138 @@ describe('WorkspaceClient', () => {
       expect(within(branchRow as HTMLElement).getByRole('button', { name: 'Show branch' })).toBeInTheDocument();
     });
     expect((branchRow as HTMLElement).textContent?.toLowerCase()).not.toContain('hidden');
+  });
+
+  it('pins a branch from the rail and updates the pin API', async () => {
+    const user = userEvent.setup();
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+    ];
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches,
+            trunkName: 'main',
+            currentBranch: 'main',
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/branches/') && url.includes('/pin') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            branchName: 'main',
+            branches: [
+              branches[0],
+              { ...branches[1], isPinned: true }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
+    expect(branchRow).toBeTruthy();
+    const pinButton = within(branchRow as HTMLElement).getByRole('button', { name: 'Pin branch' });
+    await user.click(pinButton);
+
+    const pinCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/pin') && call[1]?.method === 'POST');
+    expect(pinCall).toBeTruthy();
+
+    await waitFor(() => {
+      expect(within(branchRow as HTMLElement).getByRole('button', { name: 'Unpin branch' })).toBeInTheDocument();
+    });
+  });
+
+  it('renames a branch from the rail and calls the rename API', async () => {
+    const user = userEvent.setup();
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+    ];
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches,
+            trunkName: 'main',
+            currentBranch: 'main',
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/branches/feature%2Fphase-2') && init?.method === 'PATCH') {
+        return new Response(
+          JSON.stringify({
+            branchName: 'feature/renamed',
+            branches: [
+              branches[0],
+              { ...branches[1], name: 'feature/renamed' }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
+    expect(branchRow).toBeTruthy();
+    const renameButton = within(branchRow as HTMLElement).getByRole('button', { name: 'Rename branch' });
+    await user.click(renameButton);
+
+    const modal = await screen.findByTestId('rename-modal');
+    await user.clear(within(modal).getByTestId('rename-branch-name'));
+    await user.type(within(modal).getByTestId('rename-branch-name'), 'feature/renamed');
+    await user.click(within(modal).getByRole('button', { name: 'Rename' }));
+
+    const renameCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/branches/feature%2Fphase-2') && call[1]?.method === 'PATCH');
+    expect(renameCall).toBeTruthy();
+    expect(JSON.parse(renameCall?.[1]?.body as string)).toEqual({ name: 'feature/renamed' });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('rename-modal')).not.toBeInTheDocument();
+    });
   });
 
   it('keeps provider/thinking pinned to branch when switching branches', async () => {
