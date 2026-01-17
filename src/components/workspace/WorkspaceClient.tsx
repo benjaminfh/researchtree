@@ -3736,32 +3736,8 @@ export function WorkspaceClient({
                                     open={branchMenuOpen}
                                     anchorRef={branchMenuAnchorRef}
                                     ariaLabel={`Branch actions for ${displayBranchName(branch.name)}`}
-                                    className="flex w-auto items-center gap-2 p-2"
+                                    className="flex h-11 w-auto items-center gap-2 rounded-full px-2 py-1.5"
                                   >
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void togglePinnedBranch(branch);
-                                        setOpenBranchMenu(null);
-                                      }}
-                                    disabled={isSwitching || isCreating || pinPending || isGhost}
-                                    title={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                                    aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
-                                      isSwitching || isCreating || pinPending || isGhost
-                                        ? 'cursor-not-allowed text-slate-300'
-                                        : branch.isPinned
-                                          ? 'text-red-600 hover:bg-red-50'
-                                          : 'text-slate-600 hover:bg-primary/10'
-                                    }`}
-                                  >
-                                      {pinPending ? (
-                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                      ) : (
-                                        <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
-                                      )}
-                                    </button>
                                     <button
                                       type="button"
                                       onClick={(event) => {
@@ -3822,6 +3798,30 @@ export function WorkspaceClient({
                                     }`}
                                   >
                                     <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void togglePinnedBranch(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
+                                      disabled={isSwitching || isCreating || pinPending || isGhost}
+                                      title={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                      aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                        isSwitching || isCreating || pinPending || isGhost
+                                          ? 'cursor-not-allowed text-slate-300'
+                                          : branch.isPinned
+                                            ? 'text-red-600 hover:bg-red-50'
+                                            : 'text-slate-600 hover:bg-primary/10'
+                                      }`}
+                                    >
+                                      {pinPending ? (
+                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                      ) : (
+                                        <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                      )}
                                     </button>
                                     <button
                                       type="button"
@@ -4277,18 +4277,6 @@ export function WorkspaceClient({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    void togglePinnedBranch(activeBranch);
-                                    closeBranchSettings();
-                                  }}
-                                  disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
-                                  title={activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <BlueprintIcon icon="pin" className="h-4 w-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
                                     openRenameModal(activeBranch);
                                     closeBranchSettings();
                                   }}
@@ -4297,6 +4285,18 @@ export function WorkspaceClient({
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <BlueprintIcon icon="edit" className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void togglePinnedBranch(activeBranch);
+                                    closeBranchSettings();
+                                  }}
+                                  disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
+                                  title={activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon="pin" className="h-4 w-4" />
                                 </button>
                               </div>
                             ) : null}
