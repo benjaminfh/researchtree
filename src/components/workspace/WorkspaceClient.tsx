@@ -4034,45 +4034,6 @@ export function WorkspaceClient({
 
                     {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBranchActionError(null);
-                            resetBranchQuestionState();
-                            setBranchSplitNodeId(latestVisibleNodeId);
-                            setShowNewBranchModal(true);
-                          }}
-                          disabled={isCreating || isSwitching}
-                          className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
-                          aria-label="Show branch creator"
-                          data-testid="branch-new-button"
-                        >
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                            <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
-                          </span>
-                            New branch
-                          </button>
-
-                        {sortedBranches.length > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMergeError(null);
-                              setMergeSummary('');
-                              setMergeTargetBranch(trunkName);
-                              setShowMergeModal(true);
-                            }}
-                            disabled={isMerging}
-                            className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
-                            data-testid="merge-open-button"
-                          >
-                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                              <BlueprintIcon icon="git-merge" className="h-4 w-4" />
-                            </span>
-                            Merge…
-                          </button>
-                        ) : null}
-
                         {isPgMode && leaseLocked ? (
                           <div
                             className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-amber-50 text-amber-700 shadow-sm"
@@ -4086,6 +4047,9 @@ export function WorkspaceClient({
                         <button
                           type="button"
                           onClick={() => {
+                            setBranchActionError(null);
+                            resetBranchQuestionState();
+                            setBranchSplitNodeId(latestVisibleNodeId);
                             setShowNewBranchModal(true);
                           }}
                           disabled={isCreating || isSwitching}
