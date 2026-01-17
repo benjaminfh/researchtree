@@ -106,6 +106,7 @@ describe('WorkspaceClient', () => {
   let mutateHistoryMock: ReturnType<typeof vi.fn>;
   let mutateArtefactMock: ReturnType<typeof vi.fn>;
   let sendMessageMock: ReturnType<typeof vi.fn>;
+  let sendStreamRequestMock: ReturnType<typeof vi.fn>;
   let interruptMock: ReturnType<typeof vi.fn>;
   let chatState: { isStreaming: boolean; error: string | null };
   let capturedChatOptions: Parameters<typeof useChatStream>[0] | null;
@@ -115,6 +116,7 @@ describe('WorkspaceClient', () => {
     mutateHistoryMock = vi.fn().mockResolvedValue(undefined);
     mutateArtefactMock = vi.fn().mockResolvedValue(undefined);
     sendMessageMock = vi.fn().mockResolvedValue(undefined);
+    sendStreamRequestMock = vi.fn().mockResolvedValue(undefined);
     interruptMock = vi.fn().mockResolvedValue(undefined);
     chatState = { isStreaming: false, error: null };
     capturedChatOptions = null;
@@ -136,6 +138,7 @@ describe('WorkspaceClient', () => {
       capturedChatOptions = options;
       return {
         sendMessage: sendMessageMock,
+        sendStreamRequest: sendStreamRequestMock,
         interrupt: interruptMock,
         state: chatState
       };
@@ -1169,5 +1172,164 @@ describe('WorkspaceClient', () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith('How is progress going?');
     });
+  });
+
+  it('queues a branch question from a selected assistant highlight', async () => {
+    const user = userEvent.setup();
+
+    const emptyStream = new ReadableStream({
+      start(controller) {
+        controller.close();
+      }
+    });
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches: baseBranches,
+            trunkName: 'main',
+            currentBranch: baseProject.branchName,
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/branch-question')) {
+        return new Response(emptyStream, { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    const assistantMessage = await screen.findByText('All tasks queued.');
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(assistantMessage);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    const questionButton = await screen.findByRole('button', { name: 'Ask a question on a new branch' });
+    await user.click(questionButton);
+
+    const modal = await screen.findByTestId('branch-modal');
+    expect(modal).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
+    await user.type(screen.getByLabelText('Question'), 'What should we do next?');
+
+    await user.click(screen.getByTestId('branch-form-modal-submit'));
+
+    await waitFor(() => {
+      const questionCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/branch-question'));
+      expect(questionCall).toBeTruthy();
+      const [, init] = questionCall as [RequestInfo | URL, RequestInit];
+      expect(init?.method).toBe('POST');
+      const payload = JSON.parse(init?.body as string);
+      expect(payload).toMatchObject({
+        name: 'feature/question-branch',
+        fromRef: 'feature/phase-2',
+        fromNodeId: 'node-assistant',
+        question: 'What should we do next?',
+        highlight: 'All tasks queued.',
+        switch: false
+      });
+    });
+  });
+
+  it('queues an edit task when saving without switching branches', async () => {
+    const user = userEvent.setup();
+
+    const emptyStream = new ReadableStream({
+      start(controller) {
+        controller.close();
+      }
+    });
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/edit-stream')) {
+        return new Response(emptyStream, { status: 200 });
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches: baseBranches,
+            trunkName: 'main',
+            currentBranch: baseProject.branchName,
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/phase-2': sampleNodes
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit message' });
+    await user.click(editButtons[0]);
+
+    const modal = await screen.findByTestId('edit-modal');
+    expect(modal).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('edit-branch-name'), 'feature/edit-branch');
+    await user.clear(screen.getByTestId('edit-content'));
+    await user.type(screen.getByTestId('edit-content'), 'Updated content for the branch');
+
+    const switchToggle = screen.getByRole('checkbox', { name: /switch to the new branch after creating/i });
+    await user.click(switchToggle);
+
+    await user.click(screen.getByTestId('edit-submit'));
+
+    await waitFor(() => {
+      const editCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/edit-stream'));
+      expect(editCall).toBeTruthy();
+      const [, init] = editCall as [RequestInfo | URL, RequestInit];
+      expect(init?.method).toBe('POST');
+      const payload = JSON.parse(init?.body as string);
+      expect(payload).toMatchObject({
+        content: 'Updated content for the branch',
+        branchName: 'feature/edit-branch',
+        fromRef: 'feature/phase-2',
+        llmProvider: 'openai',
+        llmModel: 'gpt-5.2',
+        thinking: getDefaultThinkingSetting('openai', 'gpt-5.2'),
+        nodeId: 'node-user'
+      });
+    });
+
+    expect(await screen.findByText('Edit queued for feature/edit-branch.')).toBeInTheDocument();
   });
 });
