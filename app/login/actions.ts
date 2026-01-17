@@ -6,7 +6,6 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
 import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
 import { getRequestOrigin } from '@/src/server/requestOrigin';
-import { getPasswordPolicyError } from '@/src/utils/passwordPolicy';
 
 type AuthActionState = { error: string | null; mode?: 'signIn' | 'signUp' | null };
 
@@ -38,15 +37,6 @@ export async function signInWithPassword(_prevState: AuthActionState, formData: 
 
   if (!email || !password) {
     return { error: 'Email and password are required.' };
-  }
-  const policyError = validatePasswordPolicy(password);
-  if (policyError) {
-    return { error: policyError };
-  }
-
-  const passwordError = getPasswordPolicyError(password);
-  if (passwordError) {
-    return { error: passwordError };
   }
 
   try {
