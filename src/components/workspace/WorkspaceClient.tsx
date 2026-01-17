@@ -4243,7 +4243,7 @@ export function WorkspaceClient({
                             {showBranchSettings ? (
                               <div
                                 ref={branchSettingsPopoverRef}
-                                className="absolute left-1/2 bottom-0 z-50 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 py-2 text-slate-700 shadow-lg backdrop-blur"
+                                className="absolute left-1/2 bottom-full z-50 mb-2 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 py-2 text-slate-700 shadow-lg backdrop-blur"
                                 role="dialog"
                                 aria-label="Branch settings"
                               >
