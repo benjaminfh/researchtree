@@ -21,6 +21,9 @@ export const AUTO_FOLLOW_RESUME_DELAY_MS = Number.isFinite(autoFollowDelay) ? au
 const defaultComposerLines = Number(process.env.NEXT_PUBLIC_RT_CHAT_COMPOSER_DEFAULT_LINES ?? 2);
 const resolvedComposerLines = Number.isFinite(defaultComposerLines) ? Math.floor(defaultComposerLines) : 2;
 export const CHAT_COMPOSER_DEFAULT_LINES = Math.min(9, Math.max(1, resolvedComposerLines));
+const defaultUserMessageLines = Number(process.env.NEXT_PUBLIC_RT_USER_MESSAGE_MAX_LINES ?? 6);
+const resolvedUserMessageLines = Number.isFinite(defaultUserMessageLines) ? Math.floor(defaultUserMessageLines) : 6;
+export const USER_MESSAGE_MAX_LINES = Math.min(20, Math.max(1, resolvedUserMessageLines));
 
 export function storageKey(suffix: string): string {
   return `${APP_SLUG}:${suffix}`;

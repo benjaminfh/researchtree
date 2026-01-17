@@ -13,7 +13,13 @@ import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import { AUTO_FOLLOW_RESUME_DELAY_MS, CHAT_COMPOSER_DEFAULT_LINES, storageKey, TRUNK_LABEL } from '@/src/config/app';
+import {
+  AUTO_FOLLOW_RESUME_DELAY_MS,
+  CHAT_COMPOSER_DEFAULT_LINES,
+  storageKey,
+  TRUNK_LABEL,
+  USER_MESSAGE_MAX_LINES
+} from '@/src/config/app';
 import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 import {
   deriveTextFromBlocks,
@@ -174,6 +180,9 @@ const NodeBubble: FC<{
   const canCopy = node.type === 'message' && messageText.length > 0;
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
+  const [canExpandUserMessage, setCanExpandUserMessage] = useState(false);
+  const userMessageRef = useRef<HTMLParagraphElement | null>(null);
   const [showCanvasDiff, setShowCanvasDiff] = useState(false);
   const [confirmPinCanvasDiff, setConfirmPinCanvasDiff] = useState(false);
   const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
@@ -209,6 +218,71 @@ const NodeBubble: FC<{
       }
     };
   }, []);
+
+  useEffect(() => {
+    setIsUserMessageExpanded(false);
+    setCanExpandUserMessage(false);
+  }, [node.id, messageText]);
+
+  const measureUserMessageOverflow = useCallback(() => {
+    if (!isUser || !messageText) return;
+    const element = userMessageRef.current;
+    if (!element) return;
+
+    const prevDisplay = element.style.display;
+    const prevOrient = element.style.webkitBoxOrient;
+    const prevClamp = element.style.webkitLineClamp;
+    const prevOverflow = element.style.overflow;
+
+    element.style.display = '-webkit-box';
+    element.style.webkitBoxOrient = 'vertical';
+    element.style.webkitLineClamp = String(USER_MESSAGE_MAX_LINES);
+    element.style.overflow = 'hidden';
+
+    const isOverflowing = element.scrollHeight > element.clientHeight + 1;
+
+    element.style.display = prevDisplay;
+    element.style.webkitBoxOrient = prevOrient;
+    element.style.webkitLineClamp = prevClamp;
+    element.style.overflow = prevOverflow;
+
+    setCanExpandUserMessage(isOverflowing);
+    if (!isOverflowing && isUserMessageExpanded) {
+      setIsUserMessageExpanded(false);
+    }
+  }, [isUser, messageText, isUserMessageExpanded]);
+
+  useLayoutEffect(() => {
+    measureUserMessageOverflow();
+    if (!isUser || !messageText) return;
+    const element = userMessageRef.current;
+    if (!element) return;
+
+    let rafId: number | null = null;
+    const scheduleMeasurement = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        measureUserMessageOverflow();
+      });
+    };
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleMeasurement) : null;
+    if (resizeObserver) {
+      resizeObserver.observe(element);
+    }
+    window.addEventListener('resize', scheduleMeasurement);
+
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduleMeasurement);
+    };
+  }, [isUser, messageText, isUserMessageExpanded, measureUserMessageOverflow]);
 
   return (
     <article className={`flex flex-col gap-1 ${align} ${containerWidth}`}>
@@ -255,7 +329,34 @@ const NodeBubble: FC<{
               <MarkdownWithCopy content={messageText} />
             </div>
           ) : (
-            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{messageText}</p>
+            <div className="mt-2 flex flex-col">
+              <p
+                ref={userMessageRef}
+                className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-800"
+                style={
+                  isUserMessageExpanded
+                    ? undefined
+                    : {
+                        display: '-webkit-box',
+                        WebkitBoxOrient: 'vertical',
+                        WebkitLineClamp: USER_MESSAGE_MAX_LINES,
+                        overflow: 'hidden'
+                      }
+                }
+              >
+                {messageText}
+              </p>
+              {canExpandUserMessage ? (
+                <button
+                  type="button"
+                  onClick={() => setIsUserMessageExpanded((prev) => !prev)}
+                  className="mt-2 self-end text-xs font-semibold text-primary transition hover:text-primary/80"
+                  aria-label={isUserMessageExpanded ? 'Collapse message' : 'Expand message'}
+                >
+                  {isUserMessageExpanded ? 'See less' : 'See more'}
+                </button>
+              ) : null}
+            </div>
           )
         ) : null}
         {node.type === 'state' ? <p className="mt-2 text-sm font-medium text-slate-700">Canvas updated</p> : null}
