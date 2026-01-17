@@ -1225,24 +1225,32 @@ describe('WorkspaceClient', () => {
     await user.click(await screen.findByRole('button', { name: /^show$/i }));
 
     const assistantMessage = await screen.findByText('All tasks queued.');
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(assistantMessage);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    document.dispatchEvent(new Event('selectionchange'));
-    document.dispatchEvent(new Event('mouseup'));
+    const originalGetSelection = window.getSelection.bind(window);
+    window.getSelection = () =>
+      ({
+        isCollapsed: false,
+        toString: () => 'All tasks queued.',
+        anchorNode: assistantMessage.firstChild,
+        focusNode: assistantMessage.firstChild
+      }) as unknown as Selection;
 
-    const questionButton = await screen.findByRole('button', { name: 'Ask a question on a new branch' });
-    await user.click(questionButton);
+    try {
+      document.dispatchEvent(new Event('selectionchange'));
+      document.dispatchEvent(new Event('mouseup'));
 
-    const modal = await screen.findByTestId('branch-modal');
-    expect(modal).toBeInTheDocument();
+      const questionButton = await screen.findByRole('button', { name: 'Ask a question on a new branch' });
+      await user.click(questionButton);
 
-    await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
-    await user.type(screen.getByPlaceholderText('What do you want to ask on this branch?'), 'What should we do next?');
+      const modal = await screen.findByTestId('branch-modal');
+      expect(modal).toBeInTheDocument();
 
-    await user.click(screen.getByTestId('branch-form-modal-submit'));
+      await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
+      await user.type(await screen.findByLabelText('Question'), 'What should we do next?');
+
+      await user.click(screen.getByTestId('branch-form-modal-submit'));
+    } finally {
+      window.getSelection = originalGetSelection;
+    }
 
     await waitFor(() => {
       const questionCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/branch-question'));
