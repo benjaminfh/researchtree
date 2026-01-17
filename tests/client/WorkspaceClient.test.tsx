@@ -455,7 +455,8 @@ describe('WorkspaceClient', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: /merge/i }));
+    const [mergeOpenButton] = screen.getAllByTestId('merge-open-button');
+    await user.click(mergeOpenButton);
     expect(await screen.findByText(/merge summary/i)).toBeInTheDocument();
     expect(screen.getAllByText('Branch final payload.')).toHaveLength(2);
 

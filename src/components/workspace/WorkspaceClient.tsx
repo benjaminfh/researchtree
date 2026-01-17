@@ -4110,81 +4110,83 @@ export function WorkspaceClient({
                             >
                               <BlueprintIcon icon="cog" className="h-4 w-4" />
                             </button>
-                            <RailPopover
-                              open={showBranchSettings}
-                              anchorRef={branchSettingsButtonRef}
-                              ariaLabel="Branch settings"
-                              className="w-[260px] p-4 text-xs text-slate-700"
-                            >
-                              <div ref={branchSettingsPopoverRef} className="space-y-3">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="font-semibold text-slate-900">{displayBranchName(activeBranch.name)}</span>
-                                  <button
-                                    type="button"
-                                    onClick={closeBranchSettings}
-                                    className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
-                                  >
-                                    Close
-                                  </button>
-                                </div>
-                                {activeBranchLease ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void releaseLease({
-                                        refId: activeBranch.id!,
-                                        force: !leaseHeldBySession && Boolean(project.isOwner)
-                                      });
-                                      closeBranchSettings();
-                                    }}
-                                    disabled={isReleasingLease || (!leaseHeldBySession && !project.isOwner)}
-                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {leaseHeldBySession ? 'Release lease' : project.isOwner ? 'Force release' : 'Release lease'}
-                                  </button>
-                                ) : null}
-                                <div className="space-y-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void togglePinnedBranch(activeBranch);
-                                      closeBranchSettings();
-                                    }}
-                                    disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
-                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void toggleBranchVisibility(activeBranch);
-                                      closeBranchSettings();
-                                    }}
-                                    disabled={
-                                      isSwitching ||
-                                      isCreating ||
-                                      pendingVisibilityBranchIds.has(activeBranch.id ?? activeBranch.name) ||
-                                      (branchName === activeBranch.name && !(activeBranch.isHidden ?? false))
-                                    }
-                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {activeBranch.isHidden ? 'Show branch' : 'Hide branch'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      openRenameModal(activeBranch);
-                                      closeBranchSettings();
-                                    }}
-                                    disabled={activeBranch.isTrunk || isSwitching || isCreating || isRenaming}
-                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    Rename branch
-                                  </button>
-                                </div>
+                            {showBranchSettings ? (
+                              <div
+                                ref={branchSettingsPopoverRef}
+                                className="absolute left-1/2 top-full z-50 mt-2 flex -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 p-2 text-slate-700 shadow-lg backdrop-blur"
+                                role="dialog"
+                                aria-label="Branch settings"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void releaseLease({
+                                      refId: activeBranch.id!,
+                                      force: !leaseHeldBySession && Boolean(project.isOwner)
+                                    });
+                                    closeBranchSettings();
+                                  }}
+                                  disabled={
+                                    isReleasingLease ||
+                                    !activeBranchLease ||
+                                    (!leaseHeldBySession && !project.isOwner)
+                                  }
+                                  title={
+                                    !activeBranchLease
+                                      ? 'No lease to release'
+                                      : leaseHeldBySession
+                                        ? 'Release lease'
+                                        : project.isOwner
+                                          ? 'Force release lease'
+                                          : 'Lease held by another user'
+                                  }
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon="unlock" className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void togglePinnedBranch(activeBranch);
+                                    closeBranchSettings();
+                                  }}
+                                  disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
+                                  title={activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon="pin" className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void toggleBranchVisibility(activeBranch);
+                                    closeBranchSettings();
+                                  }}
+                                  disabled={
+                                    isSwitching ||
+                                    isCreating ||
+                                    pendingVisibilityBranchIds.has(activeBranch.id ?? activeBranch.name) ||
+                                    (branchName === activeBranch.name && !(activeBranch.isHidden ?? false))
+                                  }
+                                  title={activeBranch.isHidden ? 'Show branch' : 'Hide branch'}
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon={activeBranch.isHidden ? 'eye-open' : 'eye-off'} className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    openRenameModal(activeBranch);
+                                    closeBranchSettings();
+                                  }}
+                                  disabled={activeBranch.isTrunk || isSwitching || isCreating || isRenaming}
+                                  title="Rename branch"
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon="edit" className="h-4 w-4" />
+                                </button>
                               </div>
-                            </RailPopover>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
