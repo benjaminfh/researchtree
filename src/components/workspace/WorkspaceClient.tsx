@@ -4104,7 +4104,7 @@ export function WorkspaceClient({
                               type="button"
                               ref={branchSettingsButtonRef}
                               onClick={() => setShowBranchSettings((prev) => !prev)}
-                              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                              className="relative z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
                               aria-label="Branch settings"
                               aria-expanded={showBranchSettings}
                             >
@@ -4113,7 +4113,7 @@ export function WorkspaceClient({
                             {showBranchSettings ? (
                               <div
                                 ref={branchSettingsPopoverRef}
-                                className="absolute left-1/2 top-full z-50 mt-2 flex -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 p-2 text-slate-700 shadow-lg backdrop-blur"
+                                className="absolute left-1/2 bottom-0 z-40 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 py-2 text-slate-700 shadow-lg backdrop-blur"
                                 role="dialog"
                                 aria-label="Branch settings"
                               >
@@ -4140,7 +4140,7 @@ export function WorkspaceClient({
                                           ? 'Force release lease'
                                           : 'Lease held by another user'
                                   }
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <BlueprintIcon icon="unlock" className="h-4 w-4" />
                                 </button>
@@ -4152,7 +4152,7 @@ export function WorkspaceClient({
                                   }}
                                   disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
                                   title={activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <BlueprintIcon icon="pin" className="h-4 w-4" />
                                 </button>
@@ -4169,7 +4169,7 @@ export function WorkspaceClient({
                                     (branchName === activeBranch.name && !(activeBranch.isHidden ?? false))
                                   }
                                   title={activeBranch.isHidden ? 'Show branch' : 'Hide branch'}
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <BlueprintIcon icon={activeBranch.isHidden ? 'eye-open' : 'eye-off'} className="h-4 w-4" />
                                 </button>
@@ -4181,7 +4181,7 @@ export function WorkspaceClient({
                                   }}
                                   disabled={activeBranch.isTrunk || isSwitching || isCreating || isRenaming}
                                   title="Rename branch"
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <BlueprintIcon icon="edit" className="h-4 w-4" />
                                 </button>
