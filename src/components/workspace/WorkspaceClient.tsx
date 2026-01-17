@@ -735,6 +735,7 @@ export function WorkspaceClient({
   const [isReleasingLease, setIsReleasingLease] = useState(false);
   const [showBranchSettings, setShowBranchSettings] = useState(false);
   const branchSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const branchSettingsPopoverRef = useRef<HTMLDivElement | null>(null);
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
@@ -1002,6 +1003,7 @@ export function WorkspaceClient({
   } = useSWR<{ starredNodeIds: string[] }>(`/api/projects/${project.id}/stars`, fetchJson, { revalidateOnFocus: true });
   const {
     data: shareData,
+    error: shareLoadError,
     mutate: mutateShare
   } = useSWR<{ members: ProjectMember[]; invites: ProjectInvite[] }>(
     canShare && showShareModal ? `/api/projects/${project.id}/members` : null,
@@ -2434,6 +2436,27 @@ export function WorkspaceClient({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!showBranchSettings) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (branchSettingsButtonRef.current?.contains(target)) return;
+      if (branchSettingsPopoverRef.current?.contains(target)) return;
+      setShowBranchSettings(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowBranchSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showBranchSettings]);
 
   useEffect(() => {
     if (!showMergeModal) {
@@ -4050,126 +4073,50 @@ export function WorkspaceClient({
                           </button>
                         ) : null}
 
-                        {activeBranch ? (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              ref={branchSettingsButtonRef}
-                              onClick={() => setShowBranchSettings((prev) => !prev)}
-                              className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
-                              aria-label="Branch settings"
-                              aria-expanded={showBranchSettings}
-                            >
-                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                                <BlueprintIcon icon="cog" className="h-4 w-4" />
-                              </span>
-                              Settings
-                              {isPgMode ? (
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                                    leaseHeldBySession
-                                      ? 'bg-emerald-100 text-emerald-700'
-                                      : leaseLocked
-                                        ? 'bg-amber-100 text-amber-700'
-                                        : 'bg-slate-100 text-slate-600'
-                                  }`}
-                                >
-                                  {leaseHeldBySession ? 'Editing' : leaseLocked ? 'Locked' : 'Available'}
-                                </span>
-                              ) : null}
-                            </button>
-                            <RailPopover
-                              open={showBranchSettings}
-                              anchorRef={branchSettingsButtonRef}
-                              ariaLabel="Branch settings"
-                              className="w-[260px] p-4 text-xs text-slate-700"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold text-slate-900">{displayBranchName(activeBranch.name)}</span>
-                                <button
-                                  type="button"
-                                  onClick={closeBranchSettings}
-                                  className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
-                                >
-                                  Close
-                                </button>
-                              </div>
-                              {isPgMode ? (
-                                <div className="mt-3 space-y-2 rounded-xl border border-divider/70 bg-white px-3 py-2">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="font-semibold text-slate-700">Lease</span>
-                                    <span
-                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                                        leaseHeldBySession
-                                          ? 'bg-emerald-100 text-emerald-700'
-                                          : leaseLocked
-                                            ? 'bg-amber-100 text-amber-700'
-                                            : 'bg-slate-100 text-slate-600'
-                                      }`}
-                                    >
-                                      {leaseHeldBySession ? 'Editing' : leaseLocked ? 'Locked' : 'Available'}
-                                    </span>
-                                  </div>
-                                  {activeBranchLease ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        void releaseLease({
-                                          refId: activeBranch.id!,
-                                          force: !leaseHeldBySession && Boolean(project.isOwner)
-                                        });
-                                        closeBranchSettings();
-                                      }}
-                                      disabled={isReleasingLease || (!leaseHeldBySession && !project.isOwner)}
-                                      className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                      {leaseHeldBySession ? 'Release lease' : project.isOwner ? 'Force release' : 'Release lease'}
-                                    </button>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                              <div className="mt-3 space-y-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void togglePinnedBranch(activeBranch);
-                                    closeBranchSettings();
-                                  }}
-                                  disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
-                                  className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void toggleBranchVisibility(activeBranch);
-                                    closeBranchSettings();
-                                  }}
-                                  disabled={
-                                    isSwitching ||
-                                    isCreating ||
-                                    pendingVisibilityBranchIds.has(activeBranch.id ?? activeBranch.name) ||
-                                    (branchName === activeBranch.name && !(activeBranch.isHidden ?? false))
-                                  }
-                                  className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {activeBranch.isHidden ? 'Show branch' : 'Hide branch'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    openRenameModal(activeBranch);
-                                    closeBranchSettings();
-                                  }}
-                                  disabled={activeBranch.isTrunk || isSwitching || isCreating || isRenaming}
-                                  className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  Rename branch
-                                </button>
-                              </div>
-                            </RailPopover>
+                        {isPgMode && leaseLocked ? (
+                          <div
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-amber-50 text-amber-700 shadow-sm"
+                            aria-label="Branch locked for editing"
+                            title="Branch locked for editing"
+                          >
+                            <BlueprintIcon icon="lock" className="h-4 w-4" />
                           </div>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNewBranchModal(true);
+                          }}
+                          disabled={isCreating || isSwitching}
+                          className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                          aria-label="Show branch creator"
+                          data-testid="branch-new-button"
+                        >
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                            <BlueprintIcon icon="git-new-branch" className="h-4 w-4" />
+                          </span>
+                          New branch
+                        </button>
+
+                        {sortedBranches.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMergeError(null);
+                              setMergeSummary('');
+                              setMergeTargetBranch(trunkName);
+                              setShowMergeModal(true);
+                            }}
+                            disabled={isMerging}
+                            className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                            data-testid="merge-open-button"
+                          >
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                              <BlueprintIcon icon="git-merge" className="h-4 w-4" />
+                            </span>
+                            Merge…
+                          </button>
                         ) : null}
 
                         {canShare ? (
@@ -4179,14 +4126,102 @@ export function WorkspaceClient({
                               setShareError(null);
                               setShowShareModal(true);
                             }}
-                            className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                            aria-label="Share workspace"
                             data-testid="share-open-button"
                           >
-                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                              <BlueprintIcon icon="share" className="h-4 w-4" />
-                            </span>
-                            Share
+                            <BlueprintIcon icon="share" className="h-4 w-4" />
                           </button>
+                        ) : null}
+
+                        {activeBranch ? (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              ref={branchSettingsButtonRef}
+                              onClick={() => setShowBranchSettings((prev) => !prev)}
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                              aria-label="Branch settings"
+                              aria-expanded={showBranchSettings}
+                            >
+                              <BlueprintIcon icon="cog" className="h-4 w-4" />
+                            </button>
+                            <RailPopover
+                              open={showBranchSettings}
+                              anchorRef={branchSettingsButtonRef}
+                              ariaLabel="Branch settings"
+                              className="w-[260px] p-4 text-xs text-slate-700"
+                            >
+                              <div ref={branchSettingsPopoverRef} className="space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold text-slate-900">{displayBranchName(activeBranch.name)}</span>
+                                  <button
+                                    type="button"
+                                    onClick={closeBranchSettings}
+                                    className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                                  >
+                                    Close
+                                  </button>
+                                </div>
+                                {activeBranchLease ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void releaseLease({
+                                        refId: activeBranch.id!,
+                                        force: !leaseHeldBySession && Boolean(project.isOwner)
+                                      });
+                                      closeBranchSettings();
+                                    }}
+                                    disabled={isReleasingLease || (!leaseHeldBySession && !project.isOwner)}
+                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {leaseHeldBySession ? 'Release lease' : project.isOwner ? 'Force release' : 'Release lease'}
+                                  </button>
+                                ) : null}
+                                <div className="space-y-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void togglePinnedBranch(activeBranch);
+                                      closeBranchSettings();
+                                    }}
+                                    disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
+                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void toggleBranchVisibility(activeBranch);
+                                      closeBranchSettings();
+                                    }}
+                                    disabled={
+                                      isSwitching ||
+                                      isCreating ||
+                                      pendingVisibilityBranchIds.has(activeBranch.id ?? activeBranch.name) ||
+                                      (branchName === activeBranch.name && !(activeBranch.isHidden ?? false))
+                                    }
+                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {activeBranch.isHidden ? 'Show branch' : 'Hide branch'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      openRenameModal(activeBranch);
+                                      closeBranchSettings();
+                                    }}
+                                    disabled={activeBranch.isTrunk || isSwitching || isCreating || isRenaming}
+                                    className="w-full rounded-full border border-divider/70 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    Rename branch
+                                  </button>
+                                </div>
+                              </div>
+                            </RailPopover>
+                          </div>
                         ) : null}
                       </div>
                     ) : null}
@@ -5432,7 +5467,7 @@ export function WorkspaceClient({
           <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="share-modal">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Share project</h3>
+                <h3 className="text-lg font-semibold text-slate-900">Share workspace</h3>
                 <p className="text-sm text-muted">Invite collaborators and manage roles.</p>
               </div>
               <button
@@ -5485,7 +5520,9 @@ export function WorkspaceClient({
             <div className="mt-6 grid gap-6 md:grid-cols-2">
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold text-slate-800">Members</h4>
-                {shareData ? (
+                {shareLoadError ? (
+                  <p className="text-xs text-red-600">Unable to load members.</p>
+                ) : shareData ? (
                   shareMembers.length > 0 ? (
                     <div className="space-y-2">
                       {shareMembers.map((member) => {
@@ -5539,7 +5576,9 @@ export function WorkspaceClient({
               </div>
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold text-slate-800">Invites</h4>
-                {shareData ? (
+                {shareLoadError ? (
+                  <p className="text-xs text-red-600">Unable to load invites.</p>
+                ) : shareData ? (
                   shareInvites.length > 0 ? (
                     <div className="space-y-2">
                       {shareInvites.map((invite) => {
