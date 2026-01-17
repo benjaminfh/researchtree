@@ -731,6 +731,9 @@ export function WorkspaceClient({
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutsRef = useRef<Map<string, number>>(new Map());
   const { sessionId: leaseSessionId, ready: leaseSessionReady } = useLeaseSession(project.id, isPgMode);
+  const shareUiVisible =
+    isPgMode &&
+    (features.uiShareMode === 'all' || (features.uiShareMode === 'admins' && Boolean(project.isOwner)));
   const canShare = isPgMode && Boolean(project.isOwner);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
@@ -3806,41 +3809,43 @@ export function WorkspaceClient({
                                   >
                                     <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void releaseLease({
-                                          refId: branch.id!,
-                                          force: !branchLeaseHeldBySession && Boolean(project.isOwner)
-                                        });
-                                        setOpenBranchMenu(null);
-                                      }}
-                                      disabled={
-                                        isReleasingLease ||
-                                        !branchLease ||
-                                        (!branchLeaseHeldBySession && !project.isOwner)
-                                      }
-                                      title={
-                                        !branchLease
-                                          ? 'No edit lock to release'
-                                          : branchLeaseHeldBySession
-                                            ? 'Release edit lock'
-                                            : project.isOwner
-                                              ? 'Force unlock editing'
-                                              : 'Editing locked elsewhere'
-                                      }
-                                      aria-label="Release edit lock"
-                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
-                                        !branchLease || (!branchLeaseHeldBySession && !project.isOwner)
-                                          ? 'cursor-not-allowed text-slate-300'
-                                          : branchLeaseLocked && !project.isOwner
-                                            ? 'text-slate-300'
-                                            : 'text-slate-600 hover:bg-slate-50'
-                                      }`}
-                                    >
-                                      <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
-                                    </button>
+                                    {shareUiVisible ? (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void releaseLease({
+                                            refId: branch.id!,
+                                            force: !branchLeaseHeldBySession && Boolean(project.isOwner)
+                                          });
+                                          setOpenBranchMenu(null);
+                                        }}
+                                        disabled={
+                                          isReleasingLease ||
+                                          !branchLease ||
+                                          (!branchLeaseHeldBySession && !project.isOwner)
+                                        }
+                                        title={
+                                          !branchLease
+                                            ? 'No edit lock to release'
+                                            : branchLeaseHeldBySession
+                                              ? 'Release edit lock'
+                                              : project.isOwner
+                                                ? 'Force unlock editing'
+                                                : 'Editing locked elsewhere'
+                                        }
+                                        aria-label="Release edit lock"
+                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                          !branchLease || (!branchLeaseHeldBySession && !project.isOwner)
+                                            ? 'cursor-not-allowed text-slate-300'
+                                            : branchLeaseLocked && !project.isOwner
+                                              ? 'text-slate-300'
+                                              : 'text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                      >
+                                        <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
+                                      </button>
+                                    ) : null}
                                   </RailPopover>
                                 </div>
                               ) : null}
@@ -4164,7 +4169,7 @@ export function WorkspaceClient({
 
                     {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
-                        {isPgMode && leaseLocked ? (
+                        {shareUiVisible && leaseLocked ? (
                           <div
                             className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-amber-50 text-amber-700 shadow-sm"
                             aria-label="Editing locked (editor access required)"
@@ -4213,14 +4218,17 @@ export function WorkspaceClient({
                           </button>
                         ) : null}
 
-                        {canShare ? (
+                        {shareUiVisible ? (
                           <button
                             type="button"
                             onClick={() => {
+                              if (!canShare) return;
                               setShareError(null);
                               setShowShareModal(true);
                             }}
-                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
+                            disabled={!canShare}
+                            title={canShare ? 'Share workspace' : 'Only owners can manage sharing'}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                             aria-label="Share workspace"
                             data-testid="share-open-button"
                           >
@@ -4247,33 +4255,35 @@ export function WorkspaceClient({
                                 role="dialog"
                                 aria-label="Branch settings"
                               >
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void releaseLease({
-                                      refId: activeBranch.id!,
-                                      force: !leaseHeldBySession && Boolean(project.isOwner)
-                                    });
-                                    closeBranchSettings();
-                                  }}
-                                  disabled={
-                                    isReleasingLease ||
-                                    !activeBranchLease ||
-                                    (!leaseHeldBySession && !project.isOwner)
-                                  }
-                                  title={
-                                    !activeBranchLease
-                                      ? 'No edit lock to release'
-                                      : leaseHeldBySession
-                                        ? 'Release edit lock'
-                                        : project.isOwner
-                                          ? 'Force unlock editing'
-                                          : 'Editing locked elsewhere'
-                                  }
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <BlueprintIcon icon="unlock" className="h-4 w-4" />
-                                </button>
+                                {shareUiVisible ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void releaseLease({
+                                        refId: activeBranch.id!,
+                                        force: !leaseHeldBySession && Boolean(project.isOwner)
+                                      });
+                                      closeBranchSettings();
+                                    }}
+                                    disabled={
+                                      isReleasingLease ||
+                                      !activeBranchLease ||
+                                      (!leaseHeldBySession && !project.isOwner)
+                                    }
+                                    title={
+                                      !activeBranchLease
+                                        ? 'No edit lock to release'
+                                        : leaseHeldBySession
+                                          ? 'Release edit lock'
+                                          : project.isOwner
+                                            ? 'Force unlock editing'
+                                            : 'Editing locked elsewhere'
+                                    }
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <BlueprintIcon icon="unlock" className="h-4 w-4" />
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => {
