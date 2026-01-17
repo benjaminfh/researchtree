@@ -3742,67 +3742,6 @@ export function WorkspaceClient({
                                       type="button"
                                       onClick={(event) => {
                                         event.stopPropagation();
-                                        void toggleBranchVisibility(branch);
-                                        setOpenBranchMenu(null);
-                                      }}
-                                    disabled={visibilityDisabled}
-                                    title={
-                                      visibilityDisabled && !isHidden && isActiveBranch
-                                        ? 'Cannot hide the current branch'
-                                        : isHidden
-                                          ? 'Show branch'
-                                          : 'Hide branch'
-                                    }
-                                    aria-label={isHidden ? 'Show branch' : 'Hide branch'}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
-                                      visibilityDisabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-600 hover:bg-primary/10'
-                                    }`}
-                                  >
-                                      {visibilityPending ? (
-                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                      ) : (
-                                        <BlueprintIcon icon={isHidden ? 'eye-open' : 'eye-off'} className="h-3.5 w-3.5" />
-                                      )}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void releaseLease({
-                                          refId: branch.id!,
-                                        force: !branchLeaseHeldBySession && Boolean(project.isOwner)
-                                      });
-                                      setOpenBranchMenu(null);
-                                    }}
-                                    disabled={
-                                      isReleasingLease ||
-                                      !branchLease ||
-                                      (!branchLeaseHeldBySession && !project.isOwner)
-                                    }
-                                    title={
-                                      !branchLease
-                                        ? 'No edit lock to release'
-                                        : branchLeaseHeldBySession
-                                          ? 'Release edit lock'
-                                          : project.isOwner
-                                            ? 'Force unlock editing'
-                                            : 'Editing locked elsewhere'
-                                    }
-                                    aria-label="Release edit lock"
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
-                                      !branchLease || (!branchLeaseHeldBySession && !project.isOwner)
-                                        ? 'cursor-not-allowed text-slate-300'
-                                        : branchLeaseLocked && !project.isOwner
-                                          ? 'text-slate-300'
-                                          : 'text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
                                         void togglePinnedBranch(branch);
                                         setOpenBranchMenu(null);
                                       }}
@@ -3827,6 +3766,32 @@ export function WorkspaceClient({
                                       type="button"
                                       onClick={(event) => {
                                         event.stopPropagation();
+                                        void toggleBranchVisibility(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
+                                      disabled={visibilityDisabled}
+                                      title={
+                                        visibilityDisabled && !isHidden && isActiveBranch
+                                          ? 'Cannot hide the current branch'
+                                          : isHidden
+                                            ? 'Show branch'
+                                            : 'Hide branch'
+                                      }
+                                      aria-label={isHidden ? 'Show branch' : 'Hide branch'}
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                        visibilityDisabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-600 hover:bg-primary/10'
+                                      }`}
+                                    >
+                                      {visibilityPending ? (
+                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                      ) : (
+                                        <BlueprintIcon icon={isHidden ? 'eye-open' : 'eye-off'} className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
                                         openRenameModal(branch);
                                         setOpenBranchMenu(null);
                                       }}
@@ -3840,6 +3805,41 @@ export function WorkspaceClient({
                                     }`}
                                   >
                                     <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void releaseLease({
+                                          refId: branch.id!,
+                                          force: !branchLeaseHeldBySession && Boolean(project.isOwner)
+                                        });
+                                        setOpenBranchMenu(null);
+                                      }}
+                                      disabled={
+                                        isReleasingLease ||
+                                        !branchLease ||
+                                        (!branchLeaseHeldBySession && !project.isOwner)
+                                      }
+                                      title={
+                                        !branchLease
+                                          ? 'No edit lock to release'
+                                          : branchLeaseHeldBySession
+                                            ? 'Release edit lock'
+                                            : project.isOwner
+                                              ? 'Force unlock editing'
+                                              : 'Editing locked elsewhere'
+                                      }
+                                      aria-label="Release edit lock"
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                        !branchLease || (!branchLeaseHeldBySession && !project.isOwner)
+                                          ? 'cursor-not-allowed text-slate-300'
+                                          : branchLeaseLocked && !project.isOwner
+                                            ? 'text-slate-300'
+                                            : 'text-slate-600 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
                                     </button>
                                   </RailPopover>
                                 </div>
