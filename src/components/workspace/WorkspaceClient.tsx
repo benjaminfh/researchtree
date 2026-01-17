@@ -2507,7 +2507,9 @@ export function WorkspaceClient({
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     shouldScrollToBottomRef.current = distance <= scrollFollowThreshold;
     if (!state.isStreaming) {
-      userInterruptedScrollRef.current = false;
+      if (distance <= scrollFollowThreshold) {
+        userInterruptedScrollRef.current = false;
+      }
       return;
     }
     if (distance > scrollFollowThreshold) {
