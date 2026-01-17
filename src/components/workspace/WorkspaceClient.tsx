@@ -737,6 +737,7 @@ export function WorkspaceClient({
   const [openBranchMenu, setOpenBranchMenu] = useState<string | null>(null);
   const branchSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const branchSettingsPopoverRef = useRef<HTMLDivElement | null>(null);
+  const branchMenuRefs = useRef<Map<string, React.RefObject<HTMLButtonElement>>>(new Map());
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
@@ -3628,6 +3629,11 @@ export function WorkspaceClient({
                       const branchLeaseHeldBySession = Boolean(branchLease && branchLease.holderSessionId === leaseSessionId);
                       const branchLeaseLocked = Boolean(branchLease && branchLease.holderSessionId !== leaseSessionId);
                       const branchMenuOpen = openBranchMenu === branch.name;
+                      let branchMenuAnchorRef = branchMenuRefs.current.get(branch.name);
+                      if (!branchMenuAnchorRef) {
+                        branchMenuAnchorRef = React.createRef<HTMLButtonElement>();
+                        branchMenuRefs.current.set(branch.name, branchMenuAnchorRef);
+                      }
                       return (
                         <div
                           key={branch.name}
@@ -3686,15 +3692,22 @@ export function WorkspaceClient({
                                   event.stopPropagation();
                                   setOpenBranchMenu((prev) => (prev === branch.name ? null : branch.name));
                                 }}
+                                ref={branchMenuAnchorRef}
                                 className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-500 shadow-sm transition hover:bg-primary/10 hover:text-slate-700"
                                 aria-label={`Branch options for ${displayBranchName(branch.name)}`}
                                 aria-expanded={branchMenuOpen}
                               >
                                 <BlueprintIcon icon="cog" className="h-3.5 w-3.5" />
                               </button>
-                              {branchMenuOpen ? (
-                                <div className="absolute left-full top-1/2 z-40 ml-2 flex w-10 -translate-y-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 py-2 text-slate-700 shadow-lg backdrop-blur">
-                                  <button
+                              {branchMenuOpen && branchMenuAnchorRef ? (
+                                <div data-branch-menu>
+                                  <RailPopover
+                                    open={branchMenuOpen}
+                                    anchorRef={branchMenuAnchorRef}
+                                    ariaLabel={`Branch actions for ${displayBranchName(branch.name)}`}
+                                    className="w-10 p-2"
+                                  >
+                                    <button
                                     type="button"
                                     onClick={(event) => {
                                       event.stopPropagation();
@@ -3712,13 +3725,13 @@ export function WorkspaceClient({
                                           : 'text-slate-600 hover:bg-primary/10'
                                     }`}
                                   >
-                                    {pinPending ? (
-                                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                    ) : (
-                                      <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                  <button
+                                      {pinPending ? (
+                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                      ) : (
+                                        <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                    <button
                                     type="button"
                                     onClick={(event) => {
                                       event.stopPropagation();
@@ -3738,13 +3751,13 @@ export function WorkspaceClient({
                                       visibilityDisabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-600 hover:bg-primary/10'
                                     }`}
                                   >
-                                    {visibilityPending ? (
-                                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                    ) : (
-                                      <BlueprintIcon icon={isHidden ? 'eye-open' : 'eye-off'} className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                  <button
+                                      {visibilityPending ? (
+                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                      ) : (
+                                        <BlueprintIcon icon={isHidden ? 'eye-open' : 'eye-off'} className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                    <button
                                     type="button"
                                     onClick={(event) => {
                                       event.stopPropagation();
@@ -3778,8 +3791,8 @@ export function WorkspaceClient({
                                     }`}
                                   >
                                     <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
+                                    </button>
+                                    <button
                                     type="button"
                                     onClick={(event) => {
                                       event.stopPropagation();
@@ -3796,7 +3809,8 @@ export function WorkspaceClient({
                                     }`}
                                   >
                                     <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
-                                  </button>
+                                    </button>
+                                  </RailPopover>
                                 </div>
                               ) : null}
                             </span>
@@ -4198,7 +4212,7 @@ export function WorkspaceClient({
                             {showBranchSettings ? (
                               <div
                                 ref={branchSettingsPopoverRef}
-                                className="absolute left-1/2 bottom-0 z-40 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 pb-[44px] pt-2 text-slate-700 shadow-lg backdrop-blur"
+                                className="absolute left-1/2 bottom-0 z-40 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 pb-[52px] pt-2 text-slate-700 shadow-lg backdrop-blur"
                                 role="dialog"
                                 aria-label="Branch settings"
                               >
