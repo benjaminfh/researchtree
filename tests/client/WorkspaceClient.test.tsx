@@ -1231,6 +1231,7 @@ describe('WorkspaceClient', () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
     document.dispatchEvent(new Event('selectionchange'));
+    document.dispatchEvent(new Event('mouseup'));
 
     const questionButton = await screen.findByRole('button', { name: 'Ask a question on a new branch' });
     await user.click(questionButton);
@@ -1239,7 +1240,7 @@ describe('WorkspaceClient', () => {
     expect(modal).toBeInTheDocument();
 
     await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
-    await user.type(screen.getByLabelText('Question'), 'What should we do next?');
+    await user.type(screen.getByPlaceholderText('What do you want to ask on this branch?'), 'What should we do next?');
 
     await user.click(screen.getByTestId('branch-form-modal-submit'));
 
