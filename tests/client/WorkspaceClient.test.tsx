@@ -1222,6 +1222,8 @@ describe('WorkspaceClient', () => {
       />
     );
 
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+
     const assistantMessage = await screen.findByText('All tasks queued.');
     const selection = window.getSelection();
     const range = document.createRange();
@@ -1297,6 +1299,8 @@ describe('WorkspaceClient', () => {
     });
 
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
 
     const editButtons = await screen.findAllByRole('button', { name: 'Edit message' });
     await user.click(editButtons[0]);
