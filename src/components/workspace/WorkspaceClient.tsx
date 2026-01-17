@@ -3708,6 +3708,15 @@ export function WorkspaceClient({
                               ) : null}
                             </span>
                             <span className="relative inline-flex items-center gap-1" data-branch-menu data-branch-menu-name={branch.name}>
+                              {branch.isPinned ? (
+                                <span
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white text-red-600 shadow-sm"
+                                  aria-label="Pinned branch"
+                                  title="Pinned branch"
+                                >
+                                  <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                </span>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -3722,7 +3731,7 @@ export function WorkspaceClient({
                                 <BlueprintIcon icon="cog" className="h-3.5 w-3.5" />
                               </button>
                               {branchMenuOpen && branchMenuAnchorRef ? (
-                                <div data-branch-menu>
+                                <div data-branch-menu className="absolute left-0 top-0 h-0 w-0">
                                   <RailPopover
                                     open={branchMenuOpen}
                                     anchorRef={branchMenuAnchorRef}
