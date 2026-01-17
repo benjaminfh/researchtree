@@ -21,7 +21,7 @@ export function RailPopover({
   ariaLabel,
   className,
   viewportPadding = 12,
-  gap = 12,
+  gap = 16,
 }: RailPopoverProps) {
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
