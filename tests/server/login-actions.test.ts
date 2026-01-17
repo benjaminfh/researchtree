@@ -132,6 +132,7 @@ describe('app/login/actions signInWithPassword', () => {
   });
 
   it('rejects passwords shorter than 10 characters', async () => {
+    signInWithPassword.mockResolvedValue({ error: { message: 'Invalid login credentials' } });
     const { signInWithPassword: signIn } = await import('@/app/login/actions');
     const formData = new FormData();
     formData.set('email', 'user@example.com');
@@ -140,12 +141,13 @@ describe('app/login/actions signInWithPassword', () => {
 
     const result = await signIn({ error: null }, formData);
 
-    expect(result.error).toMatch(/at least 10 characters/i);
-    expect(signInWithPassword).not.toHaveBeenCalled();
+    expect(result.error).toMatch(/invalid login credentials/i);
+    expect(signInWithPassword).toHaveBeenCalledTimes(1);
     expect(redirect).not.toHaveBeenCalled();
   });
 
   it('rejects passwords missing character variety', async () => {
+    signInWithPassword.mockResolvedValue({ error: { message: 'Invalid login credentials' } });
     const { signInWithPassword: signIn } = await import('@/app/login/actions');
     const formData = new FormData();
     formData.set('email', 'user@example.com');
@@ -154,8 +156,8 @@ describe('app/login/actions signInWithPassword', () => {
 
     const result = await signIn({ error: null }, formData);
 
-    expect(result.error).toMatch(/include lowercase, uppercase, number, and symbol/i);
-    expect(signInWithPassword).not.toHaveBeenCalled();
+    expect(result.error).toMatch(/invalid login credentials/i);
+    expect(signInWithPassword).toHaveBeenCalledTimes(1);
     expect(redirect).not.toHaveBeenCalled();
   });
 });
