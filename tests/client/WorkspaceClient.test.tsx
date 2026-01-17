@@ -669,8 +669,8 @@ describe('WorkspaceClient', () => {
     const [, init] = visibilityCall as [RequestInfo | URL, RequestInit];
     expect(JSON.parse(init?.body as string)).toEqual({ isHidden: true });
 
+    await user.click(menuButton);
     await waitFor(() => {
-      await user.click(menuButton);
       expect(screen.getByRole('button', { name: 'Show branch' })).toBeInTheDocument();
     });
     expect((branchRow as HTMLElement).textContent?.toLowerCase()).not.toContain('hidden');
