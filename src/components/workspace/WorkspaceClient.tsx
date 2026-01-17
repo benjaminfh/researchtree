@@ -90,6 +90,12 @@ const formatCharLimitMessage = (label: string, current: number, max: number) => 
   return `${label} is too long (${current} chars). Max ${max} characters.`;
 };
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const isValidEmail = (value: string) => {
+  return EMAIL_PATTERN.test(value);
+};
+
 const buildQuestionMessage = (question: string, highlight?: string) => {
   const trimmedQuestion = question.trim();
   const trimmedHighlight = highlight?.trim() ?? '';
@@ -1027,6 +1033,11 @@ export function WorkspaceClient({
   const starredSet = useMemo(() => new Set(stableStarredNodeIds), [stableStarredNodeIds]);
   const shareMembers = shareData?.members ?? [];
   const shareInvites = shareData?.invites ?? [];
+  const shareEmailTrimmed = shareEmail.trim();
+  const isShareEmailValid = useMemo(() => {
+    if (!shareEmailTrimmed) return true;
+    return isValidEmail(shareEmailTrimmed);
+  }, [shareEmailTrimmed]);
   const leasesByRefId = useMemo(() => {
     const map = new Map<string, RefLease>();
     for (const lease of leaseData?.leases ?? []) {
@@ -1051,8 +1062,13 @@ export function WorkspaceClient({
   );
 
   const submitShareInvite = useCallback(async () => {
-    if (!shareEmail.trim()) {
+    const trimmedEmail = shareEmail.trim();
+    if (!trimmedEmail) {
       setShareError('Email is required.');
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      setShareError('Enter a valid email address.');
       return;
     }
     setIsShareSaving(true);
@@ -1061,7 +1077,7 @@ export function WorkspaceClient({
       const res = await fetch(`/api/projects/${project.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: shareEmail.trim(), role: shareRole })
+        body: JSON.stringify({ email: trimmedEmail, role: shareRole })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -2459,6 +2475,12 @@ export function WorkspaceClient({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [showBranchSettings]);
+
+  useEffect(() => {
+    if (showShareModal) {
+      setShowBranchSettings(false);
+    }
+  }, [showShareModal]);
 
   useEffect(() => {
     if (!openBranchMenu) return;
@@ -4203,7 +4225,8 @@ export function WorkspaceClient({
                               type="button"
                               ref={branchSettingsButtonRef}
                               onClick={() => setShowBranchSettings((prev) => !prev)}
-                              className="relative z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                              disabled={showShareModal}
+                              className="relative z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                               aria-label="Branch settings"
                               aria-expanded={showBranchSettings}
                             >
@@ -5533,7 +5556,7 @@ export function WorkspaceClient({
                 event.preventDefault();
                 void submitShareInvite();
               }}
-              enableCommandEnter={!isShareSaving && Boolean(shareEmail.trim())}
+              enableCommandEnter={!isShareSaving && Boolean(shareEmailTrimmed) && isShareEmailValid}
               className="mt-4 space-y-3 rounded-2xl border border-divider/80 bg-slate-50/70 p-4"
             >
               <div className="flex flex-wrap items-center gap-3">
@@ -5544,6 +5567,7 @@ export function WorkspaceClient({
                   placeholder="Invite by email"
                   className="min-w-[220px] flex-1 rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
                   disabled={isShareSaving}
+                  aria-invalid={Boolean(shareEmailTrimmed) && !isShareEmailValid}
                   required
                 />
                 <select
@@ -5558,7 +5582,7 @@ export function WorkspaceClient({
                 <button
                   type="submit"
                   className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
-                  disabled={isShareSaving || !shareEmail.trim()}
+                  disabled={isShareSaving || !shareEmailTrimmed || !isShareEmailValid}
                 >
                   {isShareSaving ? 'Inviting…' : 'Invite'}
                 </button>
