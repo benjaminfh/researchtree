@@ -224,7 +224,7 @@ const NodeBubble: FC<{
     setCanExpandUserMessage(false);
   }, [node.id, messageText]);
 
-  useLayoutEffect(() => {
+  const measureUserMessageOverflow = useCallback(() => {
     if (!isUser || !messageText) return;
     if (isUserMessageExpanded) return;
     const element = userMessageRef.current;
@@ -232,6 +232,38 @@ const NodeBubble: FC<{
     const isOverflowing = element.scrollHeight > element.clientHeight + 1;
     setCanExpandUserMessage(isOverflowing);
   }, [isUser, messageText, isUserMessageExpanded]);
+
+  useLayoutEffect(() => {
+    measureUserMessageOverflow();
+    if (!isUser || !messageText || isUserMessageExpanded) return;
+    const element = userMessageRef.current;
+    if (!element) return;
+
+    let rafId: number | null = null;
+    const scheduleMeasurement = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        measureUserMessageOverflow();
+      });
+    };
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleMeasurement) : null;
+    if (resizeObserver) {
+      resizeObserver.observe(element);
+    }
+    window.addEventListener('resize', scheduleMeasurement);
+
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduleMeasurement);
+    };
+  }, [isUser, messageText, isUserMessageExpanded, measureUserMessageOverflow]);
 
   return (
     <article className={`flex flex-col gap-1 ${align} ${containerWidth}`}>
