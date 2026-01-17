@@ -54,6 +54,24 @@ async function ensureLocalSchemas(pool: Pool): Promise<void> {
   await pool.query('create schema if not exists auth;');
   await pool.query(
     `
+    create table if not exists auth.users (
+      id uuid primary key default gen_random_uuid(),
+      email text unique,
+      created_at timestamptz not null default now()
+    );
+  `
+  );
+  await pool.query(
+    `
+    insert into auth.users (id, email)
+    values ($1, $2)
+    on conflict (id) do update
+      set email = excluded.email
+  `,
+    [LOCAL_PG_USER_ID, 'local@example.com']
+  );
+  await pool.query(
+    `
     create or replace function auth.uid()
     returns uuid
     language sql
