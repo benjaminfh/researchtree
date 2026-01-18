@@ -91,7 +91,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       }
       await renameBranch(project.id, params.refId, parsed.data.name);
       const currentBranch = await getCurrentBranchName(project.id);
-      return Response.json({ branchName: currentBranch, branches });
+      const updatedBranches = await listBranches(project.id);
+      return Response.json({ branchName: currentBranch, branches: updatedBranches });
     });
   } catch (error) {
     return handleRouteError(error);
