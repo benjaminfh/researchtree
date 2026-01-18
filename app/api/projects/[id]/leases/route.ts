@@ -5,7 +5,7 @@ import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess, requireProjectEditor, requireProjectOwner } from '@/src/server/authz';
-import { getRefLeaseTtlSeconds } from '@/src/server/leases';
+import { acquireBranchLease, getRefLeaseTtlSeconds } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string };
@@ -54,12 +54,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { rtAcquireRefLeaseShadowV1 } = await import('@/src/store/pg/leases');
-    await rtAcquireRefLeaseShadowV1({
+    await acquireBranchLease({
       projectId: params.id,
       refId: parsed.data.refId,
-      sessionId: parsed.data.leaseSessionId,
-      ttlSeconds: getRefLeaseTtlSeconds()
+      leaseSessionId: parsed.data.leaseSessionId
     });
 
     const { rtListRefLeasesShadowV1 } = await import('@/src/store/pg/leases');
