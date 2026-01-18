@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   readNodesFromRef: vi.fn(),
   updateArtefact: vi.fn()
 }));
+const authzMocks = vi.hoisted(() => ({
+  requireProjectAccess: vi.fn(),
+  requireProjectEditor: vi.fn()
+}));
 
 vi.mock('@git/projects', () => ({
   getProject: mocks.getProject
@@ -30,6 +34,11 @@ vi.mock('@git/utils', () => ({
   readNodesFromRef: mocks.readNodesFromRef
 }));
 
+vi.mock('@/src/server/authz', () => ({
+  requireProjectAccess: authzMocks.requireProjectAccess,
+  requireProjectEditor: authzMocks.requireProjectEditor
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/artefact?ref=main';
 
 function createRequest(body: unknown) {
@@ -43,6 +52,7 @@ function createRequest(body: unknown) {
 describe('/api/projects/[id]/artefact PUT', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.getArtefact.mockResolvedValue('# Artefact');
     mocks.getArtefactFromRef.mockResolvedValue('# Artefact');

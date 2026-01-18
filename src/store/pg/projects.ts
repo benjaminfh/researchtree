@@ -65,3 +65,15 @@ export async function rtGetProjectShadowV1(input: { projectId: string }): Promis
     updatedAt: new Date(row.updated_at ?? row.created_at).toISOString()
   };
 }
+
+export async function rtGetProjectOwnerShadowV1(input: { projectId: string }): Promise<string | null> {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_project_owner_v1', {
+    p_project_id: input.projectId
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row?.owner_user_id ? String(row.owner_user_id) : null;
+}

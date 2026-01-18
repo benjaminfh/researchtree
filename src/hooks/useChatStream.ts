@@ -28,6 +28,7 @@ export type ChatSendPayload =
       llmProvider?: LLMProvider;
       thinking?: ThinkingSetting;
       webSearch?: boolean;
+      leaseSessionId?: string;
     };
 
 export interface StreamRequestOptions {
@@ -43,11 +44,21 @@ interface UseChatStreamOptions {
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
   webSearch?: boolean;
+  leaseSessionId?: string | null;
   onChunk?: (chunk: ChatStreamChunk) => void;
   onComplete?: () => void;
 }
 
-export function useChatStream({ projectId, ref, provider, thinking, webSearch, onChunk, onComplete }: UseChatStreamOptions) {
+export function useChatStream({
+  projectId,
+  ref,
+  provider,
+  thinking,
+  webSearch,
+  leaseSessionId,
+  onChunk,
+  onComplete
+}: UseChatStreamOptions) {
   const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
   const activeRequest = useRef<AbortController | null>(null);
   const activeRequestId = useRef<string | null>(null);
@@ -168,11 +179,11 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
   );
 
   const sendMessage = useCallback(
-    async (payload: ChatSendPayload) => {
+    async (input: ChatSendPayload) => {
       const normalized =
-        typeof payload === 'string'
-          ? { message: payload }
-          : payload ?? { message: '' };
+        typeof input === 'string'
+          ? { message: input }
+          : input ?? { message: '' };
       const userMessage = normalized.message ?? '';
       const userQuestion = normalized.question ?? '';
       if (!(userMessage.trim() || userQuestion.trim())) {
@@ -191,21 +202,24 @@ export function useChatStream({ projectId, ref, provider, thinking, webSearch, o
           highlightLength: (normalized.highlight ?? '').length
         });
       }
+      const basePayload: Record<string, unknown> = {
+        message: normalized.message,
+        question: normalized.question,
+        highlight: normalized.highlight,
+        intent: normalized.intent,
+        llmProvider: normalized.llmProvider ?? provider,
+        ref: normalized.ref ?? ref,
+        thinking: normalized.thinking ?? thinking,
+        webSearch: normalized.webSearch ?? webSearch
+      };
+      const resolvedLeaseSessionId = normalized.leaseSessionId ?? leaseSessionId;
+      const requestBody = resolvedLeaseSessionId ? { ...basePayload, leaseSessionId: resolvedLeaseSessionId } : basePayload;
       await sendStreamRequest({
         url: `/api/projects/${projectId}/chat`,
-        body: {
-          message: normalized.message,
-          question: normalized.question,
-          highlight: normalized.highlight,
-          intent: normalized.intent,
-          llmProvider: normalized.llmProvider ?? provider,
-          ref: normalized.ref ?? ref,
-          thinking: normalized.thinking ?? thinking,
-          webSearch: normalized.webSearch ?? webSearch
-        }
+        body: requestBody
       });
     },
-    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled]
+    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
   );
 
   const interrupt = useCallback(async () => {

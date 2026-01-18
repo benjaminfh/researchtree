@@ -5,10 +5,11 @@ import { mergeRequestSchema } from '@/src/server/schemas';
 import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import type { NodeRecord } from '@git/types';
 import { INITIAL_BRANCH } from '@git/constants';
 import { v4 as uuidv4 } from 'uuid';
+import { acquireBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string };
@@ -73,7 +74,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = mergeRequestSchema.safeParse(body);
@@ -81,7 +82,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { sourceBranch, mergeSummary, targetBranch, sourceAssistantNodeId } = parsed.data;
+    const { sourceBranch, mergeSummary, targetBranch, sourceAssistantNodeId, leaseSessionId } = parsed.data;
     const resolvedTargetBranch = targetBranch ?? (await getPreferredBranch(params.id));
 
     return await withProjectLockAndRefLock(params.id, resolvedTargetBranch, async () => {
@@ -110,6 +111,9 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest('Branch is missing ref id');
           }
           const sourceHeadCommit = sourceBranchInfo.headCommit ?? '';
+
+          await acquireBranchLease({ projectId: params.id, refId: targetBranchInfo.id, leaseSessionId });
+          await acquireBranchLease({ projectId: params.id, refId: sourceBranchInfo.id, leaseSessionId });
 
           const [targetRows, sourceRows] = await Promise.all([
             rtGetHistoryShadowV2({ projectId: params.id, refId: targetBranchInfo.id, limit: 500 }),

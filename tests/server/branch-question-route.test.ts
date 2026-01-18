@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   getCommitHashForNode: vi.fn(),
   chatPost: vi.fn()
 }));
+const authzMocks = vi.hoisted(() => ({
+  requireProjectEditor: vi.fn()
+}));
 
 vi.mock('@/src/store/pg/prefs', () => ({
   rtGetCurrentRefShadowV2: mocks.rtGetCurrentRefShadowV2,
@@ -56,6 +59,10 @@ vi.mock('@/app/api/projects/[id]/chat/route', () => ({
   POST: mocks.chatPost
 }));
 
+vi.mock('@/src/server/authz', () => ({
+  requireProjectEditor: authzMocks.requireProjectEditor
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/branch-question';
 
 function createRequest(body: Record<string, unknown>) {
@@ -69,6 +76,7 @@ function createRequest(body: Record<string, unknown>) {
 describe('/api/projects/[id]/branch-question', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.chatPost.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     process.env.RT_STORE = 'git';

@@ -22,6 +22,8 @@ Start here to understand the app from the user's perspective.
   - Thinking traces: show/hide model thinking content per message when available.
   - Provider controls: per-branch provider + model selection, plus a thinking mode selector.
   - Web search toggle (OpenAI search preview models) when enabled.
+  - Share workspace (pg mode): invite collaborators as viewers or editors.
+  - Edit locks (pg mode): branches can be locked to a single editor session to prevent write conflicts.
 - Profile (`/profile`)
   - Store provider API keys for local use.
 - Waitlist Admin (`/admin/waitlist`)
@@ -56,6 +58,7 @@ ResearchTree supports two provenance backends, selected via `RT_STORE`:
 - `pg`
   - Uses Postgres for provenance, with Supabase PostgREST or a local adapter.
   - Supabase RPCs live under `src/store/pg` with migrations in `supabase/migrations`.
+  - Collaboration features (members, invites, edit locks) are only available in pg mode.
   - Local mode (`RT_PG_ADAPTER=local`) connects directly to Postgres and auto-bootstraps migrations on first call.
 
 ## LLM Providers and Capabilities
@@ -112,6 +115,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 RT_APP_ORIGIN=http://localhost:3000
+RT_REF_LEASE_TTL_SECONDS=120
 LLM_DEFAULT_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```
@@ -122,6 +126,7 @@ RT_STORE=pg
 RT_PG_ADAPTER=local
 LOCAL_PG_URL=postgresql://localhost:5432/youruser
 RT_PG_BOOTSTRAP=1
+RT_REF_LEASE_TTL_SECONDS=120
 LLM_DEFAULT_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```

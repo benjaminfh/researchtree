@@ -9,7 +9,7 @@ import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { resolveOpenAIProviderSelection, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import { v4 as uuidv4 } from 'uuid';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -19,6 +19,7 @@ import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmC
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 import { toJsonValue } from '@/src/server/json';
+import { acquireBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string };
@@ -46,7 +47,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = editMessageSchema.safeParse(body);
@@ -54,7 +55,16 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { content, branchName, fromRef, nodeId, llmProvider, llmModel, thinking } = parsed.data as typeof parsed.data & {
+    const {
+      content,
+      branchName,
+      fromRef,
+      nodeId,
+      llmProvider,
+      llmModel,
+      thinking,
+      leaseSessionId
+    } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
     };
     const currentBranch = await getPreferredBranch(params.id);
@@ -88,6 +98,15 @@ export async function POST(request: Request, { params }: RouteContext) {
         thinking: effectiveThinking,
         allowed: thinkingValidation.allowed
       });
+    }
+
+    if (store.mode === 'pg') {
+      const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+      const branches = await rtListRefsShadowV2({ projectId: params.id });
+      const existingTarget = branches.find((branch) => branch.name === targetBranch);
+      if (existingTarget?.id) {
+        await acquireBranchLease({ projectId: params.id, refId: existingTarget.id, leaseSessionId });
+      }
     }
 
     return await withProjectLock(params.id, async () => {
@@ -147,6 +166,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest(`Branch ${targetBranch} is missing ref id`);
           }
 
+          await acquireBranchLease({ projectId: params.id, refId: targetRef.id, leaseSessionId });
           await rtSetCurrentRefShadowV2({ projectId: params.id, refId: targetRef.id });
 
           const lastTargetRows = await rtGetHistoryShadowV2({

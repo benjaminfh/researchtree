@@ -11,7 +11,11 @@ const mocks = vi.hoisted(() => ({
   rtAppendNodeToRefShadowV2: vi.fn(),
   rtGetHistoryShadowV2: vi.fn(),
   resolveRefByName: vi.fn(),
-  resolveCurrentRef: vi.fn()
+  resolveCurrentRef: vi.fn(),
+  rtAcquireRefLeaseShadowV1: vi.fn()
+}));
+const authzMocks = vi.hoisted(() => ({
+  requireProjectEditor: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -35,24 +39,33 @@ vi.mock('@/src/store/pg/reads', () => ({
   rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2
 }));
 
+vi.mock('@/src/store/pg/leases', () => ({
+  rtAcquireRefLeaseShadowV1: mocks.rtAcquireRefLeaseShadowV1
+}));
+
 vi.mock('@/src/server/pgRefs', () => ({
   resolveRefByName: mocks.resolveRefByName,
   resolveCurrentRef: mocks.resolveCurrentRef
 }));
 
+vi.mock('@/src/server/authz', () => ({
+  requireProjectEditor: authzMocks.requireProjectEditor
+}));
+
 const baseUrl = 'http://localhost/api/projects/project-1/merge/pin-canvas-diff';
 
-function createRequest(body: unknown) {
+function createRequest(body: Record<string, unknown>) {
   return new Request(baseUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ leaseSessionId: 'lease-test', ...body })
   });
 }
 
 describe('/api/projects/[id]/merge/pin-canvas-diff', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.readNodesFromRef.mockResolvedValue([

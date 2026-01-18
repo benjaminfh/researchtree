@@ -3,6 +3,7 @@
 import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { z } from 'zod';
+import { getStoreConfig } from '@/src/server/storeConfig';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,8 +29,14 @@ function normalizeSecret(value: string | null | undefined): string | null {
 export async function GET() {
   try {
     const user = await requireUser();
+    const store = getStoreConfig();
     const { rtGetUserLlmKeyStatusV1 } = await import('@/src/store/pg/userLlmKeys');
     const status = await rtGetUserLlmKeyStatusV1();
+
+    if (store.mode === 'pg' && user.email) {
+      const { rtAcceptProjectInvitesShadowV1 } = await import('@/src/store/pg/members');
+      await rtAcceptProjectInvitesShadowV1({ email: user.email });
+    }
 
     return Response.json({
       user: { id: user.id, email: user.email ?? null },

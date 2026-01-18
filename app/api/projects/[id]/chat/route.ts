@@ -11,7 +11,7 @@ import { type ThinkingSetting } from '@/src/shared/thinking';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { v4 as uuidv4 } from 'uuid';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectEditor } from '@/src/server/authz';
 import type { LLMProvider } from '@/src/server/llm';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -22,6 +22,7 @@ import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConf
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 import { buildUnifiedDiff } from '@/src/server/canvasDiff';
 import { toJsonValue } from '@/src/server/json';
+import { acquireBranchLease } from '@/src/server/leases';
 
 interface RouteContext {
   params: { id: string };
@@ -99,7 +100,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const user = await requireUser();
     const store = getStoreConfig();
     const canvasToolsEnabled = store.mode === 'pg' && process.env.RT_CANVAS_TOOLS === 'true';
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
 
     const body = await request.json().catch(() => null);
     const parsed = chatRequestSchema.safeParse(body);
@@ -107,7 +108,17 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { message, question, highlight, intent, llmProvider, ref, thinking, webSearch } = parsed.data as typeof parsed.data & {
+    const {
+      message,
+      question,
+      highlight,
+      intent,
+      llmProvider,
+      ref,
+      thinking,
+      webSearch,
+      leaseSessionId
+    } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
       webSearch?: boolean;
     };
@@ -129,6 +140,9 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
     if (store.mode === 'pg' && !targetRefId) {
       throw badRequest(`Branch ${targetRefName} is missing ref id`);
+    }
+    if (store.mode === 'pg' && targetRefId) {
+      await acquireBranchLease({ projectId: params.id, refId: targetRefId, leaseSessionId });
     }
     const branchConfigMap = await getBranchConfigMap(params.id);
     const activeConfig = branchConfigMap[targetRefName] ?? resolveBranchConfig();

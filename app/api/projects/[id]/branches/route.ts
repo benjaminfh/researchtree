@@ -5,7 +5,7 @@ import { createBranchSchema, switchBranchSchema } from '@/src/server/schemas';
 import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { requireProjectAccess } from '@/src/server/authz';
+import { requireProjectAccess, requireProjectEditor } from '@/src/server/authz';
 import { resolveBranchConfig } from '@/src/server/branchConfig';
 import { resolveOpenAIProviderSelection } from '@/src/server/llm';
 import { getPreviousResponseId } from '@/src/server/llmState';
@@ -54,7 +54,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
-    await requireProjectAccess({ id: params.id });
+    await requireProjectEditor({ id: params.id });
     const body = await request.json().catch(() => null);
     const parsed = createBranchSchema.safeParse(body);
     if (!parsed.success) {

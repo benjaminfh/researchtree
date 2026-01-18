@@ -9,6 +9,7 @@ import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@g
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
+import { useLeaseSession } from '@/src/hooks/useLeaseSession';
 import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -89,6 +90,12 @@ const formatCharLimitMessage = (label: string, current: number, max: number) => 
   return `${label} is too long (${current} chars). Max ${max} characters.`;
 };
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const isValidEmail = (value: string) => {
+  return EMAIL_PATTERN.test(value);
+};
+
 const buildQuestionMessage = (question: string, highlight?: string) => {
   const trimmedQuestion = question.trim();
   const trimmedHighlight = highlight?.trim() ?? '';
@@ -131,12 +138,38 @@ type BranchListItem = BranchSummary & {
   isGhost?: boolean;
 };
 
+type StoreMode = 'pg' | 'git';
+
+type ProjectMember = {
+  userId: string;
+  email: string | null;
+  role: string;
+  createdAt: string;
+};
+
+type ProjectInvite = {
+  id: string;
+  email: string;
+  role: string;
+  invitedBy: string | null;
+  invitedByEmail: string | null;
+  createdAt: string;
+};
+
+type RefLease = {
+  refId: string;
+  holderUserId: string;
+  holderSessionId: string;
+  expiresAt: string;
+};
+
 interface WorkspaceClientProps {
   project: ProjectMetadata;
   initialBranches: BranchSummary[];
   defaultProvider: LLMProvider;
   providerOptions: ProviderOption[];
   openAIUseResponses: boolean;
+  storeMode: StoreMode;
 }
 
 interface ProviderOption {
@@ -642,14 +675,23 @@ const ChatNodeRow: FC<{
   );
 };
 
+const withLeaseSessionId = <T extends Record<string, unknown>>(payload: T, leaseSessionId?: string | null): T | (T & { leaseSessionId: string }) => {
+  if (!leaseSessionId) {
+    return payload;
+  }
+  return { ...payload, leaseSessionId };
+};
+
 export function WorkspaceClient({
   project,
   initialBranches,
   defaultProvider,
   providerOptions,
-  openAIUseResponses
+  openAIUseResponses,
+  storeMode
 }: WorkspaceClientProps) {
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
+  const isPgMode = storeMode === 'pg';
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
@@ -688,6 +730,23 @@ export function WorkspaceClient({
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const { sessionId: leaseSessionId, ready: leaseSessionReady } = useLeaseSession(project.id, isPgMode);
+  const shareUiVisible =
+    isPgMode &&
+    (features.uiShareMode === 'all' || (features.uiShareMode === 'admins' && Boolean(project.isOwner)));
+  const canShare = isPgMode && Boolean(project.isOwner);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareRole, setShareRole] = useState<'viewer' | 'editor'>('viewer');
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [isShareSaving, setIsShareSaving] = useState(false);
+  const [pendingShareIds, setPendingShareIds] = useState<Set<string>>(new Set());
+  const [isReleasingLease, setIsReleasingLease] = useState(false);
+  const [showBranchSettings, setShowBranchSettings] = useState(false);
+  const [openBranchMenu, setOpenBranchMenu] = useState<string | null>(null);
+  const branchSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const branchSettingsPopoverRef = useRef<HTMLDivElement | null>(null);
+  const branchMenuRefs = useRef<Map<string, React.RefObject<HTMLButtonElement>>>(new Map());
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
@@ -825,6 +884,15 @@ export function WorkspaceClient({
     [removeToast]
   );
 
+  const ensureLeaseSessionReady = useCallback(() => {
+    if (!isPgMode) return true;
+    if (!leaseSessionReady || !leaseSessionId) {
+      pushToast('error', 'Editing session is still initializing. Please try again in a moment.');
+      return false;
+    }
+    return true;
+  }, [isPgMode, leaseSessionId, leaseSessionReady, pushToast]);
+
   useEffect(() => {
     return () => {
       for (const timeout of toastTimeoutsRef.current.values()) {
@@ -928,15 +996,200 @@ export function WorkspaceClient({
     resetEditState();
   }, [isEditing, resetEditState]);
 
+  const closeShareModal = useCallback(() => {
+    if (isShareSaving) return;
+    setShowShareModal(false);
+    setShareEmail('');
+    setShareRole('viewer');
+    setShareError(null);
+    setPendingShareIds(new Set());
+  }, [isShareSaving]);
+  const closeBranchSettings = useCallback(() => {
+    setShowBranchSettings(false);
+  }, []);
+
   const {
     data: starsData,
     mutate: mutateStars
   } = useSWR<{ starredNodeIds: string[] }>(`/api/projects/${project.id}/stars`, fetchJson, { revalidateOnFocus: true });
+  const {
+    data: shareData,
+    error: shareLoadError,
+    mutate: mutateShare
+  } = useSWR<{ members: ProjectMember[]; invites: ProjectInvite[] }>(
+    canShare && showShareModal ? `/api/projects/${project.id}/members` : null,
+    fetchJson,
+    { revalidateOnFocus: true }
+  );
+  const {
+    data: leaseData,
+    mutate: mutateLeases
+  } = useSWR<{ leases: RefLease[] }>(
+    isPgMode ? `/api/projects/${project.id}/leases` : null,
+    fetchJson,
+    { revalidateOnFocus: true, refreshInterval: 10000 }
+  );
 
   const starredNodeIds = starsData?.starredNodeIds ?? [];
   const starredKey = useMemo(() => [...new Set(starredNodeIds)].sort().join('|'), [starredNodeIds]);
   const stableStarredNodeIds = useMemo(() => (starredKey ? starredKey.split('|') : []), [starredKey]);
   const starredSet = useMemo(() => new Set(stableStarredNodeIds), [stableStarredNodeIds]);
+  const shareMembers = shareData?.members ?? [];
+  const shareInvites = shareData?.invites ?? [];
+  const shareEmailTrimmed = shareEmail.trim();
+  const isShareEmailValid = useMemo(() => {
+    if (!shareEmailTrimmed) return true;
+    return isValidEmail(shareEmailTrimmed);
+  }, [shareEmailTrimmed]);
+  const leasesByRefId = useMemo(() => {
+    const map = new Map<string, RefLease>();
+    for (const lease of leaseData?.leases ?? []) {
+      map.set(lease.refId, lease);
+    }
+    return map;
+  }, [leaseData]);
+  const getLeaseForBranchName = useCallback(
+    (name: string) => {
+      const branch = branches.find((entry) => entry.name === name);
+      const lease = branch?.id ? leasesByRefId.get(branch.id) ?? null : null;
+      return { branch, lease };
+    },
+    [branches, leasesByRefId]
+  );
+
+  const updateShareData = useCallback(
+    async (data: { members: ProjectMember[]; invites: ProjectInvite[] }) => {
+      await mutateShare(data, false);
+    },
+    [mutateShare]
+  );
+
+  const submitShareInvite = useCallback(async () => {
+    const trimmedEmail = shareEmail.trim();
+    if (!trimmedEmail) {
+      setShareError('Email is required.');
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      setShareError('Enter a valid email address.');
+      return;
+    }
+    setIsShareSaving(true);
+    setShareError(null);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmedEmail, role: shareRole })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? 'Failed to send invite');
+      }
+      const data = (await res.json()) as { members: ProjectMember[]; invites: ProjectInvite[] };
+      await updateShareData(data);
+      setShareEmail('');
+      pushToast('success', 'Invite sent.');
+    } catch (err) {
+      setShareError((err as Error).message);
+    } finally {
+      setIsShareSaving(false);
+    }
+  }, [project.id, pushToast, shareEmail, shareRole, updateShareData]);
+
+  const updateShareRole = useCallback(
+    async (payload: { type: 'member' | 'invite'; id: string; role: 'viewer' | 'editor' }) => {
+      setShareError(null);
+      setPendingShareIds((prev) => new Set(prev).add(payload.id));
+      try {
+        const res = await fetch(`/api/projects/${project.id}/members`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to update role');
+        }
+        const data = (await res.json()) as { members: ProjectMember[]; invites: ProjectInvite[] };
+        await updateShareData(data);
+        pushToast('success', 'Role updated.');
+      } catch (err) {
+        setShareError((err as Error).message);
+      } finally {
+        setPendingShareIds((prev) => {
+          const next = new Set(prev);
+          next.delete(payload.id);
+          return next;
+        });
+      }
+    },
+    [project.id, pushToast, updateShareData]
+  );
+
+  const removeShareEntry = useCallback(
+    async (payload: { type: 'member' | 'invite'; id: string }) => {
+      setShareError(null);
+      setPendingShareIds((prev) => new Set(prev).add(payload.id));
+      try {
+        const res = await fetch(`/api/projects/${project.id}/members`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to remove entry');
+        }
+        const data = (await res.json()) as { members: ProjectMember[]; invites: ProjectInvite[] };
+        await updateShareData(data);
+        pushToast('success', payload.type === 'member' ? 'Member removed.' : 'Invite revoked.');
+      } catch (err) {
+        setShareError((err as Error).message);
+      } finally {
+        setPendingShareIds((prev) => {
+          const next = new Set(prev);
+          next.delete(payload.id);
+          return next;
+        });
+      }
+    },
+    [project.id, pushToast, updateShareData]
+  );
+
+  const releaseLease = useCallback(
+    async (payload: { refId: string; force?: boolean }) => {
+      if (!ensureLeaseSessionReady()) return;
+      setIsReleasingLease(true);
+      try {
+        const res = await fetch(`/api/projects/${project.id}/leases`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            withLeaseSessionId(
+              {
+                refId: payload.refId,
+                force: payload.force ?? false
+              },
+              leaseSessionId
+            )
+          )
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error?.message ?? 'Failed to unlock editing');
+        }
+        const data = (await res.json()) as { leases: RefLease[] };
+        await mutateLeases(data, false);
+        pushToast('success', 'Edit lock released.');
+      } catch (err) {
+        pushToast('error', (err as Error).message);
+      } finally {
+        setIsReleasingLease(false);
+      }
+    },
+    [ensureLeaseSessionReady, leaseSessionId, mutateLeases, project.id, pushToast]
+  );
   const [pendingStarIds, setPendingStarIds] = useState<Set<string>>(new Set());
 
   const toggleStar = async (nodeId: string) => {
@@ -1007,6 +1260,17 @@ export function WorkspaceClient({
   }, []);
   const saveArtefactSnapshot = useCallback(
     async ({ content, ref }: { content: string; ref: string }) => {
+      if (isPgMode) {
+        if (!leaseSessionReady || !leaseSessionId) {
+          setArtefactError('Editing session is still initializing. Please try again.');
+          return false;
+        }
+        const { lease } = getLeaseForBranchName(ref);
+        if (lease && lease.holderSessionId !== leaseSessionId) {
+          setArtefactError('Editing locked. Editor access required.');
+          return false;
+        }
+      }
       if (autosaveControllerRef.current) {
         autosaveControllerRef.current.abort();
       }
@@ -1027,7 +1291,7 @@ export function WorkspaceClient({
         const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(ref)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify(withLeaseSessionId({ content }, leaseSessionId)),
           signal: controller.signal
         });
         if (!res.ok) {
@@ -1056,7 +1320,7 @@ export function WorkspaceClient({
         }, remaining);
       }
     },
-    [branchName, mutateArtefact, project.id]
+    [branchName, getLeaseForBranchName, isPgMode, leaseSessionId, leaseSessionReady, mutateArtefact, project.id]
   );
   const scheduleAutosave = useCallback(
     ({ content, ref }: { content: string; ref: string }) => {
@@ -1110,6 +1374,29 @@ export function WorkspaceClient({
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
   const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
+  const activeBranchLease = useMemo(() => {
+    if (!activeBranch?.id) return null;
+    const lease = leasesByRefId.get(activeBranch.id);
+    if (lease) return lease;
+    if (activeBranch.leaseHolderSessionId) {
+      return {
+        refId: activeBranch.id,
+        holderUserId: activeBranch.leaseHolderUserId ?? '',
+        holderSessionId: activeBranch.leaseHolderSessionId ?? '',
+        expiresAt: activeBranch.leaseExpiresAt ?? ''
+      };
+    }
+    return null;
+  }, [activeBranch?.id, activeBranch?.leaseExpiresAt, activeBranch?.leaseHolderSessionId, activeBranch?.leaseHolderUserId, leasesByRefId]);
+  const leaseHeldBySession = useMemo(
+    () => Boolean(activeBranchLease && activeBranchLease.holderSessionId === leaseSessionId),
+    [activeBranchLease, leaseSessionId]
+  );
+  const leaseLocked = useMemo(
+    () => Boolean(activeBranchLease && activeBranchLease.holderSessionId !== leaseSessionId),
+    [activeBranchLease, leaseSessionId]
+  );
+  const isBranchWriteLocked = isPgMode && leaseLocked;
   const branchProvider = useMemo(
     () => activeBranch?.provider ?? defaultProvider,
     [activeBranch?.provider, defaultProvider]
@@ -1163,6 +1450,7 @@ export function WorkspaceClient({
     provider: branchProvider,
     thinking,
     webSearch: webSearchEnabled,
+    leaseSessionId,
     onChunk: (chunk) => {
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
@@ -1259,7 +1547,15 @@ export function WorkspaceClient({
     !activeProviderModel || allowedThinking.includes(thinking)
       ? null
       : `Thinking: ${THINKING_SETTING_LABELS[thinking]} is not supported for ${branchProviderLabel} (model=${activeProviderModel}).`;
-  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? null;
+  const leaseStatusError =
+    isPgMode && !leaseSessionReady
+      ? 'Initializing editing session…'
+      : isBranchWriteLocked
+        ? 'Editing locked. Editor access required.'
+        : null;
+  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
+  const composerDisabled = state.isStreaming || isBranchWriteLocked || (isPgMode && !leaseSessionReady);
+  const canvasDisabled = isPgMode && (!leaseSessionReady || isBranchWriteLocked);
   const webSearchAvailable = branchProvider !== 'mock';
   const showOpenAISearchNote =
     webSearchEnabled &&
@@ -1276,6 +1572,13 @@ export function WorkspaceClient({
     setComposerError(null);
     if (thinkingUnsupportedError) {
       setThinkingMenuOpen(true);
+      return;
+    }
+    if (!ensureLeaseSessionReady()) {
+      return;
+    }
+    if (isBranchWriteLocked) {
+      pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
     shouldScrollToBottomRef.current = true;
@@ -1330,6 +1633,7 @@ export function WorkspaceClient({
     onFailure?: () => void;
   }) => {
     if (!question.trim() || state.isStreaming) return;
+    if (!ensureLeaseSessionReady()) return;
     const optimisticContent = buildQuestionMessage(question, highlight);
     shouldScrollToBottomRef.current = true;
     questionDraftRef.current = optimisticContent;
@@ -1357,17 +1661,20 @@ export function WorkspaceClient({
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/branch-question`,
-      body: {
-        name: targetBranch,
-        fromRef,
-        fromNodeId,
-        provider,
-        model,
-        question,
-        highlight,
-        thinking: thinkingSetting,
-        switch: true
-      },
+      body: withLeaseSessionId(
+        {
+          name: targetBranch,
+          fromRef,
+          fromNodeId,
+          provider,
+          model,
+          question,
+          highlight,
+          thinking: thinkingSetting,
+          switch: true
+        },
+        leaseSessionId
+      ),
       onResponse: () => {
         responded = true;
         onResponse?.();
@@ -1401,6 +1708,14 @@ export function WorkspaceClient({
     onFailure?: () => void;
   }) => {
     if (!content.trim() || state.isStreaming) return;
+    if (!ensureLeaseSessionReady()) return;
+    if (isPgMode) {
+      const { lease } = getLeaseForBranchName(targetBranch);
+      if (lease && lease.holderSessionId !== leaseSessionId) {
+        pushToast('error', 'Editing locked. Editor access required.');
+        return;
+      }
+    }
     shouldScrollToBottomRef.current = true;
     questionDraftRef.current = content;
     setStreamBlocks([]);
@@ -1427,15 +1742,18 @@ export function WorkspaceClient({
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/edit-stream`,
-      body: {
-        content,
-        branchName: targetBranch,
-        fromRef,
-        llmProvider: provider,
-        llmModel: model,
-        thinking: thinkingSetting,
-        nodeId
-      },
+      body: withLeaseSessionId(
+        {
+          content,
+          branchName: targetBranch,
+          fromRef,
+          llmProvider: provider,
+          llmModel: model,
+          thinking: thinkingSetting,
+          nodeId
+        },
+        leaseSessionId
+      ),
       onResponse: () => {
         responded = true;
         onResponse?.();
@@ -2141,6 +2459,53 @@ export function WorkspaceClient({
   }, []);
 
   useEffect(() => {
+    if (!showBranchSettings) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (branchSettingsButtonRef.current?.contains(target)) return;
+      if (branchSettingsPopoverRef.current?.contains(target)) return;
+      setShowBranchSettings(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowBranchSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showBranchSettings]);
+
+  useEffect(() => {
+    if (showShareModal) {
+      setShowBranchSettings(false);
+    }
+  }, [showShareModal]);
+
+  useEffect(() => {
+    if (!openBranchMenu) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-branch-menu]')) return;
+      setOpenBranchMenu(null);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenBranchMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [openBranchMenu]);
+
+  useEffect(() => {
     if (!showMergeModal) {
       setMergePreview(null);
       setMergePreviewError(null);
@@ -2505,10 +2870,19 @@ export function WorkspaceClient({
   }, [visibleNodes]);
 
   const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
+    if (!ensureLeaseSessionReady()) {
+      throw new Error('Editing session is still initializing.');
+    }
+    if (isPgMode) {
+      const { lease } = getLeaseForBranchName(targetBranch);
+      if (lease && lease.holderSessionId !== leaseSessionId) {
+        throw new Error('Editing locked. Editor access required.');
+      }
+    }
     const res = await fetch(`/api/projects/${project.id}/merge/pin-canvas-diff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mergeNodeId, targetBranch })
+      body: JSON.stringify(withLeaseSessionId({ mergeNodeId, targetBranch }, leaseSessionId))
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
@@ -2657,6 +3031,9 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branchName: string; branches: BranchSummary[] };
       setBranchName(data.branchName);
       setBranches(data.branches);
+      if (isPgMode) {
+        await mutateLeases();
+      }
       await Promise.all([refreshHistory(), mutateArtefact()]);
     } catch (err) {
       setBranchActionError((err as Error).message);
@@ -2689,6 +3066,18 @@ export function WorkspaceClient({
       onResponse?: () => void;
       onFailure?: () => void;
     }) => {
+      if (!ensureLeaseSessionReady()) {
+        onFailure?.();
+        return;
+      }
+      if (isPgMode) {
+        const { lease } = getLeaseForBranchName(targetBranch);
+        if (lease && lease.holderSessionId !== leaseSessionId) {
+          pushToast('error', 'Editing locked. Editor access required.');
+          onFailure?.();
+          return;
+        }
+      }
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'edit',
@@ -2701,15 +3090,20 @@ export function WorkspaceClient({
           const res = await fetch(`/api/projects/${project.id}/edit-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content,
-              branchName: targetBranch,
-              fromRef,
-              llmProvider: provider,
-              llmModel: model,
-              thinking: thinkingSetting,
-              nodeId
-            })
+            body: JSON.stringify(
+              withLeaseSessionId(
+                {
+                  content,
+                  branchName: targetBranch,
+                  fromRef,
+                  llmProvider: provider,
+                  llmModel: model,
+                  thinking: thinkingSetting,
+                  nodeId
+                },
+                leaseSessionId
+              )
+            )
           });
           if (!res.ok || !res.body) {
             const data = await res.json().catch(() => null);
@@ -2741,7 +3135,11 @@ export function WorkspaceClient({
     },
     [
       displayBranchName,
+      ensureLeaseSessionReady,
       finishBackgroundTask,
+      getLeaseForBranchName,
+      isPgMode,
+      leaseSessionId,
       project.id,
       pushToast,
       refreshInsights,
@@ -2849,6 +3247,10 @@ export function WorkspaceClient({
       onResponse?: () => void;
       onFailure?: () => void;
     }) => {
+      if (!ensureLeaseSessionReady()) {
+        onFailure?.();
+        return;
+      }
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'question',
@@ -2861,17 +3263,22 @@ export function WorkspaceClient({
           const res = await fetch(`/api/projects/${project.id}/branch-question`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: targetBranch,
-              fromRef,
-              fromNodeId,
-              provider,
-              model,
-              question,
-              highlight,
-              thinking: thinkingSetting,
-              switch: switchOnCreate
-            })
+            body: JSON.stringify(
+              withLeaseSessionId(
+                {
+                  name: targetBranch,
+                  fromRef,
+                  fromNodeId,
+                  provider,
+                  model,
+                  question,
+                  highlight,
+                  thinking: thinkingSetting,
+                  switch: switchOnCreate
+                },
+                leaseSessionId
+              )
+            )
           });
           if (!res.ok || !res.body) {
             const data = await res.json().catch(() => null);
@@ -2898,7 +3305,16 @@ export function WorkspaceClient({
         }
       })();
     },
-    [displayBranchName, finishBackgroundTask, project.id, pushToast, refreshInsights, startBackgroundTask]
+    [
+      displayBranchName,
+      ensureLeaseSessionReady,
+      finishBackgroundTask,
+      leaseSessionId,
+      project.id,
+      pushToast,
+      refreshInsights,
+      startBackgroundTask
+    ]
   );
 
   const renameBranch = async () => {
@@ -2908,6 +3324,16 @@ export function WorkspaceClient({
       setRenameError('Branch name is required.');
       return;
     }
+    if (!ensureLeaseSessionReady()) {
+      return;
+    }
+    if (isPgMode) {
+      const { lease } = getLeaseForBranchName(renameTarget.name);
+      if (lease && lease.holderSessionId !== leaseSessionId) {
+        setRenameError('Editing locked. Editor access required.');
+        return;
+      }
+    }
     setIsRenaming(true);
     setRenameError(null);
     setBranchActionError(null);
@@ -2916,7 +3342,7 @@ export function WorkspaceClient({
       const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nextName })
+        body: JSON.stringify(withLeaseSessionId({ name: nextName }, leaseSessionId))
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -3164,6 +3590,10 @@ export function WorkspaceClient({
     () => buildModalBackdropHandler(closeEditModal),
     [buildModalBackdropHandler, closeEditModal]
   );
+  const handleShareBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeShareModal),
+    [buildModalBackdropHandler, closeShareModal]
+  );
 
   return (
     <>
@@ -3220,6 +3650,15 @@ export function WorkspaceClient({
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       const visibilityDisabled =
                         isSwitching || isCreating || visibilityPending || isGhost || (!isHidden && isActiveBranch);
+                      const { lease: branchLease } = getLeaseForBranchName(branch.name);
+                      const branchLeaseHeldBySession = Boolean(branchLease && branchLease.holderSessionId === leaseSessionId);
+                      const branchLeaseLocked = Boolean(branchLease && branchLease.holderSessionId !== leaseSessionId);
+                      const branchMenuOpen = openBranchMenu === branch.name;
+                      let branchMenuAnchorRef = branchMenuRefs.current.get(branch.name);
+                      if (!branchMenuAnchorRef) {
+                        branchMenuAnchorRef = React.createRef<HTMLButtonElement>();
+                        branchMenuRefs.current.set(branch.name, branchMenuAnchorRef);
+                      }
                       return (
                         <div
                           key={branch.name}
@@ -3271,66 +3710,145 @@ export function WorkspaceClient({
                                 <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                               ) : null}
                             </span>
-                            <span className="inline-flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void togglePinnedBranch(branch);
-                                }}
-                                disabled={isSwitching || isCreating || pinPending || isGhost}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                  isSwitching || isCreating || pinPending || isGhost ? 'cursor-not-allowed' : 'hover:bg-primary/10'
-                                } ${branch.isPinned ? 'text-red-600 hover:text-red-700' : 'text-slate-400 hover:text-slate-600'}`}
-                                aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
-                              >
-                                {pinPending ? (
-                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                ) : (
-                                  <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-                              <span
-                                title={!isHidden && isActiveBranch ? 'Cannot hide the current branch.' : undefined}
-                                className="inline-flex"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void toggleBranchVisibility(branch);
-                                  }}
-                                  disabled={visibilityDisabled}
-                                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                    visibilityDisabled
-                                      ? 'cursor-not-allowed text-slate-300'
-                                      : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
-                                  }`}
-                                  aria-label={isHidden ? 'Show branch' : 'Hide branch'}
+                            <span className="relative inline-flex items-center gap-1" data-branch-menu data-branch-menu-name={branch.name}>
+                              {branch.isPinned ? (
+                                <span
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white text-red-600 shadow-sm"
+                                  aria-label="Pinned branch"
+                                  title="Pinned branch"
                                 >
-                                  {visibilityPending ? (
-                                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-                                  ) : (
-                                    <BlueprintIcon icon={isHidden ? 'eye-off' : 'eye-open'} className="h-3.5 w-3.5" />
-                                  )}
-                                </button>
-                              </span>
+                                  <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                </span>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  openRenameModal(branch);
+                                  setOpenBranchMenu((prev) => (prev === branch.name ? null : branch.name));
                                 }}
-                                disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition ${
-                                  branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost
-                                    ? 'cursor-not-allowed text-slate-300'
-                                    : 'text-slate-500 hover:bg-primary/10 hover:text-slate-700'
-                                }`}
-                                aria-label="Rename branch"
+                                ref={branchMenuAnchorRef}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-500 shadow-sm transition hover:bg-primary/10 hover:text-slate-700"
+                                aria-label={`Branch options for ${displayBranchName(branch.name)}`}
+                                aria-expanded={branchMenuOpen}
                               >
-                                <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
+                                <BlueprintIcon icon="cog" className="h-3.5 w-3.5" />
                               </button>
+                              {branchMenuOpen && branchMenuAnchorRef ? (
+                                <div data-branch-menu className="absolute left-0 top-0 h-0 w-0">
+                                  <RailPopover
+                                    open={branchMenuOpen}
+                                    anchorRef={branchMenuAnchorRef}
+                                    ariaLabel={`Branch actions for ${displayBranchName(branch.name)}`}
+                                    className="flex h-11 w-auto items-center gap-2 rounded-full px-2 py-1.5"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void togglePinnedBranch(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
+                                      disabled={isSwitching || isCreating || pinPending || isGhost}
+                                      title={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                      aria-label={branch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                        isSwitching || isCreating || pinPending || isGhost
+                                          ? 'cursor-not-allowed text-slate-300'
+                                          : branch.isPinned
+                                            ? 'text-red-600 hover:bg-red-50'
+                                            : 'text-slate-600 hover:bg-primary/10'
+                                      }`}
+                                    >
+                                      {pinPending ? (
+                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                      ) : (
+                                        <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void toggleBranchVisibility(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
+                                      disabled={visibilityDisabled}
+                                      title={
+                                        visibilityDisabled && !isHidden && isActiveBranch
+                                          ? 'Cannot hide the current branch'
+                                          : isHidden
+                                            ? 'Show branch'
+                                            : 'Hide branch'
+                                      }
+                                      aria-label={isHidden ? 'Show branch' : 'Hide branch'}
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                        visibilityDisabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-600 hover:bg-primary/10'
+                                      }`}
+                                    >
+                                      {visibilityPending ? (
+                                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                                      ) : (
+                                        <BlueprintIcon icon={isHidden ? 'eye-open' : 'eye-off'} className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openRenameModal(branch);
+                                        setOpenBranchMenu(null);
+                                      }}
+                                    disabled={branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost}
+                                    title="Rename branch"
+                                    aria-label="Rename branch"
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                      branch.isTrunk || isSwitching || isCreating || isRenaming || isGhost
+                                        ? 'cursor-not-allowed text-slate-300'
+                                        : 'text-slate-600 hover:bg-primary/10'
+                                    }`}
+                                  >
+                                    <BlueprintIcon icon="edit" className="h-3.5 w-3.5" />
+                                    </button>
+                                    {shareUiVisible ? (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void releaseLease({
+                                            refId: branch.id!,
+                                            force: !branchLeaseHeldBySession && Boolean(project.isOwner)
+                                          });
+                                          setOpenBranchMenu(null);
+                                        }}
+                                        disabled={
+                                          isReleasingLease ||
+                                          !branchLease ||
+                                          (!branchLeaseHeldBySession && !project.isOwner)
+                                        }
+                                        title={
+                                          !branchLease
+                                            ? 'No edit lock to release'
+                                            : branchLeaseHeldBySession
+                                              ? 'Release edit lock'
+                                              : project.isOwner
+                                                ? 'Force unlock editing'
+                                                : 'Editing locked elsewhere'
+                                        }
+                                        aria-label="Release edit lock"
+                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/70 bg-white transition ${
+                                          !branchLease || (!branchLeaseHeldBySession && !project.isOwner)
+                                            ? 'cursor-not-allowed text-slate-300'
+                                            : branchLeaseLocked && !project.isOwner
+                                              ? 'text-slate-300'
+                                              : 'text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                      >
+                                        <BlueprintIcon icon="unlock" className="h-3.5 w-3.5" />
+                                      </button>
+                                    ) : null}
+                                  </RailPopover>
+                                </div>
+                              ) : null}
                             </span>
                           </div>
                         </div>
@@ -3651,6 +4169,16 @@ export function WorkspaceClient({
 
                     {sortedBranches.length > 0 ? (
                       <div className="flex items-center gap-2">
+                        {shareUiVisible && leaseLocked ? (
+                          <div
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-amber-50 text-amber-700 shadow-sm"
+                            aria-label="Editing locked (editor access required)"
+                            title="Editing locked (editor access required)"
+                          >
+                            <BlueprintIcon icon="lock" className="h-4 w-4" />
+                          </div>
+                        ) : null}
+
                         <button
                           type="button"
                           onClick={() => {
@@ -3688,6 +4216,101 @@ export function WorkspaceClient({
                             </span>
                             Merge…
                           </button>
+                        ) : null}
+
+                        {shareUiVisible ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!canShare) return;
+                              setShareError(null);
+                              setShowShareModal(true);
+                            }}
+                            disabled={!canShare}
+                            title={canShare ? 'Share workspace' : 'Only owners can manage sharing'}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Share workspace"
+                            data-testid="share-open-button"
+                          >
+                            <BlueprintIcon icon="share" className="h-4 w-4" />
+                          </button>
+                        ) : null}
+
+                        {activeBranch ? (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              ref={branchSettingsButtonRef}
+                              onClick={() => setShowBranchSettings((prev) => !prev)}
+                              className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                              aria-label="Branch settings"
+                              aria-expanded={showBranchSettings}
+                            >
+                              <BlueprintIcon icon="cog" className="h-4 w-4" />
+                            </button>
+                            {showBranchSettings ? (
+                              <div
+                                ref={branchSettingsPopoverRef}
+                                className="absolute left-1/2 bottom-full z-50 mb-1 flex w-11 -translate-x-1/2 flex-col items-center gap-2 rounded-full border border-divider/80 bg-white/95 px-1 py-2 text-slate-700 shadow-lg backdrop-blur"
+                                role="dialog"
+                                aria-label="Branch settings"
+                              >
+                                {shareUiVisible ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void releaseLease({
+                                        refId: activeBranch.id!,
+                                        force: !leaseHeldBySession && Boolean(project.isOwner)
+                                      });
+                                      closeBranchSettings();
+                                    }}
+                                    disabled={
+                                      isReleasingLease ||
+                                      !activeBranchLease ||
+                                      (!leaseHeldBySession && !project.isOwner)
+                                    }
+                                    title={
+                                      !activeBranchLease
+                                        ? 'No edit lock to release'
+                                        : leaseHeldBySession
+                                          ? 'Release edit lock'
+                                          : project.isOwner
+                                            ? 'Force unlock editing'
+                                            : 'Editing locked elsewhere'
+                                    }
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <BlueprintIcon icon="unlock" className="h-4 w-4" />
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    openRenameModal(activeBranch);
+                                    closeBranchSettings();
+                                  }}
+                                  disabled={activeBranch.isTrunk || isSwitching || isCreating || isRenaming}
+                                  title="Rename branch"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon="edit" className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void togglePinnedBranch(activeBranch);
+                                    closeBranchSettings();
+                                  }}
+                                  disabled={isSwitching || isCreating || pendingPinBranchIds.has(activeBranch.id ?? activeBranch.name)}
+                                  title={activeBranch.isPinned ? 'Unpin branch' : 'Pin branch'}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon="pin" className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     ) : null}
@@ -4062,8 +4685,9 @@ export function WorkspaceClient({
                                     onChange={(event) => setArtefactDraft(event.target.value)}
                                     onFocus={() => setIsCanvasFocused(true)}
                                     onBlur={() => setIsCanvasFocused(false)}
-                                    className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none"
+                                    className="h-full w-full resize-none bg-transparent px-4 py-4 pb-12 text-sm leading-relaxed text-slate-800 focus:outline-none disabled:opacity-60"
                                     data-testid="canvas-editor"
+                                    disabled={canvasDisabled}
                                   />
                                   {!isCanvasFocused && artefactDraft.length === 0 ? (
                                     <div className="pointer-events-none absolute left-4 top-4 text-sm text-slate-400">
@@ -4125,7 +4749,7 @@ export function WorkspaceClient({
                       } ${!webSearchAvailable ? 'opacity-50' : ''}`}
                       aria-label="Toggle web search"
                       aria-pressed={webSearchEnabled}
-                      disabled={state.isStreaming || !webSearchAvailable}
+                      disabled={composerDisabled || !webSearchAvailable}
                     >
                       <SearchIcon className="h-4 w-4" />
                       <span>Web search</span>
@@ -4157,7 +4781,7 @@ export function WorkspaceClient({
                         minHeight: composerMinHeight ? `${composerMinHeight}px` : undefined,
                         maxHeight: composerMaxHeight ? `${composerMaxHeight}px` : undefined
                       }}
-                      disabled={state.isStreaming}
+                      disabled={composerDisabled}
                       onKeyDown={(event) => {
                         if (event.key !== 'Enter') {
                           return;
@@ -4240,7 +4864,7 @@ export function WorkspaceClient({
                     ) : null}
                     <button
                       type="submit"
-                      disabled={state.isStreaming || !draft.trim() || Boolean(thinkingUnsupportedError)}
+                      disabled={composerDisabled || !draft.trim() || Boolean(thinkingUnsupportedError)}
                       className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Send message"
                     >
@@ -4676,18 +5300,38 @@ export function WorkspaceClient({
                   if (!canMerge) {
                     return;
                   }
+                  if (!ensureLeaseSessionReady()) {
+                    return;
+                  }
+                  if (isPgMode) {
+                    const { lease: sourceLease } = getLeaseForBranchName(branchName);
+                    const { lease: targetLease } = getLeaseForBranchName(mergeTargetBranch);
+                    if (sourceLease && sourceLease.holderSessionId !== leaseSessionId) {
+                      setMergeError('Source branch editing is locked. Editor access required.');
+                      return;
+                    }
+                    if (targetLease && targetLease.holderSessionId !== leaseSessionId) {
+                      setMergeError('Target branch editing is locked. Editor access required.');
+                      return;
+                    }
+                  }
                   setIsMerging(true);
                   setMergeError(null);
                   try {
                     const res = await fetch(`/api/projects/${project.id}/merge`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        sourceBranch: branchName,
-                        targetBranch: mergeTargetBranch,
-                        mergeSummary: mergeSummary.trim(),
-                        sourceAssistantNodeId: selectedMergePayload.id
-                      })
+                      body: JSON.stringify(
+                        withLeaseSessionId(
+                          {
+                            sourceBranch: branchName,
+                            targetBranch: mergeTargetBranch,
+                            mergeSummary: mergeSummary.trim(),
+                            sourceAssistantNodeId: selectedMergePayload.id
+                          },
+                          leaseSessionId
+                        )
+                      )
                     });
                     if (!res.ok) {
                       const data = await res.json().catch(() => null);
@@ -4899,6 +5543,185 @@ export function WorkspaceClient({
               </button>
             </div>
             </CommandEnterForm>
+          </div>
+        </div>
+      ) : null}
+
+      {showShareModal ? (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={handleShareBackdrop}
+          onTouchStart={handleShareBackdrop}
+        >
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="share-modal">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Share workspace</h3>
+                <p className="text-sm text-muted">Invite collaborators and manage roles.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeShareModal}
+                className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-primary/10 disabled:opacity-60"
+                disabled={isShareSaving}
+              >
+                Close
+              </button>
+            </div>
+
+            <CommandEnterForm
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitShareInvite();
+              }}
+              enableCommandEnter={!isShareSaving && Boolean(shareEmailTrimmed) && isShareEmailValid}
+              className="mt-4 space-y-3 rounded-2xl border border-divider/80 bg-slate-50/70 p-4"
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="email"
+                  value={shareEmail}
+                  onChange={(event) => setShareEmail(event.target.value)}
+                  placeholder="Invite by email"
+                  className="min-w-[220px] flex-1 rounded-lg border border-divider/80 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                  disabled={isShareSaving}
+                  aria-invalid={Boolean(shareEmailTrimmed) && !isShareEmailValid}
+                  required
+                />
+                <select
+                  value={shareRole}
+                  onChange={(event) => setShareRole(event.target.value as 'viewer' | 'editor')}
+                  className="rounded-lg border border-divider/80 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none disabled:opacity-60"
+                  disabled={isShareSaving}
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                </select>
+                <button
+                  type="submit"
+                  className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={isShareSaving || !shareEmailTrimmed || !isShareEmailValid}
+                >
+                  {isShareSaving ? 'Inviting…' : 'Invite'}
+                </button>
+              </div>
+            </CommandEnterForm>
+
+            <div className="mt-6 grid gap-6 md:grid-cols-2">
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-800">Members</h4>
+                {shareLoadError ? (
+                  <p className="text-xs text-red-600">Unable to load members.</p>
+                ) : shareData ? (
+                  shareMembers.length > 0 ? (
+                    <div className="space-y-2">
+                      {shareMembers.map((member) => {
+                        const isOwnerRole = member.role === 'owner';
+                        const pending = pendingShareIds.has(member.userId);
+                        return (
+                          <div
+                            key={member.userId}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-divider/80 bg-white px-3 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-800">{member.email ?? member.userId}</div>
+                              <div className="text-[11px] text-muted">Joined {new Date(member.createdAt).toLocaleDateString()}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={member.role}
+                                onChange={(event) =>
+                                  updateShareRole({
+                                    type: 'member',
+                                    id: member.userId,
+                                    role: event.target.value as 'viewer' | 'editor'
+                                  })
+                                }
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                                disabled={isOwnerRole || pending}
+                              >
+                                <option value="viewer">Viewer</option>
+                                <option value="editor">Editor</option>
+                                {isOwnerRole ? <option value="owner">Owner</option> : null}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeShareEntry({ type: 'member', id: member.userId })}
+                                disabled={isOwnerRole || pending}
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">No members yet.</p>
+                  )
+                ) : (
+                  <p className="text-xs text-muted">Loading members…</p>
+                )}
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-800">Invites</h4>
+                {shareLoadError ? (
+                  <p className="text-xs text-red-600">Unable to load invites.</p>
+                ) : shareData ? (
+                  shareInvites.length > 0 ? (
+                    <div className="space-y-2">
+                      {shareInvites.map((invite) => {
+                        const pending = pendingShareIds.has(invite.id);
+                        return (
+                          <div
+                            key={invite.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-divider/80 bg-white px-3 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-800">{invite.email}</div>
+                              <div className="text-[11px] text-muted">
+                                Invited {new Date(invite.createdAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={invite.role}
+                                onChange={(event) =>
+                                  updateShareRole({
+                                    type: 'invite',
+                                    id: invite.id,
+                                    role: event.target.value as 'viewer' | 'editor'
+                                  })
+                                }
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                                disabled={pending}
+                              >
+                                <option value="viewer">Viewer</option>
+                                <option value="editor">Editor</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeShareEntry({ type: 'invite', id: invite.id })}
+                                disabled={pending}
+                                className="rounded-full border border-divider/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Revoke
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">No pending invites.</p>
+                  )
+                ) : (
+                  <p className="text-xs text-muted">Loading invites…</p>
+                )}
+              </div>
+            </div>
+            {shareError ? <p className="mt-4 text-sm text-red-600">{shareError}</p> : null}
           </div>
         </div>
       ) : null}

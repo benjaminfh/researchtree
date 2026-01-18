@@ -19,16 +19,18 @@ interface ProjectPageProps {
 export default async function ProjectWorkspace({ params }: ProjectPageProps) {
   const store = getStoreConfig();
 
-  let project: { id: string; name: string; description?: string; createdAt: string; branchName?: string };
+  let project: { id: string; name: string; description?: string; createdAt: string; branchName?: string; isOwner?: boolean };
   let branches: any[];
 
   if (store.mode === 'pg') {
-    await requireUser();
+    const user = await requireUser();
     const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
     const data = await rtGetProjectShadowV1({ projectId: params.id });
     if (!data) {
       notFound();
     }
+    const { rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
+    const ownerUserId = await rtGetProjectOwnerShadowV1({ projectId: params.id });
 
     const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
     const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
@@ -42,7 +44,8 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       name: data.name,
       description: data.description ?? undefined,
       createdAt: data.createdAt,
-      branchName: current.refName
+      branchName: current.refName,
+      isOwner: ownerUserId === user.id
     };
     branches = await rtListRefsShadowV2({ projectId: params.id });
   } else {
@@ -77,6 +80,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
         defaultProvider={resolveOpenAIProviderSelection()}
         providerOptions={providerOptions}
         openAIUseResponses={getOpenAIUseResponses()}
+        storeMode={store.mode}
       />
     </main>
   );
