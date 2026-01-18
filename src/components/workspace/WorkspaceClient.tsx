@@ -2341,7 +2341,7 @@ export function WorkspaceClient({
     if (typeof window === 'undefined') return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
-      if (event.key.toLowerCase() !== 'j') return;
+      if (event.key.toLowerCase() !== 'k') return;
       if (state.isStreaming) return;
       const target = event.target as HTMLElement | null;
       if (
@@ -2364,7 +2364,7 @@ export function WorkspaceClient({
     if (typeof window === 'undefined') return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.metaKey || event.shiftKey || event.ctrlKey || event.altKey) return;
-      if (event.key.toLowerCase() !== 'j') return;
+      if (event.key.toLowerCase() !== 'k') return;
       if (state.isStreaming) return;
       const target = event.target as HTMLElement | null;
       if (
@@ -3940,8 +3940,8 @@ export function WorkspaceClient({
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
                     <li>⌘ + Enter to send · Shift + Enter adds a newline.</li>
                     <li>⌘ + B to toggle the rail.</li>
-                    <li>⌘ + J to toggle the composer.</li>
-                    <li>⌘ + Shift + J to collapse or restore all panels.</li>
+                    <li>⌘ + K to toggle the composer.</li>
+                    <li>⌘ + Shift + K to collapse or restore all panels.</li>
                     <li>⌘ + click a graph node to jump to its message.</li>
                     <li>← Thred graph · → Canvas.</li>
                     <li>⌥⌘B to toggle the graph/canvas panel.</li>
