@@ -65,7 +65,8 @@ describe('/api/projects/[id]/graph', () => {
       role: 'user',
       content: `m${i}`,
       timestamp: i,
-      parent: i === 0 ? null : `m-${i - 1}`
+      parent: i === 0 ? null : `m-${i - 1}`,
+      createdOnRefId: 'ref-main'
     }));
     const featureNodes = Array.from({ length: 3 }, (_, i) => ({
       id: `f-${i}`,
@@ -118,7 +119,8 @@ describe('/api/projects/[id]/graph', () => {
       role: 'user',
       content: `m${i}`,
       timestamp: i,
-      parent: i === 0 ? null : `m-${i - 1}`
+      parent: i === 0 ? null : `m-${i - 1}`,
+      createdOnRefId: 'ref-main'
     }));
     const featureNodes = Array.from({ length: 3 }, (_, i) => ({
       id: `f-${i}`,
@@ -142,5 +144,6 @@ describe('/api/projects/[id]/graph', () => {
     expect(data.branches).toHaveLength(2);
     expect(data.starredNodeIds).toEqual(['n-2']);
     expect(data.branchHistories.main.length).toBe(500);
+    expect(data.branchHistories.main[0]?.createdOnBranch).toBe('main');
   });
 });

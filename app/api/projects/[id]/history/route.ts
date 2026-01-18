@@ -11,6 +11,20 @@ interface RouteContext {
   params: { id: string };
 }
 
+function applyRefNames(nodes: NodeRecord[], refNameById: Map<string, string>): NodeRecord[] {
+  if (refNameById.size === 0) return nodes;
+  return nodes.map((node) => {
+    const createdOn = node.createdOnRefId ? refNameById.get(node.createdOnRefId) : undefined;
+    const mergeFrom = node.type === 'merge' && node.mergeFromRefId ? refNameById.get(node.mergeFromRefId) : undefined;
+    if (!createdOn && !mergeFrom) return node;
+    return {
+      ...node,
+      createdOnBranch: createdOn ?? node.createdOnBranch,
+      ...(node.type === 'merge' ? { mergeFrom: mergeFrom ?? node.mergeFrom } : {})
+    } as NodeRecord;
+  });
+}
+
 function isHiddenMessage(node: NodeRecord): boolean {
   return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
 }
@@ -34,7 +48,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     const effectiveLimit = typeof parsedLimit === 'number' && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
     if (store.mode === 'pg') {
-      const { rtGetHistoryShadowV2 } = await import('@/src/store/pg/reads');
+      const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
       const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
       const refName = refParam?.trim();
       const ref = refName
@@ -42,7 +56,10 @@ export async function GET(request: Request, { params }: RouteContext) {
         : await resolveCurrentRef(params.id, INITIAL_BRANCH);
       const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: ref.id, limit: effectiveLimit });
       const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
-      const nonStateNodes = pgNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
+      const branches = await rtListRefsShadowV2({ projectId: params.id });
+      const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
+      const resolvedNodes = applyRefNames(pgNodes, refNameById);
+      const nonStateNodes = resolvedNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
       const sanitizedNodes = nonStateNodes.map(stripRawResponse);
       return Response.json({ nodes: sanitizedNodes });
     }

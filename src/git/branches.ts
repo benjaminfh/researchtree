@@ -19,6 +19,7 @@ import {
 import { getArtefactFromRef } from './artefact';
 import { readBranchConfigMap, setBranchConfig, writeBranchConfigMap } from './branchConfig';
 import { getPinnedBranchName, setPinnedBranchName } from './projects';
+import { ensureBranchId, ensureBranchIds, renameBranchId } from './branchIds';
 
 function buildLineDiff(base: string, incoming: string): string {
   const baseLines = base.length > 0 ? base.split(/\r?\n/) : [];
@@ -104,6 +105,7 @@ export async function createBranch(
     previousResponseId,
     isHidden: false
   });
+  await ensureBranchId(projectId, branchName);
 }
 
 export async function switchBranch(projectId: string, branchName: string): Promise<void> {
@@ -131,6 +133,7 @@ export async function renameBranch(projectId: string, fromBranch: string, toBran
   }
 
   await git.raw(['branch', '-m', fromBranch, toBranch]);
+  await renameBranchId(projectId, fromBranch, toBranch);
 
   const configMap = await readBranchConfigMap(projectId);
   if (configMap[fromBranch]) {
@@ -153,8 +156,10 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
   const fallbackProvider = resolveOpenAIProviderSelection();
   const pinnedBranch = await getPinnedBranchName(projectId);
 
+  const branchIdMap = await ensureBranchIds(projectId, branches.all);
   const summaries: (BranchSummary & { _lastModifiedAt: number; _createdAt: number })[] = [];
   for (const name of branches.all) {
+    const id = branchIdMap[name];
     const headCommit = (await git.revparse([name])).trim();
     const nodes = await readNodesFromRef(projectId, name);
     const lastModifiedAt = await getRefCommitTimestamp(git, headCommit);
@@ -166,6 +171,7 @@ export async function listBranches(projectId: string): Promise<BranchSummary[]> 
       ? modelCandidate
       : getDefaultModelForProvider(provider);
     summaries.push({
+      id,
       name,
       headCommit,
       nodeCount: nodes.length,
@@ -306,10 +312,13 @@ export async function mergeBranch(
 
   try {
     await git.merge(['-s', 'ours', '--no-commit', sourceBranch]);
+    const targetRefId = await ensureBranchId(projectId, target);
+    const sourceRefId = await ensureBranchId(projectId, sourceBranch);
     const mergeNode = createNodeRecord(
       {
         type: 'merge',
         mergeFrom: sourceBranch,
+        mergeFromRefId: sourceRefId,
         mergeSummary,
         sourceCommit,
         sourceNodeIds: sourceSpecific.map((node) => node.id),
@@ -318,7 +327,8 @@ export async function mergeBranch(
         mergedAssistantContent
       },
       parentId,
-      target
+      target,
+      targetRefId
     );
     await writeNodeRecord(projectId, mergeNode);
     await git.add([PROJECT_FILES.nodes]);

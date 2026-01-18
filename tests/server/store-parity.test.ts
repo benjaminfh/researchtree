@@ -134,6 +134,7 @@ describe('store parity regression', () => {
     mocks.readNodesFromRef.mockResolvedValue(nodes);
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
     mocks.rtGetHistoryShadowV2.mockResolvedValue(nodes.map((node, ordinal) => ({ ordinal, nodeJson: node })));
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-main', name: 'main' }]);
     mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
     mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
 

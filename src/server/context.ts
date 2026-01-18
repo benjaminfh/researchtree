@@ -25,6 +25,20 @@ export interface ChatContext {
 const DEFAULT_HISTORY_LIMIT = 40;
 const DEFAULT_TOKEN_LIMIT = 8000;
 
+function applyRefNames(nodes: NodeRecord[], refNameById: Map<string, string>): NodeRecord[] {
+  if (refNameById.size === 0) return nodes;
+  return nodes.map((node) => {
+    const createdOn = node.createdOnRefId ? refNameById.get(node.createdOnRefId) : undefined;
+    const mergeFrom = node.type === 'merge' && node.mergeFromRefId ? refNameById.get(node.mergeFromRefId) : undefined;
+    if (!createdOn && !mergeFrom) return node;
+    return {
+      ...node,
+      createdOnBranch: createdOn ?? node.createdOnBranch,
+      ...(node.type === 'merge' ? { mergeFrom: mergeFrom ?? node.mergeFrom } : {})
+    } as NodeRecord;
+  });
+}
+
 function getMergeUserRole(): Exclude<ChatMessage['role'], 'system'> {
   const raw = (process.env.MERGE_USER ?? 'assistant').trim().toLowerCase();
   if (!raw) return 'assistant';
@@ -51,8 +65,8 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   if (store.mode === 'pg') {
     const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+    const branches = await rtListRefsShadowV2({ projectId });
     if (resolvedRef) {
-      const branches = await rtListRefsShadowV2({ projectId });
       const match = branches.find((branch) => branch.name === resolvedRef);
       if (!match?.id) {
         throw new Error(`Ref ${resolvedRef} not found`);
@@ -73,7 +87,9 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
       limit,
       includeRawResponse: true
     });
-    nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+    const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
+    const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+    nodes = applyRefNames(pgNodes, refNameById);
   } else {
     const { getNodes } = await import('@git/nodes');
     const { readNodesFromRef } = await import('@git/utils');

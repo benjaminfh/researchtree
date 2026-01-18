@@ -13,6 +13,20 @@ interface RouteContext {
 
 const MAX_PER_BRANCH = 500;
 
+function applyRefNames(nodes: NodeRecord[], refNameById: Map<string, string>): NodeRecord[] {
+  if (refNameById.size === 0) return nodes;
+  return nodes.map((node) => {
+    const createdOn = node.createdOnRefId ? refNameById.get(node.createdOnRefId) : undefined;
+    const mergeFrom = node.type === 'merge' && node.mergeFromRefId ? refNameById.get(node.mergeFromRefId) : undefined;
+    if (!createdOn && !mergeFrom) return node;
+    return {
+      ...node,
+      createdOnBranch: createdOn ?? node.createdOnBranch,
+      ...(node.type === 'merge' ? { mergeFrom: mergeFrom ?? node.mergeFrom } : {})
+    } as NodeRecord;
+  });
+}
+
 function isHiddenMessage(node: NodeRecord): boolean {
   return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
 }
@@ -37,6 +51,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
       const branches = await rtListRefsShadowV2({ projectId: params.id });
       const visibleBranches = branches.filter((branch) => !branch.isHidden);
+      const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
       const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
       const currentBranch = (await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: trunkName })).refName;
 
@@ -48,7 +63,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
             }
             const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: branch.id, limit: MAX_PER_BRANCH });
             const nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
-            const visible = nodes.filter((node) => !isHiddenMessage(node));
+            const resolved = applyRefNames(nodes, refNameById);
+            const visible = resolved.filter((node) => !isHiddenMessage(node));
             return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
           })
         ),

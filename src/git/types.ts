@@ -11,6 +11,7 @@ export interface BaseNode {
   timestamp: number;
   parent: string | null;
   createdOnBranch?: string;
+  createdOnRefId?: string;
   contextWindow?: string[];
   modelUsed?: string;
   tokensUsed?: number;
@@ -37,6 +38,7 @@ export interface StateNode extends BaseNode {
 export interface MergeNode extends BaseNode {
   type: 'merge';
   mergeFrom: string;
+  mergeFromRefId?: string;
   mergeSummary: string;
   sourceCommit: string;
   sourceNodeIds: string[];
@@ -71,6 +73,7 @@ export type MergeNodeInput = Pick<
   MergeNode,
   | 'type'
   | 'mergeFrom'
+  | 'mergeFromRefId'
   | 'mergeSummary'
   | 'sourceCommit'
   | 'sourceNodeIds'

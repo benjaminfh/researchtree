@@ -33,13 +33,19 @@ export async function getNode(projectId: string, nodeId: string): Promise<NodeRe
   return nodes.find((node) => node.id === nodeId) ?? null;
 }
 
-export function createNodeRecord(input: NodeInput, parentId: string | null, createdOnBranch?: string): NodeRecord {
+export function createNodeRecord(
+  input: NodeInput,
+  parentId: string | null,
+  createdOnBranch?: string,
+  createdOnRefId?: string
+): NodeRecord {
   assertNodeInput(input);
   return {
     id: uuidv4(),
     timestamp: Date.now(),
     parent: parentId,
     createdOnBranch,
+    createdOnRefId,
     ...input
   } as NodeRecord;
 }
@@ -64,7 +70,9 @@ export async function appendNode(
   const nodes = await getNodes(projectId);
   const parentId = nodes.length > 0 ? nodes[nodes.length - 1].id : null;
   const createdOnBranch = options?.ref ?? (await git.branchLocal()).current;
-  const node = createNodeRecord(input, parentId, createdOnBranch);
+  const { ensureBranchId } = await import('./branchIds');
+  const createdOnRefId = createdOnBranch ? await ensureBranchId(projectId, createdOnBranch) : undefined;
+  const node = createNodeRecord(input, parentId, createdOnBranch, createdOnRefId);
 
   await writeNodeRecord(projectId, node);
   await ensureGitUserConfig(projectId);
@@ -101,7 +109,9 @@ export async function appendNodeToRefNoCheckout(
   const nodes = parseNodes(nodesRaw);
   const parentId = nodes.length > 0 ? nodes[nodes.length - 1].id : null;
   const createdOnBranch = ref;
-  const node = createNodeRecord(input, parentId, createdOnBranch);
+  const { ensureBranchId } = await import('./branchIds');
+  const createdOnRefId = createdOnBranch ? await ensureBranchId(projectId, createdOnBranch) : undefined;
+  const node = createNodeRecord(input, parentId, createdOnBranch, createdOnRefId);
 
   const nextNodesContent = `${ensureEndsWithNewline(nodesRaw)}${JSON.stringify(node)}\n`;
   const blobHash = (await gitExec(repoPath, ['hash-object', '-w', '--stdin'], { input: nextNodesContent })).trim();

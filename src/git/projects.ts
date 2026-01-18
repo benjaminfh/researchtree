@@ -21,6 +21,7 @@ import {
   getCurrentBranchName
 } from './utils';
 import { setBranchConfig } from './branchConfig';
+import { ensureBranchId } from './branchIds';
 
 export async function initProject(
   name: string,
@@ -47,6 +48,7 @@ export async function initProject(
     provider: resolvedProvider,
     model: getDefaultModelForProvider(resolvedProvider)
   });
+  await ensureBranchId(id, INITIAL_BRANCH);
 
   const metadata: ProjectMetadata = {
     id,
