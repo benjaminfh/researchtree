@@ -700,10 +700,12 @@ describe('WorkspaceClient', () => {
           { status: 200 }
         );
       }
-      if (url.includes('/branches/') && url.includes('/pin') && init?.method === 'POST') {
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/branches/feature%2Fphase-2/pin') && init?.method === 'POST') {
         return new Response(
           JSON.stringify({
-            branchName: 'main',
             branches: [
               branches[0],
               { ...branches[1], isPinned: true }
@@ -711,9 +713,6 @@ describe('WorkspaceClient', () => {
           }),
           { status: 200 }
         );
-      }
-      if (url.includes('/history')) {
-        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
       }
       if (url.includes('/stars')) {
         return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
@@ -724,18 +723,30 @@ describe('WorkspaceClient', () => {
       return new Response(JSON.stringify({}), { status: 200 });
     });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
 
     const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
     expect(branchRow).toBeTruthy();
-    const pinButton = within(branchRow as HTMLElement).getByRole('button', { name: 'Pin branch' });
+    const menuButton = within(branchRow as HTMLElement).getByRole('button', { name: /branch options/i });
+    await user.click(menuButton);
+    const pinButton = screen.getByRole('button', { name: 'Pin branch' });
     await user.click(pinButton);
 
-    const pinCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/pin') && call[1]?.method === 'POST');
+    const pinCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/branches/feature%2Fphase-2/pin'));
     expect(pinCall).toBeTruthy();
+    expect(pinCall?.[1]?.method).toBe('POST');
 
+    await user.click(menuButton);
     await waitFor(() => {
-      expect(within(branchRow as HTMLElement).getByRole('button', { name: 'Unpin branch' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Unpin branch' })).toBeInTheDocument();
     });
   });
 
@@ -787,11 +798,21 @@ describe('WorkspaceClient', () => {
       return new Response(JSON.stringify({}), { status: 200 });
     });
 
-    render(<WorkspaceClient project={baseProject} initialBranches={branches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
 
     const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/phase-2');
     expect(branchRow).toBeTruthy();
-    const renameButton = within(branchRow as HTMLElement).getByRole('button', { name: 'Rename branch' });
+    const menuButton = within(branchRow as HTMLElement).getByRole('button', { name: /branch options/i });
+    await user.click(menuButton);
+    const renameButton = screen.getByRole('button', { name: 'Rename branch' });
     await user.click(renameButton);
 
     const modal = await screen.findByTestId('rename-modal');
