@@ -39,6 +39,20 @@ export async function PATCH(request: Request, { params }: RouteContext) {
           leaseSessionId: parsed.data.leaseSessionId
         });
 
+        const branches = await rtListRefsShadowV2({ projectId: params.id });
+        const existing = branches.find((branch) => branch.name === parsed.data.name);
+        if (existing && existing.id !== params.refId) {
+          throw badRequest('Duplicate branch names are not allowed.');
+        }
+        if (existing && existing.id === params.refId) {
+          const current = await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: 'main' });
+          return Response.json({
+            branchName: current.refName,
+            branchId: current.refId,
+            branches
+          });
+        }
+
         await rtRenameRefShadowV2({
           projectId: params.id,
           refId: params.refId,
@@ -46,12 +60,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         });
 
         const current = await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: 'main' });
-        const branches = await rtListRefsShadowV2({ projectId: params.id });
+        const updatedBranches = await rtListRefsShadowV2({ projectId: params.id });
 
         return Response.json({
           branchName: current.refName,
           branchId: current.refId,
-          branches
+          branches: updatedBranches
         });
       });
     }
@@ -66,10 +80,19 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     return await withProjectLock(project.id, async () => {
-      await renameBranch(project.id, params.refId, parsed.data.name);
       const branches = await listBranches(project.id);
+      const existing = branches.find((branch) => branch.name === parsed.data.name);
+      if (existing && existing.name !== params.refId) {
+        throw badRequest('Duplicate branch names are not allowed.');
+      }
+      if (existing && existing.name === params.refId) {
+        const currentBranch = await getCurrentBranchName(project.id);
+        return Response.json({ branchName: currentBranch, branches });
+      }
+      await renameBranch(project.id, params.refId, parsed.data.name);
       const currentBranch = await getCurrentBranchName(project.id);
-      return Response.json({ branchName: currentBranch, branches });
+      const updatedBranches = await listBranches(project.id);
+      return Response.json({ branchName: currentBranch, branches: updatedBranches });
     });
   } catch (error) {
     return handleRouteError(error);
