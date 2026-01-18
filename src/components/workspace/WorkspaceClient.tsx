@@ -2310,25 +2310,22 @@ export function WorkspaceClient({
         setInsightTab('canvas');
         return;
       }
-      if (event.key === 'ArrowDown') {
+      if (event.metaKey && event.altKey && !event.shiftKey && !event.ctrlKey && event.key.toLowerCase() === 'b') {
         const target = event.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        if (
+          target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT' ||
+            target.isContentEditable)
+        ) {
           return;
         }
-        if (!insightCollapsed) {
-          event.preventDefault();
-          collapseInsights();
-        }
-        return;
-      }
-      if (event.key === 'ArrowUp') {
-        const target = event.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-          return;
-        }
+        event.preventDefault();
         if (insightCollapsed) {
-          event.preventDefault();
           expandInsights();
+        } else {
+          collapseInsights();
         }
         return;
       }
@@ -3947,7 +3944,7 @@ export function WorkspaceClient({
                     <li>⌘ + Shift + J to collapse or restore all panels.</li>
                     <li>⌘ + click a graph node to jump to its message.</li>
                     <li>← Thred graph · → Canvas.</li>
-                    <li>↑ show graph/canvas · ↓ hide panel.</li>
+                    <li>⌥⌘B to toggle the graph/canvas panel.</li>
                     <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
                     <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                   </ul>
