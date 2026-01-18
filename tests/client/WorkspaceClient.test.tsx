@@ -1435,4 +1435,112 @@ describe('WorkspaceClient', () => {
 
     expect(await screen.findByText('Edit queued for feature/edit-branch.')).toBeInTheDocument();
   });
+
+  it('shows the OpenAI thinking note when no thinking blocks are present', async () => {
+    mockUseProjectData.mockReturnValue({
+      nodes: [
+        { id: 'u1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null },
+        { id: 'a1', type: 'message', role: 'assistant', content: 'Hi there', timestamp: 2, parent: 'u1' }
+      ],
+      artefact: '# Artefact',
+      artefactMeta: { artefact: '# Artefact', lastUpdatedAt: null },
+      isLoading: false,
+      error: undefined,
+      mutateHistory: vi.fn(),
+      mutateArtefact: vi.fn()
+    } as ReturnType<typeof useProjectData>);
+
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    expect(screen.getByText('OpenAI does not reveal thinking steps.')).toBeInTheDocument();
+  });
+
+  it('unhides a branch before switching to it', async () => {
+    const user = userEvent.setup();
+    const branches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 1, isTrunk: true, isHidden: false },
+      { name: 'feature/hidden', headCommit: 'def', nodeCount: 1, isTrunk: false, isHidden: true }
+    ];
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('/graph')) {
+        return new Response(
+          JSON.stringify({
+            branches,
+            trunkName: 'main',
+            currentBranch: 'main',
+            branchHistories: {
+              main: sampleNodes.slice(0, 2),
+              'feature/hidden': sampleNodes.slice(0, 1)
+            },
+            starredNodeIds: []
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/branches/feature%2Fhidden') && url.includes('/visibility') && init?.method === 'PATCH') {
+        return new Response(
+          JSON.stringify({
+            branchName: 'main',
+            branches: [
+              branches[0],
+              { ...branches[1], isHidden: false }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/branches') && init?.method === 'PATCH') {
+        return new Response(
+          JSON.stringify({
+            branchName: 'feature/hidden',
+            branches
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/history')) {
+        return new Response(JSON.stringify({ nodes: sampleNodes }), { status: 200 });
+      }
+      if (url.includes('/stars')) {
+        return new Response(JSON.stringify({ starredNodeIds: [] }), { status: 200 });
+      }
+      if (url.includes('/artefact')) {
+        return new Response(JSON.stringify({ artefact: '## Artefact state', lastUpdatedAt: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={branches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    const branchRow = screen.getAllByTestId('branch-switch').find((el) => el.getAttribute('data-branch-name') === 'feature/hidden');
+    expect(branchRow).toBeTruthy();
+    await user.click(branchRow as HTMLElement);
+
+    const visibilityCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/visibility'));
+    expect(visibilityCall).toBeTruthy();
+
+    const branchSwitchCall = fetchMock.mock.calls.find(
+      ([input, init]: [RequestInfo | URL, RequestInit]) => input.toString().includes('/branches') && init?.method === 'PATCH'
+    );
+    expect(branchSwitchCall).toBeTruthy();
+    expect(JSON.parse(branchSwitchCall?.[1]?.body as string)).toEqual({ name: 'feature/hidden' });
+  });
 });
