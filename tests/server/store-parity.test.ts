@@ -65,6 +65,10 @@ function normalizeProjects(projects: Array<{ id: string; name: string; descripti
   }));
 }
 
+function normalizeHistoryNodes(nodes: Array<Record<string, unknown>>) {
+  return nodes.map(({ createdOnBranch: _createdOnBranch, ...rest }) => rest);
+}
+
 function normalizeBranches(branches: Array<{ name: string; nodeCount: number; isTrunk: boolean }>) {
   return branches.map((branch) => ({
     name: branch.name,
@@ -133,7 +137,17 @@ describe('store parity regression', () => {
     mocks.getProject.mockResolvedValue({ id: 'p1' });
     mocks.readNodesFromRef.mockResolvedValue(nodes);
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
-    mocks.rtGetHistoryShadowV2.mockResolvedValue(nodes.map((node, ordinal) => ({ ordinal, nodeJson: node })));
+    mocks.rtListRefsShadowV2.mockResolvedValue([
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true }
+    ]);
+    mocks.rtGetHistoryShadowV2.mockResolvedValue(
+      nodes.map((node, ordinal) => ({
+        ordinal,
+        nodeJson: node,
+        createdOnRefId: 'ref-main',
+        mergeFromRefId: null
+      }))
+    );
     mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
     mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
 
@@ -145,6 +159,6 @@ describe('store parity regression', () => {
     const pgRes = await GETHistory(new Request('http://localhost/api/projects/p1/history'), { params: { id: 'p1' } });
     const pgBody = await pgRes.json();
 
-    expect(pgBody.nodes).toEqual(gitBody.nodes);
+    expect(normalizeHistoryNodes(pgBody.nodes)).toEqual(normalizeHistoryNodes(gitBody.nodes));
   });
 });

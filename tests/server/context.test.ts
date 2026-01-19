@@ -182,7 +182,12 @@ describe('buildChatContext', () => {
   it('reads nodes + canvas from Postgres when RT_STORE=pg and ref is provided', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetHistoryShadowV2.mockResolvedValue([
-      { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null } }
+      {
+        ordinal: 0,
+        nodeJson: { id: '1', type: 'message', role: 'user', content: 'Hello', timestamp: 1, parent: null },
+        createdOnRefId: 'ref-main',
+        mergeFromRefId: null
+      }
     ]);
 
     const context = await buildChatContext('project-1', { ref: 'main' });

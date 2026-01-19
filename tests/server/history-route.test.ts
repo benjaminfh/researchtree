@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   readNodesFromRef: vi.fn(),
   rtGetHistoryShadowV2: vi.fn(),
+  rtListRefsShadowV2: vi.fn(),
   resolveRefByName: vi.fn(),
   resolveCurrentRef: vi.fn()
 }));
@@ -20,7 +21,8 @@ vi.mock('@git/utils', () => ({
 }));
 
 vi.mock('@/src/store/pg/reads', () => ({
-  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2
+  rtGetHistoryShadowV2: mocks.rtGetHistoryShadowV2,
+  rtListRefsShadowV2: mocks.rtListRefsShadowV2
 }));
 
 vi.mock('@/src/server/pgRefs', () => ({
@@ -35,10 +37,12 @@ describe('/api/projects/[id]/history', () => {
     mocks.getProject.mockReset();
     mocks.readNodesFromRef.mockReset();
     mocks.rtGetHistoryShadowV2.mockReset();
+    mocks.rtListRefsShadowV2.mockReset();
     mocks.resolveRefByName.mockReset();
     mocks.resolveCurrentRef.mockReset();
     mocks.resolveRefByName.mockResolvedValue({ id: 'ref-main', name: 'main' });
     mocks.resolveCurrentRef.mockResolvedValue({ id: 'ref-main', name: 'main' });
+    mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-main', name: 'main', headCommit: '', nodeCount: 3, isTrunk: true }]);
     process.env.RT_STORE = 'git';
   });
 
@@ -70,9 +74,24 @@ describe('/api/projects/[id]/history', () => {
   it('uses Postgres when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetHistoryShadowV2.mockResolvedValue([
-      { ordinal: 0, nodeJson: { id: '1', type: 'message', role: 'user', content: 'A', timestamp: 1, parent: null } },
-      { ordinal: 1, nodeJson: { id: '2', type: 'state', artefactSnapshot: 'x', timestamp: 2, parent: '1' } },
-      { ordinal: 2, nodeJson: { id: '3', type: 'message', role: 'assistant', content: 'B', timestamp: 3, parent: '1' } }
+      {
+        ordinal: 0,
+        nodeJson: { id: '1', type: 'message', role: 'user', content: 'A', timestamp: 1, parent: null },
+        createdOnRefId: 'ref-main',
+        mergeFromRefId: null
+      },
+      {
+        ordinal: 1,
+        nodeJson: { id: '2', type: 'state', artefactSnapshot: 'x', timestamp: 2, parent: '1' },
+        createdOnRefId: 'ref-main',
+        mergeFromRefId: null
+      },
+      {
+        ordinal: 2,
+        nodeJson: { id: '3', type: 'message', role: 'assistant', content: 'B', timestamp: 3, parent: '1' },
+        createdOnRefId: 'ref-main',
+        mergeFromRefId: null
+      }
     ]);
 
     const req = new Request(`${baseUrl}?limit=50&ref=main`);
