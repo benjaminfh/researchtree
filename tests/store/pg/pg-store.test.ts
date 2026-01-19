@@ -71,7 +71,7 @@ describe('pg store RPC wrappers', () => {
       p_before_ordinal: null,
       p_include_raw_response: false
     });
-    expect(result).toEqual([{ ordinal: 1, nodeJson: { id: 'n1' } }]);
+    expect(result).toEqual([{ ordinal: 1, nodeJson: { id: 'n1' }, createdOnRefId: null, mergeFromRefId: null }]);
   });
 
   it('rtGetCanvasShadowV2 maps data and handles missing row', async () => {
