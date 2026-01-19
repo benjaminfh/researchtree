@@ -73,6 +73,8 @@ $function$;
 revoke all on function public.rt_get_history_v2(uuid, uuid, integer, bigint, boolean) from public;
 grant execute on function public.rt_get_history_v2(uuid, uuid, integer, bigint, boolean) to authenticated;
 
+drop function if exists public.rt_append_node_to_ref_v2(uuid, uuid, text, text, jsonb, uuid, text, boolean, text, integer, jsonb);
+
 create or replace function public.rt_append_node_to_ref_v2(
   p_project_id uuid,
   p_ref_id uuid,
@@ -190,6 +192,8 @@ $$;
 revoke all on function public.rt_append_node_to_ref_v2(uuid, uuid, text, text, jsonb, uuid, text, boolean, text, integer, jsonb) from public;
 grant execute on function public.rt_append_node_to_ref_v2(uuid, uuid, text, text, jsonb, uuid, text, boolean, text, integer, jsonb) to authenticated;
 
+drop function if exists public.rt_merge_ours_v2(uuid, uuid, uuid, jsonb, uuid, text, integer);
+
 create or replace function public.rt_merge_ours_v2(
   p_project_id uuid,
   p_target_ref_id uuid,
@@ -272,6 +276,8 @@ $$;
 
 revoke all on function public.rt_merge_ours_v2(uuid, uuid, uuid, jsonb, uuid, text, integer) from public;
 grant execute on function public.rt_merge_ours_v2(uuid, uuid, uuid, jsonb, uuid, text, integer) to authenticated;
+
+drop function if exists public.rt_update_artefact_on_ref_v2(uuid, uuid, text, text, uuid, jsonb, text, integer);
 
 create or replace function public.rt_update_artefact_on_ref_v2(
   p_project_id uuid,
