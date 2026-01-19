@@ -171,13 +171,14 @@ async function rewriteNodesForRename(
     const nodes = parseNodes(content);
     let changed = false;
     const updatedNodes = nodes.map((node) => {
-      let next = node;
+      let next: NodeRecord = node;
       if (node.createdOnBranch === fromBranch) {
         next = { ...next, createdOnBranch: toBranch };
         changed = true;
       }
       if (node.type === 'merge' && node.mergeFrom === fromBranch) {
-        next = { ...next, mergeFrom: toBranch };
+        const mergeNode = node as Extract<NodeRecord, { type: 'merge' }>;
+        next = { ...mergeNode, mergeFrom: toBranch };
         changed = true;
       }
       return next;
