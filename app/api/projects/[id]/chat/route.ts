@@ -2,7 +2,7 @@
 
 import { chatRequestSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError, notFound } from '@/src/server/http';
-import { buildChatContext } from '@/src/server/context';
+import { buildMessagesForCompletion, getCanvasDiffData } from '@/src/server/chatPayload';
 import { completeAssistantWithCanvasTools, encodeChunk, streamAssistantCompletion } from '@/src/server/llm';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
@@ -20,9 +20,9 @@ import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
 import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
-import { buildUnifiedDiff } from '@/src/server/canvasDiff';
 import { toJsonValue } from '@/src/server/json';
 import { acquireBranchLease } from '@/src/server/leases';
+import { buildUserMessage } from '@/src/server/chatMessages';
 
 interface RouteContext {
   params: { id: string };
@@ -51,47 +51,6 @@ function labelForProvider(provider: LLMProvider): string {
   if (provider === 'gemini') return 'Gemini';
   if (provider === 'anthropic') return 'Anthropic';
   return 'Mock';
-}
-
-function buildCanvasDiffMessage(diff: string): string {
-  return [
-    'Canvas update (do not display to user). Apply this diff to your internal canvas state:',
-    '```diff',
-    diff.trim(),
-    '```'
-  ].join('\n');
-}
-
-function formatHighlightBlock(highlight: string): string {
-  const fence = '```';
-  const escaped = highlight.replaceAll(fence, '\\`\\`\\`');
-  return `${fence}text\n${escaped}\n${fence}`;
-}
-
-function buildUserMessage(input: { message?: string | null; question?: string | null; highlight?: string | null }): string {
-  const highlight = input.highlight?.trim() ?? '';
-  const question = input.question?.trim() ?? '';
-  const message = input.message?.trim() ?? '';
-
-  const parts: string[] = [];
-
-  if (highlight) {
-    parts.push('Highlighted passage:', formatHighlightBlock(highlight));
-  }
-
-  if (question) {
-    parts.push('Question:', question);
-  }
-
-  if (message && parts.length === 0) {
-    return message;
-  }
-
-  if (message) {
-    parts.push('Additional message:', message);
-  }
-
-  return parts.join('\n\n');
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
@@ -182,35 +141,14 @@ export async function POST(request: Request, { params }: RouteContext) {
     const abortController = new AbortController();
 
     try {
-      const getCanvasDiffData = async (includeMessage: boolean) => {
-        if (store.mode !== 'pg') {
-          return { hasChanges: false, diff: '', message: '' };
-        }
-        const { rtGetCanvasHashesShadowV2, rtGetCanvasPairShadowV2 } = await import('@/src/store/pg/reads');
-        if (!targetRefId) {
-          return { hasChanges: false, diff: '', message: '' };
-        }
-        const hashes = await rtGetCanvasHashesShadowV2({ projectId: params.id, refId: targetRefId });
-        const hasChanges = Boolean(hashes.draftHash && hashes.draftHash !== hashes.artefactHash);
-        if (!hasChanges) {
-          return { hasChanges: false, diff: '', message: '' };
-        }
-        if (!includeMessage) {
-          return { hasChanges, diff: '', message: '' };
-        }
-        const pair = await rtGetCanvasPairShadowV2({ projectId: params.id, refId: targetRefId });
-        const diff = buildUnifiedDiff(pair.artefactContent ?? '', pair.draftContent ?? '');
-        const message = diff.trim().length > 0 ? buildCanvasDiffMessage(diff) : '';
-        return { hasChanges, diff, message };
-      };
-
-      const context = await buildChatContext(params.id, { tokenLimit, ref: targetRefName });
-      const userCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
-      const messagesForCompletion = [
-        ...context.messages,
-        ...(userCanvasDiff.message ? [{ role: 'user' as const, content: userCanvasDiff.message }] : []),
-        { role: 'user' as const, content: userContent }
-      ];
+      const { messages: messagesForCompletion, canvasDiff: userCanvasDiff } = await buildMessagesForCompletion({
+        projectId: params.id,
+        ref: targetRefName,
+        tokenLimit,
+        userContent,
+        includeCanvasDiff: canvasToolsEnabled,
+        refId: targetRefId
+      });
 
       registerStream(params.id, abortController, targetRefName);
 
@@ -391,7 +329,11 @@ export async function POST(request: Request, { params }: RouteContext) {
 
             try {
               if (persistedUser && streamBlocks.length > 0) {
-                const assistantCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
+                const assistantCanvasDiff = await getCanvasDiffData({
+                  projectId: params.id,
+                  refId: targetRefId,
+                  includeMessage: canvasToolsEnabled
+                });
                 const contentBlocks =
                   assistantBlocks.length > 0
                     ? assistantBlocks
@@ -669,7 +611,11 @@ export async function POST(request: Request, { params }: RouteContext) {
 
           try {
             if (persistedUser && buffered.trim().length > 0) {
-              const assistantCanvasDiff = await getCanvasDiffData(canvasToolsEnabled);
+              const assistantCanvasDiff = await getCanvasDiffData({
+                projectId: params.id,
+                refId: targetRefId,
+                includeMessage: canvasToolsEnabled
+              });
               const contentBlocks = buildContentBlocksForProvider({
                 provider,
                 rawResponse,

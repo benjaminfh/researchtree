@@ -118,6 +118,44 @@ type DiffLine = {
 };
 
 const CHAT_COMPOSER_MAX_LINES = 9;
+const TOKEN_USAGE_DEBOUNCE_MS = 250;
+
+const formatCount = (value: number) => value.toLocaleString();
+
+const TokenUsageRing: FC<{ percent: number }> = ({ percent }) => {
+  const clamped = Math.min(Math.max(percent, 0), 100);
+  return (
+    <svg
+      viewBox="0 0 36 36"
+      className="h-4 w-4"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle
+        cx="18"
+        cy="18"
+        r="15.915"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        className="text-slate-200"
+      />
+      <circle
+        cx="18"
+        cy="18"
+        r="15.915"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeDasharray={`${clamped} 100`}
+        strokeLinecap="round"
+        pathLength={100}
+        className="text-primary"
+        transform="rotate(-90 18 18)"
+      />
+    </svg>
+  );
+};
 
 type BackgroundTask = {
   id: string;
@@ -132,6 +170,12 @@ type ToastMessage = {
   id: string;
   tone: ToastTone;
   message: string;
+};
+
+type TokenUsageSummary = {
+  charCount: number;
+  tokenEstimate: number;
+  tokenLimit: number | null;
 };
 
 type BranchListItem = BranchSummary & {
@@ -809,6 +853,11 @@ export function WorkspaceClient({
   const composerBasePaddingRef = useRef<number>(composerPadding);
   const [composerMinHeight, setComposerMinHeight] = useState<number | null>(null);
   const [composerMaxHeight, setComposerMaxHeight] = useState<number | null>(null);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null);
+  const [tokenUsageError, setTokenUsageError] = useState<string | null>(null);
+  const [isTokenUsageLoading, setIsTokenUsageLoading] = useState(false);
+  const tokenUsageAbortRef = useRef<AbortController | null>(null);
+  const tokenUsageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getSelectionForNode = useCallback((nodeId: string): string => {
     if (typeof window === 'undefined') return '';
@@ -1367,6 +1416,73 @@ export function WorkspaceClient({
       setComposerError(null);
     }
   }, [composerError, draft]);
+  useEffect(() => {
+    if (tokenUsageTimeoutRef.current) {
+      clearTimeout(tokenUsageTimeoutRef.current);
+      tokenUsageTimeoutRef.current = null;
+    }
+    if (tokenUsageAbortRef.current) {
+      tokenUsageAbortRef.current.abort();
+      tokenUsageAbortRef.current = null;
+    }
+
+    const trimmedDraft = draft.trim();
+    if (!trimmedDraft) {
+      setTokenUsage(null);
+      setTokenUsageError(null);
+      setIsTokenUsageLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    tokenUsageAbortRef.current = controller;
+    tokenUsageTimeoutRef.current = setTimeout(() => {
+      void (async () => {
+        setIsTokenUsageLoading(true);
+        setTokenUsageError(null);
+        try {
+          const res = await fetch(`/api/projects/${project.id}/token-usage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: draft,
+              ref: branchName,
+              llmProvider: branchProvider
+            }),
+            signal: controller.signal
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            throw new Error(data?.error?.message ?? 'Failed to estimate token usage');
+          }
+          const data = (await res.json().catch(() => null)) as TokenUsageSummary | null;
+          if (!controller.signal.aborted && data) {
+            setTokenUsage({
+              charCount: data.charCount,
+              tokenEstimate: data.tokenEstimate,
+              tokenLimit: data.tokenLimit ?? null
+            });
+          }
+        } catch (error) {
+          if ((error as Error).name === 'AbortError') return;
+          setTokenUsage(null);
+          setTokenUsageError((error as Error).message);
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsTokenUsageLoading(false);
+          }
+        }
+      })();
+    }, TOKEN_USAGE_DEBOUNCE_MS);
+
+    return () => {
+      if (tokenUsageTimeoutRef.current) {
+        clearTimeout(tokenUsageTimeoutRef.current);
+        tokenUsageTimeoutRef.current = null;
+      }
+      controller.abort();
+    };
+  }, [branchModel, branchName, branchProvider, draft, project.id]);
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
@@ -1561,6 +1677,13 @@ export function WorkspaceClient({
     webSearchEnabled &&
     !openAIUseResponses &&
     (branchProvider === 'openai' || branchProvider === 'openai_responses');
+  const tokenUsagePercent =
+    tokenUsage && tokenUsage.tokenLimit
+      ? Math.min((tokenUsage.tokenEstimate / tokenUsage.tokenLimit) * 100, 100)
+      : null;
+  const tokenUsageTooltip = tokenUsage
+    ? `Estimate based on ${formatCount(tokenUsage.charCount)} characters (chars / 3). Actual usage may vary by model.`
+    : '';
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -4806,6 +4929,26 @@ export function WorkspaceClient({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {tokenUsage ? (
+                      <div
+                        className={`flex items-center gap-1 text-[11px] text-slate-500 ${
+                          isTokenUsageLoading ? 'animate-pulse' : ''
+                        }`}
+                        title={tokenUsageTooltip}
+                        aria-label="Token usage estimate"
+                      >
+                        {tokenUsagePercent !== null ? <TokenUsageRing percent={tokenUsagePercent} /> : null}
+                        <span className="font-semibold text-slate-600">≈ {formatCount(tokenUsage.tokenEstimate)}</span>
+                        {tokenUsage.tokenLimit ? (
+                          <span className="text-slate-400">/ {formatCount(tokenUsage.tokenLimit)}</span>
+                        ) : null}
+                        <span>tokens</span>
+                      </div>
+                    ) : tokenUsageError ? (
+                      <div className="text-[11px] text-rose-500" title={tokenUsageError}>
+                        Token estimate unavailable
+                      </div>
+                    ) : null}
                     <div ref={thinkingMenuRef} className="relative hidden sm:block">
                       <button
                         type="button"

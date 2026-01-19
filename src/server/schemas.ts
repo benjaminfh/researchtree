@@ -27,6 +27,19 @@ export const chatRequestSchema = z
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
+export type TokenUsageRequestInput = z.infer<typeof tokenUsageRequestSchema>;
+
+export const tokenUsageRequestSchema = z
+  .object({
+    message: z.string().min(1).max(CHAT_LIMITS.messageMaxChars).optional(),
+    question: z.string().min(1).max(CHAT_LIMITS.questionMaxChars).optional(),
+    highlight: z.string().min(1).max(CHAT_LIMITS.highlightMaxChars).optional(),
+    llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
+    ref: z.string().min(1).max(120).optional()
+  })
+  .refine((value) => Boolean(value.message?.trim() || value.question?.trim()), {
+    message: 'Message or question is required.'
+  });
 
 export const createBranchSchema = z.object({
   name: z.string().min(1).max(120),
