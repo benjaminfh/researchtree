@@ -5,6 +5,7 @@ import { unauthorized } from '@/src/server/http';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { assertLocalPgModeConfig, isLocalPgMode } from '@/src/server/pgMode';
 import { LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';
+import { isPreviewDeployment } from '@/src/server/vercelEnv';
 
 const LOCAL_USER: User = {
   id: LOCAL_PG_USER_ID,
@@ -18,6 +19,9 @@ const LOCAL_USER: User = {
 export async function getUserOrNull(): Promise<User | null> {
   if (isLocalPgMode()) {
     assertLocalPgModeConfig();
+    return LOCAL_USER;
+  }
+  if (isPreviewDeployment()) {
     return LOCAL_USER;
   }
   const supabase = createSupabaseServerClient();

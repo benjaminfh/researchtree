@@ -3,6 +3,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getStoreConfig } from './src/server/storeConfig';
+import { isPreviewDeployment } from './src/server/vercelEnv';
 
 // Fail fast if the deployment hasn't selected a provenance store.
 getStoreConfig();
@@ -11,12 +12,6 @@ function parseEnvFlag(value: string | undefined): boolean {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
-
-function isPreviewDeployment(): boolean {
-  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
-  if (!vercelEnv) return false;
-  return vercelEnv === 'preview' || vercelEnv === 'development';
 }
 
 function isMaintenanceModeEnabled(): boolean {
