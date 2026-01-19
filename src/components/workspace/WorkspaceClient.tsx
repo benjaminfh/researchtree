@@ -4403,7 +4403,7 @@ export function WorkspaceClient({
                   <div className="flex flex-1 min-h-0 flex-col">
                     {insightTab === 'graph' ? (
                       <div className="flex-1 min-h-0" data-testid="graph-panel">
-                        {graphHistoryLoading ? (
+                        {graphHistoryLoading && !graphHistories ? (
                           <div className="flex h-full items-center justify-center">
                             <div className="h-full w-full animate-pulse rounded-2xl bg-slate-100" />
                           </div>
