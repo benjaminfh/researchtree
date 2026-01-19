@@ -23,7 +23,7 @@ export async function rtGetHistoryShadowV2(input: {
   limit?: number;
   beforeOrdinal?: number | null;
   includeRawResponse?: boolean;
-}): Promise<{ ordinal: number; nodeJson: unknown }[]> {
+}): Promise<{ ordinal: number; nodeJson: unknown; createdOnRefId: string | null; mergeFromRefId: string | null }[]> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_get_history_v2', {
     p_project_id: input.projectId,
@@ -38,7 +38,9 @@ export async function rtGetHistoryShadowV2(input: {
   const rows = Array.isArray(data) ? data : [];
   return rows.map((row) => ({
     ordinal: Number(row.ordinal),
-    nodeJson: row.node_json
+    nodeJson: row.node_json,
+    createdOnRefId: row.created_on_ref_id ? String(row.created_on_ref_id) : null,
+    mergeFromRefId: row.merge_from_ref_id ? String(row.merge_from_ref_id) : null
   }));
 }
 

@@ -186,13 +186,24 @@ export async function getCommitHashForNode(projectId: string, ref: string, nodeI
     .map((line) => line.trim())
     .filter(Boolean);
 
+  // Git mode is deprecated; we keep parity by skipping rename maintenance commits.
+  const subjectsRaw = await git.raw(['log', '--reverse', '--format=%s', ref]);
+  const subjects = subjectsRaw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const filteredRevs = revs.filter((rev, index) => {
+    const subject = subjects[index] ?? '';
+    return !subject.startsWith('rename ') || !subject.includes('(refresh node branch labels)');
+  });
+
   // Account for the initial repo commit with no nodes.
   let commitIndex = idx + 1;
   if (options?.parent) {
     commitIndex -= 1;
   }
-  if (commitIndex >= revs.length || commitIndex < 0) {
+  if (commitIndex >= filteredRevs.length || commitIndex < 0) {
     throw new Error(`Unable to locate commit for node ${nodeId} on ref ${ref}`);
   }
-  return revs[commitIndex];
+  return filteredRevs[commitIndex];
 }

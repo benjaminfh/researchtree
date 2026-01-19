@@ -131,7 +131,12 @@ describe('/api/projects/[id]/graph', () => {
 
     mocks.rtGetHistoryShadowV2.mockImplementation(async ({ refId }: any) => {
       const nodes = refId === 'ref-main' ? mainNodes : refId === 'ref-feature' ? featureNodes : [];
-      return nodes.map((node, idx) => ({ ordinal: idx, nodeJson: node }));
+      return nodes.map((node, idx) => ({
+        ordinal: idx,
+        nodeJson: node,
+        createdOnRefId: refId,
+        mergeFromRefId: null
+      }));
     });
 
     const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
+import { promises as fs } from 'fs';
 import { simpleGit } from 'simple-git';
 import { INITIAL_BRANCH, PROJECT_FILES } from './constants';
 import { createNodeRecord, writeNodeRecord } from './nodes';
@@ -13,7 +14,9 @@ import {
   ensureGitUserConfig,
   forceCheckoutRef,
   getCurrentBranchName,
+  getProjectFilePath,
   getProjectPath,
+  parseNodes,
   readNodesFromRef
 } from './utils';
 import { getArtefactFromRef } from './artefact';
@@ -120,6 +123,7 @@ export async function renameBranch(projectId: string, fromBranch: string, toBran
   await assertProjectExists(projectId);
   const git = simpleGit(getProjectPath(projectId));
   const branches = await git.branchLocal();
+  const originalBranch = branches.current;
   if (!branches.all.includes(fromBranch)) {
     throw new Error(`Branch ${fromBranch} does not exist`);
   }
@@ -131,6 +135,7 @@ export async function renameBranch(projectId: string, fromBranch: string, toBran
   }
 
   await git.raw(['branch', '-m', fromBranch, toBranch]);
+  await rewriteNodesForRename(projectId, fromBranch, toBranch, originalBranch);
 
   const configMap = await readBranchConfigMap(projectId);
   if (configMap[fromBranch]) {
@@ -142,6 +147,54 @@ export async function renameBranch(projectId: string, fromBranch: string, toBran
   const pinnedBranch = await getPinnedBranchName(projectId);
   if (pinnedBranch === fromBranch) {
     await setPinnedBranchName(projectId, toBranch);
+  }
+}
+
+async function rewriteNodesForRename(
+  projectId: string,
+  fromBranch: string,
+  toBranch: string,
+  originalBranch?: string | null
+): Promise<void> {
+  const repoPath = getProjectPath(projectId);
+  const git = simpleGit(repoPath);
+  const branchInfo = await git.branchLocal();
+  const returnBranch = originalBranch === fromBranch ? toBranch : originalBranch;
+
+  for (const branch of branchInfo.all) {
+    await forceCheckoutRef(projectId, branch);
+    const filePath = getProjectFilePath(projectId, 'nodes');
+    const content = await fs.readFile(filePath, 'utf-8').catch(() => null);
+    if (content === null) {
+      continue;
+    }
+    const nodes = parseNodes(content);
+    let changed = false;
+    const updatedNodes = nodes.map((node) => {
+      let next: NodeRecord = node;
+      if (node.createdOnBranch === fromBranch) {
+        next = { ...next, createdOnBranch: toBranch };
+        changed = true;
+      }
+      if (node.type === 'merge' && node.mergeFrom === fromBranch) {
+        const mergeNode = node as Extract<NodeRecord, { type: 'merge' }>;
+        next = { ...mergeNode, mergeFrom: toBranch };
+        changed = true;
+      }
+      return next;
+    });
+    if (!changed) {
+      continue;
+    }
+    const nextContent = updatedNodes.length > 0 ? `${updatedNodes.map((node) => JSON.stringify(node)).join('\n')}\n` : '';
+    await fs.writeFile(filePath, nextContent);
+    await ensureGitUserConfig(projectId);
+    await git.add([PROJECT_FILES.nodes]);
+    await git.commit(`rename ${fromBranch} -> ${toBranch} (refresh node branch labels)`);
+  }
+
+  if (returnBranch) {
+    await forceCheckoutRef(projectId, returnBranch);
   }
 }
 

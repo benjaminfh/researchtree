@@ -25,6 +25,38 @@ export interface ChatContext {
 const DEFAULT_HISTORY_LIMIT = 40;
 const DEFAULT_TOKEN_LIMIT = 8000;
 
+function resolveRefName(refId: string | null, refNameById: Map<string, string>, label: string): string {
+  if (!refId) {
+    console.error('[context] missing ref id for node label', { label });
+    // TODO: remove "unknown" fallback once legacy rows are backfilled with ref IDs.
+    return 'unknown';
+  }
+  const refName = refNameById.get(refId);
+  if (!refName) {
+    console.error('[context] ref id not found for node label', { label, refId });
+    // TODO: remove "unknown" fallback once legacy rows are backfilled with ref IDs.
+    return 'unknown';
+  }
+  return refName;
+}
+
+function applyRefNames(
+  rows: { nodeJson: NodeRecord; createdOnRefId: string | null; mergeFromRefId: string | null }[],
+  refNameById: Map<string, string>
+): NodeRecord[] {
+  return rows.map((row) => {
+    const createdOnBranch = resolveRefName(row.createdOnRefId, refNameById, 'createdOnBranch');
+    const node = row.nodeJson;
+    const mergeFrom =
+      node.type === 'merge' ? resolveRefName(row.mergeFromRefId, refNameById, 'mergeFrom') : undefined;
+    return {
+      ...node,
+      createdOnBranch,
+      ...(node.type === 'merge' ? { mergeFrom } : {})
+    } as NodeRecord;
+  });
+}
+
 function getMergeUserRole(): Exclude<ChatMessage['role'], 'system'> {
   const raw = (process.env.MERGE_USER ?? 'assistant').trim().toLowerCase();
   if (!raw) return 'assistant';
@@ -51,8 +83,9 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   if (store.mode === 'pg') {
     const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+    const branches = await rtListRefsShadowV2({ projectId });
+    const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
     if (resolvedRef) {
-      const branches = await rtListRefsShadowV2({ projectId });
       const match = branches.find((branch) => branch.name === resolvedRef);
       if (!match?.id) {
         throw new Error(`Ref ${resolvedRef} not found`);
@@ -73,7 +106,7 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
       limit,
       includeRawResponse: true
     });
-    nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+    nodes = applyRefNames(rows.filter((row) => Boolean(row.nodeJson)) as any, refNameById);
   } else {
     const { getNodes } = await import('@git/nodes');
     const { readNodesFromRef } = await import('@git/utils');

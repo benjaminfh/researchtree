@@ -1,6 +1,11 @@
 ## Global design decisions
 All text forms submit on cmd+Enter if form state is valid.
 
+## Ref identity (git-first)
+- Treat ref names as the default identifier everywhere; preserve git-like mutable names.
+- Use immutable `ref.id` only where a stable FK/join is required (artefact, leases, DB joins).
+- Never assume `ref.name` is an FK; resolve display labels from refs.
+
 ## Feature branches
 master and dev branches are protected. Create a feature branch to work using the format codex/{yyyyMMdd}/a-clear-descriptive-title
 

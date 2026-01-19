@@ -11,6 +11,38 @@ interface RouteContext {
   params: { id: string };
 }
 
+function resolveRefName(refId: string | null, refNameById: Map<string, string>, label: string): string {
+  if (!refId) {
+    console.error('[history] missing ref id for node label', { label });
+    // TODO: remove "unknown" fallback once legacy rows are backfilled with ref IDs.
+    return 'unknown';
+  }
+  const refName = refNameById.get(refId);
+  if (!refName) {
+    console.error('[history] ref id not found for node label', { label, refId });
+    // TODO: remove "unknown" fallback once legacy rows are backfilled with ref IDs.
+    return 'unknown';
+  }
+  return refName;
+}
+
+function applyRefNames(
+  rows: { nodeJson: NodeRecord; createdOnRefId: string | null; mergeFromRefId: string | null }[],
+  refNameById: Map<string, string>
+): NodeRecord[] {
+  return rows.map((row) => {
+    const createdOnBranch = resolveRefName(row.createdOnRefId, refNameById, 'createdOnBranch');
+    const node = row.nodeJson;
+    const mergeFrom =
+      node.type === 'merge' ? resolveRefName(row.mergeFromRefId, refNameById, 'mergeFrom') : undefined;
+    return {
+      ...node,
+      createdOnBranch,
+      ...(node.type === 'merge' ? { mergeFrom } : {})
+    } as NodeRecord;
+  });
+}
+
 function isHiddenMessage(node: NodeRecord): boolean {
   return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
 }
@@ -34,14 +66,16 @@ export async function GET(request: Request, { params }: RouteContext) {
     const effectiveLimit = typeof parsedLimit === 'number' && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
     if (store.mode === 'pg') {
-      const { rtGetHistoryShadowV2 } = await import('@/src/store/pg/reads');
+      const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
       const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
       const refName = refParam?.trim();
       const ref = refName
         ? await resolveRefByName(params.id, refName)
         : await resolveCurrentRef(params.id, INITIAL_BRANCH);
       const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: ref.id, limit: effectiveLimit });
-      const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
+      const branches = await rtListRefsShadowV2({ projectId: params.id });
+      const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
+      const pgNodes = applyRefNames(rows.filter((r) => Boolean(r.nodeJson)) as any, refNameById);
       const nonStateNodes = pgNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
       const sanitizedNodes = nonStateNodes.map(stripRawResponse);
       return Response.json({ nodes: sanitizedNodes });

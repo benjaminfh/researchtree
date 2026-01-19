@@ -5,6 +5,11 @@
 ResearchTree (aka Threds) is a branchable research workspace: each project is a versioned reasoning thread (chat + canvas) with explicit branch/merge semantics.
 The UI is built for exploring multiple lines of thought without losing context, while keeping an audit trail of every message, branch, and merge.
 
+## Ref Identity Tenets
+Refs are mutable names pointing at commits; we rely on name-based refs by default to preserve git-like behavior.
+When the app needs a stable join (e.g., artefact or lease tracking), use immutable `ref.id`.
+Do not treat `ref.name` as an FK; resolve display labels from refs when needed.
+
 ## Product Tour (UI-First)
 
 Start here to understand the app from the user's perspective.
