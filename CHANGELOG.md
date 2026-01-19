@@ -2,6 +2,12 @@
 
 All notable user-facing changes are documented here.
 
+## v0.10.1 - 2026-01-19
+- PG history/graph/context now resolve branch labels from refs to avoid stale names after renames.
+- Git branch renames refresh node JSON labels without breaking node-to-commit mapping.
+- PG RPCs return ref IDs and nodes carry ref-id FK columns for stable joins.
+- Legacy rows missing ref IDs now show `unknown` labels (temporary fallback).
+
 ## v0.10.0 - 2026-01-18
 - Collaboration stages 2-5: invites, DB leases, and server/client support.
 - Workspace shortcuts refined: graph panel hotkeys and browser-conflict adjustments.
