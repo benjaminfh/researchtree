@@ -44,17 +44,21 @@ export async function GET(request: Request, { params }: RouteContext) {
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
     const refParam = searchParams.get('ref');
+    const refIdParam = searchParams.get('refId');
     const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : null;
     const effectiveLimit = typeof parsedLimit === 'number' && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
     if (store.mode === 'pg') {
       const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
       const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
-      const refName = refParam?.trim();
-      const ref = refName
-        ? await resolveRefByName(params.id, refName)
-        : await resolveCurrentRef(params.id, INITIAL_BRANCH);
-      const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: ref.id, limit: effectiveLimit });
+      const refId = refIdParam?.trim() || null;
+      const refName = refParam?.trim() || null;
+      const ref =
+        refId ??
+        (refName
+          ? (await resolveRefByName(params.id, refName)).id
+          : (await resolveCurrentRef(params.id, INITIAL_BRANCH)).id);
+      const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: ref, limit: effectiveLimit });
       const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
       const branches = await rtListRefsShadowV2({ projectId: params.id });
       const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
@@ -71,8 +75,15 @@ export async function GET(request: Request, { params }: RouteContext) {
     if (!project) {
       throw notFound('Project not found');
     }
-    const refName = refParam?.trim() || INITIAL_BRANCH;
-    const nodes = await readNodesFromRef(project.id, refName);
+    const refName = refParam?.trim();
+    let resolvedRefName = refName ?? INITIAL_BRANCH;
+    const refId = refIdParam?.trim();
+    if (refId) {
+      const { getBranchNameByIdMap } = await import('@/src/git/branchIds');
+      const nameById = await getBranchNameByIdMap(params.id);
+      resolvedRefName = nameById[refId] ?? resolvedRefName;
+    }
+    const nodes = await readNodesFromRef(project.id, resolvedRefName);
 
     // Canvas saves create `state` nodes in the git backend; those are not user-facing chat turns.
     // Keep them out of the history API response to avoid flooding the chat UI.

@@ -14,6 +14,7 @@ let lastOnMoveEnd: ((event: any, viewport: any) => void) | null = null;
 const ROW_SPACING = 45;
 const BOTTOM_VIEWPORT_PADDING = 56;
 const CENTER_VIEWPORT_THRESHOLD = 0.75;
+const branchNameById = { main: 'main', 'feature/x': 'feature/x' };
 
 const expectedPreferredY = (nodeCount: number, viewportHeight: number) => {
   if (nodeCount <= 0) return 0;
@@ -93,7 +94,15 @@ describe('WorkspaceGraph viewport initialization', () => {
       ]
     } as any;
 
-    render(<WorkspaceGraph branchHistories={branchHistories} activeBranchName="feature/x" trunkName={trunkName} mode="nodes" />);
+    render(
+      <WorkspaceGraph
+        branchHistories={branchHistories}
+        activeBranchId="feature/x"
+        trunkId={trunkName}
+        branchNameById={branchNameById}
+        mode="nodes"
+      />
+    );
 
     await waitFor(() => {
       expect(lastFlowInstance).not.toBeNull();
@@ -119,7 +128,15 @@ describe('WorkspaceGraph viewport initialization', () => {
     }));
     const branchHistories = { main: nodes, 'feature/x': nodes } as any;
 
-    render(<WorkspaceGraph branchHistories={branchHistories} activeBranchName="feature/x" trunkName={trunkName} mode="nodes" />);
+    render(
+      <WorkspaceGraph
+        branchHistories={branchHistories}
+        activeBranchId="feature/x"
+        trunkId={trunkName}
+        branchNameById={branchNameById}
+        mode="nodes"
+      />
+    );
 
     await waitFor(() => {
       expect(lastFlowInstance).not.toBeNull();
@@ -150,8 +167,9 @@ describe('WorkspaceGraph viewport initialization', () => {
     const { rerender } = render(
       <WorkspaceGraph
         branchHistories={{ main: makeNodes(30), 'feature/x': makeNodes(30) } as any}
-        activeBranchName="feature/x"
-        trunkName={trunkName}
+        activeBranchId="feature/x"
+        trunkId={trunkName}
+        branchNameById={branchNameById}
         mode="nodes"
       />
     );
@@ -167,8 +185,9 @@ describe('WorkspaceGraph viewport initialization', () => {
     rerender(
       <WorkspaceGraph
         branchHistories={{ main: makeNodes(31), 'feature/x': makeNodes(31) } as any}
-        activeBranchName="feature/x"
-        trunkName={trunkName}
+        activeBranchId="feature/x"
+        trunkId={trunkName}
+        branchNameById={branchNameById}
         mode="nodes"
       />
     );
@@ -198,8 +217,9 @@ describe('WorkspaceGraph viewport initialization', () => {
     const { rerender } = render(
       <WorkspaceGraph
         branchHistories={{ main: makeNodes(30), 'feature/x': makeNodes(30) } as any}
-        activeBranchName="feature/x"
-        trunkName={trunkName}
+        activeBranchId="feature/x"
+        trunkId={trunkName}
+        branchNameById={branchNameById}
         mode="nodes"
       />
     );
@@ -216,8 +236,9 @@ describe('WorkspaceGraph viewport initialization', () => {
     rerender(
       <WorkspaceGraph
         branchHistories={{ main: makeNodes(31), 'feature/x': makeNodes(31) } as any}
-        activeBranchName="feature/x"
-        trunkName={trunkName}
+        activeBranchId="feature/x"
+        trunkId={trunkName}
+        branchNameById={branchNameById}
         mode="nodes"
       />
     );

@@ -130,6 +130,25 @@ Goal: make branch identity first-class in both PG and Git modes while keeping UI
 1) Add runtime checks in PG mode to reject node writes missing ref IDs once cutover is complete.
 2) Optional: phase out name-based comparisons where IDs exist.
 
+### Phase 6: Deprecate name-based API ref usage
+Goal: remove name-based ref identifiers from API payloads once all callers send ref IDs.
+
+1) Add refId equivalents to any remaining name-only endpoints (body or query param).
+2) Update all callers to send refId (UI + tests + server-to-server helpers).
+3) Emit warnings/metrics when `ref`/`branchName`/`targetBranch` name fields are used.
+4) Remove name-based ref support in a follow-up release.
+
+#### Name-based endpoints to migrate (current gaps)
+- `app/api/projects/[id]/branches/route.ts` (switch/create by name)
+- `app/api/projects/[id]/branches/[refId]/route.ts` (git rename still treats param as name)
+- `app/api/projects/[id]/branches/[refId]/pin/route.ts`
+- `app/api/projects/[id]/branches/[refId]/visibility/route.ts`
+- `app/api/projects/[id]/branch-question/route.ts` (fromRef + target name)
+- `app/api/projects/[id]/edit/route.ts` (branchName/fromRef)
+- `app/api/projects/[id]/edit-stream/route.ts` (branchName/fromRef)
+- `app/api/projects/[id]/merge/route.ts` (sourceBranch/targetBranch)
+- `app/api/projects/[id]/merge/pin-canvas-diff/route.ts` (targetBranch)
+
 ## Validation / Tests
 - Add regression test: rename branch with existing nodes, graph/history still renders in PG mode.
 - Add migration fixture check: node JSON names can drift, IDs keep linkage stable.

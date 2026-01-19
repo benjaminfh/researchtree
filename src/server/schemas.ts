@@ -16,6 +16,7 @@ export const chatRequestSchema = z
     highlight: z.string().min(1).max(CHAT_LIMITS.highlightMaxChars).optional(),
     intent: z.string().max(CHAT_LIMITS.intentMaxChars).optional(),
     llmProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional(),
+    refId: z.string().min(1).max(120).optional(),
     ref: z.string().min(1).max(120).optional(),
     thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
     webSearch: z.boolean().optional(),

@@ -24,6 +24,7 @@ export type ChatSendPayload =
       question?: string;
       highlight?: string;
       intent?: string;
+      refId?: string;
       ref?: string;
       llmProvider?: LLMProvider;
       thinking?: ThinkingSetting;
@@ -40,6 +41,7 @@ export interface StreamRequestOptions {
 
 interface UseChatStreamOptions {
   projectId: string;
+  refId?: string;
   ref?: string;
   provider?: LLMProvider;
   thinking?: ThinkingSetting;
@@ -51,6 +53,7 @@ interface UseChatStreamOptions {
 
 export function useChatStream({
   projectId,
+  refId,
   ref,
   provider,
   thinking,
@@ -193,6 +196,7 @@ export function useChatStream({
         streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
         console.debug('[stream][start]', {
           projectId,
+          refId: normalized.refId ?? refId,
           ref: normalized.ref ?? ref,
           provider: normalized.llmProvider ?? provider,
           thinking: normalized.thinking ?? thinking,
@@ -207,6 +211,7 @@ export function useChatStream({
         question: normalized.question,
         highlight: normalized.highlight,
         intent: normalized.intent,
+        refId: normalized.refId ?? refId,
         llmProvider: normalized.llmProvider ?? provider,
         ref: normalized.ref ?? ref,
         thinking: normalized.thinking ?? thinking,
@@ -219,18 +224,20 @@ export function useChatStream({
         body: requestBody
       });
     },
-    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
+    [projectId, provider, ref, refId, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
   );
 
   const interrupt = useCallback(async () => {
     if (activeRequest.current) {
       activeRequest.current.abort();
     }
-    const interruptUrl = ref
-      ? `/api/projects/${projectId}/interrupt?ref=${encodeURIComponent(ref)}`
-      : `/api/projects/${projectId}/interrupt`;
+    const interruptUrl = refId
+      ? `/api/projects/${projectId}/interrupt?refId=${encodeURIComponent(refId)}`
+      : ref
+        ? `/api/projects/${projectId}/interrupt?ref=${encodeURIComponent(ref)}`
+        : `/api/projects/${projectId}/interrupt`;
     await fetch(interruptUrl, { method: 'POST' });
-  }, [projectId, ref]);
+  }, [projectId, ref, refId]);
 
   return {
     sendMessage,

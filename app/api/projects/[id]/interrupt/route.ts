@@ -25,7 +25,21 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
     const { searchParams } = new URL(request.url);
     const ref = searchParams.get('ref') ?? undefined;
-    const aborted = abortStream(params.id, ref);
+    const refId = searchParams.get('refId')?.trim();
+    let resolvedRef = ref ?? undefined;
+    if (refId) {
+      if (store.mode === 'git') {
+        const { getBranchNameByIdMap } = await import('@/src/git/branchIds');
+        const nameById = await getBranchNameByIdMap(params.id);
+        resolvedRef = nameById[refId] ?? resolvedRef;
+      } else {
+        const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+        const branches = await rtListRefsShadowV2({ projectId: params.id });
+        const match = branches.find((branch) => branch.id === refId);
+        resolvedRef = match?.name ?? resolvedRef;
+      }
+    }
+    const aborted = abortStream(params.id, resolvedRef);
     return Response.json({ aborted });
   } catch (error) {
     return handleRouteError(error);

@@ -14,6 +14,9 @@ import { TRUNK_LABEL } from '@/src/config/app';
 type CapturedWorkspaceGraphProps = {
   mode?: 'nodes' | 'collapsed' | 'starred';
   branchHistories?: Record<string, NodeRecord[]>;
+  activeBranchId?: string;
+  trunkId?: string;
+  branchNameById?: Record<string, string>;
   onSelectNode?: (nodeId: string | null) => void;
 };
 
@@ -60,8 +63,8 @@ const baseProject: ProjectMetadata = {
 };
 
 const baseBranches: BranchSummary[] = [
-  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
-  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+  { id: 'ref-main', name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+  { id: 'ref-feature', name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
 ];
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
@@ -152,9 +155,13 @@ describe('WorkspaceClient', () => {
             branches: baseBranches,
             trunkName: 'main',
             currentBranch: baseProject.branchName,
-            branchHistories: {
-              main: sampleNodes.slice(0, 2),
-              'feature/phase-2': sampleNodes.slice(0, 2)
+            branchHistoriesById: {
+              'ref-main': sampleNodes.slice(0, 2),
+              'ref-feature': sampleNodes.slice(0, 2)
+            },
+            branchNameById: {
+              'ref-main': 'main',
+              'ref-feature': 'feature/phase-2'
             },
             starredNodeIds: []
           }),
@@ -257,9 +264,13 @@ describe('WorkspaceClient', () => {
             branches: baseBranches,
             trunkName: 'main',
             currentBranch: baseProject.branchName,
-            branchHistories: {
-              main: sampleNodes.slice(0, 2),
-              'feature/phase-2': sampleNodes.slice(0, 2)
+            branchHistoriesById: {
+              'ref-main': sampleNodes.slice(0, 2),
+              'ref-feature': sampleNodes.slice(0, 2)
+            },
+            branchNameById: {
+              'ref-main': 'main',
+              'ref-feature': 'feature/phase-2'
             },
             starredNodeIds: []
           }),
@@ -602,8 +613,8 @@ describe('WorkspaceClient', () => {
   it('toggles branch visibility using an eye icon instead of a label', async () => {
     const user = userEvent.setup();
     const branches: BranchSummary[] = [
-      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
-      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+      { id: 'ref-main', name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+      { id: 'ref-feature', name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
     ];
 
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -614,9 +625,13 @@ describe('WorkspaceClient', () => {
             branches,
             trunkName: 'main',
             currentBranch: 'main',
-            branchHistories: {
-              main: sampleNodes.slice(0, 2),
-              'feature/phase-2': sampleNodes
+            branchHistoriesById: {
+              'ref-main': sampleNodes.slice(0, 2),
+              'ref-feature': sampleNodes
+            },
+            branchNameById: {
+              'ref-main': 'main',
+              'ref-feature': 'feature/phase-2'
             },
             starredNodeIds: []
           }),
@@ -679,8 +694,8 @@ describe('WorkspaceClient', () => {
   it('pins a branch from the rail and updates the pin API', async () => {
     const user = userEvent.setup();
     const branches: BranchSummary[] = [
-      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
-      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+      { id: 'ref-main', name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+      { id: 'ref-feature', name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
     ];
 
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -691,9 +706,13 @@ describe('WorkspaceClient', () => {
             branches,
             trunkName: 'main',
             currentBranch: 'main',
-            branchHistories: {
-              main: sampleNodes.slice(0, 2),
-              'feature/phase-2': sampleNodes
+            branchHistoriesById: {
+              'ref-main': sampleNodes.slice(0, 2),
+              'ref-feature': sampleNodes
+            },
+            branchNameById: {
+              'ref-main': 'main',
+              'ref-feature': 'feature/phase-2'
             },
             starredNodeIds: []
           }),
@@ -765,9 +784,13 @@ describe('WorkspaceClient', () => {
             branches,
             trunkName: 'main',
             currentBranch: 'main',
-            branchHistories: {
+            branchHistoriesById: {
               main: sampleNodes.slice(0, 2),
               'feature/phase-2': sampleNodes
+            },
+            branchNameById: {
+              main: 'main',
+              'feature/phase-2': 'feature/phase-2'
             },
             starredNodeIds: []
           }),
@@ -831,8 +854,8 @@ describe('WorkspaceClient', () => {
 
   it('keeps provider/thinking pinned to branch when switching branches', async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem('researchtree:thinking:proj-1:feature/phase-2', 'high');
-    window.localStorage.setItem('researchtree:thinking:proj-1:main', 'medium');
+    window.localStorage.setItem('researchtree:thinking:proj-1:ref-feature', 'high');
+    window.localStorage.setItem('researchtree:thinking:proj-1:ref-main', 'medium');
     const branches: BranchSummary[] = [
       { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, provider: 'openai', model: 'gpt-5.2' },
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
@@ -866,8 +889,8 @@ describe('WorkspaceClient', () => {
         expect(badge).toHaveTextContent('OpenAI');
       });
 
-      expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
-      expect(window.localStorage.getItem('researchtree:thinking:proj-1:main')).toBe(
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:ref-feature')).toBe('high');
+      expect(window.localStorage.getItem('researchtree:thinking:proj-1:ref-main')).toBe(
         getDefaultThinkingSetting('openai', 'gpt-5.2')
       );
     } finally {
@@ -894,7 +917,7 @@ describe('WorkspaceClient', () => {
     await user.click(screen.getByRole('menuitemradio', { name: 'High' }));
 
     expect(thinkingTrigger).toHaveTextContent('Thinking: High');
-    expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
+    expect(window.localStorage.getItem('researchtree:thinking:proj-1:ref-feature')).toBe('high');
     await waitFor(() => {
       expect(capturedChatOptions?.thinking).toBe('high');
     });
@@ -902,7 +925,7 @@ describe('WorkspaceClient', () => {
 
   it('hydrates and persists the web search toggle', async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem('researchtree:websearch:proj-1:feature/phase-2', 'true');
+    window.localStorage.setItem('researchtree:websearch:proj-1:ref-feature', 'true');
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     const toggle = await screen.findByRole('button', { name: 'Toggle web search' });
@@ -912,7 +935,7 @@ describe('WorkspaceClient', () => {
     });
 
     await user.click(toggle);
-    expect(window.localStorage.getItem('researchtree:websearch:proj-1:feature/phase-2')).toBe('false');
+    expect(window.localStorage.getItem('researchtree:websearch:proj-1:ref-feature')).toBe('false');
     await waitFor(() => {
       expect(capturedChatOptions?.webSearch).toBe(false);
     });
@@ -945,16 +968,16 @@ describe('WorkspaceClient', () => {
       expect(capturedWorkspaceGraphProps).not.toBeNull();
       expect(capturedWorkspaceGraphProps.mode).toBe('collapsed');
       // Loaded graph histories include multiple branches (not just the fallback active-branch history).
-      expect(capturedWorkspaceGraphProps.branchHistories?.main?.length).toBeGreaterThan(0);
+      expect(capturedWorkspaceGraphProps.branchHistories?.['ref-main']?.length).toBeGreaterThan(0);
       // Active branch history initially comes from the graph payload; it updates when the active history changes.
-      expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(2);
+      expect(capturedWorkspaceGraphProps.branchHistories?.['ref-feature']?.length).toBe(2);
     });
 
     currentNodes = [...currentNodes, { id: 'node-3', type: 'message', role: 'assistant', content: 'New node', timestamp: 1700000002000, parent: 'node-assistant' }];
     rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     await waitFor(() => {
-      expect(capturedWorkspaceGraphProps.branchHistories?.['feature/phase-2']?.length).toBe(4);
+      expect(capturedWorkspaceGraphProps.branchHistories?.['ref-feature']?.length).toBe(4);
     });
   });
 
@@ -988,7 +1011,7 @@ describe('WorkspaceClient', () => {
     await user.click(screen.getByRole('button', { name: /thred graph/i }));
 
     await waitFor(() => {
-      expect(capturedWorkspaceGraphProps?.branchHistories?.['feature/phase-2']?.length).toBe(2);
+      expect(capturedWorkspaceGraphProps?.branchHistories?.['ref-feature']?.length).toBe(2);
     });
 
     currentNodes = [];
@@ -1003,7 +1026,7 @@ describe('WorkspaceClient', () => {
     );
 
     await waitFor(() => {
-      expect(capturedWorkspaceGraphProps?.branchHistories?.['feature/phase-2']?.length).toBe(2);
+      expect(capturedWorkspaceGraphProps?.branchHistories?.['ref-feature']?.length).toBe(2);
     });
   });
 
@@ -1219,10 +1242,15 @@ describe('WorkspaceClient', () => {
             branches,
             trunkName: 'main',
             currentBranch: 'feature/phase-2',
-            branchHistories: {
+            branchHistoriesById: {
               main: sampleNodes.slice(0, 2),
               'feature/phase-2': sampleNodes,
               'feature/other': otherNodes
+            },
+            branchNameById: {
+              main: 'main',
+              'feature/phase-2': 'feature/phase-2',
+              'feature/other': 'feature/other'
             },
             starredNodeIds: []
           }),
@@ -1301,9 +1329,13 @@ describe('WorkspaceClient', () => {
             branches: baseBranches,
             trunkName: 'main',
             currentBranch: baseProject.branchName,
-            branchHistories: {
-              main: [...sampleNodes.slice(0, 2), mergeNode],
-              'feature/phase-2': sampleNodes
+            branchHistoriesById: {
+              'ref-main': [...sampleNodes.slice(0, 2), mergeNode],
+              'ref-feature': sampleNodes
+            },
+            branchNameById: {
+              'ref-main': 'main',
+              'ref-feature': 'feature/phase-2'
             },
             starredNodeIds: []
           }),
@@ -1407,9 +1439,13 @@ describe('WorkspaceClient', () => {
             branches: baseBranches,
             trunkName: 'main',
             currentBranch: baseProject.branchName,
-            branchHistories: {
-              main: sampleNodes.slice(0, 2),
-              'feature/phase-2': sampleNodes
+            branchHistoriesById: {
+              'ref-main': sampleNodes.slice(0, 2),
+              'ref-feature': sampleNodes
+            },
+            branchNameById: {
+              'ref-main': 'main',
+              'ref-feature': 'feature/phase-2'
             },
             starredNodeIds: []
           }),

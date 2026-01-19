@@ -53,7 +53,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
       const visibleBranches = branches.filter((branch) => !branch.isHidden);
       const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
       const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
-      const currentBranch = (await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: trunkName })).refName;
+      const trunkId = branches.find((b) => b.isTrunk)?.id ?? null;
+      const current = await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: trunkName });
+      const currentBranch = current.refName;
+      const currentBranchId = branches.find((branch) => branch.name === currentBranch)?.id ?? current.refId;
 
       const [branchHistoriesEntries, starredNodeIds] = await Promise.all([
         Promise.all(
@@ -65,22 +68,26 @@ export async function GET(_request: Request, { params }: RouteContext) {
             const nodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
             const resolved = applyRefNames(nodes, refNameById);
             const visible = resolved.filter((node) => !isHiddenMessage(node));
-            return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
+            return [branch.id, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
           })
         ),
         rtGetStarredNodeIdsShadowV1({ projectId: params.id })
       ]);
 
-      const branchHistories: Record<string, NodeRecord[]> = {};
-      for (const [branchName, nodes] of branchHistoriesEntries) {
-        branchHistories[branchName] = nodes;
+      const branchHistoriesById: Record<string, NodeRecord[]> = {};
+      for (const [branchId, nodes] of branchHistoriesEntries) {
+        branchHistoriesById[branchId] = nodes;
       }
+      const branchNameById = Object.fromEntries(branches.map((branch) => [branch.id, branch.name]));
 
       return Response.json({
         branches: visibleBranches,
         trunkName,
+        trunkId,
         currentBranch,
-        branchHistories,
+        currentBranchId,
+        branchHistoriesById,
+        branchNameById,
         starredNodeIds
       });
     }
@@ -97,29 +104,35 @@ export async function GET(_request: Request, { params }: RouteContext) {
     const branches = await listBranches(project.id);
     const visibleBranches = branches.filter((branch) => !branch.isHidden);
     const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
+    const trunkId = branches.find((b) => b.isTrunk)?.id ?? null;
     const currentBranch = await getCurrentBranchName(project.id).catch(() => trunkName);
+    const currentBranchId = branches.find((branch) => branch.name === currentBranch)?.id ?? null;
 
     const [branchHistoriesEntries, starredNodeIds] = await Promise.all([
       Promise.all(
         visibleBranches.map(async (branch) => {
           const nodes = await readNodesFromRef(project.id, branch.name);
           const visible = nodes.filter((node) => !isHiddenMessage(node));
-          return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
+          return [branch.id ?? branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
         })
       ),
       getStarredNodeIds(project.id)
     ]);
 
-    const branchHistories: Record<string, NodeRecord[]> = {};
-    for (const [branchName, nodes] of branchHistoriesEntries) {
-      branchHistories[branchName] = nodes;
+    const branchHistoriesById: Record<string, NodeRecord[]> = {};
+    for (const [branchId, nodes] of branchHistoriesEntries) {
+      branchHistoriesById[branchId] = nodes;
     }
+    const branchNameById = Object.fromEntries(visibleBranches.map((branch) => [branch.id ?? branch.name, branch.name]));
 
     return Response.json({
       branches: visibleBranches,
       trunkName,
+      trunkId,
       currentBranch,
-      branchHistories,
+      currentBranchId,
+      branchHistoriesById,
+      branchNameById,
       starredNodeIds
     });
   } catch (error) {

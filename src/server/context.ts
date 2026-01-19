@@ -11,6 +11,7 @@ import {
 import { getStoreConfig } from './storeConfig';
 import { buildContextBlocksFromRaw } from '@/src/server/llmContentBlocks';
 import { getBranchConfigMap, resolveBranchConfig, type BranchConfig } from '@/src/server/branchConfig';
+import { ensureBranchId, getBranchNameByIdMap } from '@/src/git/branchIds';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -39,6 +40,12 @@ function applyRefNames(nodes: NodeRecord[], refNameById: Map<string, string>): N
   });
 }
 
+function resolveBranchId(node: NodeRecord, idByName: Map<string, string>): string | null {
+  if (node.createdOnRefId) return node.createdOnRefId;
+  if (node.createdOnBranch) return idByName.get(node.createdOnBranch) ?? null;
+  return null;
+}
+
 function getMergeUserRole(): Exclude<ChatMessage['role'], 'system'> {
   const raw = (process.env.MERGE_USER ?? 'assistant').trim().toLowerCase();
   if (!raw) return 'assistant';
@@ -59,24 +66,23 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
   const resolvedRef = options?.ref?.trim() || null;
 
   let nodes: NodeRecord[];
-  let resolvedRefName = resolvedRef;
   let resolvedRefId: string | null = null;
+  let idByName = new Map<string, string>();
 
   if (store.mode === 'pg') {
     const { rtGetHistoryShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
     const branches = await rtListRefsShadowV2({ projectId });
+    idByName = new Map(branches.map((branch) => [branch.name, branch.id]));
     if (resolvedRef) {
       const match = branches.find((branch) => branch.name === resolvedRef);
       if (!match?.id) {
         throw new Error(`Ref ${resolvedRef} not found`);
       }
       resolvedRefId = match.id;
-      resolvedRefName = match.name;
     } else {
       const current = await rtGetCurrentRefShadowV2({ projectId, defaultRefName: 'main' });
       resolvedRefId = current.refId;
-      resolvedRefName = current.refName;
     }
     if (!resolvedRefId) {
       throw new Error('Ref id not resolved');
@@ -91,19 +97,23 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
     const pgNodes = rows.map((r) => r.nodeJson).filter(Boolean) as NodeRecord[];
     nodes = applyRefNames(pgNodes, refNameById);
   } else {
+    const nameById = await getBranchNameByIdMap(projectId);
+    idByName = new Map(Object.entries(nameById).map(([id, name]) => [name, id]));
     const { getNodes } = await import('@git/nodes');
     const { readNodesFromRef } = await import('@git/utils');
+    if (resolvedRef) {
+      resolvedRefId = await ensureBranchId(projectId, resolvedRef);
+    }
     nodes = resolvedRef ? await readNodesFromRef(projectId, resolvedRef) : await getNodes(projectId);
   }
 
   const trimmed = nodes.slice(-limit);
-  const refName = resolvedRefName ?? 'main';
   const branchConfigMap = await getBranchConfigMap(projectId);
-  const currentConfig = branchConfigMap[refName] ?? resolveBranchConfig();
-  if (!branchConfigMap[refName]) {
-    branchConfigMap[refName] = currentConfig;
+  const currentConfig = resolvedRefId ? branchConfigMap[resolvedRefId] ?? resolveBranchConfig() : resolveBranchConfig();
+  if (resolvedRefId && !branchConfigMap[resolvedRefId]) {
+    branchConfigMap[resolvedRefId] = currentConfig;
   }
-  const useCanonicalByIndex = buildCanonicalMask(trimmed, branchConfigMap, currentConfig);
+  const useCanonicalByIndex = buildCanonicalMask(trimmed, branchConfigMap, currentConfig, idByName);
   const systemPrompt = buildSystemPrompt({ canvasToolsEnabled });
   const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
   const mergeUserRole = getMergeUserRole();
@@ -207,14 +217,15 @@ function estimateTokens(content: MessageContent): number {
 function buildCanonicalMask(
   nodes: NodeRecord[],
   branchConfigMap: Record<string, BranchConfig>,
-  currentConfig: BranchConfig
+  currentConfig: BranchConfig,
+  idByName: Map<string, string>
 ): boolean[] {
   const mask = new Array(nodes.length).fill(false);
   let breakFound = false;
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
     if (!breakFound) {
-      const createdOn = nodes[i]?.createdOnBranch;
-      const nodeConfig = createdOn ? branchConfigMap[createdOn] : undefined;
+      const createdOnId = nodes[i] ? resolveBranchId(nodes[i]!, idByName) : null;
+      const nodeConfig = createdOnId ? branchConfigMap[createdOnId] : undefined;
       const sameModel =
         nodeConfig &&
         nodeConfig.provider === currentConfig.provider &&

@@ -74,8 +74,9 @@ describe('WorkspaceGraph interaction', () => {
     render(
       <WorkspaceGraph
         branchHistories={branchHistories}
-        activeBranchName="feature/x"
-        trunkName="main"
+        activeBranchId="feature/x"
+        trunkId="main"
+        branchNameById={{ main: 'main', 'feature/x': 'feature/x' }}
         mode="nodes"
         selectedNodeId="b"
         onSelectNode={onSelectNode}

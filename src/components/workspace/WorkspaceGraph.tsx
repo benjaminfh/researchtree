@@ -27,8 +27,9 @@ import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 
 interface WorkspaceGraphProps {
   branchHistories: Record<string, NodeRecord[]>;
-  activeBranchName: string;
-  trunkName: string;
+  activeBranchId: string;
+  trunkId: string;
+  branchNameById: Record<string, string>;
   branchColors?: Record<string, string>;
   mode?: 'nodes' | 'collapsed' | 'starred';
   starredNodeIds?: string[];
@@ -67,6 +68,10 @@ const LABEL_ROW_GAP = 20; // gap after the right-most line when the node isn't o
 const EDGE_ANGULAR_BEND = 0.32;
 const EDGE_CURVE_BEND = 0.7;
 const EDGE_STYLE = features.graphEdgeStyle;
+
+function resolveBranchLabel(branchId: string, branchNameById: Record<string, string>): string {
+  return branchNameById[branchId] ?? branchId;
+}
 
 const DotNode = ({ data }: NodeProps<DotNodeData>) => (
   <div className="relative flex items-center gap-2">
@@ -536,17 +541,20 @@ class GitGraphLayout {
 
 export function buildGraphNodes(
   branchHistories: Record<string, NodeRecord[]>,
-  activeBranchName: string,
-  trunkName: string
+  activeBranchId: string,
+  trunkId: string,
+  branchNameById: Record<string, string>
 ): GraphNode[] {
   const nodeById = new Map<string, NodeRecord>();
   const firstSeenBranchById = new Map<string, string>();
   const activeNodeIds = new Set<string>();
 
   const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
-    if (a === trunkName && b !== trunkName) return -1;
-    if (a !== trunkName && b === trunkName) return 1;
-    return a.localeCompare(b);
+    if (a === trunkId && b !== trunkId) return -1;
+    if (a !== trunkId && b === trunkId) return 1;
+    const labelA = resolveBranchLabel(a, branchNameById);
+    const labelB = resolveBranchLabel(b, branchNameById);
+    return labelA.localeCompare(labelB);
   });
 
   for (const [branchName, nodes] of orderedBranchEntries) {
@@ -555,7 +563,7 @@ export function buildGraphNodes(
         nodeById.set(node.id, node);
         firstSeenBranchById.set(node.id, branchName);
       }
-      if (branchName === activeBranchName) {
+      if (branchName === activeBranchId) {
         activeNodeIds.add(node.id);
       }
     }
@@ -570,15 +578,15 @@ export function buildGraphNodes(
       const mergeParent = node.sourceNodeIds[node.sourceNodeIds.length - 1];
       if (mergeParent) parents.push(mergeParent);
     }
-    const inferredBranch = firstSeenBranchById.get(node.id) ?? trunkName;
-    const originBranchId = node.createdOnBranch ?? inferredBranch;
+    const inferredBranch = firstSeenBranchById.get(node.id) ?? trunkId;
+    const originBranchId = node.createdOnRefId ?? inferredBranch;
     return {
       id: node.id,
       parents,
       originBranchId,
       laneBranchId: inferredBranch,
       isOnActiveBranch: activeNodeIds.has(node.id),
-      label: formatLabel(node),
+      label: formatLabel(node, branchNameById),
       icon:
         node.type === 'merge'
           ? 'merge'
@@ -657,8 +665,9 @@ export function buildGraphNodes(
 
 function buildCollapsedGraphNodes(
   branchHistories: Record<string, NodeRecord[]>,
-  activeBranchName: string,
-  trunkName: string
+  activeBranchId: string,
+  trunkId: string,
+  branchNameById: Record<string, string>
 ): GraphNode[] {
   const nodeById = new Map<string, NodeRecord>();
   const firstSeenBranchById = new Map<string, string>();
@@ -666,9 +675,11 @@ function buildCollapsedGraphNodes(
   const mergeNodeIds = new Set<string>();
 
   const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
-    if (a === trunkName && b !== trunkName) return -1;
-    if (a !== trunkName && b === trunkName) return 1;
-    return a.localeCompare(b);
+    if (a === trunkId && b !== trunkId) return -1;
+    if (a !== trunkId && b === trunkId) return 1;
+    const labelA = resolveBranchLabel(a, branchNameById);
+    const labelB = resolveBranchLabel(b, branchNameById);
+    return labelA.localeCompare(labelB);
   });
 
   for (const [branchName, nodes] of orderedBranchEntries) {
@@ -677,7 +688,7 @@ function buildCollapsedGraphNodes(
         nodeById.set(node.id, node);
         firstSeenBranchById.set(node.id, branchName);
       }
-      if (branchName === activeBranchName) {
+      if (branchName === activeBranchId) {
         activeNodeIds.add(node.id);
       }
       if (node.type === 'merge') {
@@ -686,14 +697,14 @@ function buildCollapsedGraphNodes(
     }
   }
 
-  const trunkHistory = branchHistories[trunkName] ?? [];
+  const trunkHistory = branchHistories[trunkId] ?? [];
   const trunkIds = trunkHistory.map((n) => n.id);
-  const activeHeadId = branchHistories[activeBranchName]?.[branchHistories[activeBranchName].length - 1]?.id ?? null;
+  const activeHeadId = branchHistories[activeBranchId]?.[branchHistories[activeBranchId].length - 1]?.id ?? null;
 
   const important = new Set<string>();
   for (const [branchName, nodes] of orderedBranchEntries) {
     if (features.uiCollapsedBranchTwoNodes) {
-      const createdOnBranch = nodes.filter((node) => node.createdOnBranch === branchName);
+      const createdOnBranch = nodes.filter((node) => node.createdOnRefId === branchName);
       if (createdOnBranch.length >= 2) {
         important.add(createdOnBranch[0].id);
         important.add(createdOnBranch[createdOnBranch.length - 1].id);
@@ -703,7 +714,7 @@ function buildCollapsedGraphNodes(
     } else {
       const tip = nodes[nodes.length - 1];
       if (tip) important.add(tip.id);
-      if (branchName !== trunkName) {
+      if (branchName !== trunkId) {
         const max = Math.min(nodes.length, trunkHistory.length);
         let idx = 0;
         while (idx < max && nodes[idx]?.id === trunkHistory[idx]?.id) idx += 1;
@@ -711,7 +722,7 @@ function buildCollapsedGraphNodes(
         if (firstUnique) important.add(firstUnique.id);
       }
     }
-    if (branchName === trunkName) continue;
+    if (branchName === trunkId) continue;
     const max = Math.min(nodes.length, trunkHistory.length);
     let idx = 0;
     while (idx < max && nodes[idx]?.id === trunkHistory[idx]?.id) idx += 1;
@@ -759,8 +770,8 @@ function buildCollapsedGraphNodes(
   for (const id of important) {
     const node = nodeById.get(id);
     if (!node) continue;
-    const inferredBranch = firstSeenBranchById.get(id) ?? trunkName;
-    const originBranchId = node.createdOnBranch ?? inferredBranch;
+    const inferredBranch = firstSeenBranchById.get(id) ?? trunkId;
+    const originBranchId = node.createdOnRefId ?? inferredBranch;
 
     const parents: string[] = [];
     const hiddenCountByParent: Record<string, number> = {};
@@ -784,7 +795,10 @@ function buildCollapsedGraphNodes(
       originBranchId,
       laneBranchId: inferredBranch,
       isOnActiveBranch: activeNodeIds.has(id),
-      label: node.type === 'merge' ? `Merge · ${node.mergeFrom}` : originBranchId,
+      label:
+        node.type === 'merge'
+          ? `Merge · ${resolveBranchLabel(node.mergeFromRefId ?? originBranchId, branchNameById)}`
+          : resolveBranchLabel(originBranchId, branchNameById),
       icon:
         node.type === 'merge'
           ? 'merge'
@@ -813,18 +827,21 @@ function buildCollapsedGraphNodes(
 
 function buildStarredGraphNodes(
   branchHistories: Record<string, NodeRecord[]>,
-  activeBranchName: string,
-  trunkName: string,
-  starredNodeIds: string[]
+  activeBranchId: string,
+  trunkId: string,
+  starredNodeIds: string[],
+  branchNameById: Record<string, string>
 ): GraphNode[] {
   const nodeById = new Map<string, NodeRecord>();
   const firstSeenBranchById = new Map<string, string>();
   const activeNodeIds = new Set<string>();
 
   const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
-    if (a === trunkName && b !== trunkName) return -1;
-    if (a !== trunkName && b === trunkName) return 1;
-    return a.localeCompare(b);
+    if (a === trunkId && b !== trunkId) return -1;
+    if (a !== trunkId && b === trunkId) return 1;
+    const labelA = resolveBranchLabel(a, branchNameById);
+    const labelB = resolveBranchLabel(b, branchNameById);
+    return labelA.localeCompare(labelB);
   });
 
   for (const [branchName, nodes] of orderedBranchEntries) {
@@ -833,15 +850,15 @@ function buildStarredGraphNodes(
         nodeById.set(node.id, node);
         firstSeenBranchById.set(node.id, branchName);
       }
-      if (branchName === activeBranchName) {
+      if (branchName === activeBranchId) {
         activeNodeIds.add(node.id);
       }
     }
   }
 
-  const trunkHistory = branchHistories[trunkName] ?? [];
+  const trunkHistory = branchHistories[trunkId] ?? [];
   const trunkRootId = trunkHistory[0]?.id ?? null;
-  const activeHeadId = branchHistories[activeBranchName]?.[branchHistories[activeBranchName].length - 1]?.id ?? null;
+  const activeHeadId = branchHistories[activeBranchId]?.[branchHistories[activeBranchId].length - 1]?.id ?? null;
 
   const important = new Set<string>();
   for (const id of starredNodeIds) {
@@ -878,8 +895,8 @@ function buildStarredGraphNodes(
   for (const id of important) {
     const node = nodeById.get(id);
     if (!node) continue;
-    const inferredBranch = firstSeenBranchById.get(id) ?? trunkName;
-    const originBranchId = node.createdOnBranch ?? inferredBranch;
+    const inferredBranch = firstSeenBranchById.get(id) ?? trunkId;
+    const originBranchId = node.createdOnRefId ?? inferredBranch;
 
     const parents: string[] = [];
     const primary = resolveIncludedAncestor(node.parent);
@@ -896,7 +913,7 @@ function buildStarredGraphNodes(
       originBranchId,
       laneBranchId: inferredBranch,
       isOnActiveBranch: activeNodeIds.has(id),
-      label: formatLabel(node),
+      label: formatLabel(node, branchNameById),
       icon:
         node.type === 'merge'
           ? 'merge'
@@ -929,13 +946,13 @@ interface LayoutOptions {
 
 function buildSimpleLayout(
   graphNodes: GraphNode[],
-  branchName: string,
-  trunkName: string,
+  branchId: string,
+  trunkId: string,
   branchColors?: Record<string, string>
 ): LayoutResult {
   const laneByBranch = new Map<string, number>([
-    [trunkName, 0],
-    [branchName, 1]
+    [trunkId, 0],
+    [branchId, 1]
   ]);
   let nextLane = 2;
   const laneFor = (branchId: string) => {
@@ -954,7 +971,7 @@ function buildSimpleLayout(
     const lane = lanes[index];
     const x = lane * laneSpacing;
     const y = index * rowSpacing;
-    const color = getBranchColor(node.originBranchId, trunkName, branchColors);
+    const color = getBranchColor(node.originBranchId, trunkId, branchColors);
     return {
       id: node.id,
       type: 'dot',
@@ -984,7 +1001,7 @@ function buildSimpleLayout(
       if (typeof parentIndex !== 'number') return;
       const parentLane = laneFor(graphNodes[parentIndex].laneBranchId);
       const sameLane = parentLane === targetLane;
-      const color = getBranchColor(graphNodes[parentIndex].originBranchId, trunkName, branchColors);
+      const color = getBranchColor(graphNodes[parentIndex].originBranchId, trunkId, branchColors);
       edges.push({
         id: `${parentId}-${node.id}`,
         source: parentId,
@@ -1005,15 +1022,15 @@ function buildSimpleLayout(
 
 export function layoutGraph(
   graphNodes: GraphNode[],
-  branchName: string,
-  trunkName: string,
+  branchId: string,
+  trunkId: string,
   branchColors?: Record<string, string>,
   options?: LayoutOptions
 ): LayoutResult {
   if (graphNodes.length === 0) {
     return { nodes: [], edges: [], usedFallback: false };
   }
-  const simple = buildSimpleLayout(graphNodes, branchName, trunkName, branchColors);
+  const simple = buildSimpleLayout(graphNodes, branchId, trunkId, branchColors);
 
   const graphNodesOldestFirst = graphNodes;
   const idToOldIndex = new Map(graphNodesOldestFirst.map((node, idx) => [node.id, idx]));
@@ -1063,7 +1080,7 @@ export function layoutGraph(
     const rightMostAtRow = vertices[newIndex].getMaxReservedX();
     const x = lane * laneSpacing - 20;
     const y = oldIndex * rowSpacing;
-    const color = getBranchColor(node.originBranchId, trunkName, branchColors);
+    const color = getBranchColor(node.originBranchId, trunkId, branchColors);
     const labelTranslateX =
       lane === rightMostAtRow ? 0 : (rightMostAtRow - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET;
     return {
@@ -1094,7 +1111,7 @@ export function layoutGraph(
       const parentNew = totalRows - 1 - parentOld;
       const parentLane = vertices[parentNew].getLane();
       const sameLane = parentLane === childLane;
-      const color = getBranchColor(graphNodesOldestFirst[parentOld].originBranchId, trunkName, branchColors);
+      const color = getBranchColor(graphNodesOldestFirst[parentOld].originBranchId, trunkId, branchColors);
       flowEdges.push({
         id: `${parentId}-${node.id}`,
         source: parentId,
@@ -1116,8 +1133,9 @@ export function layoutGraph(
 
 export function WorkspaceGraph({
   branchHistories,
-  activeBranchName,
-  trunkName,
+  activeBranchId,
+  trunkId,
+  branchNameById,
   branchColors,
   mode = 'nodes',
   starredNodeIds = [],
@@ -1129,22 +1147,22 @@ export function WorkspaceGraph({
   const graphNodes = useMemo(
     () =>
       mode === 'starred'
-        ? buildStarredGraphNodes(branchHistories, activeBranchName, trunkName, starredNodeIds)
+        ? buildStarredGraphNodes(branchHistories, activeBranchId, trunkId, starredNodeIds, branchNameById)
         : mode === 'collapsed'
-        ? buildCollapsedGraphNodes(branchHistories, activeBranchName, trunkName)
-        : buildGraphNodes(branchHistories, activeBranchName, trunkName),
-    [branchHistories, activeBranchName, trunkName, mode, starredNodeIds]
+        ? buildCollapsedGraphNodes(branchHistories, activeBranchId, trunkId, branchNameById)
+        : buildGraphNodes(branchHistories, activeBranchId, trunkId, branchNameById),
+    [branchHistories, activeBranchId, trunkId, branchNameById, mode, starredNodeIds]
   );
 
   const { nodes, edges } = useMemo(
-    () => layoutGraph(graphNodes, activeBranchName, trunkName, branchColors),
-    [graphNodes, activeBranchName, trunkName, branchColors]
+    () => layoutGraph(graphNodes, activeBranchId, trunkId, branchColors),
+    [graphNodes, activeBranchId, trunkId, branchColors]
   );
 
   const activeHeadId = useMemo(() => {
-    const activeHistory = branchHistories[activeBranchName] ?? [];
+    const activeHistory = branchHistories[activeBranchId] ?? [];
     return activeHistory[activeHistory.length - 1]?.id ?? null;
-  }, [branchHistories, activeBranchName]);
+  }, [branchHistories, activeBranchId]);
   const activeHeadNode = useMemo(
     () => (activeHeadId ? nodes.find((node) => node.id === activeHeadId) ?? null : null),
     [nodes, activeHeadId]
@@ -1168,7 +1186,7 @@ export function WorkspaceGraph({
 
     const edgeColorFor = (parentId: string, childId: string) => {
       const child = byId.get(childId);
-      const childColor = getBranchColor(child?.originBranchId ?? trunkName, trunkName, branchColors);
+      const childColor = getBranchColor(child?.originBranchId ?? trunkId, trunkId, branchColors);
       return childColor;
     };
 
@@ -1184,7 +1202,7 @@ export function WorkspaceGraph({
         }
       };
     });
-  }, [edges, graphNodes, activeHeadId, trunkName]);
+  }, [edges, graphNodes, activeHeadId, trunkId]);
 
   const decoratedNodes = useMemo(() => {
     return nodes.map((node) => {
@@ -1204,16 +1222,18 @@ export function WorkspaceGraph({
     const entries = Object.entries(branchHistories);
     if (entries.length === 0) return [];
     const ordered = entries.sort(([a], [b]) => {
-      if (a === trunkName && b !== trunkName) return -1;
-      if (a !== trunkName && b === trunkName) return 1;
-      return a.localeCompare(b);
+      if (a === trunkId && b !== trunkId) return -1;
+      if (a !== trunkId && b === trunkId) return 1;
+      const labelA = resolveBranchLabel(a, branchNameById);
+      const labelB = resolveBranchLabel(b, branchNameById);
+      return labelA.localeCompare(labelB);
     });
-    return ordered.map(([branchName]) => ({
-      id: branchName,
-      label: branchName,
-      color: getBranchColor(branchName, trunkName, branchColors)
+    return ordered.map(([branchId]) => ({
+      id: branchId,
+      label: resolveBranchLabel(branchId, branchNameById),
+      color: getBranchColor(branchId, trunkId, branchColors)
     }));
-  }, [branchHistories, trunkName, branchColors]);
+  }, [branchHistories, trunkId, branchNameById, branchColors]);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -1499,9 +1519,13 @@ export function WorkspaceGraph({
   );
 }
 
-function formatLabel(node: NodeRecord) {
+function formatLabel(node: NodeRecord, branchNameById: Record<string, string>) {
   if (node.type === 'merge') {
-    return node.mergeSummary ? `Merge · ${node.mergeSummary}` : `Merge from ${node.mergeFrom}`;
+    const label =
+      node.mergeFromRefId && branchNameById[node.mergeFromRefId]
+        ? branchNameById[node.mergeFromRefId]
+        : node.mergeFrom;
+    return node.mergeSummary ? `Merge · ${node.mergeSummary}` : `Merge from ${label}`;
   }
   if (node.type === 'state') {
     return 'Canvas snapshot';

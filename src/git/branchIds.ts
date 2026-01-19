@@ -63,6 +63,17 @@ export async function ensureBranchIds(projectId: string, branchNames: string[]):
   return map;
 }
 
+export async function getBranchNameByIdMap(projectId: string): Promise<Record<string, string>> {
+  const map = await readBranchIdMap(projectId);
+  const inverted: Record<string, string> = {};
+  for (const [name, id] of Object.entries(map)) {
+    if (!inverted[id]) {
+      inverted[id] = name;
+    }
+  }
+  return inverted;
+}
+
 export async function renameBranchId(projectId: string, fromBranch: string, toBranch: string): Promise<string> {
   const map = await readBranchIdMap(projectId);
   const existing = map[fromBranch];

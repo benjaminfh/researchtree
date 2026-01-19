@@ -3,6 +3,7 @@
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { resolveOpenAIProviderSelection, getDefaultModelForProvider } from '@/src/server/llm';
 import { readBranchConfigMap, writeBranchConfigMap } from '@/src/git/branchConfig';
+import { ensureBranchId, getBranchNameByIdMap } from '@/src/git/branchIds';
 
 export async function getPreviousResponseId(
   projectId: string,
@@ -18,7 +19,10 @@ export async function getPreviousResponseId(
   }
 
   const map = await readBranchConfigMap(projectId);
-  return map[ref.name]?.previousResponseId ?? null;
+  const nameById = await getBranchNameByIdMap(projectId);
+  const resolvedName = ref.id ? nameById[ref.id] : ref.name;
+  if (!resolvedName) return null;
+  return map[resolvedName]?.previousResponseId ?? null;
 }
 
 export async function setPreviousResponseId(
@@ -37,12 +41,20 @@ export async function setPreviousResponseId(
   }
 
   const map = await readBranchConfigMap(projectId);
-  const existing = map[ref.name];
+  const nameById = await getBranchNameByIdMap(projectId);
+  const resolvedName = ref.id ? nameById[ref.id] : ref.name;
+  if (!resolvedName) {
+    return;
+  }
+  if (!ref.id) {
+    await ensureBranchId(projectId, resolvedName);
+  }
+  const existing = map[resolvedName];
   if (existing) {
-    map[ref.name] = { ...existing, previousResponseId: responseId ?? null };
+    map[resolvedName] = { ...existing, previousResponseId: responseId ?? null };
   } else {
     const provider = resolveOpenAIProviderSelection();
-    map[ref.name] = {
+    map[resolvedName] = {
       provider,
       model: getDefaultModelForProvider(provider),
       previousResponseId: responseId ?? null

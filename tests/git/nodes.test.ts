@@ -68,6 +68,7 @@ describe('Node operations', () => {
     [messageNode, stateNode, mergeNode].forEach((node) => {
       assertValidUUID(node.id);
       expect(typeof node.timestamp).toBe('number');
+      expect(typeof node.createdOnRefId).toBe('string');
     });
 
     expect(messageNode.role).toBe('user');
@@ -76,6 +77,7 @@ describe('Node operations', () => {
     expect(mergeNode.mergeFrom).toBe('feature');
     expect(mergeNode.mergeSummary).toBe('summary');
     expect(mergeNode.sourceNodeIds).toEqual(['node-123']);
+    expect(mergeNode.mergeFromRefId).toBeUndefined();
   });
 
   it('appendNode chains parent references correctly', async () => {

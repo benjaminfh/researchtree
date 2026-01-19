@@ -114,6 +114,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       highlight,
       intent,
       llmProvider,
+      refId,
       ref,
       thinking,
       webSearch,
@@ -128,15 +129,33 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
     const preferred = await getPreferredBranch(params.id);
     const requestedRefName = ref?.trim() || null;
-    const targetRefName = requestedRefName ?? preferred.name;
-    let targetRefId: string | null = null;
+    const requestedRefId = refId?.trim() || null;
+    let targetRefName = requestedRefName ?? preferred.name;
+    let targetRefId: string | null = requestedRefId;
     if (store.mode === 'pg') {
-      if (requestedRefName) {
-        const { resolveRefByName } = await import('@/src/server/pgRefs');
-        targetRefId = (await resolveRefByName(params.id, requestedRefName)).id;
-      } else {
-        targetRefId = preferred.id;
+      if (!targetRefId) {
+        if (requestedRefName) {
+          const { resolveRefByName } = await import('@/src/server/pgRefs');
+          targetRefId = (await resolveRefByName(params.id, requestedRefName)).id;
+        } else {
+          targetRefId = preferred.id;
+        }
       }
+      if (!requestedRefName && targetRefId) {
+        const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+        const branches = await rtListRefsShadowV2({ projectId: params.id });
+        const match = branches.find((branch) => branch.id === targetRefId);
+        if (match) {
+          targetRefName = match.name;
+        }
+      }
+    } else if (targetRefId) {
+      const { getBranchNameByIdMap } = await import('@/src/git/branchIds');
+      const nameById = await getBranchNameByIdMap(params.id);
+      targetRefName = nameById[targetRefId] ?? targetRefName;
+    } else {
+      const { ensureBranchId } = await import('@/src/git/branchIds');
+      targetRefId = await ensureBranchId(params.id, targetRefName);
     }
     if (store.mode === 'pg' && !targetRefId) {
       throw badRequest(`Branch ${targetRefName} is missing ref id`);
@@ -145,7 +164,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       await acquireBranchLease({ projectId: params.id, refId: targetRefId, leaseSessionId });
     }
     const branchConfigMap = await getBranchConfigMap(params.id);
-    const activeConfig = branchConfigMap[targetRefName] ?? resolveBranchConfig();
+    const activeConfig = (targetRefId && branchConfigMap[targetRefId]) ?? resolveBranchConfig();
     const provider = activeConfig.provider;
     const modelName = activeConfig.model;
     if (llmProvider && llmProvider !== provider) {

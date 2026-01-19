@@ -22,17 +22,25 @@ export interface ProjectData {
 }
 
 interface UseProjectDataOptions {
+  refId?: string;
   ref?: string;
   artefactRef?: string;
 }
 
 export function useProjectData(projectId: string, options?: UseProjectDataOptions): ProjectData {
+  const refId = options?.refId?.trim();
   const ref = options?.ref?.trim();
   const artefactRef = options?.artefactRef?.trim();
-  const historyKey = ref ? `/api/projects/${projectId}/history?ref=${encodeURIComponent(ref)}` : `/api/projects/${projectId}/history`;
-  const artefactEffectiveRef = artefactRef ?? ref;
+  const historyKey = refId
+    ? `/api/projects/${projectId}/history?refId=${encodeURIComponent(refId)}`
+    : ref
+      ? `/api/projects/${projectId}/history?ref=${encodeURIComponent(ref)}`
+      : `/api/projects/${projectId}/history`;
+  const artefactEffectiveRef = artefactRef ?? refId ?? ref;
   const artefactKey = artefactEffectiveRef
-    ? `/api/projects/${projectId}/artefact?ref=${encodeURIComponent(artefactEffectiveRef)}`
+    ? refId
+      ? `/api/projects/${projectId}/artefact?refId=${encodeURIComponent(artefactEffectiveRef)}`
+      : `/api/projects/${projectId}/artefact?ref=${encodeURIComponent(artefactEffectiveRef)}`
     : `/api/projects/${projectId}/artefact`;
 
   const {

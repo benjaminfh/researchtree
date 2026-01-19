@@ -593,7 +593,9 @@ const NodeBubble: FC<{
 const ChatNodeRow: FC<{
   node: NodeRecord;
   trunkName: string;
+  trunkId: string;
   currentBranchName: string;
+  currentBranchId?: string | null;
   defaultProvider: LLMProvider;
   providerByBranch: Record<string, LLMProvider>;
   branchColors?: Record<string, string>;
@@ -631,9 +633,10 @@ const ChatNodeRow: FC<{
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
   const nodeBranch = node.createdOnBranch ?? currentBranchName;
-  const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
+  const nodeBranchId = node.createdOnRefId ?? currentBranchId ?? trunkId;
+  const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranchId] ?? defaultProvider);
   const showOpenAiThinkingNote = nodeProvider === 'openai';
-  const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
+  const stripeColor = getBranchColor(nodeBranchId, trunkId, branchColors);
 
   return (
     <div className="grid min-w-0 grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
@@ -693,6 +696,7 @@ export function WorkspaceClient({
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
   const isPgMode = storeMode === 'pg';
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
+  const [branchId, setBranchId] = useState<string | null>(null);
   const [branches, setBranches] = useState(initialBranches);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
@@ -782,6 +786,7 @@ export function WorkspaceClient({
   const isResizingRef = useRef(false);
   const savedChatPaneWidthRef = useRef<number | null>(null);
   const [graphHistories, setGraphHistories] = useState<Record<string, NodeRecord[]> | null>(null);
+  const [graphBranchNameById, setGraphBranchNameById] = useState<Record<string, string>>({});
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
@@ -1224,6 +1229,7 @@ export function WorkspaceClient({
   };
 
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
+    refId: branchId ?? undefined,
     ref: branchName
   });
   const HAS_SENT_MESSAGE_KEY = storageKey('user-has-sent-message');
@@ -1259,7 +1265,7 @@ export function WorkspaceClient({
     setIsSavingArtefact(false);
   }, []);
   const saveArtefactSnapshot = useCallback(
-    async ({ content, ref }: { content: string; ref: string }) => {
+    async ({ content, ref, refId }: { content: string; ref: string; refId?: string | null }) => {
       if (isPgMode) {
         if (!leaseSessionReady || !leaseSessionId) {
           setArtefactError('Editing session is still initializing. Please try again.');
@@ -1288,7 +1294,8 @@ export function WorkspaceClient({
       setIsSavingArtefact(true);
       setArtefactError(null);
       try {
-        const res = await fetch(`/api/projects/${project.id}/artefact?ref=${encodeURIComponent(ref)}`, {
+        const query = refId ? `refId=${encodeURIComponent(refId)}` : `ref=${encodeURIComponent(ref)}`;
+        const res = await fetch(`/api/projects/${project.id}/artefact?${query}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(withLeaseSessionId({ content }, leaseSessionId)),
@@ -1298,7 +1305,8 @@ export function WorkspaceClient({
           const data = await res.json().catch(() => null);
           throw new Error(data?.error?.message ?? 'Failed to save canvas');
         }
-        if (ref === branchName) {
+        const isActiveRef = refId ? refId === branchId : ref === branchName;
+        if (isActiveRef) {
           await mutateArtefact();
         }
         return true;
@@ -1320,15 +1328,15 @@ export function WorkspaceClient({
         }, remaining);
       }
     },
-    [branchName, getLeaseForBranchName, isPgMode, leaseSessionId, leaseSessionReady, mutateArtefact, project.id]
+    [branchId, branchName, getLeaseForBranchName, isPgMode, leaseSessionId, leaseSessionReady, mutateArtefact, project.id]
   );
   const scheduleAutosave = useCallback(
-    ({ content, ref }: { content: string; ref: string }) => {
+    ({ content, ref, refId }: { content: string; ref: string; refId?: string | null }) => {
       if (autosaveTimeoutRef.current) {
         clearTimeout(autosaveTimeoutRef.current);
       }
       autosaveTimeoutRef.current = setTimeout(() => {
-        void saveArtefactSnapshot({ content, ref });
+        void saveArtefactSnapshot({ content, ref, refId });
       }, 2000);
     },
     [saveArtefactSnapshot]
@@ -1340,16 +1348,17 @@ export function WorkspaceClient({
   const ensureCanvasSavedForBranchSwitch = useCallback(async () => {
     if (artefactDraft === artefact) return true;
     clearPendingAutosave();
-    const saved = await saveArtefactSnapshot({ content: artefactDraft, ref: branchName });
+    const saved = await saveArtefactSnapshot({ content: artefactDraft, ref: branchName, refId: branchId });
     if (saved) return true;
     const discard = confirmDiscardUnsavedChanges();
     if (!discard) {
-      scheduleAutosave({ content: artefactDraft, ref: branchName });
+      scheduleAutosave({ content: artefactDraft, ref: branchName, refId: branchId });
     }
     return discard;
   }, [
     artefact,
     artefactDraft,
+    branchId,
     branchName,
     clearPendingAutosave,
     confirmDiscardUnsavedChanges,
@@ -1373,7 +1382,17 @@ export function WorkspaceClient({
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
-  const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
+  const activeBranch = useMemo(() => {
+    if (branchId) {
+      return branches.find((branch) => branch.id === branchId) ?? branches.find((branch) => branch.name === branchName);
+    }
+    return branches.find((branch) => branch.name === branchName);
+  }, [branches, branchId, branchName]);
+  useEffect(() => {
+    if (activeBranch?.id && activeBranch.id !== branchId) {
+      setBranchId(activeBranch.id);
+    }
+  }, [activeBranch?.id, branchId]);
   const activeBranchLease = useMemo(() => {
     if (!activeBranch?.id) return null;
     const lease = leasesByRefId.get(activeBranch.id);
@@ -1407,16 +1426,16 @@ export function WorkspaceClient({
   }, [activeBranch?.model, branchProvider, providerOptions]);
   const [thinking, setThinking] = useState<ThinkingSetting>(() => getDefaultThinkingSetting(branchProvider, branchModel));
   const thinkingStorageKey = useMemo(
-    () => `researchtree:thinking:${project.id}:${branchName}`,
-    [project.id, branchName]
+    () => `researchtree:thinking:${project.id}:${branchId ?? branchName}`,
+    [project.id, branchId, branchName]
   );
   const [thinkingHydratedKey, setThinkingHydratedKey] = useState<string | null>(null);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
   const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const webSearchStorageKey = useMemo(
-    () => `researchtree:websearch:${project.id}:${branchName}`,
-    [project.id, branchName]
+    () => `researchtree:websearch:${project.id}:${branchId ?? branchName}`,
+    [project.id, branchId, branchName]
   );
   const [webSearchHydratedKey, setWebSearchHydratedKey] = useState<string | null>(null);
 
@@ -1446,6 +1465,7 @@ export function WorkspaceClient({
 
   const { sendMessage, sendStreamRequest, interrupt, state } = useChatStream({
     projectId: project.id,
+    refId: branchId ?? undefined,
     ref: branchName,
     provider: branchProvider,
     thinking,
@@ -1532,7 +1552,7 @@ export function WorkspaceClient({
   const providerByBranch = useMemo(() => {
     return branches.reduce<Record<string, LLMProvider>>((acc, branch) => {
       if (branch.provider) {
-        acc[branch.name] = branch.provider;
+        acc[branch.id ?? branch.name] = branch.provider;
       }
       return acc;
     }, {});
@@ -1600,7 +1620,8 @@ export function WorkspaceClient({
       contentBlocks: [{ type: 'text', text: sent }],
       timestamp: Date.now(),
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
-      createdOnBranch: branchName
+      createdOnBranch: branchName,
+      createdOnRefId: activeBranchId
     });
     assistantPendingTimerRef.current = setTimeout(() => {
       setAssistantPending(true);
@@ -1652,7 +1673,8 @@ export function WorkspaceClient({
       contentBlocks: [{ type: 'text', text: optimisticContent }],
       timestamp: Date.now(),
       parent: null,
-      createdOnBranch: targetBranch
+      createdOnBranch: targetBranch,
+      createdOnRefId: branchIdByName.get(targetBranch)
     });
     assistantPendingTimerRef.current = setTimeout(() => {
       setAssistantPending(true);
@@ -1733,7 +1755,8 @@ export function WorkspaceClient({
       contentBlocks: [{ type: 'text', text: content }],
       timestamp: Date.now(),
       parent: null,
-      createdOnBranch: targetBranch
+      createdOnBranch: targetBranch,
+      createdOnRefId: branchIdByName.get(targetBranch)
     });
     assistantPendingTimerRef.current = setTimeout(() => {
       setAssistantPending(true);
@@ -1781,7 +1804,8 @@ export function WorkspaceClient({
           timestamp: Date.now(),
           parent: optimisticUserNode.id,
           interrupted: false,
-          createdOnBranch: branchName
+          createdOnBranch: branchName,
+          createdOnRefId: activeBranchId
         }
       : null;
 
@@ -1796,6 +1820,7 @@ export function WorkspaceClient({
           timestamp: Date.now(),
           parent: optimisticUserNode?.id ?? null,
           createdOnBranch: optimisticUserNode?.createdOnBranch ?? branchName,
+          createdOnRefId: optimisticUserNode?.createdOnRefId ?? activeBranchId,
           interrupted: state.error !== null
         }
       : null;
@@ -2102,8 +2127,24 @@ export function WorkspaceClient({
     setArtefactDraft(artefact);
   }, [artefact]);
 
-  const trunkName = useMemo(() => branches.find((b) => b.isTrunk)?.name ?? 'main', [branches]);
+  const trunkBranch = useMemo(() => branches.find((b) => b.isTrunk) ?? null, [branches]);
+  const trunkName = trunkBranch?.name ?? 'main';
+  const trunkId = trunkBranch?.id ?? trunkBranch?.name ?? 'main';
+  const branchNameById = useMemo(
+    () => Object.fromEntries(branches.map((branch) => [branch.id ?? branch.name, branch.name])),
+    [branches]
+  );
+  const branchIdByName = useMemo(
+    () => new Map(Object.entries(branchNameById).map(([id, name]) => [name, id])),
+    [branchNameById]
+  );
+  const effectiveBranchNameById = useMemo(
+    () => (Object.keys(graphBranchNameById).length > 0 ? graphBranchNameById : branchNameById),
+    [graphBranchNameById, branchNameById]
+  );
   const displayBranchName = (name: string) => (name === trunkName ? TRUNK_LABEL : name);
+  const activeBranchId = activeBranch?.id ?? branchId ?? branchIdByName.get(branchName) ?? branchName;
+  const activeBranchName = activeBranch?.name ?? branchName;
   const toastToneClassName = (tone: ToastTone) => {
     if (tone === 'success') {
       return 'border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -2138,10 +2179,13 @@ export function WorkspaceClient({
     return [...pinned, ...pendingGhosts, ...visible, ...hidden];
   }, [displayBranches]);
   const branchColorMap = useMemo(
-    () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
-    [sortedBranches, trunkName]
+    () => buildBranchColorMap(sortedBranches.map((branch) => branch.id ?? branch.name), trunkId),
+    [sortedBranches, trunkId]
   );
-  const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
+  const graphRequestKey = useMemo(
+    () => sortedBranches.map((b) => b.id ?? b.name).sort().join('|'),
+    [sortedBranches]
+  );
   const lastGraphRequestKeyRef = useRef<string | null>(null);
   const loadGraphHistories = useCallback(
     async ({ force = false, signal }: { force?: boolean; signal?: AbortSignal } = {}) => {
@@ -2155,8 +2199,14 @@ export function WorkspaceClient({
         if (!res.ok) {
           throw new Error('Failed to load graph');
         }
-        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
-        setGraphHistories(data.branchHistories ?? {});
+        const data = (await res.json()) as {
+          branchHistoriesById?: Record<string, NodeRecord[]>;
+          branchNameById?: Record<string, string>;
+        };
+        setGraphHistories(data.branchHistoriesById ?? {});
+        if (data.branchNameById) {
+          setGraphBranchNameById(data.branchNameById);
+        }
         lastGraphRequestKeyRef.current = graphRequestKey;
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
@@ -2254,7 +2304,7 @@ export function WorkspaceClient({
       const MAX_PER_BRANCH = 500;
       const nextNodes =
         nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
-      const current = prev[branchName];
+      const current = prev[activeBranchId];
       // Avoid wiping the cached graph when history briefly revalidates to an empty snapshot.
       if (nextNodes.length === 0 && current?.length) {
         return prev;
@@ -2270,9 +2320,9 @@ export function WorkspaceClient({
       if (current && current.length === nextNodes.length && currentTailId === nextTailId) {
         return prev;
       }
-      return { ...prev, [branchName]: nextNodes };
+      return { ...prev, [activeBranchId]: nextNodes };
     });
-  }, [isGraphVisible, branchName, nodes]);
+  }, [isGraphVisible, activeBranchId, nodes]);
 
   useEffect(() => {
     if (insightTab !== 'graph') {
@@ -2431,7 +2481,7 @@ export function WorkspaceClient({
 
     const snapshotContent = artefactDraft;
     const snapshotRef = branchName;
-    scheduleAutosave({ content: snapshotContent, ref: snapshotRef });
+    scheduleAutosave({ content: snapshotContent, ref: snapshotRef, refId: branchId });
 
     return () => {
       if (autosaveTimeoutRef.current) {
@@ -2439,7 +2489,7 @@ export function WorkspaceClient({
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [artefactDraft, artefact, branchName, trunkName, scheduleAutosave]);
+  }, [artefactDraft, artefact, branchId, branchName, trunkName, scheduleAutosave]);
 
   useEffect(() => {
     return () => {
@@ -2515,9 +2565,13 @@ export function WorkspaceClient({
     const loadPreview = async () => {
       try {
         const baseUrl = `/api/projects/${project.id}/artefact`;
+        const targetRefId = branchIdByName.get(mergeTargetBranch);
+        const activeRefId = branchId ?? null;
+        const targetQuery = targetRefId ? `refId=${encodeURIComponent(targetRefId)}` : `ref=${encodeURIComponent(mergeTargetBranch)}`;
+        const activeQuery = activeRefId ? `refId=${encodeURIComponent(activeRefId)}` : `ref=${encodeURIComponent(branchName)}`;
         const [trunkRes, branchRes] = await Promise.all([
-          fetch(`${baseUrl}?ref=${encodeURIComponent(mergeTargetBranch)}`, { signal: controller.signal }),
-          fetch(`${baseUrl}?ref=${encodeURIComponent(branchName)}`, { signal: controller.signal })
+          fetch(`${baseUrl}?${targetQuery}`, { signal: controller.signal }),
+          fetch(`${baseUrl}?${activeQuery}`, { signal: controller.signal })
         ]);
         if (!trunkRes.ok || !branchRes.ok) {
           throw new Error('Unable to load Canvas preview');
@@ -2546,7 +2600,7 @@ export function WorkspaceClient({
     return () => {
       controller.abort();
     };
-  }, [showMergeModal, branchName, mergeTargetBranch, project.id]);
+  }, [showMergeModal, branchId, branchIdByName, branchName, mergeTargetBranch, project.id]);
 
   const [showHints, setShowHints] = useState(false);
   const autoOpenedHintsRef = useRef(false);
@@ -2628,17 +2682,24 @@ export function WorkspaceClient({
 
   const combinedNodes = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
-    const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
-    const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
+    const optimisticBranchId = optimisticMessage?.createdOnRefId ?? null;
+    const optimisticBranchName = optimisticMessage?.createdOnBranch ?? null;
+    const allowOptimistic =
+      optimisticBranchId == null
+        ? optimisticBranchName == null || optimisticBranchName === branchName
+        : optimisticBranchId === activeBranchId;
     let baseNodes = nodes;
-    if (allowOptimistic && optimisticMessage?.content && optimisticBranch) {
+    if (allowOptimistic && optimisticMessage?.content && (optimisticBranchId || optimisticBranchName)) {
       const optimisticContent = normalizeMessageText(optimisticMessage.content);
       const reversedIndex = [...nodes].reverse().findIndex((node) => {
         if (node.type !== 'message') return false;
         if (node.role !== 'user') return false;
         if (normalizeMessageText(node.content) !== optimisticContent) return false;
+        if (optimisticBranchId) {
+          return (node.createdOnRefId ?? null) === optimisticBranchId;
+        }
         const createdOn = node.createdOnBranch ?? branchName;
-        return createdOn === optimisticBranch;
+        return createdOn === optimisticBranchName;
       });
       if (reversedIndex >= 0) {
         const index = nodes.length - 1 - reversedIndex;
@@ -2658,7 +2719,7 @@ export function WorkspaceClient({
       }
     }
     return out;
-  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName]);
+  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, activeBranchId, branchName]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
   const latestVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
@@ -2675,23 +2736,23 @@ export function WorkspaceClient({
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
       let record: NodeRecord | null = activeMatch;
-      let targetBranch: string = branchName;
+      let targetBranchId: string = activeBranchId;
 
       if (!record && graphHistories) {
         for (const [b, hist] of Object.entries(graphHistories)) {
           const found = hist.find((node) => node.id === nodeId);
           if (found) {
             record = found;
-            targetBranch = b;
+            targetBranchId = b;
             break;
           }
         }
       }
 
       if (!record) return null;
-      return { record, targetBranch };
+      return { record, targetBranchId };
     },
-    [visibleNodes, graphHistories, branchName]
+    [visibleNodes, graphHistories, activeBranchId]
   );
   const persistedNodes = useMemo(() => nodes.filter((node) => node.type !== 'state'), [nodes]);
 
@@ -2731,8 +2792,8 @@ export function WorkspaceClient({
   }, [showNewBranchModal, latestVisibleNodeId]);
 
   useEffect(() => {
-    if (previousVisibleBranchRef.current !== branchName) {
-      previousVisibleBranchRef.current = branchName;
+    if (previousVisibleBranchRef.current !== activeBranchId) {
+      previousVisibleBranchRef.current = activeBranchId;
       previousVisibleCountRef.current = visibleNodes.length;
       return;
     }
@@ -2745,7 +2806,7 @@ export function WorkspaceClient({
       }
     }
     previousVisibleCountRef.current = visibleNodes.length;
-  }, [visibleNodes.length, branchName]);
+  }, [visibleNodes.length, activeBranchId]);
   const lastUpdatedTimestamp = useMemo(() => {
     const historyLatest = visibleNodes[visibleNodes.length - 1]?.timestamp ?? null;
     const artefactUpdated = artefactMeta?.lastUpdatedAt ?? null;
@@ -2759,7 +2820,7 @@ export function WorkspaceClient({
     return buildLineDiff(mergePreview.target, mergePreview.source);
   }, [mergePreview]);
   const hasCanvasChanges = mergeDiff.some((line) => line.type !== 'context');
-  const shouldFetchTrunk = branchName !== trunkName;
+  const shouldFetchTrunk = activeBranchId !== trunkId;
   const historyFetcher = async (url: string) => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -2777,10 +2838,12 @@ export function WorkspaceClient({
   );
   const trunkNodeCount = useMemo(() => branches.find((b) => b.isTrunk)?.nodeCount ?? 0, [branches]);
   const sharedCount = useMemo(() => {
-    if (branchName === trunkName) {
+    if (activeBranchId === trunkId) {
       return 0;
     }
-    const splitIndex = persistedNodes.findIndex((node) => node.createdOnBranch === branchName);
+    const splitIndex = persistedNodes.findIndex((node) =>
+      node.createdOnRefId ? node.createdOnRefId === activeBranchId : node.createdOnBranch === branchName
+    );
     if (splitIndex !== -1) {
       return splitIndex;
     }
@@ -2793,11 +2856,11 @@ export function WorkspaceClient({
       return idx;
     }
     return Math.min(trunkNodeCount, persistedNodes.length);
-  }, [branchName, trunkName, persistedNodes, trunkHistoryNodes, trunkNodeCount]);
-  const [hideShared, setHideShared] = useState(branchName !== trunkName);
+  }, [activeBranchId, branchName, trunkId, persistedNodes, trunkHistoryNodes, trunkNodeCount]);
+  const [hideShared, setHideShared] = useState(activeBranchId !== trunkId);
   useEffect(() => {
-    setHideShared(branchName !== trunkName);
-  }, [branchName, trunkName]);
+    setHideShared(activeBranchId !== trunkId);
+  }, [activeBranchId, trunkId]);
   const { sharedNodes, branchNodes } = useMemo(() => {
     const shared = visibleNodes.slice(0, sharedCount);
     return {
@@ -2813,9 +2876,13 @@ export function WorkspaceClient({
         node.role === 'assistant' &&
         node.id !== 'streaming' &&
         getNodeText(node).trim().length > 0 &&
-        (node.createdOnBranch ? node.createdOnBranch === branchName : true)
+        (node.createdOnRefId
+          ? node.createdOnRefId === activeBranchId
+          : node.createdOnBranch
+          ? node.createdOnBranch === branchName
+          : true)
     ) as MessageNode[];
-  }, [branchNodes, branchName]);
+  }, [branchNodes, activeBranchId, branchName]);
 
   const selectedMergePayload = useMemo(() => {
     if (mergePayloadCandidates.length === 0) return null;
@@ -2834,7 +2901,7 @@ export function WorkspaceClient({
       return;
     }
     const desiredDefault =
-      branchName === trunkName
+      activeBranchId === trunkId
         ? branches.find((b) => b.name !== branchName)?.name ?? trunkName
         : trunkName;
     setMergeTargetBranch((prev) => {
@@ -3028,6 +3095,10 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branchName: string; branches: BranchSummary[] };
       setBranchName(data.branchName);
       setBranches(data.branches);
+      const resolved = data.branches.find((branch) => branch.name === data.branchName);
+      if (resolved?.id) {
+        setBranchId(resolved.id);
+      }
       if (isPgMode) {
         await mutateLeases();
       }
@@ -3149,12 +3220,13 @@ export function WorkspaceClient({
     async (nodeId: string) => {
       const resolved = resolveGraphNode(nodeId);
       if (!resolved) return;
-      setPendingScrollTo({ nodeId, targetBranch: resolved.targetBranch });
-      if (resolved.targetBranch !== branchName) {
-        await switchBranch(resolved.targetBranch);
+      const targetBranchName = effectiveBranchNameById[resolved.targetBranchId] ?? branchName;
+      setPendingScrollTo({ nodeId, targetBranch: targetBranchName });
+      if (targetBranchName !== branchName) {
+        await switchBranch(targetBranchName);
       }
     },
-    [resolveGraphNode, branchName, switchBranch]
+    [resolveGraphNode, effectiveBranchNameById, branchName, switchBranch]
   );
 
   const createBranch = async ({ switchToNew = true }: { switchToNew?: boolean } = {}) => {
@@ -3191,14 +3263,19 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branchName: string; branchId?: string | null; branches: BranchSummary[] };
       const createdBranchName = data.branchName ?? newBranchName.trim();
       const createdBranch = data.branches?.find((branch) => branch.name === createdBranchName);
+      const createdBranchId = data.branchId ?? createdBranch?.id ?? null;
       setBranches(data.branches);
       if (switchToNew && createdBranchName) {
         setBranchName(createdBranchName);
+        if (createdBranchId) {
+          setBranchId(createdBranchId);
+        }
       }
       setNewBranchName('');
       if (typeof window !== 'undefined') {
+        const storageKey = createdBranchId ?? createdBranchName;
         window.localStorage.setItem(
-          `researchtree:thinking:${project.id}:${createdBranchName}`,
+          `researchtree:thinking:${project.id}:${storageKey}`,
           newBranchThinking
         );
       }
@@ -3353,6 +3430,9 @@ export function WorkspaceClient({
       if (data.branchName) {
         setBranchName(data.branchName);
       }
+      if (data.branchId) {
+        setBranchId(data.branchId);
+      }
       if (data.branches) {
         setBranches(data.branches);
       }
@@ -3387,6 +3467,10 @@ export function WorkspaceClient({
       const data = (await res.json()) as { branches?: BranchSummary[]; branchName?: string };
       if (data.branchName) {
         setBranchName(data.branchName);
+        const resolved = data.branches?.find((branch) => branch.name === data.branchName);
+        if (resolved?.id) {
+          setBranchId(resolved.id);
+        }
       }
       if (data.branches) {
         setBranches(data.branches);
@@ -3417,8 +3501,9 @@ export function WorkspaceClient({
     setBranches(optimistic);
     if (!wasHidden) {
       setGraphHistories((prev) => {
-        if (!prev || !(branch.name in prev)) return prev;
-        const { [branch.name]: _omit, ...rest } = prev;
+        const key = branch.id ?? branch.name;
+        if (!prev || !(key in prev)) return prev;
+        const { [key]: _omit, ...rest } = prev;
         return rest;
       });
     }
@@ -3643,7 +3728,7 @@ export function WorkspaceClient({
                       const isPending = pendingBranchNames.has(branch.name);
                       const isGhost = (branch as BranchListItem).isGhost ?? false;
                       const isHidden = branch.isHidden ?? false;
-                      const isActiveBranch = branchName === branch.name;
+                      const isActiveBranch = activeBranchId === (branch.id ?? branch.name);
                       const switchDisabled = isSwitching || isCreating || isRenaming || isGhost;
                       const visibilityDisabled =
                         isSwitching || isCreating || visibilityPending || isGhost || (!isHidden && isActiveBranch);
@@ -3674,7 +3759,7 @@ export function WorkspaceClient({
                           }}
                           aria-disabled={switchDisabled}
                           className={`w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
-                            branchName === branch.name
+                            activeBranchId === (branch.id ?? branch.name)
                               ? 'bg-primary/15 text-primary shadow-sm'
                               : switchDisabled
                                 ? 'text-slate-400'
@@ -3688,12 +3773,12 @@ export function WorkspaceClient({
                             <span className="inline-flex min-w-0 items-center gap-2">
                               <span
                                 className="inline-flex h-2 w-2 shrink-0 rounded-full"
-                                style={{ backgroundColor: getBranchColor(branch.name, trunkName, branchColorMap) }}
+                                style={{ backgroundColor: getBranchColor(branch.id ?? branch.name, trunkId, branchColorMap) }}
                               />
                               <span
                                 className={`truncate ${
                                   branch.isTrunk
-                                    ? branchName === branch.name
+                                    ? activeBranchId === (branch.id ?? branch.name)
                                       ? 'font-semibold text-primary'
                                       : 'font-semibold text-slate-900'
                                     : isHidden
@@ -3985,7 +4070,7 @@ export function WorkspaceClient({
                   style={chatPaneWidth ? { flexBasis: chatPaneWidth } : undefined}
                 >
                   <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 flex flex-wrap items-center gap-3">
-                    {branchName !== trunkName && sharedCount > 0 ? (
+                    {activeBranchId !== trunkId && sharedCount > 0 ? (
                       <div className="pointer-events-auto w-full md:ml-4 md:max-w-[calc(100%-12rem)]">
                         <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[rgba(238,243,255,0.95)] px-4 py-3 text-sm text-slate-700 shadow-sm">
                           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -4049,7 +4134,9 @@ export function WorkspaceClient({
                                 key={node.id}
                                 node={node}
                                 trunkName={trunkName}
+                                trunkId={trunkId}
                                 currentBranchName={branchName}
+                                currentBranchId={activeBranch?.id}
                                 defaultProvider={defaultProvider}
                                 providerByBranch={providerByBranch}
                                 branchColors={branchColorMap}
@@ -4094,7 +4181,9 @@ export function WorkspaceClient({
                         key={node.id}
                         node={node}
                         trunkName={trunkName}
+                        trunkId={trunkId}
                         currentBranchName={branchName}
+                        currentBranchId={activeBranch?.id}
                         defaultProvider={defaultProvider}
                         providerByBranch={providerByBranch}
                         branchColors={branchColorMap}
@@ -4414,11 +4503,12 @@ export function WorkspaceClient({
                             <WorkspaceGraph
                               branchHistories={
                                 graphHistories ?? {
-                                  [branchName]: visibleNodes
+                                  [activeBranchId]: visibleNodes
                                 }
                               }
-                              activeBranchName={branchName}
-                              trunkName={trunkName}
+                              activeBranchId={activeBranchId}
+                              trunkId={trunkId}
+                              branchNameById={effectiveBranchNameById}
                               branchColors={branchColorMap}
                               mode={graphMode}
                               onModeChange={setGraphMode}
@@ -4447,10 +4537,15 @@ export function WorkspaceClient({
                                     );
                                   }
 
-                                  const { record, targetBranch } = resolved;
+                                  const { record, targetBranchId } = resolved;
+                                  const targetBranchName = effectiveBranchNameById[targetBranchId] ?? branchName;
                                   const title =
                                     record.type === 'merge'
-                                      ? `Notes brought in from ${displayBranchName(record.mergeFrom)}`
+                                      ? `Notes brought in from ${displayBranchName(
+                                          record.mergeFromRefId
+                                            ? effectiveBranchNameById[record.mergeFromRefId] ?? record.mergeFrom
+                                            : record.mergeFrom
+                                        )}`
                                       : record.type === 'state'
                                       ? 'Canvas saved'
                                       : record.type === 'message' && record.role === 'assistant'
@@ -4465,7 +4560,7 @@ export function WorkspaceClient({
                                   const canvasDiff = mergeRecord?.canvasDiff?.trim() ?? '';
                                   const hasCanvasDiff = !!mergeRecord && canvasDiff.length > 0;
                                   const nodesOnTargetBranch =
-                                    targetBranch === branchName ? visibleNodes : graphHistories?.[targetBranch] ?? [];
+                                    targetBranchId === activeBranchId ? visibleNodes : graphHistories?.[targetBranchId] ?? [];
                                   const isCanvasDiffPinned =
                                     !!mergeRecord &&
                                     nodesOnTargetBranch.some(
@@ -4497,7 +4592,9 @@ export function WorkspaceClient({
                                           <div className="text-sm font-semibold text-slate-900">{title}</div>
                                           <div className="text-xs text-muted">
                                             {new Date(record.timestamp).toLocaleString()}
-                                            {targetBranch !== branchName ? ` · on ${displayBranchName(targetBranch)}` : ''}
+                                            {targetBranchId !== activeBranchId
+                                              ? ` · on ${displayBranchName(targetBranchName)}`
+                                              : ''}
                                           </div>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -4585,17 +4682,17 @@ export function WorkspaceClient({
                                                     setGraphDetailError(null);
                                                     setIsGraphDetailBusy(true);
                                                     try {
-                                                      if (targetBranch === branchName) {
+                                                      if (targetBranchId === activeBranchId) {
                                                         await pinCanvasDiffToCurrentBranch(mergeRecord.id);
                                                       } else {
-                                                        const result = await pinCanvasDiffToContext(mergeRecord.id, targetBranch);
+                                                        const result = await pinCanvasDiffToContext(mergeRecord.id, targetBranchName);
                                                         const pinnedNode = result?.pinnedNode;
-                                                        if (pinnedNode && graphHistories?.[targetBranch]) {
+                                                        if (pinnedNode && graphHistories?.[targetBranchId]) {
                                                           setGraphHistories((prev) => {
                                                             if (!prev) return prev;
-                                                            const existing = prev[targetBranch] ?? [];
+                                                            const existing = prev[targetBranchId] ?? [];
                                                             if (existing.some((n) => n.id === pinnedNode.id)) return prev;
-                                                            return { ...prev, [targetBranch]: [...existing, pinnedNode] };
+                                                            return { ...prev, [targetBranchId]: [...existing, pinnedNode] };
                                                           });
                                                         }
                                                       }
@@ -4647,9 +4744,9 @@ export function WorkspaceClient({
                                           className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90"
                                           aria-label="Jump to message"
                                           onClick={async () => {
-                                            setPendingScrollTo({ nodeId: selectedGraphNodeId, targetBranch });
-                                            if (targetBranch !== branchName) {
-                                              await switchBranch(targetBranch);
+                                            setPendingScrollTo({ nodeId: selectedGraphNodeId, targetBranch: targetBranchName });
+                                            if (targetBranchId !== activeBranchId) {
+                                              await switchBranch(targetBranchName);
                                             }
                                           }}
                                         >

@@ -51,7 +51,7 @@ export default async function HomePage() {
         let nodeCount = 0;
         try {
           const refs = await rtListRefsShadowV2({ projectId });
-          nodeCount = refs.find((ref) => ref.name === 'main')?.nodeCount ?? 0;
+          nodeCount = refs.find((ref) => ref.isTrunk)?.nodeCount ?? 0;
         } catch {
           nodeCount = 0;
         }

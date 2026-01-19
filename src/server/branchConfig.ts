@@ -6,6 +6,7 @@ import { getDefaultModelForProvider, resolveOpenAIProviderSelection } from '@/sr
 import { getProviderEnvConfig } from '@/src/server/llmConfig';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { readBranchConfigMap } from '@/src/git/branchConfig';
+import { ensureBranchIds, getBranchNameByIdMap } from '@/src/git/branchIds';
 
 export interface BranchConfig {
   provider: LLMProvider;
@@ -43,7 +44,7 @@ export async function getBranchConfigMap(projectId: string): Promise<Record<stri
     const branches = await rtListRefsShadowV2({ projectId });
     const map: Record<string, BranchConfig> = {};
     for (const branch of branches) {
-      map[branch.name] = resolveBranchConfig({
+      map[branch.id] = resolveBranchConfig({
         provider: branch.provider ?? null,
         model: branch.model ?? null
       });
@@ -52,9 +53,19 @@ export async function getBranchConfigMap(projectId: string): Promise<Record<stri
   }
 
   const configMap = await readBranchConfigMap(projectId);
+  const nameById = await getBranchNameByIdMap(projectId);
+  const existingNames = new Set(Object.values(nameById));
+  const missingNames = Object.keys(configMap).filter((name) => !existingNames.has(name));
+  if (missingNames.length > 0) {
+    await ensureBranchIds(projectId, missingNames);
+  }
+  const updatedNameById = await getBranchNameByIdMap(projectId);
+  const idByName = new Map(Object.entries(updatedNameById).map(([id, name]) => [name, id]));
   const map: Record<string, BranchConfig> = {};
   for (const [name, config] of Object.entries(configMap)) {
-    map[name] = resolveBranchConfig({ provider: config.provider, model: config.model });
+    const id = idByName.get(name);
+    if (!id) continue;
+    map[id] = resolveBranchConfig({ provider: config.provider, model: config.model });
   }
   return map;
 }

@@ -19,7 +19,7 @@ export const branchPalette = [
 ];
 export const trunkColor = '#0f172a';
 
-function hashBranchName(value: string) {
+function hashBranchId(value: string) {
   let hash = 0;
   for (let i = 0; i < value.length; i++) {
     hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
@@ -28,45 +28,45 @@ function hashBranchName(value: string) {
 }
 
 function pickColorIndex(value: string) {
-  return hashBranchName(value) % branchPalette.length;
+  return hashBranchId(value) % branchPalette.length;
 }
 
-export function buildBranchColorMap(branchNames: string[], trunkName: string) {
+export function buildBranchColorMap(branchIds: string[], trunkId: string) {
   const map: Record<string, string> = {};
   let lastColor: string | null = null;
   const seen = new Set<string>();
 
-  for (const name of branchNames) {
-    if (seen.has(name)) continue;
-    seen.add(name);
-    if (name === trunkName) {
-      map[name] = trunkColor;
+  for (const id of branchIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (id === trunkId) {
+      map[id] = trunkColor;
       lastColor = trunkColor;
       continue;
     }
-    let color = branchPalette[pickColorIndex(name)];
+    let color = branchPalette[pickColorIndex(id)];
     if (lastColor && color === lastColor) {
       let attempts = 0;
       while (attempts < 3 && color === lastColor) {
         attempts += 1;
-        color = branchPalette[pickColorIndex(`${name}:${attempts}`)];
+        color = branchPalette[pickColorIndex(`${id}:${attempts}`)];
       }
     }
     if (lastColor && color === lastColor && branchPalette.length > 1) {
       const lastIndex = branchPalette.indexOf(lastColor);
-      const nextIndex = lastIndex >= 0 ? (lastIndex + 1) % branchPalette.length : pickColorIndex(`${name}:fallback`);
+      const nextIndex = lastIndex >= 0 ? (lastIndex + 1) % branchPalette.length : pickColorIndex(`${id}:fallback`);
       color = branchPalette[nextIndex];
     }
-    map[name] = color;
+    map[id] = color;
     lastColor = color;
   }
 
   return map;
 }
 
-export function getBranchColor(branchName: string, trunkName: string, branchColors?: Record<string, string>) {
-  const mapped = branchColors?.[branchName];
+export function getBranchColor(branchId: string, trunkId: string, branchColors?: Record<string, string>) {
+  const mapped = branchColors?.[branchId];
   if (mapped) return mapped;
-  if (branchName === trunkName) return trunkColor;
-  return branchPalette[pickColorIndex(branchName)];
+  if (branchId === trunkId) return trunkColor;
+  return branchPalette[pickColorIndex(branchId)];
 }

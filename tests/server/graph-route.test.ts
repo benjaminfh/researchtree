@@ -53,8 +53,8 @@ describe('/api/projects/[id]/graph', () => {
   it('returns a bounded graph payload for all branches', async () => {
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.listBranches.mockResolvedValue([
-      { name: 'main', headCommit: 'a', nodeCount: 650, isTrunk: true },
-      { name: 'feature/x', headCommit: 'b', nodeCount: 3, isTrunk: false }
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 650, isTrunk: true },
+      { id: 'ref-feature', name: 'feature/x', headCommit: 'b', nodeCount: 3, isTrunk: false }
     ]);
     mocks.getCurrentBranchName.mockResolvedValue('feature/x');
     mocks.getStarredNodeIds.mockResolvedValue(['n-2']);
@@ -92,10 +92,10 @@ describe('/api/projects/[id]/graph', () => {
     expect(data.branches).toHaveLength(2);
     expect(data.starredNodeIds).toEqual(['n-2']);
 
-    expect(Object.keys(data.branchHistories).sort()).toEqual(['feature/x', 'main']);
+    expect(Object.keys(data.branchHistoriesById).sort()).toEqual(['ref-feature', 'ref-main']);
     // Default cap is 500; ensure large histories are bounded.
-    expect(data.branchHistories.main.length).toBe(500);
-    expect(data.branchHistories['feature/x'].length).toBe(3);
+    expect(data.branchHistoriesById['ref-main'].length).toBe(500);
+    expect(data.branchHistoriesById['ref-feature'].length).toBe(3);
   });
 
   it('returns 404 when project missing', async () => {
@@ -143,7 +143,7 @@ describe('/api/projects/[id]/graph', () => {
     expect(data.currentBranch).toBe('feature/x');
     expect(data.branches).toHaveLength(2);
     expect(data.starredNodeIds).toEqual(['n-2']);
-    expect(data.branchHistories.main.length).toBe(500);
-    expect(data.branchHistories.main[0]?.createdOnBranch).toBe('main');
+    expect(data.branchHistoriesById['ref-main'].length).toBe(500);
+    expect(data.branchHistoriesById['ref-main'][0]?.createdOnBranch).toBe('main');
   });
 });

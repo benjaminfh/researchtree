@@ -123,7 +123,7 @@ describe('buildGraphNodes', () => {
       ]
     } as any;
 
-    const graphNodes = buildGraphNodes(branchHistories, 'main', 'main');
+    const graphNodes = buildGraphNodes(branchHistories, 'main', 'main', { main: 'main', feature: 'feature' });
     const merge = graphNodes.find((n) => n.id === 'm')!;
     expect(merge.parents).toEqual(['d', 'c3']);
     expect(merge.parents).not.toContain('c1');
@@ -144,8 +144,9 @@ describe('buildGraphNodes', () => {
     const branchHistoriesFeatureFirst = { feature: featureNodes, main: mainNodes } as any;
     const branchHistoriesMainFirst = { main: mainNodes, feature: featureNodes } as any;
 
-    const nodesA = buildGraphNodes(branchHistoriesFeatureFirst, 'feature', 'main');
-    const nodesB = buildGraphNodes(branchHistoriesMainFirst, 'feature', 'main');
+    const branchNameById = { main: 'main', feature: 'feature' };
+    const nodesA = buildGraphNodes(branchHistoriesFeatureFirst, 'feature', 'main', branchNameById);
+    const nodesB = buildGraphNodes(branchHistoriesMainFirst, 'feature', 'main', branchNameById);
 
     const byIdA = new Map(nodesA.map((n) => [n.id, n]));
     const byIdB = new Map(nodesB.map((n) => [n.id, n]));

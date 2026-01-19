@@ -122,6 +122,8 @@ describe('Branch operations', () => {
 
     expect(mergeNode.type).toBe('merge');
     expect(mergeNode.mergedAssistantContent).toBe('Feature answer');
+    expect(typeof mergeNode.mergeFromRefId).toBe('string');
+    expect(typeof mergeNode.createdOnRefId).toBe('string');
     const nodes = await getNodes(projectId);
     expect(nodes[nodes.length - 1].type).toBe('merge');
   });
@@ -145,6 +147,7 @@ describe('Branch operations', () => {
     expect(mergeNode.sourceNodeIds).toEqual(nodeIds);
     expect(mergeNode.mergedAssistantNodeId).toBe(payload.id);
     expect(mergeNode.mergedAssistantContent).toBe('Final feature payload');
+    expect(typeof mergeNode.mergeFromRefId).toBe('string');
   });
 
   it('mergeBranch works when merging to non-trunk branch', async () => {

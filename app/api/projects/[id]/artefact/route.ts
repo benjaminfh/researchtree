@@ -20,14 +20,23 @@ export async function GET(request: Request, { params }: RouteContext) {
     await requireProjectAccess({ id: params.id });
     const { searchParams } = new URL(request.url);
     const ref = searchParams.get('ref')?.trim() || null;
+    const refId = searchParams.get('refId')?.trim() || null;
     const effectiveRef = ref ?? INITIAL_BRANCH;
 
     if (store.mode === 'pg') {
-      const { rtGetCanvasShadowV2 } = await import('@/src/store/pg/reads');
+      const { rtGetCanvasShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
       const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
-      const resolved = ref?.trim()
+      let resolved = ref?.trim()
         ? await resolveRefByName(params.id, ref)
         : await resolveCurrentRef(params.id, INITIAL_BRANCH);
+      if (refId) {
+        const branches = await rtListRefsShadowV2({ projectId: params.id });
+        const match = branches.find((branch) => branch.id === refId);
+        if (!match) {
+          throw badRequest(`Branch ${refId} not found`);
+        }
+        resolved = { id: match.id, name: match.name };
+      }
       const canvas = await rtGetCanvasShadowV2({ projectId: params.id, refId: resolved.id });
       const updatedAtMs = canvas.updatedAt ? Date.parse(canvas.updatedAt) : null;
       return Response.json({
@@ -45,9 +54,15 @@ export async function GET(request: Request, { params }: RouteContext) {
     if (!project) {
       throw notFound('Project not found');
     }
+    let resolvedRefName = effectiveRef;
+    if (refId) {
+      const { getBranchNameByIdMap } = await import('@/src/git/branchIds');
+      const nameById = await getBranchNameByIdMap(params.id);
+      resolvedRefName = nameById[refId] ?? resolvedRefName;
+    }
     const [artefact, nodes] = await Promise.all([
-      getArtefactFromRef(project.id, effectiveRef),
-      readNodesFromRef(project.id, effectiveRef)
+      getArtefactFromRef(project.id, resolvedRefName),
+      readNodesFromRef(project.id, resolvedRefName)
     ]);
     const lastState = [...nodes].reverse().find((node) => node.type === 'state');
 
@@ -75,15 +90,42 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     const { searchParams } = new URL(request.url);
     const ref = searchParams.get('ref')?.trim() || INITIAL_BRANCH;
+    const refId = searchParams.get('refId')?.trim() || null;
 
-    return await withProjectLockAndRefLock(params.id, ref, async () => {
+    let lockRef = ref;
+    if (refId) {
+      const storeConfig = getStoreConfig();
+      if (storeConfig.mode === 'pg') {
+        const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+        const branches = await rtListRefsShadowV2({ projectId: params.id });
+        const match = branches.find((branch) => branch.id === refId);
+        if (!match) {
+          throw badRequest(`Branch ${refId} not found`);
+        }
+        lockRef = match.name;
+      } else {
+        const { getBranchNameByIdMap } = await import('@/src/git/branchIds');
+        const nameById = await getBranchNameByIdMap(params.id);
+        lockRef = nameById[refId] ?? lockRef;
+      }
+    }
+
+    return await withProjectLockAndRefLock(params.id, lockRef, async () => {
       if (store.mode === 'pg') {
         const { rtSaveArtefactDraftV2 } = await import('@/src/store/pg/drafts');
-        const { rtGetCanvasShadowV2 } = await import('@/src/store/pg/reads');
+        const { rtGetCanvasShadowV2, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
         const { resolveCurrentRef, resolveRefByName } = await import('@/src/server/pgRefs');
-        const resolved = ref?.trim()
+        let resolved = ref?.trim()
           ? await resolveRefByName(params.id, ref)
           : await resolveCurrentRef(params.id, INITIAL_BRANCH);
+        if (refId) {
+          const branches = await rtListRefsShadowV2({ projectId: params.id });
+          const match = branches.find((branch) => branch.id === refId);
+          if (!match) {
+            throw badRequest(`Branch ${refId} not found`);
+          }
+          resolved = { id: match.id, name: match.name };
+        }
         await acquireBranchLease({ projectId: params.id, refId: resolved.id, leaseSessionId: parsed.data.leaseSessionId });
         await rtSaveArtefactDraftV2({ projectId: params.id, refId: resolved.id, content: parsed.data.content ?? '' });
         const canvas = await rtGetCanvasShadowV2({ projectId: params.id, refId: resolved.id });
@@ -107,14 +149,23 @@ export async function PUT(request: Request, { params }: RouteContext) {
         throw notFound('Project not found');
       }
 
+      let resolvedRefName = ref;
+      if (refId) {
+        const { getBranchNameByIdMap } = await import('@/src/git/branchIds');
+        const nameById = await getBranchNameByIdMap(params.id);
+        resolvedRefName = nameById[refId] ?? resolvedRefName;
+      }
       try {
-        await updateArtefact(project.id, parsed.data.content, ref);
+        await updateArtefact(project.id, parsed.data.content, resolvedRefName);
       } catch (err) {
         const message = (err as Error)?.message ?? 'Failed to update artefact';
         throw badRequest(message);
       }
 
-      const [artefact, nodes] = await Promise.all([getArtefactFromRef(project.id, ref), readNodesFromRef(project.id, ref)]);
+      const [artefact, nodes] = await Promise.all([
+        getArtefactFromRef(project.id, resolvedRefName),
+        readNodesFromRef(project.id, resolvedRefName)
+      ]);
       const lastState = [...nodes].reverse().find((node) => node.type === 'state');
 
       return Response.json(
