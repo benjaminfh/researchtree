@@ -22,6 +22,8 @@ where n.project_id = r.project_id
   and n.content_json ? 'mergeFrom'
   and r.name = n.content_json->>'mergeFrom';
 
+drop function if exists public.rt_get_history_v2(uuid, uuid, integer, bigint, boolean);
+
 create or replace function public.rt_get_history_v2(
   p_project_id uuid,
   p_ref_id uuid,

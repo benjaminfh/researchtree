@@ -14,12 +14,14 @@ interface RouteContext {
 function resolveRefName(refId: string | null, refNameById: Map<string, string>, label: string): string {
   if (!refId) {
     console.error('[history] missing ref id for node label', { label });
-    throw new Error('Branch identity missing for history nodes. Please refresh or contact support.');
+    // TODO: remove "unknown" fallback once legacy rows are backfilled with ref IDs.
+    return 'unknown';
   }
   const refName = refNameById.get(refId);
   if (!refName) {
     console.error('[history] ref id not found for node label', { label, refId });
-    throw new Error('Branch identity could not be resolved for history nodes. Please refresh or contact support.');
+    // TODO: remove "unknown" fallback once legacy rows are backfilled with ref IDs.
+    return 'unknown';
   }
   return refName;
 }
