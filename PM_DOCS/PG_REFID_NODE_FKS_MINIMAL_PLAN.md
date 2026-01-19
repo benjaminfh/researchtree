@@ -59,6 +59,7 @@ Use immutable `ref.id` where a stable FK is required.
 5) Git-mode rename maintenance (option 1)
    - Git nodes remain JSON-backed; keep `createdOnBranch`/`mergeFrom` fresh on rename.
    - Rename routes must rewrite node JSON fields that store branch names.
+   - Filter rename-maintenance commits from node->commit mapping to preserve git parity.
 
 ## Out of Scope (Explicit)
 - Ref-ID as default identifier in UI caches or graph lanes.
