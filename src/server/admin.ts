@@ -3,7 +3,7 @@
 import { forbidden } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { assertLocalPgModeConfig, isLocalPgMode } from '@/src/server/pgMode';
-import { isPreviewDeployment } from '@/src/server/vercelEnv';
+import { isPreviewDeployment } from '@/src/server/deploymentEnv';
 
 export function getAdminUserIds(): Set<string> {
   const raw = process.env.RT_ADMIN_USER_IDS ?? '';

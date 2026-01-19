@@ -4,7 +4,7 @@ import { forbidden } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { assertLocalPgModeConfig, isLocalPgMode } from '@/src/server/pgMode';
-import { isPreviewDeployment } from '@/src/server/vercelEnv';
+import { isPreviewDeployment } from '@/src/server/deploymentEnv';
 
 export interface ProjectForAuthz {
   id: string;

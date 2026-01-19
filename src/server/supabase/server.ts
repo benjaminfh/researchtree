@@ -3,7 +3,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { assertSupabaseConfigured, getSupabaseSecretKey } from './env';
-import { isCodexDev, isPreviewDeployment } from '@/src/server/vercelEnv';
+import { isCodexDev, isPreviewDeployment } from '@/src/server/deploymentEnv';
 
 export function createSupabaseServerClient() {
   warnIfCodexSchemaMayDrift();
