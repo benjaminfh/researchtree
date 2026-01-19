@@ -2,13 +2,16 @@
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { assertSupabaseConfigured } from './env';
+import { assertSupabaseConfigured, getSupabaseSecretKey } from './env';
+import { isPreviewDeployment } from '@/src/server/vercelEnv';
 
 export function createSupabaseServerClient() {
   const { url, anonKey } = assertSupabaseConfigured();
+  const previewSecretKey = isPreviewDeployment() ? getSupabaseSecretKey() : null;
+  const apiKey = previewSecretKey ?? anonKey;
   const cookieStore = cookies();
 
-  return createServerClient(url, anonKey, {
+  return createServerClient(url, apiKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

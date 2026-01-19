@@ -17,6 +17,10 @@ export function getSupabaseServiceRoleKey(): string | null {
   return readEnv('SUPABASE_SERVICE_ROLE_KEY');
 }
 
+export function getSupabaseSecretKey(): string | null {
+  return readEnv('SUPABASE_SECRET_KEY');
+}
+
 export function assertSupabaseConfigured(): { url: string; anonKey: string } {
   const url = getSupabaseUrl();
   const anonKey = getSupabaseAnonKey();
@@ -25,4 +29,3 @@ export function assertSupabaseConfigured(): { url: string; anonKey: string } {
   }
   return { url, anonKey };
 }
-
