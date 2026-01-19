@@ -13,25 +13,10 @@ function parseEnvFlag(value: string | undefined): boolean {
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
-function getVercelEnv(): string | null {
-  const raw = process.env.VERCEL_ENV?.trim().toLowerCase();
-  return raw ? raw : null;
-}
-
-function isProductionDeployment(): boolean {
-  const vercelEnv = getVercelEnv();
-  if (vercelEnv) return vercelEnv === 'production';
-  const publicVercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV?.trim().toLowerCase();
-  if (publicVercelEnv) return publicVercelEnv === 'production';
-  const deployEnv = process.env.DEPLOY_ENV?.trim().toLowerCase();
-  if (deployEnv === 'prod' || deployEnv === 'production') return true;
-  return (process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
-}
-
 function isPreviewDeployment(): boolean {
-  const vercelEnv = getVercelEnv();
+  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
   if (!vercelEnv) return false;
-  return vercelEnv !== 'production';
+  return vercelEnv === 'preview' || vercelEnv === 'development';
 }
 
 function isMaintenanceModeEnabled(): boolean {
@@ -218,7 +203,7 @@ function withSupabaseCookies(source: NextResponse, target: NextResponse): NextRe
 export async function middleware(request: NextRequest) {
   const maintenanceEnabled = isMaintenanceModeEnabled();
   const adminUserIds = maintenanceEnabled ? getAdminUserIds() : new Set<string>();
-  const shouldBypassAuth = isPreviewDeployment() && !isProductionDeployment();
+  const shouldBypassAuth = isPreviewDeployment();
 
   const pathname = request.nextUrl.pathname;
   if (maintenanceEnabled && adminUserIds.size === 0) {
