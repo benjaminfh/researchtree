@@ -292,6 +292,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                     uiHidden: true,
                     timestamp: Date.now(),
                     parent: parentId,
+                    // TODO: drop createdOnBranch from PG node JSON once readers use refs for labels.
                     createdOnBranch: targetRefName,
                     contextWindow: [],
                     tokensUsed: undefined
@@ -318,6 +319,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   contentBlocks: buildTextBlock(userContent),
                   timestamp: Date.now(),
                   parent: parentId,
+                  // TODO: drop createdOnBranch from PG node JSON once readers use refs for labels.
                   createdOnBranch: targetRefName,
                   contextWindow: [],
                   tokensUsed: undefined
