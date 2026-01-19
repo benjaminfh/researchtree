@@ -88,5 +88,5 @@ export function ConsoleIcon({ className }: IconProps) {
 }
 
 export function PlusIcon({ className }: IconProps) {
-  return <BlueprintIcon icon="add" className={className} />;
+  return <BlueprintIcon icon="folder-new" className={className} />;
 }
