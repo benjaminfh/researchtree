@@ -86,3 +86,7 @@ export function SearchIcon({ className }: IconProps) {
 export function ConsoleIcon({ className }: IconProps) {
   return <BlueprintIcon icon="console" className={className} />;
 }
+
+export function PlusIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="folder-new" className={className} />;
+}

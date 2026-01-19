@@ -15,9 +15,16 @@ interface ProviderOption {
 interface CreateProjectFormProps {
   providerOptions: ProviderOption[];
   defaultProvider: LLMProvider;
+  onCreated?: (projectId: string) => void;
+  openInNewTab?: boolean;
 }
 
-export function CreateProjectForm({ providerOptions, defaultProvider }: CreateProjectFormProps) {
+export function CreateProjectForm({
+  providerOptions,
+  defaultProvider,
+  onCreated,
+  openInNewTab = false
+}: CreateProjectFormProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [provider, setProvider] = useState<LLMProvider>(defaultProvider);
@@ -34,6 +41,10 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
     }
     setSubmitting(true);
     setError(null);
+    let pendingTab: Window | null = null;
+    if (openInNewTab && typeof window !== 'undefined') {
+      pendingTab = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    }
 
     try {
       const response = await fetch('/api/projects', {
@@ -52,8 +63,21 @@ export function CreateProjectForm({ providerOptions, defaultProvider }: CreatePr
       if (!projectId) {
         throw new Error('Project created but response was missing an id.');
       }
-      router.push(`/projects/${projectId}`);
+      if (openInNewTab && typeof window !== 'undefined') {
+        const url = `/projects/${projectId}`;
+        if (pendingTab && !pendingTab.closed) {
+          pendingTab.location.href = url;
+        } else {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        router.push(`/projects/${projectId}`);
+      }
+      onCreated?.(projectId);
     } catch (err) {
+      if (pendingTab && !pendingTab.closed) {
+        pendingTab.close();
+      }
       setError((err as Error).message);
     } finally {
       setSubmitting(false);

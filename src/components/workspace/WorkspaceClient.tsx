@@ -35,6 +35,7 @@ import type { FC } from 'react';
 import { RailPageLayout } from '@/src/components/layout/RailPageLayout';
 import type { RailLayoutContext } from '@/src/components/layout/RailLayout';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
+import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
 import { WorkspaceGraph } from './WorkspaceGraph';
 import { buildBranchColorMap, getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
@@ -48,6 +49,7 @@ import {
   HomeIcon,
   ConsoleIcon,
   PaperClipIcon,
+  PlusIcon,
   QuestionMarkCircleIcon,
   SearchIcon,
   Square2StackIcon,
@@ -711,6 +713,7 @@ export function WorkspaceClient({
   const [mergeSummary, setMergeSummary] = useState('');
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = useState(false);
   const [mergePreview, setMergePreview] = useState<{ target: string; source: string } | null>(null);
   const [isMergePreviewLoading, setIsMergePreviewLoading] = useState(false);
   const [mergePreviewError, setMergePreviewError] = useState<string | null>(null);
@@ -1004,6 +1007,10 @@ export function WorkspaceClient({
     setShareError(null);
     setPendingShareIds(new Set());
   }, [isShareSaving]);
+
+  const closeCreateWorkspaceModal = useCallback(() => {
+    setShowCreateWorkspaceModal(false);
+  }, []);
   const closeBranchSettings = useCallback(() => {
     setShowBranchSettings(false);
   }, []);
@@ -3591,6 +3598,10 @@ export function WorkspaceClient({
     () => buildModalBackdropHandler(closeShareModal),
     [buildModalBackdropHandler, closeShareModal]
   );
+  const handleCreateWorkspaceBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeCreateWorkspaceModal),
+    [buildModalBackdropHandler, closeCreateWorkspaceModal]
+  );
 
   return (
     <>
@@ -3917,6 +3928,17 @@ export function WorkspaceClient({
             ) : null}
 
             <div className="mt-auto flex flex-col items-start gap-3 pb-2">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateWorkspaceModal(true)}
+                  className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10"
+                  aria-label="New workspace"
+                  aria-haspopup="dialog"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                </button>
+              </div>
               <div ref={hintsRef} className="relative">
                 <button
                   type="button"
@@ -4880,6 +4902,41 @@ export function WorkspaceClient({
           );
         }}
       />
+
+      {showCreateWorkspaceModal ? (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={handleCreateWorkspaceBackdrop}
+          onTouchStart={handleCreateWorkspaceBackdrop}
+        >
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="create-workspace-modal">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+                  <PlusIcon className="h-4 w-4" />
+                </span>
+                New workspace
+              </div>
+              <button
+                type="button"
+                onClick={closeCreateWorkspaceModal}
+                className="rounded-full border border-divider/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                aria-label="Close new workspace dialog"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4">
+              <CreateProjectForm
+                providerOptions={providerOptions}
+                defaultProvider={defaultProvider}
+                openInNewTab
+                onCreated={closeCreateWorkspaceModal}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showNewBranchModal ? (
         <div
