@@ -3026,7 +3026,14 @@ export function WorkspaceClient({
       ignoreNextScrollRef.current = false;
       return;
     }
-    if (!autoFollowEnabledRef.current && isAtBottom(el)) {
+    const atBottom = isAtBottom(el);
+    if (autoFollowEnabledRef.current) {
+      if (!atBottom) {
+        autoFollowEnabledRef.current = false;
+      }
+      return;
+    }
+    if (atBottom) {
       autoFollowEnabledRef.current = true;
       scrollToBottom();
     }
