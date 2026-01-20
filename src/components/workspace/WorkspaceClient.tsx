@@ -3000,21 +3000,24 @@ export function WorkspaceClient({
     [disableAutoFollow]
   );
 
-  const handleMessageListPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const el = messageListRef.current;
-    if (!el) return;
-    if (event.button !== 0) return;
-    if (el !== document.activeElement) {
-      el.focus({ preventScroll: true });
-    }
-    const scrollbarWidth = el.offsetWidth - el.clientWidth;
-    if (scrollbarWidth <= 0) return;
-    const rect = el.getBoundingClientRect();
-    const isScrollbarClick = event.clientX >= rect.right - scrollbarWidth;
-    if (isScrollbarClick) {
-      autoFollowEnabledRef.current = false;
-    }
-  }, []);
+  const handleMessageListPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const el = messageListRef.current;
+      if (!el) return;
+      if (event.button !== 0) return;
+      if (el !== document.activeElement) {
+        el.focus({ preventScroll: true });
+      }
+      const scrollbarWidth = el.offsetWidth - el.clientWidth;
+      const scrollbarActivationWidth = scrollbarWidth > 0 ? scrollbarWidth : 8;
+      const rect = el.getBoundingClientRect();
+      const isScrollbarClick = event.clientX >= rect.right - scrollbarActivationWidth;
+      if (isScrollbarClick) {
+        disableAutoFollow();
+      }
+    },
+    [disableAutoFollow]
+  );
 
   const handleMessageListScroll = () => {
     const el = messageListRef.current;
