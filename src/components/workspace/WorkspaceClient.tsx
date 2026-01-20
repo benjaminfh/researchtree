@@ -2608,6 +2608,8 @@ export function WorkspaceClient({
   const ignoreNextScrollRef = useRef(false);
   const scrollToBottomFrameRef = useRef<number | null>(null);
   const autoFollowReenableTimeoutRef = useRef<number | null>(null);
+  const autoFollowDisabledByUserRef = useRef(false);
+  const autoFollowLeftBottomSinceDisableRef = useRef(false);
   const wasStreamingRef = useRef(false);
   const previousVisibleCountRef = useRef(0);
   const previousVisibleBranchRef = useRef<string | null>(null);
@@ -2644,6 +2646,8 @@ export function WorkspaceClient({
 
   const disableAutoFollow = useCallback(() => {
     autoFollowEnabledRef.current = false;
+    autoFollowDisabledByUserRef.current = true;
+    autoFollowLeftBottomSinceDisableRef.current = false;
     if (scrollToBottomFrameRef.current) {
       cancelAnimationFrame(scrollToBottomFrameRef.current);
       scrollToBottomFrameRef.current = null;
@@ -2979,11 +2983,15 @@ export function WorkspaceClient({
 
   useEffect(() => {
     autoFollowEnabledRef.current = true;
+    autoFollowDisabledByUserRef.current = false;
+    autoFollowLeftBottomSinceDisableRef.current = false;
   }, [branchName]);
 
   useEffect(() => {
     if (!wasStreamingRef.current && state.isStreaming) {
       autoFollowEnabledRef.current = true;
+      autoFollowDisabledByUserRef.current = false;
+      autoFollowLeftBottomSinceDisableRef.current = false;
       scrollToBottom();
     }
     wasStreamingRef.current = state.isStreaming;
@@ -3044,7 +3052,13 @@ export function WorkspaceClient({
     const atBottom = isAtBottom(el);
     if (autoFollowEnabledRef.current) {
       if (!atBottom) {
+        if (state.isStreaming) {
+          scrollToBottom();
+          return;
+        }
         autoFollowEnabledRef.current = false;
+        autoFollowDisabledByUserRef.current = false;
+        autoFollowLeftBottomSinceDisableRef.current = true;
         if (autoFollowReenableTimeoutRef.current) {
           window.clearTimeout(autoFollowReenableTimeoutRef.current);
           autoFollowReenableTimeoutRef.current = null;
@@ -3053,6 +3067,9 @@ export function WorkspaceClient({
       return;
     }
     if (atBottom) {
+      if (autoFollowDisabledByUserRef.current && !autoFollowLeftBottomSinceDisableRef.current) {
+        return;
+      }
       if (!autoFollowReenableTimeoutRef.current) {
         autoFollowReenableTimeoutRef.current = window.setTimeout(() => {
           autoFollowReenableTimeoutRef.current = null;
@@ -3060,11 +3077,14 @@ export function WorkspaceClient({
           if (!node || !isAtBottom(node)) return;
           if (autoFollowEnabledRef.current) return;
           autoFollowEnabledRef.current = true;
+          autoFollowDisabledByUserRef.current = false;
+          autoFollowLeftBottomSinceDisableRef.current = false;
           scrollToBottom();
         }, 150);
       }
       return;
     }
+    autoFollowLeftBottomSinceDisableRef.current = true;
     if (autoFollowReenableTimeoutRef.current) {
       window.clearTimeout(autoFollowReenableTimeoutRef.current);
       autoFollowReenableTimeoutRef.current = null;
