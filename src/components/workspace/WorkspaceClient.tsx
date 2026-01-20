@@ -14,13 +14,7 @@ import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import {
-  AUTO_FOLLOW_RESUME_DELAY_MS,
-  CHAT_COMPOSER_DEFAULT_LINES,
-  storageKey,
-  TRUNK_LABEL,
-  USER_MESSAGE_MAX_LINES
-} from '@/src/config/app';
+import { CHAT_COMPOSER_DEFAULT_LINES, storageKey, TRUNK_LABEL, USER_MESSAGE_MAX_LINES } from '@/src/config/app';
 import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 import {
   deriveTextFromBlocks,
@@ -1466,7 +1460,6 @@ export function WorkspaceClient({
           assistantPendingTimerRef.current = null;
         }
         setAssistantPending(false);
-        shouldScrollToBottomRef.current = true;
       }
       if (chunk.type === 'thinking') {
         setStreamBlocks((prev) => {
@@ -1588,7 +1581,7 @@ export function WorkspaceClient({
       pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
-    shouldScrollToBottomRef.current = true;
+    autoFollowEnabledRef.current = true;
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
@@ -1642,7 +1635,7 @@ export function WorkspaceClient({
     if (!question.trim() || state.isStreaming) return;
     if (!ensureLeaseSessionReady()) return;
     const optimisticContent = buildQuestionMessage(question, highlight);
-    shouldScrollToBottomRef.current = true;
+    autoFollowEnabledRef.current = true;
     questionDraftRef.current = optimisticContent;
     setStreamBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
@@ -1723,7 +1716,7 @@ export function WorkspaceClient({
         return;
       }
     }
-    shouldScrollToBottomRef.current = true;
+    autoFollowEnabledRef.current = true;
     questionDraftRef.current = content;
     setStreamBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
@@ -2611,12 +2604,10 @@ export function WorkspaceClient({
   }, [showNewBranchModal, resetBranchQuestionState]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
-  const shouldScrollToBottomRef = useRef(true);
+  const autoFollowEnabledRef = useRef(true);
   const ignoreNextScrollRef = useRef(false);
-  const userInterruptedScrollRef = useRef(false);
+  const scrollToBottomFrameRef = useRef<number | null>(null);
   const wasStreamingRef = useRef(false);
-  const resumeFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollFollowThreshold = 72;
   const previousVisibleCountRef = useRef(0);
   const previousVisibleBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
@@ -2629,9 +2620,38 @@ export function WorkspaceClient({
     if (!el) return;
     const targetScrollTop = el.scrollHeight - el.clientHeight;
     if (Math.abs(el.scrollTop - targetScrollTop) < 1) return;
-    ignoreNextScrollRef.current = true;
-    el.scrollTop = el.scrollHeight;
+    if (scrollToBottomFrameRef.current) {
+      cancelAnimationFrame(scrollToBottomFrameRef.current);
+    }
+    scrollToBottomFrameRef.current = requestAnimationFrame(() => {
+      ignoreNextScrollRef.current = true;
+      el.scrollTop = el.scrollHeight;
+    });
   }, []);
+
+  const getScrollFollowThreshold = useCallback((el: HTMLElement) => Math.round(el.clientHeight * 0.1), []);
+
+  const isAtBottom = useCallback(
+    (el: HTMLElement) => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      return distance <= getScrollFollowThreshold(el);
+    },
+    [getScrollFollowThreshold]
+  );
+
+  const isMessageListFocused = useCallback(() => {
+    if (typeof document === 'undefined') return false;
+    const container = messageListRef.current;
+    if (!container) return false;
+    const active = document.activeElement;
+    if (!active) return false;
+    return active === container || container.contains(active);
+  }, []);
+
+  const disableAutoFollow = useCallback(() => {
+    if (!isMessageListFocused()) return;
+    autoFollowEnabledRef.current = false;
+  }, [isMessageListFocused]);
 
   const combinedNodes = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
@@ -2745,10 +2765,8 @@ export function WorkspaceClient({
     }
     if (visibleNodes.length > previousVisibleCountRef.current) {
       const el = messageListRef.current;
-      if (el && shouldScrollToBottomRef.current && !userInterruptedScrollRef.current) {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-        });
+      if (el && autoFollowEnabledRef.current) {
+        scrollToBottom();
       }
     }
     previousVisibleCountRef.current = visibleNodes.length;
@@ -2911,9 +2929,9 @@ export function WorkspaceClient({
 
   useEffect(() => {
     return () => {
-      if (resumeFollowTimeoutRef.current) {
-        clearTimeout(resumeFollowTimeoutRef.current);
-        resumeFollowTimeoutRef.current = null;
+      if (scrollToBottomFrameRef.current) {
+        cancelAnimationFrame(scrollToBottomFrameRef.current);
+        scrollToBottomFrameRef.current = null;
       }
     };
   }, []);
@@ -2955,26 +2973,58 @@ export function WorkspaceClient({
   }, [pendingScrollTo, branchName, nodes, hideShared, sharedNodes]);
 
   useEffect(() => {
-    shouldScrollToBottomRef.current = true;
-    userInterruptedScrollRef.current = false;
+    autoFollowEnabledRef.current = true;
   }, [branchName]);
 
   useEffect(() => {
     if (!wasStreamingRef.current && state.isStreaming) {
-      userInterruptedScrollRef.current = false;
+      autoFollowEnabledRef.current = true;
+      scrollToBottom();
     }
     wasStreamingRef.current = state.isStreaming;
   }, [state.isStreaming]);
 
   useEffect(() => {
-    if (!shouldScrollToBottomRef.current) return;
-    if (userInterruptedScrollRef.current) return;
+    if (!autoFollowEnabledRef.current) return;
     if (isLoading) return;
     // Ensure we scroll after the DOM has painted with the final node list.
     requestAnimationFrame(() => {
       scrollToBottom();
     });
   }, [branchName, isLoading, visibleNodes.length, streamPreview]);
+
+  const handleMessageListWheel = useCallback(() => {
+    disableAutoFollow();
+  }, [disableAutoFollow]);
+
+  const handleMessageListTouchMove = useCallback(() => {
+    disableAutoFollow();
+  }, [disableAutoFollow]);
+
+  const handleMessageListKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+      if (!scrollKeys.has(event.key)) return;
+      disableAutoFollow();
+    },
+    [disableAutoFollow]
+  );
+
+  const handleMessageListPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const el = messageListRef.current;
+    if (!el) return;
+    if (event.button !== 0) return;
+    if (el !== document.activeElement) {
+      el.focus({ preventScroll: true });
+    }
+    const scrollbarWidth = el.offsetWidth - el.clientWidth;
+    if (scrollbarWidth <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const isScrollbarClick = event.clientX >= rect.right - scrollbarWidth;
+    if (isScrollbarClick) {
+      autoFollowEnabledRef.current = false;
+    }
+  }, []);
 
   const handleMessageListScroll = () => {
     const el = messageListRef.current;
@@ -2983,27 +3033,10 @@ export function WorkspaceClient({
       ignoreNextScrollRef.current = false;
       return;
     }
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    shouldScrollToBottomRef.current = distance <= scrollFollowThreshold;
-    if (!state.isStreaming) {
-      if (distance <= scrollFollowThreshold) {
-        userInterruptedScrollRef.current = false;
-      }
-      return;
+    if (!autoFollowEnabledRef.current && isAtBottom(el)) {
+      autoFollowEnabledRef.current = true;
+      scrollToBottom();
     }
-    if (distance > scrollFollowThreshold) {
-      if (resumeFollowTimeoutRef.current) {
-        clearTimeout(resumeFollowTimeoutRef.current);
-        resumeFollowTimeoutRef.current = null;
-      }
-      userInterruptedScrollRef.current = true;
-      return;
-    }
-    if (resumeFollowTimeoutRef.current) return;
-    resumeFollowTimeoutRef.current = setTimeout(() => {
-      userInterruptedScrollRef.current = false;
-      resumeFollowTimeoutRef.current = null;
-    }, AUTO_FOLLOW_RESUME_DELAY_MS);
   };
 
   const switchBranch = async (name: string) => {
@@ -4045,8 +4078,13 @@ export function WorkspaceClient({
                 <div
                   ref={messageListRef}
                   data-testid="chat-message-list"
-                  className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
+                  className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6 focus:outline-none"
+                  tabIndex={0}
                   onScroll={handleMessageListScroll}
+                  onWheel={handleMessageListWheel}
+                  onTouchMove={handleMessageListTouchMove}
+                  onKeyDown={handleMessageListKeyDown}
+                  onPointerDown={handleMessageListPointerDown}
                 >
                   {isLoading ? (
                     <div className="flex flex-col gap-3 animate-pulse" role="status" aria-live="polite">
