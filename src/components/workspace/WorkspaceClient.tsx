@@ -2624,6 +2624,8 @@ export function WorkspaceClient({
       cancelAnimationFrame(scrollToBottomFrameRef.current);
     }
     scrollToBottomFrameRef.current = requestAnimationFrame(() => {
+      scrollToBottomFrameRef.current = null;
+      if (!autoFollowEnabledRef.current) return;
       ignoreNextScrollRef.current = true;
       el.scrollTop = el.scrollHeight;
     });
@@ -2641,6 +2643,10 @@ export function WorkspaceClient({
 
   const disableAutoFollow = useCallback(() => {
     autoFollowEnabledRef.current = false;
+    if (scrollToBottomFrameRef.current) {
+      cancelAnimationFrame(scrollToBottomFrameRef.current);
+      scrollToBottomFrameRef.current = null;
+    }
   }, []);
 
   const combinedNodes = useMemo(() => {
