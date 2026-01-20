@@ -2607,6 +2607,7 @@ export function WorkspaceClient({
   const autoFollowEnabledRef = useRef(true);
   const ignoreNextScrollRef = useRef(false);
   const scrollToBottomFrameRef = useRef<number | null>(null);
+  const autoFollowReenableTimeoutRef = useRef<number | null>(null);
   const wasStreamingRef = useRef(false);
   const previousVisibleCountRef = useRef(0);
   const previousVisibleBranchRef = useRef<string | null>(null);
@@ -2646,6 +2647,10 @@ export function WorkspaceClient({
     if (scrollToBottomFrameRef.current) {
       cancelAnimationFrame(scrollToBottomFrameRef.current);
       scrollToBottomFrameRef.current = null;
+    }
+    if (autoFollowReenableTimeoutRef.current) {
+      window.clearTimeout(autoFollowReenableTimeoutRef.current);
+      autoFollowReenableTimeoutRef.current = null;
     }
   }, []);
 
@@ -2929,6 +2934,10 @@ export function WorkspaceClient({
         cancelAnimationFrame(scrollToBottomFrameRef.current);
         scrollToBottomFrameRef.current = null;
       }
+      if (autoFollowReenableTimeoutRef.current) {
+        window.clearTimeout(autoFollowReenableTimeoutRef.current);
+        autoFollowReenableTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -3036,12 +3045,29 @@ export function WorkspaceClient({
     if (autoFollowEnabledRef.current) {
       if (!atBottom) {
         autoFollowEnabledRef.current = false;
+        if (autoFollowReenableTimeoutRef.current) {
+          window.clearTimeout(autoFollowReenableTimeoutRef.current);
+          autoFollowReenableTimeoutRef.current = null;
+        }
       }
       return;
     }
     if (atBottom) {
-      autoFollowEnabledRef.current = true;
-      scrollToBottom();
+      if (!autoFollowReenableTimeoutRef.current) {
+        autoFollowReenableTimeoutRef.current = window.setTimeout(() => {
+          autoFollowReenableTimeoutRef.current = null;
+          const node = messageListRef.current;
+          if (!node || !isAtBottom(node)) return;
+          if (autoFollowEnabledRef.current) return;
+          autoFollowEnabledRef.current = true;
+          scrollToBottom();
+        }, 150);
+      }
+      return;
+    }
+    if (autoFollowReenableTimeoutRef.current) {
+      window.clearTimeout(autoFollowReenableTimeoutRef.current);
+      autoFollowReenableTimeoutRef.current = null;
     }
   };
 
