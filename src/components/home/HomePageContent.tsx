@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
-import { ArchiveBoxArrowDownIcon, CheckIcon, ChevronRightIcon } from '@/src/components/workspace/HeroIcons';
+import { ArchiveBoxArrowDownIcon, CheckIcon, SearchIcon } from '@/src/components/workspace/HeroIcons';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
@@ -31,7 +31,8 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
   const [archived, setArchived] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState<Set<string>>(new Set());
   const [showTokenPrompt, setShowTokenPrompt] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
+  const [activeTab, setActiveTab] = useState<'recent' | 'archived'>('recent');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -102,6 +103,16 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
 
   const recentProjects = useMemo(() => projects.filter((p) => !archived.has(p.id)).slice(0, 12), [projects, archived]);
   const archivedProjects = useMemo(() => projects.filter((p) => archived.has(p.id)), [projects, archived]);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const matchesQuery = (name: string) => (!normalizedQuery ? true : name.toLowerCase().includes(normalizedQuery));
+  const filteredRecent = useMemo(
+    () => recentProjects.filter((project) => matchesQuery(project.name)),
+    [recentProjects, normalizedQuery]
+  );
+  const filteredArchived = useMemo(
+    () => archivedProjects.filter((project) => matchesQuery(project.name)),
+    [archivedProjects, normalizedQuery]
+  );
 
   const handleArchive = (id: string) => {
     const next = new Set(archived);
@@ -130,27 +141,93 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
       <RailPageLayout
         renderRail={({ railCollapsed, toggleRail }) => (
           <div className="mt-6 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-            {!railCollapsed ? (
-              <>
-                <div className="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm">
-                  Workspaces
+            <div className="flex-1" />
+            <div className="mt-auto flex items-start pb-2">
+              <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
+            </div>
+          </div>
+        )}
+        renderMain={() => (
+          <div className="flex h-full flex-col overflow-hidden">
+            <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 min-h-0">
+              <header className="space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-6 py-2 text-base font-semibold text-primary">
+                  <span>{APP_NAME}</span>
                 </div>
-                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-                    <div className={`flex min-h-0 flex-1 flex-col gap-2 ${archivedProjects.length > 0 ? 'border-b border-divider/60 pb-3' : ''}`}>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted">Recent</div>
-                      {recentProjects.length === 0 ? (
-                        <p className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 text-xs text-muted shadow-sm">
-                          No workspaces yet. Create one to get started.
+                <div className="space-y-2">
+                  <h1 className="text-3xl font-semibold text-slate-900">Branchable Chat for Deep Research Sessions</h1>
+                  <p className="text-base text-muted">
+                    Spin up a workspace, branch your train of thought and context, and work on a canvas.
+                  </p>
+                </div>
+              </header>
+
+              <CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />
+
+              <section className="card-surface flex min-h-0 flex-1 flex-col gap-4 p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-primary">Workspaces</p>
+                    <p className="text-sm text-muted">Browse recent and archived sessions.</p>
+                  </div>
+                  <div className="inline-flex rounded-full border border-divider/70 bg-white p-1 text-xs font-semibold text-muted">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('recent')}
+                      className={`rounded-full px-3 py-1 transition ${
+                        activeTab === 'recent'
+                          ? 'bg-primary/10 text-primary'
+                          : 'hover:text-slate-700'
+                      }`}
+                      aria-pressed={activeTab === 'recent'}
+                    >
+                      Recent ({filteredRecent.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('archived')}
+                      className={`rounded-full px-3 py-1 transition ${
+                        activeTab === 'archived'
+                          ? 'bg-primary/10 text-primary'
+                          : 'hover:text-slate-700'
+                      }`}
+                      aria-pressed={activeTab === 'archived'}
+                    >
+                      Archived ({filteredArchived.length})
+                    </button>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 rounded-lg border border-divider/80 bg-white px-3 py-2 text-sm shadow-sm focus-within:ring-2 focus-within:ring-primary/30">
+                  <SearchIcon className="h-4 w-4 text-muted" />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search workspaces"
+                    className="flex-1 bg-transparent text-sm text-slate-900 placeholder:text-muted focus:outline-none"
+                    aria-label="Search workspaces"
+                  />
+                </label>
+
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  {activeTab === 'recent' ? (
+                    <>
+                      {filteredRecent.length === 0 ? (
+                        <p className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 text-sm text-muted shadow-sm">
+                          {normalizedQuery
+                            ? 'No matching workspaces found.'
+                            : 'No workspaces yet. Create one to get started.'}
                         </p>
                       ) : (
-                        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                          <ul className="grid min-w-0 grid-cols-1 gap-2">
-                            {recentProjects.map((project) => {
+                        <div className="min-h-0 h-full overflow-y-auto pr-1">
+                          <ul className="grid min-w-0 grid-cols-1 gap-3">
+                            {filteredRecent.map((project) => {
                               const isConfirming = confirming.has(project.id);
                               return (
                                 <li
                                   key={project.id}
-                                  className="group w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
+                                  className="group w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-4 py-3 shadow-sm transition hover:border-primary/50"
                                   title={project.name}
                                   data-project-id={project.id}
                                 >
@@ -182,7 +259,11 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                       data-testid="archive-workspace"
                                       data-project-id={project.id}
                                     >
-                                      {isConfirming ? <CheckIcon className="h-4 w-4" /> : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
+                                      {isConfirming ? (
+                                        <CheckIcon className="h-4 w-4" />
+                                      ) : (
+                                        <ArchiveBoxArrowDownIcon className="h-4 w-4" />
+                                      )}
                                     </button>
                                   </div>
                                 </li>
@@ -191,106 +272,69 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                           </ul>
                         </div>
                       )}
-                    </div>
-                    {archivedProjects.length > 0 ? (
-                      <div
-                        className={`flex min-h-0 flex-col gap-2 pt-2 ${
-                          showArchived ? 'h-[66%]' : ''
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setShowArchived((prev) => !prev)}
-                          className="group flex items-center justify-between rounded-lg px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted transition hover:bg-primary/10 hover:text-slate-700"
-                          aria-expanded={showArchived}
-                        >
-                          <span>Archived</span>
-                          <span
-                            className={`text-muted transition-transform ${
-                              showArchived ? 'rotate-90' : ''
-                            }`}
-                          >
-                            <ChevronRightIcon className="h-3 w-3" />
-                          </span>
-                        </button>
-                        {showArchived ? (
-                          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                            <ul className="grid min-w-0 grid-cols-1 gap-2">
-                              {archivedProjects.map((project) => {
-                                const isConfirming = confirming.has(project.id);
-                                return (
-                                  <li
-                                    key={project.id}
-                                    className="w-full min-w-0 rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm"
-                                    title={project.name}
-                                    data-project-id={project.id}
-                                  >
-                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                      <span
-                                        className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
-                                        title={project.name}
-                                      >
-                                        {project.name}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (isConfirming) {
-                                            handleUnarchive(project.id);
-                                          } else {
-                                            setConfirming((prev) => new Set(prev).add(project.id));
-                                          }
-                                        }}
-                                        data-confirm-action="true"
-                                        className={`ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
-                                          isConfirming
-                                            ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                            : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
-                                        }`}
-                                        aria-label={isConfirming ? 'Confirm unarchive' : 'Unarchive workspace'}
-                                        data-testid="unarchive-workspace"
-                                        data-project-id={project.id}
-                                      >
-                                        {isConfirming ? (
-                                          <CheckIcon className="h-4 w-4" />
-                                        ) : (
-                                          <BlueprintIcon icon="unarchive" className="h-4 w-4" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    </>
+                  ) : (
+                    <>
+                      {filteredArchived.length === 0 ? (
+                        <p className="rounded-xl border border-divider/60 bg-white/80 px-3 py-2 text-sm text-muted shadow-sm">
+                          {normalizedQuery ? 'No matching archived workspaces found.' : 'No archived workspaces yet.'}
+                        </p>
+                      ) : (
+                        <div className="min-h-0 h-full overflow-y-auto pr-1">
+                          <ul className="grid min-w-0 grid-cols-1 gap-3">
+                            {filteredArchived.map((project) => {
+                              const isConfirming = confirming.has(project.id);
+                              return (
+                                <li
+                                  key={project.id}
+                                  className="w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-4 py-3 shadow-sm"
+                                  title={project.name}
+                                  data-project-id={project.id}
+                                >
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <ArchiveBoxArrowDownIcon className="h-4 w-4 text-amber-500" />
+                                    <span
+                                      className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
+                                      title={project.name}
+                                    >
+                                      {project.name}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isConfirming) {
+                                          handleUnarchive(project.id);
+                                        } else {
+                                          setConfirming((prev) => new Set(prev).add(project.id));
+                                        }
+                                      }}
+                                      data-confirm-action="true"
+                                      className={`ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
+                                        isConfirming
+                                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                          : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
+                                      }`}
+                                      aria-label={isConfirming ? 'Confirm unarchive' : 'Unarchive workspace'}
+                                      data-testid="unarchive-workspace"
+                                      data-project-id={project.id}
+                                    >
+                                      {isConfirming ? (
+                                        <CheckIcon className="h-4 w-4" />
+                                      ) : (
+                                        <BlueprintIcon icon="unarchive" className="h-4 w-4" />
+                                      )}
+                                    </button>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-              </>
-            ) : null}
-
-            <div className="mt-auto flex items-start pb-2">
-              <AuthRailStatus railCollapsed={railCollapsed} onRequestExpandRail={toggleRail} />
-            </div>
-          </div>
-        )}
-        renderMain={() => (
-          <div className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-5xl px-6 py-12 space-y-8">
-              <header className="space-y-3">
-                <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-6 py-2 text-base font-semibold text-primary">
-                  <span>{APP_NAME}</span>
-                </div>
-                <div className="space-y-2">
-                  <h1 className="text-3xl font-semibold text-slate-900">Branchable Chat for Deep Research Sessions</h1>
-                  <p className="text-base text-muted">
-                    Spin up a workspace, branch your train of thought and context, and work on a canvas.
-                  </p>
-                </div>
-              </header>
-
-              <CreateProjectForm providerOptions={providerOptions} defaultProvider={defaultProvider} />
+              </section>
             </div>
           </div>
         )}
