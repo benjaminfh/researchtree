@@ -2639,19 +2639,9 @@ export function WorkspaceClient({
     [getScrollFollowThreshold]
   );
 
-  const isMessageListFocused = useCallback(() => {
-    if (typeof document === 'undefined') return false;
-    const container = messageListRef.current;
-    if (!container) return false;
-    const active = document.activeElement;
-    if (!active) return false;
-    return active === container || container.contains(active);
-  }, []);
-
   const disableAutoFollow = useCallback(() => {
-    if (!isMessageListFocused()) return;
     autoFollowEnabledRef.current = false;
-  }, [isMessageListFocused]);
+  }, []);
 
   const combinedNodes = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
