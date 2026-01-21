@@ -43,7 +43,10 @@ export function CreateProjectForm({
     setError(null);
     let pendingTab: Window | null = null;
     if (openInNewTab && typeof window !== 'undefined') {
-      pendingTab = window.open('about:blank', '_blank', 'noopener,noreferrer');
+      pendingTab = window.open('', '_blank');
+      if (pendingTab) {
+        pendingTab.opener = null;
+      }
     }
 
     try {
