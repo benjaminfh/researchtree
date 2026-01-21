@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { cache } from 'react';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { APP_NAME } from '@/src/config/app';
 import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
@@ -38,47 +37,48 @@ type WorkspaceMetadata = {
   project: WorkspaceProject;
 };
 
-const loadWorkspaceBase = cache(
-  async (projectId: string, refFallback: string): Promise<WorkspaceMetadata & { storeMode: WorkspaceData['storeMode'] }> => {
-    const store = getStoreConfig();
+async function loadWorkspaceBase(
+  projectId: string,
+  refFallback: string
+): Promise<WorkspaceMetadata & { storeMode: WorkspaceData['storeMode'] }> {
+  const store = getStoreConfig();
 
-    let project: WorkspaceProject;
+  let project: WorkspaceProject;
 
-    if (store.mode === 'pg') {
-      const user = await requireUser();
-      const { rtGetProjectShadowV1, rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
-      const data = await rtGetProjectShadowV1({ projectId });
-      if (!data) {
-        notFound();
-      }
-
-      const ownerUserId = await rtGetProjectOwnerShadowV1({ projectId });
-      const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
-      const current = await rtGetCurrentRefShadowV2({ projectId, defaultRefName: 'main' }).catch(() => ({
-        refId: null,
-        refName: refFallback
-      }));
-
-      project = {
-        id: data.id,
-        name: data.name,
-        description: data.description ?? undefined,
-        createdAt: data.createdAt,
-        branchName: current.refName,
-        isOwner: ownerUserId === user.id
-      };
-    } else {
-      const { getProject } = await import('@git/projects');
-      const gitProject = await getProject(projectId);
-      if (!gitProject) {
-        notFound();
-      }
-      project = gitProject;
+  if (store.mode === 'pg') {
+    const user = await requireUser();
+    const { rtGetProjectShadowV1, rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
+    const data = await rtGetProjectShadowV1({ projectId });
+    if (!data) {
+      notFound();
     }
 
-    return { project, storeMode: store.mode };
+    const ownerUserId = await rtGetProjectOwnerShadowV1({ projectId });
+    const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+    const current = await rtGetCurrentRefShadowV2({ projectId, defaultRefName: 'main' }).catch(() => ({
+      refId: null,
+      refName: refFallback
+    }));
+
+    project = {
+      id: data.id,
+      name: data.name,
+      description: data.description ?? undefined,
+      createdAt: data.createdAt,
+      branchName: current.refName,
+      isOwner: ownerUserId === user.id
+    };
+  } else {
+    const { getProject } = await import('@git/projects');
+    const gitProject = await getProject(projectId);
+    if (!gitProject) {
+      notFound();
+    }
+    project = gitProject;
   }
-);
+
+  return { project, storeMode: store.mode };
+}
 
 async function loadWorkspaceData(projectId: string): Promise<WorkspaceData> {
   const { project, storeMode } = await loadWorkspaceBase(projectId, 'main');
