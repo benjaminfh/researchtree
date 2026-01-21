@@ -33,6 +33,10 @@ type WorkspaceData = {
   storeMode: ReturnType<typeof getStoreConfig>['mode'];
 };
 
+type WorkspaceMetadata = {
+  project: WorkspaceProject;
+};
+
 async function loadWorkspaceData(projectId: string): Promise<WorkspaceData> {
   const store = getStoreConfig();
 
@@ -78,13 +82,53 @@ async function loadWorkspaceData(projectId: string): Promise<WorkspaceData> {
   return { project, branches, storeMode: store.mode };
 }
 
+async function loadWorkspaceMetadata(projectId: string): Promise<WorkspaceMetadata> {
+  const store = getStoreConfig();
+
+  let project: WorkspaceProject;
+
+  if (store.mode === 'pg') {
+    const user = await requireUser();
+    const { rtGetProjectShadowV1, rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
+    const data = await rtGetProjectShadowV1({ projectId });
+    if (!data) {
+      notFound();
+    }
+
+    const ownerUserId = await rtGetProjectOwnerShadowV1({ projectId });
+    const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
+    const current = await rtGetCurrentRefShadowV2({ projectId, defaultRefName: 'main' }).catch(() => ({
+      refId: null,
+      refName: '[unknown]'
+    }));
+
+    project = {
+      id: data.id,
+      name: data.name,
+      description: data.description ?? undefined,
+      createdAt: data.createdAt,
+      branchName: current.refName,
+      isOwner: ownerUserId === user.id
+    };
+  } else {
+    const { getProject } = await import('@git/projects');
+    const gitProject = await getProject(projectId);
+    if (!gitProject) {
+      notFound();
+    }
+    project = gitProject;
+  }
+
+  return { project };
+}
+
 function formatWorkspaceTitle(project: WorkspaceProject): string {
-  const branchName = project.branchName?.trim() || 'main';
+  const branchName = project.branchName?.trim() || '[unknown]';
   return `${APP_NAME} | ${project.name} | ${branchName}`;
 }
 
 export async function generateMetadata({ params }: ProjectPageProps): Promise<Metadata> {
-  const { project } = await loadWorkspaceData(params.id);
+  const { project } = await loadWorkspaceMetadata(params.id);
 
   return {
     title: formatWorkspaceTitle(project)
