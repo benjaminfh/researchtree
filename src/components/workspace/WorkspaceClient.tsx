@@ -2317,7 +2317,7 @@ export function WorkspaceClient({
         setInsightTab('canvas');
         return;
       }
-      if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'b') {
+      if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'b') {
         const target = event.target as HTMLElement | null;
         if (
           target &&
@@ -3966,7 +3966,7 @@ export function WorkspaceClient({
                     <li>⌘ + Shift + K to collapse or restore all panels.</li>
                     <li>⌘ + click a graph node to jump to its message.</li>
                     <li>← Thred graph · → Canvas.</li>
-                    <li>⌃ + B to toggle the graph/canvas panel.</li>
+                    <li>⌥ + B to toggle the graph/canvas panel.</li>
                     <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
                     <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                   </ul>
