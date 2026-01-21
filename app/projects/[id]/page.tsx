@@ -1,8 +1,10 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
+import { APP_NAME } from '@/src/config/app';
 import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
@@ -16,25 +18,39 @@ interface ProjectPageProps {
   };
 }
 
-export default async function ProjectWorkspace({ params }: ProjectPageProps) {
+type WorkspaceProject = {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  branchName?: string;
+  isOwner?: boolean;
+};
+
+type WorkspaceData = {
+  project: WorkspaceProject;
+  branches: any[];
+  storeMode: ReturnType<typeof getStoreConfig>['mode'];
+};
+
+async function loadWorkspaceData(projectId: string): Promise<WorkspaceData> {
   const store = getStoreConfig();
 
-  let project: { id: string; name: string; description?: string; createdAt: string; branchName?: string; isOwner?: boolean };
+  let project: WorkspaceProject;
   let branches: any[];
 
   if (store.mode === 'pg') {
     const user = await requireUser();
-    const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
-    const data = await rtGetProjectShadowV1({ projectId: params.id });
+    const { rtGetProjectShadowV1, rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
+    const data = await rtGetProjectShadowV1({ projectId });
     if (!data) {
       notFound();
     }
-    const { rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
-    const ownerUserId = await rtGetProjectOwnerShadowV1({ projectId: params.id });
 
+    const ownerUserId = await rtGetProjectOwnerShadowV1({ projectId });
     const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
     const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
-    const current = await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: 'main' }).catch(() => ({
+    const current = await rtGetCurrentRefShadowV2({ projectId, defaultRefName: 'main' }).catch(() => ({
       refId: null,
       refName: 'main'
     }));
@@ -47,17 +63,36 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       branchName: current.refName,
       isOwner: ownerUserId === user.id
     };
-    branches = await rtListRefsShadowV2({ projectId: params.id });
+    branches = await rtListRefsShadowV2({ projectId });
   } else {
     const { getProject } = await import('@git/projects');
     const { listBranches } = await import('@git/branches');
-    const gitProject = await getProject(params.id);
+    const gitProject = await getProject(projectId);
     if (!gitProject) {
       notFound();
     }
     project = gitProject;
-    branches = await listBranches(params.id);
+    branches = await listBranches(projectId);
   }
+
+  return { project, branches, storeMode: store.mode };
+}
+
+function formatWorkspaceTitle(project: WorkspaceProject): string {
+  const branchName = project.branchName?.trim() || 'main';
+  return `${APP_NAME} | ${project.name} | ${branchName}`;
+}
+
+export async function generateMetadata({ params }: ProjectPageProps): Promise<Metadata> {
+  const { project } = await loadWorkspaceData(params.id);
+
+  return {
+    title: formatWorkspaceTitle(project)
+  };
+}
+
+export default async function ProjectWorkspace({ params }: ProjectPageProps) {
+  const { project, branches, storeMode } = await loadWorkspaceData(params.id);
 
   const labelForProvider = (id: LLMProvider) => {
     if (id === 'openai' || id === 'openai_responses') return 'OpenAI';
@@ -80,7 +115,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
         defaultProvider={resolveOpenAIProviderSelection()}
         providerOptions={providerOptions}
         openAIUseResponses={getOpenAIUseResponses()}
-        storeMode={store.mode}
+        storeMode={storeMode}
       />
     </main>
   );
