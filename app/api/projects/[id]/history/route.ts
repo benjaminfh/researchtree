@@ -44,7 +44,7 @@ function applyRefNames(
 }
 
 function isHiddenMessage(node: NodeRecord): boolean {
-  return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
+  return node.type === 'message' && Boolean((node as any).uiHidden);
 }
 
 // History payloads omit rawResponse to keep UI fetches lightweight.

@@ -14,7 +14,7 @@ interface RouteContext {
 const MAX_PER_BRANCH = 500;
 
 function isHiddenMessage(node: NodeRecord): boolean {
-  return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
+  return node.type === 'message' && Boolean((node as any).uiHidden);
 }
 
 function resolveRefName(refId: string | null, refNameById: Map<string, string>, label: string): string {

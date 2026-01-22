@@ -176,6 +176,7 @@ async function appendMergeAckNodes(options: {
       role: 'user',
       content: userContent,
       contentBlocks: userContentBlocks,
+      uiHidden: true,
       timestamp: Date.now(),
       parent: parentId,
       createdOnBranch: targetBranch,
@@ -198,6 +199,7 @@ async function appendMergeAckNodes(options: {
       role: 'assistant',
       content: contentText,
       contentBlocks: assistantContentBlocks,
+      uiHidden: true,
       timestamp: Date.now(),
       parent: userNode.id,
       createdOnBranch: targetBranch,
@@ -224,6 +226,7 @@ async function appendMergeAckNodes(options: {
       role: 'user',
       content: userContent,
       contentBlocks: userContentBlocks,
+      uiHidden: true,
       contextWindow: [],
       tokensUsed: undefined
     });
@@ -232,6 +235,7 @@ async function appendMergeAckNodes(options: {
       role: 'assistant',
       content: contentText,
       contentBlocks: assistantContentBlocks,
+      uiHidden: true,
       modelUsed: modelName,
       responseId: responseId ?? undefined,
       interrupted: false,
