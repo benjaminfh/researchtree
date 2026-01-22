@@ -4448,6 +4448,7 @@ export function WorkspaceClient({
                               selectedNodeId={selectedGraphNodeId}
                               onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
                               onNavigateNode={(nodeId) => void jumpToGraphNode(nodeId)}
+                              onSwitchBranch={(branchName) => void switchBranch(branchName)}
                             />
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
