@@ -3965,6 +3965,7 @@ export function WorkspaceClient({
                     <li>⌘ + K to toggle the composer.</li>
                     <li>⌘ + Shift + K to collapse or restore all panels.</li>
                     <li>⌘ + click a graph node to jump to its message.</li>
+                    <li>⌥ + click a graph node to switch to its created branch.</li>
                     <li>← Thred graph · → Canvas.</li>
                     <li>⌃ + B to toggle the graph/canvas panel.</li>
                     <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
