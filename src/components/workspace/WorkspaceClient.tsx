@@ -226,7 +226,6 @@ const NodeBubble: FC<{
   const [showMergePayload, setShowMergePayload] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
-  const isMerge = node.type === 'merge';
   const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
   const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
@@ -646,6 +645,7 @@ const ChatNodeRow: FC<{
   showBranchSplit
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
+  const isMerge = node.type === 'merge';
   const nodeBranch = node.createdOnBranch ?? currentBranchName;
   const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
   const showOpenAiThinkingNote = nodeProvider === 'openai';
