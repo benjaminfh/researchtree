@@ -3965,6 +3965,7 @@ export function WorkspaceClient({
                     <li>⌘ + K to toggle the composer.</li>
                     <li>⌘ + Shift + K to collapse or restore all panels.</li>
                     <li>⌘ + click a graph node to jump to its message.</li>
+                    <li>⌥ + click a graph node to switch to its parent branch.</li>
                     <li>← Thred graph · → Canvas.</li>
                     <li>⌃ + B to toggle the graph/canvas panel.</li>
                     <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
@@ -4448,6 +4449,7 @@ export function WorkspaceClient({
                               selectedNodeId={selectedGraphNodeId}
                               onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
                               onNavigateNode={(nodeId) => void jumpToGraphNode(nodeId)}
+                              onSwitchBranch={(branchName) => void switchBranch(branchName)}
                             />
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">

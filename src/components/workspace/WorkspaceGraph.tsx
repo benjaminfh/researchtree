@@ -36,11 +36,13 @@ interface WorkspaceGraphProps {
   selectedNodeId?: string | null;
   onSelectNode?: (nodeId: string | null) => void;
   onNavigateNode?: (nodeId: string) => void;
+  onSwitchBranch?: (branchName: string) => void;
 }
 
 interface DotNodeData {
   label: string;
   color: string;
+  originBranchId: string;
   isActive: boolean;
   icon?: 'assistant' | 'user' | 'merge';
   labelTranslateX: number;
@@ -962,6 +964,7 @@ function buildSimpleLayout(
       data: {
         label: node.label,
         color,
+        originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
         labelTranslateX: Math.max(
@@ -1073,6 +1076,7 @@ export function layoutGraph(
       data: {
         label: node.label,
         color,
+        originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
         labelTranslateX: Math.max(0, labelTranslateX)
@@ -1124,7 +1128,8 @@ export function WorkspaceGraph({
   onModeChange,
   selectedNodeId,
   onSelectNode,
-  onNavigateNode
+  onNavigateNode,
+  onSwitchBranch
 }: WorkspaceGraphProps) {
   const graphNodes = useMemo(
     () =>
@@ -1406,6 +1411,10 @@ export function WorkspaceGraph({
               nodesConnectable={false}
               defaultViewport={DEFAULT_VIEWPORT}
               onNodeClick={(event, node) => {
+                if (event?.altKey) {
+                  onSwitchBranch?.(node.data.originBranchId);
+                  return;
+                }
                 if (event?.metaKey) {
                   onNavigateNode?.(node.id);
                   return;
