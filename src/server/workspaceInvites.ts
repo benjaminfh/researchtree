@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
 import { getRequestOrigin } from '@/src/server/requestOrigin';
+import { approveEmail } from '@/src/server/waitlist';
 
 function buildProjectLink(projectId: string): string | undefined {
   const origin = getRequestOrigin();
@@ -27,6 +28,10 @@ export async function sendWorkspaceInviteEmail(input: {
   inviterEmail: string | null;
   isExistingUser: boolean;
 }): Promise<void> {
+  if (!input.isExistingUser) {
+    await approveEmail(input.recipientEmail, input.inviterEmail);
+  }
+
   const inviteLink = input.isExistingUser
     ? buildProjectLink(input.projectId)
     : buildRegistrationLink(input.projectId, input.recipientEmail);
