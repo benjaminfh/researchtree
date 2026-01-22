@@ -2915,7 +2915,11 @@ export function WorkspaceClient({
       const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
       if (el instanceof HTMLElement) {
         if (pendingScrollTo.block === 'start') {
-          container.scrollTop = el.offsetTop;
+          const containerRect = container.getBoundingClientRect();
+          const elRect = el.getBoundingClientRect();
+          const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
+          const extraGap = 8;
+          container.scrollTop += elRect.top - containerRect.top - paddingTop - extraGap;
         } else if (typeof el.scrollIntoView === 'function') {
           el.scrollIntoView({ block: pendingScrollTo.block ?? 'center' });
         }
