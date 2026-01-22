@@ -69,16 +69,7 @@ export async function sendWorkspaceInviteEmailViaAuth(input: {
     throw new Error(inviteError.message);
   }
 
-  const supabase = createSupabaseServerClient();
-  const { error: otpError } = await supabase.auth.signInWithOtp({
-    email: input.recipientEmail,
-    options: {
-      shouldCreateUser: false,
-      emailRedirectTo: input.emailRedirectTo,
-      data: input.payload
-    }
-  });
-  if (otpError) {
-    throw new Error(otpError.message);
-  }
+  throw new Error(
+    'Invitee is already registered; avoid server-side OTP since PKCE verifiers are tied to the inviter session.'
+  );
 }
