@@ -6,6 +6,15 @@ import { withProjectLockAndRefLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectEditor } from '@/src/server/authz';
+import { buildChatContext } from '@/src/server/context';
+import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
+import { streamAssistantCompletion, type LLMProvider } from '@/src/server/llm';
+import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
+import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
+import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
+import { buildTextBlock } from '@/src/server/llmContentBlocks';
+import { toJsonValue } from '@/src/server/json';
+import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared/llmCapabilities';
 import type { NodeRecord } from '@git/types';
 import { INITIAL_BRANCH } from '@git/constants';
 import { v4 as uuidv4 } from 'uuid';
@@ -68,6 +77,171 @@ function buildLineDiff(base: string, incoming: string): string {
     j += 1;
   }
   return out.join('\n');
+}
+
+const MERGE_ACK_INSTRUCTION = 'Task: acknowledge merged content by replying "Merge received" but take no other action.';
+
+function buildMergeAckMessage(mergeNode: NodeRecord): string {
+  const summary = mergeNode.type === 'merge' ? mergeNode.mergeSummary ?? '' : '';
+  const payload = mergeNode.type === 'merge' ? mergeNode.mergedAssistantContent ?? '' : '';
+  const diff = mergeNode.type === 'merge' ? mergeNode.canvasDiff ?? '' : '';
+  const header = mergeNode.type === 'merge' ? `Merged from ${mergeNode.mergeFrom}` : 'Merged content';
+  const sections = [
+    header,
+    `Merge summary:\n${summary}`,
+    `Merged payload:\n${payload}`,
+    `Canvas diff:\n${diff}`,
+    MERGE_ACK_INSTRUCTION
+  ];
+  return sections.join('\n\n');
+}
+
+async function resolveTargetConfig(projectId: string, targetBranch: string): Promise<{ provider: LLMProvider; model: string }> {
+  const branchConfigMap = await getBranchConfigMap(projectId);
+  return branchConfigMap[targetBranch] ?? resolveBranchConfig();
+}
+
+async function appendMergeAckNodes(options: {
+  projectId: string;
+  targetBranch: string;
+  targetRefId?: string | null;
+  mergeNode: NodeRecord;
+}) {
+  const { projectId, targetBranch, targetRefId, mergeNode } = options;
+  const targetConfig = await resolveTargetConfig(projectId, targetBranch);
+  const provider = targetConfig.provider;
+  const modelName = targetConfig.model;
+  const apiKey = await requireUserApiKeyForProvider(provider);
+  const thinking = getDefaultThinkingSetting(provider, modelName);
+  const thinkingValidation = validateThinkingSetting(provider, modelName, thinking);
+  if (!thinkingValidation.ok) {
+    throw new Error(thinkingValidation.message ?? 'Invalid thinking setting');
+  }
+
+  const tokenLimit = await getProviderTokenLimit(provider, modelName);
+  const systemContext = await buildChatContext(projectId, { tokenLimit, ref: targetBranch, limit: 1 });
+  // TODO(#388): cap merge canvas diff size for auto-ack to avoid oversized prompts.
+  const userContent = buildMergeAckMessage(mergeNode);
+  const messages = [
+    { role: 'system' as const, content: systemContext.systemPrompt },
+    { role: 'user' as const, content: userContent }
+  ];
+  const previousResponseId =
+    provider === 'openai_responses'
+      ? await getPreviousResponseId(projectId, { id: targetRefId, name: targetBranch }).catch(() => null)
+      : null;
+
+  let assistantText = '';
+  let rawResponse: unknown = null;
+  let responseId: string | null = null;
+  for await (const chunk of streamAssistantCompletion({
+    messages,
+    provider,
+    model: modelName,
+    thinking,
+    webSearch: false,
+    apiKey,
+    previousResponseId
+  })) {
+    if (chunk.type === 'raw_response') {
+      rawResponse = chunk.payload ?? null;
+      if (rawResponse && typeof rawResponse === 'object' && (rawResponse as any).responseId) {
+        responseId = String((rawResponse as any).responseId);
+      }
+      continue;
+    }
+    if (chunk.type !== 'text') continue;
+    if (!chunk.content) continue;
+    assistantText += chunk.content;
+  }
+
+  const contentText = assistantText.trim().length > 0 ? assistantText : 'Merge received';
+  const userContentBlocks = buildTextBlock(userContent);
+  const assistantContentBlocks = buildTextBlock(contentText);
+  const rawResponseForStorage = toJsonValue(rawResponse);
+
+  const store = getStoreConfig();
+  if (store.mode === 'pg') {
+    if (!targetRefId) {
+      throw new Error('Target ref id is required for merge acknowledgement');
+    }
+    const { rtGetHistoryShadowV2 } = await import('@/src/store/pg/reads');
+    const { rtAppendNodeToRefShadowV2 } = await import('@/src/store/pg/nodes');
+    const last = await rtGetHistoryShadowV2({ projectId, refId: targetRefId, limit: 1 }).catch(() => []);
+    const lastNode = last[0]?.nodeJson as NodeRecord | undefined;
+    const parentId = lastNode?.id ? String(lastNode.id) : null;
+    const userNode = {
+      id: uuidv4(),
+      type: 'message',
+      role: 'user',
+      content: userContent,
+      contentBlocks: userContentBlocks,
+      timestamp: Date.now(),
+      parent: parentId,
+      createdOnBranch: targetBranch,
+      contextWindow: [],
+      tokensUsed: undefined
+    };
+    await rtAppendNodeToRefShadowV2({
+      projectId,
+      refId: targetRefId,
+      kind: userNode.type,
+      role: userNode.role,
+      contentJson: userNode,
+      nodeId: userNode.id,
+      commitMessage: 'merge_ack_user',
+      attachDraft: false
+    });
+    const assistantNode = {
+      id: uuidv4(),
+      type: 'message',
+      role: 'assistant',
+      content: contentText,
+      contentBlocks: assistantContentBlocks,
+      timestamp: Date.now(),
+      parent: userNode.id,
+      createdOnBranch: targetBranch,
+      modelUsed: modelName,
+      responseId: responseId ?? undefined,
+      interrupted: false,
+      rawResponse: rawResponseForStorage
+    };
+    await rtAppendNodeToRefShadowV2({
+      projectId,
+      refId: targetRefId,
+      kind: assistantNode.type,
+      role: assistantNode.role,
+      contentJson: assistantNode,
+      nodeId: assistantNode.id,
+      commitMessage: 'merge_ack_assistant',
+      attachDraft: false,
+      rawResponse: rawResponseForStorage
+    });
+  } else {
+    const { appendNodeToRefNoCheckout } = await import('@git/nodes');
+    await appendNodeToRefNoCheckout(projectId, targetBranch, {
+      type: 'message',
+      role: 'user',
+      content: userContent,
+      contentBlocks: userContentBlocks,
+      contextWindow: [],
+      tokensUsed: undefined
+    });
+    await appendNodeToRefNoCheckout(projectId, targetBranch, {
+      type: 'message',
+      role: 'assistant',
+      content: contentText,
+      contentBlocks: assistantContentBlocks,
+      modelUsed: modelName,
+      responseId: responseId ?? undefined,
+      interrupted: false,
+      rawResponse: rawResponseForStorage
+    });
+  }
+
+  if (provider === 'openai_responses' && responseId) {
+    await setPreviousResponseId(projectId, { id: targetRefId, name: targetBranch }, responseId);
+  }
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
@@ -184,6 +358,18 @@ export async function POST(request: Request, { params }: RouteContext) {
             commitMessage: 'merge'
           });
 
+          try {
+            await appendMergeAckNodes({
+              projectId: params.id,
+              targetBranch: targetName,
+              targetRefId: targetBranchInfo.id,
+              mergeNode
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error('[merge] auto-ack failed', { projectId: params.id, targetBranch: targetName, message });
+          }
+
           return Response.json({ mergeNode });
         }
 
@@ -199,6 +385,17 @@ export async function POST(request: Request, { params }: RouteContext) {
           targetBranch: resolvedTargetBranch,
           sourceAssistantNodeId: sourceAssistantNodeId?.trim() || undefined
         });
+
+        try {
+          await appendMergeAckNodes({
+            projectId: project.id,
+            targetBranch: resolvedTargetBranch,
+            mergeNode
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error('[merge] auto-ack failed', { projectId: project.id, targetBranch: resolvedTargetBranch, message });
+        }
 
         return Response.json({ mergeNode });
       } catch (err) {

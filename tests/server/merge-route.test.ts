@@ -11,7 +11,14 @@ const mocks = vi.hoisted(() => ({
   rtListRefsShadowV2: vi.fn(),
   rtGetHistoryShadowV2: vi.fn(),
   rtGetCanvasShadowV2: vi.fn(),
-  rtAcquireRefLeaseShadowV1: vi.fn()
+  rtAcquireRefLeaseShadowV1: vi.fn(),
+  rtAppendNodeToRefShadowV2: vi.fn(),
+  appendNodeToRefNoCheckout: vi.fn(),
+  buildChatContext: vi.fn(),
+  getBranchConfigMap: vi.fn(),
+  requireUserApiKeyForProvider: vi.fn(),
+  streamAssistantCompletion: vi.fn(),
+  getProviderTokenLimit: vi.fn()
 }));
 const authzMocks = vi.hoisted(() => ({
   requireProjectEditor: vi.fn()
@@ -29,6 +36,10 @@ vi.mock('@git/utils', () => ({
   getCurrentBranchName: mocks.getCurrentBranchName
 }));
 
+vi.mock('@git/nodes', () => ({
+  appendNodeToRefNoCheckout: mocks.appendNodeToRefNoCheckout
+}));
+
 vi.mock('@/src/store/pg/merge', () => ({
   rtMergeOursShadowV2: mocks.rtMergeOursShadowV2
 }));
@@ -39,8 +50,33 @@ vi.mock('@/src/store/pg/reads', () => ({
   rtGetCanvasShadowV2: mocks.rtGetCanvasShadowV2
 }));
 
+vi.mock('@/src/store/pg/nodes', () => ({
+  rtAppendNodeToRefShadowV2: mocks.rtAppendNodeToRefShadowV2
+}));
+
 vi.mock('@/src/store/pg/leases', () => ({
   rtAcquireRefLeaseShadowV1: mocks.rtAcquireRefLeaseShadowV1
+}));
+
+vi.mock('@/src/server/context', () => ({
+  buildChatContext: mocks.buildChatContext
+}));
+
+vi.mock('@/src/server/branchConfig', () => ({
+  getBranchConfigMap: mocks.getBranchConfigMap,
+  resolveBranchConfig: () => ({ provider: 'openai', model: 'gpt-5.2' })
+}));
+
+vi.mock('@/src/server/llm', () => ({
+  streamAssistantCompletion: mocks.streamAssistantCompletion
+}));
+
+vi.mock('@/src/server/providerCapabilities', () => ({
+  getProviderTokenLimit: mocks.getProviderTokenLimit
+}));
+
+vi.mock('@/src/server/llmUserKeys', () => ({
+  requireUserApiKeyForProvider: mocks.requireUserApiKeyForProvider
 }));
 
 vi.mock('@/src/server/authz', () => ({
@@ -62,8 +98,25 @@ describe('/api/projects/[id]/merge', () => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
     Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
-    mocks.mergeBranch.mockResolvedValue({ id: 'merge-1', type: 'merge' });
+    mocks.mergeBranch.mockResolvedValue({
+      id: 'merge-1',
+      type: 'merge',
+      mergeFrom: 'feature',
+      mergeSummary: 'summary',
+      mergedAssistantContent: 'payload',
+      canvasDiff: 'diff'
+    });
     mocks.getCurrentBranchName.mockResolvedValue('main');
+    mocks.buildChatContext.mockResolvedValue({ systemPrompt: 'system', messages: [] });
+    mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
+    mocks.requireUserApiKeyForProvider.mockResolvedValue('key');
+    mocks.getProviderTokenLimit.mockResolvedValue(8000);
+    mocks.streamAssistantCompletion.mockReturnValue(
+      (async function* () {
+        yield { type: 'text', content: 'Merge received' };
+        yield { type: 'raw_response', content: '', payload: { responseId: 'resp-1' } };
+      })()
+    );
     process.env.RT_STORE = 'git';
   });
 
