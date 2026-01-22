@@ -14,13 +14,7 @@ import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import {
-  AUTO_FOLLOW_RESUME_DELAY_MS,
-  CHAT_COMPOSER_DEFAULT_LINES,
-  storageKey,
-  TRUNK_LABEL,
-  USER_MESSAGE_MAX_LINES
-} from '@/src/config/app';
+import { CHAT_COMPOSER_DEFAULT_LINES, storageKey, TRUNK_LABEL, USER_MESSAGE_MAX_LINES } from '@/src/config/app';
 import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 import {
   deriveTextFromBlocks,
@@ -1588,7 +1582,7 @@ export function WorkspaceClient({
       pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
-    shouldScrollToBottomRef.current = true;
+    shouldScrollToBottomRef.current = false;
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
@@ -1642,7 +1636,7 @@ export function WorkspaceClient({
     if (!question.trim() || state.isStreaming) return;
     if (!ensureLeaseSessionReady()) return;
     const optimisticContent = buildQuestionMessage(question, highlight);
-    shouldScrollToBottomRef.current = true;
+    shouldScrollToBottomRef.current = false;
     questionDraftRef.current = optimisticContent;
     setStreamBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
@@ -1723,7 +1717,7 @@ export function WorkspaceClient({
         return;
       }
     }
-    shouldScrollToBottomRef.current = true;
+    shouldScrollToBottomRef.current = false;
     questionDraftRef.current = content;
     setStreamBlocks([]);
     hasReceivedAssistantChunkRef.current = false;
@@ -2615,14 +2609,15 @@ export function WorkspaceClient({
   const ignoreNextScrollRef = useRef(false);
   const userInterruptedScrollRef = useRef(false);
   const wasStreamingRef = useRef(false);
-  const resumeFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollFollowThreshold = 72;
   const previousVisibleCountRef = useRef(0);
   const previousVisibleBranchRef = useRef<string | null>(null);
+  const lastOptimisticTimestampRef = useRef<number | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const scrollToBottom = useCallback(() => {
     const el = messageListRef.current;
@@ -2632,6 +2627,27 @@ export function WorkspaceClient({
     ignoreNextScrollRef.current = true;
     el.scrollTop = el.scrollHeight;
   }, []);
+
+  const escapeCssSelector = useCallback((value: string) => {
+    if (typeof (globalThis as any).CSS?.escape === 'function') {
+      return (globalThis as any).CSS.escape(value);
+    }
+    return value.replace(/["\\]/g, '\\$&');
+  }, []);
+
+  const scrollNodeToTop = useCallback(
+    (nodeId: string) => {
+      const container = messageListRef.current;
+      if (!container) return;
+      requestAnimationFrame(() => {
+        const el = container.querySelector(`[data-node-id="${escapeCssSelector(nodeId)}"]`);
+        if (el instanceof HTMLElement) {
+          el.scrollIntoView({ block: 'start' });
+        }
+      });
+    },
+    [escapeCssSelector]
+  );
 
   const combinedNodes = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
@@ -2743,6 +2759,7 @@ export function WorkspaceClient({
       previousVisibleCountRef.current = visibleNodes.length;
       return;
     }
+    if (state.isStreaming) return;
     if (visibleNodes.length > previousVisibleCountRef.current) {
       const el = messageListRef.current;
       if (el && shouldScrollToBottomRef.current && !userInterruptedScrollRef.current) {
@@ -2752,7 +2769,7 @@ export function WorkspaceClient({
       }
     }
     previousVisibleCountRef.current = visibleNodes.length;
-  }, [visibleNodes.length, branchName]);
+  }, [visibleNodes.length, branchName, scrollToBottom, state.isStreaming]);
   const lastUpdatedTimestamp = useMemo(() => {
     const historyLatest = visibleNodes[visibleNodes.length - 1]?.timestamp ?? null;
     const artefactUpdated = artefactMeta?.lastUpdatedAt ?? null;
@@ -2910,27 +2927,11 @@ export function WorkspaceClient({
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (resumeFollowTimeoutRef.current) {
-        clearTimeout(resumeFollowTimeoutRef.current);
-        resumeFollowTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!pendingScrollTo) return;
     if (branchName !== pendingScrollTo.targetBranch) return;
     if (!nodes.some((node) => node.id === pendingScrollTo.nodeId)) return;
     const container = messageListRef.current;
     if (!container) return;
-
-    const escapeSelector = (value: string) => {
-      if (typeof (globalThis as any).CSS?.escape === 'function') {
-        return (globalThis as any).CSS.escape(value);
-      }
-      return value.replace(/["\\]/g, '\\$&');
-    };
 
     if (hideShared && sharedNodes.some((node) => node.id === pendingScrollTo.nodeId)) {
       // Ensure the target node is actually rendered before attempting to scroll.
@@ -2939,7 +2940,7 @@ export function WorkspaceClient({
     }
 
     requestAnimationFrame(() => {
-      const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
+      const el = container.querySelector(`[data-node-id="${escapeCssSelector(pendingScrollTo.nodeId)}"]`);
       if (el instanceof HTMLElement) {
         el.scrollIntoView({ block: 'center' });
       }
@@ -2952,7 +2953,7 @@ export function WorkspaceClient({
         setHighlightedNodeId(null);
       }, 2500);
     });
-  }, [pendingScrollTo, branchName, nodes, hideShared, sharedNodes]);
+  }, [pendingScrollTo, branchName, nodes, hideShared, sharedNodes, escapeCssSelector]);
 
   useEffect(() => {
     shouldScrollToBottomRef.current = true;
@@ -2961,6 +2962,7 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (!wasStreamingRef.current && state.isStreaming) {
+      shouldScrollToBottomRef.current = false;
       userInterruptedScrollRef.current = false;
     }
     wasStreamingRef.current = state.isStreaming;
@@ -2970,11 +2972,25 @@ export function WorkspaceClient({
     if (!shouldScrollToBottomRef.current) return;
     if (userInterruptedScrollRef.current) return;
     if (isLoading) return;
+    if (state.isStreaming) return;
     // Ensure we scroll after the DOM has painted with the final node list.
     requestAnimationFrame(() => {
       scrollToBottom();
     });
-  }, [branchName, isLoading, visibleNodes.length, streamPreview]);
+  }, [branchName, isLoading, visibleNodes.length, streamPreview, scrollToBottom, state.isStreaming]);
+
+  useEffect(() => {
+    if (!state.isStreaming) {
+      setShowScrollToBottom(false);
+      return;
+    }
+    requestAnimationFrame(() => {
+      const el = messageListRef.current;
+      if (!el) return;
+      const isOverflowing = el.scrollHeight > el.clientHeight + 1;
+      setShowScrollToBottom(isOverflowing);
+    });
+  }, [state.isStreaming, streamPreview, streamBlocks.length, visibleNodes.length]);
 
   const handleMessageListScroll = () => {
     const el = messageListRef.current;
@@ -2983,28 +2999,26 @@ export function WorkspaceClient({
       ignoreNextScrollRef.current = false;
       return;
     }
+    const isOverflowing = el.scrollHeight > el.clientHeight + 1;
+    if (state.isStreaming) {
+      setShowScrollToBottom(isOverflowing);
+      return;
+    }
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     shouldScrollToBottomRef.current = distance <= scrollFollowThreshold;
-    if (!state.isStreaming) {
-      if (distance <= scrollFollowThreshold) {
-        userInterruptedScrollRef.current = false;
-      }
-      return;
-    }
-    if (distance > scrollFollowThreshold) {
-      if (resumeFollowTimeoutRef.current) {
-        clearTimeout(resumeFollowTimeoutRef.current);
-        resumeFollowTimeoutRef.current = null;
-      }
-      userInterruptedScrollRef.current = true;
-      return;
-    }
-    if (resumeFollowTimeoutRef.current) return;
-    resumeFollowTimeoutRef.current = setTimeout(() => {
+    if (distance <= scrollFollowThreshold) {
       userInterruptedScrollRef.current = false;
-      resumeFollowTimeoutRef.current = null;
-    }, AUTO_FOLLOW_RESUME_DELAY_MS);
+    }
   };
+
+  useEffect(() => {
+    if (!optimisticUserNode) return;
+    if (lastOptimisticTimestampRef.current === optimisticUserNode.timestamp) return;
+    lastOptimisticTimestampRef.current = optimisticUserNode.timestamp;
+    shouldScrollToBottomRef.current = false;
+    userInterruptedScrollRef.current = false;
+    scrollNodeToTop(optimisticUserNode.id);
+  }, [optimisticUserNode, scrollNodeToTop]);
 
   const switchBranch = async (name: string) => {
     if (name === branchName) return;
@@ -4150,6 +4164,18 @@ export function WorkspaceClient({
                     </div>
                   )}
                 </div>
+
+                {showScrollToBottom ? (
+                  <button
+                    type="button"
+                    onClick={scrollToBottom}
+                    className="absolute bottom-4 right-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-700 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    aria-label="Go to bottom"
+                    data-testid="scroll-to-bottom-button"
+                  >
+                    <BlueprintIcon icon="arrow-down" className="h-4 w-4" />
+                  </button>
+                ) : null}
 
                 {hideShared && branchNodes.length === 0 && sharedCount > 0 ? (
                   <p className="text-sm italic text-muted">No new messages on this branch yet.</p>
