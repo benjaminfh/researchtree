@@ -74,19 +74,19 @@ export async function POST(request: Request, { params }: RouteContext) {
       role: parsed.data.role
     });
 
-    const project = await rtGetProjectShadowV1({ projectId: params.id });
-    if (project) {
-      const { sendWorkspaceInviteEmail } = await import('@/src/server/workspaceInvites');
-      try {
+    try {
+      const project = await rtGetProjectShadowV1({ projectId: params.id });
+      if (project) {
+        const { sendWorkspaceInviteEmail } = await import('@/src/server/workspaceInvites');
         await sendWorkspaceInviteEmail({
           projectId: project.id,
           projectName: project.name,
           recipientEmail: parsed.data.email,
           inviterEmail: user.email ?? null
         });
-      } catch (emailError) {
-        console.error('Workspace invite email failed', emailError);
       }
+    } catch (emailError) {
+      console.error('Workspace invite email failed', emailError);
     }
 
     const data = await loadMembers(params.id);
