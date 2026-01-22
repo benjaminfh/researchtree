@@ -2612,7 +2612,7 @@ export function WorkspaceClient({
   const scrollFollowThreshold = 72;
   const previousVisibleCountRef = useRef(0);
   const previousVisibleBranchRef = useRef<string | null>(null);
-  const lastOptimisticTimestampRef = useRef<number | null>(null);
+  const lastOptimisticScrollKeyRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
@@ -3013,12 +3013,14 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (!optimisticUserNode) return;
-    if (lastOptimisticTimestampRef.current === optimisticUserNode.timestamp) return;
-    lastOptimisticTimestampRef.current = optimisticUserNode.timestamp;
+    if (optimisticUserNode.createdOnBranch && optimisticUserNode.createdOnBranch !== branchName) return;
+    const scrollKey = `${optimisticUserNode.timestamp}:${branchName}`;
+    if (lastOptimisticScrollKeyRef.current === scrollKey) return;
+    lastOptimisticScrollKeyRef.current = scrollKey;
     shouldScrollToBottomRef.current = false;
     userInterruptedScrollRef.current = false;
     scrollNodeToTop(optimisticUserNode.id);
-  }, [optimisticUserNode, scrollNodeToTop]);
+  }, [optimisticUserNode, branchName, visibleNodes.length, scrollNodeToTop]);
 
   const switchBranch = async (name: string) => {
     if (name === branchName) return;
