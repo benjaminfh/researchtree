@@ -2914,7 +2914,9 @@ export function WorkspaceClient({
     requestAnimationFrame(() => {
       const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
       if (el instanceof HTMLElement) {
-        if (typeof el.scrollIntoView === 'function') {
+        if (pendingScrollTo.block === 'start') {
+          container.scrollTop = el.offsetTop;
+        } else if (typeof el.scrollIntoView === 'function') {
           el.scrollIntoView({ block: pendingScrollTo.block ?? 'center' });
         }
       }
@@ -2933,13 +2935,14 @@ export function WorkspaceClient({
   useEffect(() => {
     if (isLoading) return;
     if (!messageListRef.current) return;
+    if (pendingScrollTo?.targetBranch === branchName && pendingScrollTo.block === 'start') return;
     if (autoScrollBranchRef.current === branchName) return;
     autoScrollBranchRef.current = branchName;
     requestAnimationFrame(() => {
       scrollToBottom();
       setIsNearBottom(true);
     });
-  }, [branchName, isLoading, scrollToBottom]);
+  }, [branchName, isLoading, pendingScrollTo, scrollToBottom]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -4104,7 +4107,7 @@ export function WorkspaceClient({
                       scrollToBottom();
                       updateNearBottom();
                     }}
-                    className="absolute bottom-6 right-6 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    className="absolute bottom-[calc(1rem+44px+12px)] right-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                     aria-label="Jump to bottom"
                   >
                     <BlueprintIcon icon="chevron-down" className="h-4 w-4" />
