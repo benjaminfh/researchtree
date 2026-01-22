@@ -208,6 +208,7 @@ const NodeBubble: FC<{
   showOpenAiThinkingNote = false
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
+  const isMerge = node.type === 'merge';
   const isAssistantPending = node.type === 'message' && node.role === 'assistant' && node.id === 'assistant-pending';
   const isTransientNode = node.id === 'streaming' || node.id === 'assistant-pending' || node.id === 'optimistic-user';
   const messageText = getNodeText(node);
@@ -229,13 +230,16 @@ const NodeBubble: FC<{
   const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
   const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
   const showThinkingNote = isAssistant && showOpenAiThinkingNote && !hasThinking && !thinkingInProgress;
-  const containerWidth = isAssistant ? 'w-full' : '';
-  const width = isUser
-    ? 'min-w-[14rem] max-w-[82%]'
-    : isAssistant
-      ? 'w-full max-w-[85%] md:max-w-[calc(100%-14rem)]'
-      : 'max-w-[82%]';
-  const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
+  const containerWidth = isMerge || isAssistant ? 'w-full' : '';
+  const width = isMerge
+    ? 'w-full max-w-[80%]'
+    : isUser
+      ? 'min-w-[14rem] max-w-[82%]'
+      : isAssistant
+        ? 'w-full max-w-[85%] md:max-w-[calc(100%-14rem)]'
+        : 'max-w-[82%]';
+  const base = `relative ${width} overflow-hidden rounded-2xl border px-4 py-3 transition`;
+  const mergeChrome = isMerge ? 'border-emerald-200/80 pb-6 pr-10' : 'border-transparent';
   const palette = muted
     ? isUser
       ? 'bg-slate-100 text-slate-900'
@@ -243,7 +247,7 @@ const NodeBubble: FC<{
     : isUser
     ? 'bg-slate-50 text-slate-900'
     : 'bg-white text-slate-900';
-  const align = isUser ? 'ml-auto items-end' : 'mr-auto items-start';
+  const align = isMerge ? 'mx-auto items-center' : isUser ? 'ml-auto items-end' : 'mr-auto items-start';
 
   useEffect(() => {
     return () => {
@@ -321,7 +325,16 @@ const NodeBubble: FC<{
 
   return (
     <article className={`flex flex-col gap-1 ${align} ${containerWidth}`}>
-      <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
+      <div
+        className={`${base} ${mergeChrome} ${palette} ${
+          highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''
+        }`}
+      >
+        {isMerge ? (
+          <span className="pointer-events-none absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600">
+            <BlueprintIcon icon="git-merge" className="h-3.5 w-3.5" aria-hidden />
+          </span>
+        ) : null}
         {showThinkingBox ? (
           <div
             className={`mb-3 w-full rounded-xl border border-slate-200/70 bg-slate-50 ${
@@ -632,6 +645,7 @@ const ChatNodeRow: FC<{
   showBranchSplit
 }) => {
   const isUser = node.type === 'message' && node.role === 'user';
+  const isMerge = node.type === 'merge';
   const nodeBranch = node.createdOnBranch ?? currentBranchName;
   const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
   const showOpenAiThinkingNote = nodeProvider === 'openai';
@@ -647,7 +661,9 @@ const ChatNodeRow: FC<{
         />
       </div>
       <div
-        className={`min-w-0 py-2 ${messageInsetClassName ?? ''} ${isUser ? 'flex justify-end' : 'flex justify-start'}`}
+        className={`min-w-0 py-2 ${messageInsetClassName ?? ''} ${
+          isMerge ? 'flex justify-center' : isUser ? 'flex justify-end' : 'flex justify-start'
+        }`}
       >
         <div className="flex w-full flex-col">
           <NodeBubble

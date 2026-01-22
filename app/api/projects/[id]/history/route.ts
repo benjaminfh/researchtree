@@ -44,7 +44,54 @@ function applyRefNames(
 }
 
 function isHiddenMessage(node: NodeRecord): boolean {
-  return node.type === 'message' && node.role === 'user' && Boolean((node as any).uiHidden);
+  return node.type === 'message' && Boolean((node as any).uiHidden);
+}
+
+const MERGE_ACK_INSTRUCTION = 'Task: acknowledge merged content by replying "Merge received" but take no other action.';
+
+function isMergeAckUserMessage(node: NodeRecord): boolean {
+  if (node.type !== 'message' || node.role !== 'user') return false;
+  const content = (node.content ?? '').trim();
+  return (
+    content.startsWith('Merged from ') &&
+    content.includes('Merge summary:') &&
+    content.includes('Merged payload:') &&
+    content.includes('Canvas diff:') &&
+    content.includes(MERGE_ACK_INSTRUCTION)
+  );
+}
+
+function isMergeAckAssistantMessage(node: NodeRecord): boolean {
+  if (node.type !== 'message' || node.role !== 'assistant') return false;
+  return (node.content ?? '').trim() === 'Merge received';
+}
+
+function filterVisibleNodes(nodes: NodeRecord[]): NodeRecord[] {
+  const filtered: NodeRecord[] = [];
+  let skipNextMergeAckAssistant = false;
+
+  for (const node of nodes) {
+    if (node.type === 'state') {
+      continue;
+    }
+    if (isHiddenMessage(node)) {
+      continue;
+    }
+    if (isMergeAckUserMessage(node)) {
+      skipNextMergeAckAssistant = true;
+      continue;
+    }
+    if (skipNextMergeAckAssistant && isMergeAckAssistantMessage(node)) {
+      skipNextMergeAckAssistant = false;
+      continue;
+    }
+    if (node.type === 'message') {
+      skipNextMergeAckAssistant = false;
+    }
+    filtered.push(node);
+  }
+
+  return filtered;
 }
 
 // History payloads omit rawResponse to keep UI fetches lightweight.
@@ -76,8 +123,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       const branches = await rtListRefsShadowV2({ projectId: params.id });
       const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
       const pgNodes = applyRefNames(rows.filter((r) => Boolean(r.nodeJson)) as any, refNameById);
-      const nonStateNodes = pgNodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
-      const sanitizedNodes = nonStateNodes.map(stripRawResponse);
+      const sanitizedNodes = filterVisibleNodes(pgNodes).map(stripRawResponse);
       return Response.json({ nodes: sanitizedNodes });
     }
 
@@ -91,14 +137,11 @@ export async function GET(request: Request, { params }: RouteContext) {
     const refName = refParam?.trim() || INITIAL_BRANCH;
     const nodes = await readNodesFromRef(project.id, refName);
 
-    // Canvas saves create `state` nodes in the git backend; those are not user-facing chat turns.
-    // Keep them out of the history API response to avoid flooding the chat UI.
-    const nonStateNodes = nodes.filter((node) => node.type !== 'state' && !isHiddenMessage(node));
-
-    let result = nonStateNodes;
+    const visibleNodes = filterVisibleNodes(nodes);
+    let result = visibleNodes;
     if (limitParam) {
       if (parsedLimit && parsedLimit > 0) {
-        result = nonStateNodes.slice(-parsedLimit);
+        result = visibleNodes.slice(-parsedLimit);
       }
     }
 

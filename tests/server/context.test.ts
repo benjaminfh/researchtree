@@ -97,7 +97,7 @@ describe('buildChatContext', () => {
     expect(context.messages.filter((msg) => msg.role === 'user').length).toBeLessThan(3);
   });
 
-  it('includes merge summary and merged assistant payload', async () => {
+  it('ignores merge nodes in chat context', async () => {
     mocks.getNodes.mockResolvedValue([
       {
         id: 'a',
@@ -125,32 +125,9 @@ describe('buildChatContext', () => {
 
     const context = await buildChatContext('project-1');
 
-    expect(context.messages.some((msg) => msg.role === 'assistant' && flattenMessageContent(msg.content).includes('Merge summary from feature'))).toBe(true);
-    expect(context.messages.some((msg) => msg.role === 'assistant' && flattenMessageContent(msg.content).includes('Final payload text'))).toBe(true);
+    expect(context.messages.some((msg) => flattenMessageContent(msg.content).includes('Merge summary from feature'))).toBe(false);
+    expect(context.messages.some((msg) => flattenMessageContent(msg.content).includes('Final payload text'))).toBe(false);
     expect(context.messages.some((msg) => flattenMessageContent(msg.content).includes('+diff text'))).toBe(false);
-  });
-
-  it('can attribute merge summary as user message via MERGE_USER', async () => {
-    process.env.MERGE_USER = 'user';
-    mocks.getNodes.mockResolvedValue([
-      {
-        id: 'm',
-        type: 'merge',
-        mergeFrom: 'feature',
-        mergeSummary: 'Bring back final answer',
-        sourceCommit: 'abc',
-        sourceNodeIds: ['x'],
-        mergedAssistantNodeId: 'x',
-        mergedAssistantContent: 'Final payload text',
-        canvasDiff: '+diff text',
-        timestamp: Date.now(),
-        parent: null
-      }
-    ]);
-    mocks.getArtefact.mockResolvedValue('Artefact');
-
-    const context = await buildChatContext('project-1');
-    expect(context.messages.some((msg) => msg.role === 'user' && flattenMessageContent(msg.content).includes('Merge summary from feature'))).toBe(true);
   });
 
   it('includes pinned canvas diffs only when they are persisted as assistant messages', async () => {
