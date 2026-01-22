@@ -3002,8 +3002,15 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (!wasStreamingRef.current && state.isStreaming) {
-      userInterruptedScrollRef.current = false;
-      shouldScrollToBottomRef.current = true;
+      const container = messageListRef.current;
+      if (container) {
+        const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+        const withinThreshold = distance <= scrollFollowThreshold;
+        if (withinThreshold) {
+          userInterruptedScrollRef.current = false;
+          shouldScrollToBottomRef.current = true;
+        }
+      }
       clearResumeFollowTimeout();
     }
     wasStreamingRef.current = state.isStreaming;
