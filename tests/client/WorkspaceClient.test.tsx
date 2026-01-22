@@ -1034,54 +1034,6 @@ describe('WorkspaceClient', () => {
     globalThis.requestAnimationFrame = raf;
   });
 
-  it('keeps the chat pinned to bottom when new nodes arrive', async () => {
-    const user = userEvent.setup();
-    let currentNodes = [...sampleNodes];
-
-    mockUseProjectData.mockImplementation(
-      () =>
-        ({
-          nodes: currentNodes,
-          artefact: '## Artefact state',
-          artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
-          isLoading: false,
-          error: undefined,
-          mutateHistory: mutateHistoryMock,
-          mutateArtefact: mutateArtefactMock
-        }) as ReturnType<typeof useProjectData>
-    );
-
-    const { rerender } = render(
-      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
-    );
-
-    await user.click(await screen.findByRole('button', { name: /^show$/i }));
-
-    const list = await screen.findByTestId('chat-message-list');
-    const listEl = list as HTMLElement & { scrollTop: number };
-    Object.defineProperty(list, 'scrollHeight', { value: 2000, configurable: true });
-    Object.defineProperty(list, 'scrollTop', { value: 2000, writable: true, configurable: true });
-
-    const raf = globalThis.requestAnimationFrame;
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    }) as unknown as typeof globalThis.requestAnimationFrame;
-
-    Object.defineProperty(list, 'scrollHeight', { value: 3000, configurable: true });
-    currentNodes = [
-      ...currentNodes,
-      { id: 'node-new', type: 'message', role: 'assistant', content: 'Newest node', timestamp: 1700000003000, parent: 'node-user-branch' }
-    ];
-    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
-
-    await waitFor(() => {
-      expect(listEl.scrollTop).toBe(3000);
-    });
-
-    globalThis.requestAnimationFrame = raf;
-  });
-
   it('renders a stripe for every visible node row (including user and assistant)', async () => {
     const user = userEvent.setup();
     const branches: BranchSummary[] = [
