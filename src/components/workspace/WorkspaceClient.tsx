@@ -225,6 +225,7 @@ const NodeBubble: FC<{
   const [showMergePayload, setShowMergePayload] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
+  const isMerge = node.type === 'merge';
   const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
   const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
@@ -235,7 +236,8 @@ const NodeBubble: FC<{
     : isAssistant
       ? 'w-full max-w-[85%] md:max-w-[calc(100%-14rem)]'
       : 'max-w-[82%]';
-  const base = `relative ${width} overflow-hidden rounded-2xl px-4 py-3 transition`;
+  const base = `relative ${width} overflow-hidden rounded-2xl border px-4 py-3 transition`;
+  const mergeChrome = isMerge ? 'border-emerald-200/80 pl-6 pb-6' : 'border-transparent';
   const palette = muted
     ? isUser
       ? 'bg-slate-100 text-slate-900'
@@ -321,7 +323,16 @@ const NodeBubble: FC<{
 
   return (
     <article className={`flex flex-col gap-1 ${align} ${containerWidth}`}>
-      <div className={`${base} ${palette} ${highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''}`}>
+      <div
+        className={`${base} ${mergeChrome} ${palette} ${
+          highlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-white' : ''
+        }`}
+      >
+        {isMerge ? (
+          <span className="pointer-events-none absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600">
+            <BlueprintIcon icon="git-merge" className="h-3.5 w-3.5" aria-hidden />
+          </span>
+        ) : null}
         {showThinkingBox ? (
           <div
             className={`mb-3 w-full rounded-xl border border-slate-200/70 bg-slate-50 ${
