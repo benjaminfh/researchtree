@@ -2616,7 +2616,10 @@ export function WorkspaceClient({
   const userInterruptedScrollRef = useRef(false);
   const wasStreamingRef = useRef(false);
   const resumeFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastUserScrollIntentAtRef = useRef(0);
+  const lastScrollDistanceRef = useRef<number | null>(null);
   const scrollFollowThreshold = 72;
+  const userScrollIntentWindowMs = 1500;
   const previousVisibleCountRef = useRef(0);
   const previousVisibleBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
@@ -2632,6 +2635,41 @@ export function WorkspaceClient({
     ignoreNextScrollRef.current = true;
     el.scrollTop = el.scrollHeight;
   }, []);
+
+  const clearResumeFollowTimeout = useCallback(() => {
+    if (resumeFollowTimeoutRef.current) {
+      clearTimeout(resumeFollowTimeoutRef.current);
+      resumeFollowTimeoutRef.current = null;
+    }
+  }, []);
+
+  const cancelAutoFollow = useCallback(() => {
+    clearResumeFollowTimeout();
+    userInterruptedScrollRef.current = true;
+    shouldScrollToBottomRef.current = false;
+  }, [clearResumeFollowTimeout]);
+
+  const handleUserScrollIntent = useCallback(() => {
+    lastUserScrollIntentAtRef.current = Date.now();
+    cancelAutoFollow();
+  }, [cancelAutoFollow]);
+
+  const handleMessageListKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (
+        event.key === 'ArrowUp' ||
+        event.key === 'ArrowDown' ||
+        event.key === 'PageUp' ||
+        event.key === 'PageDown' ||
+        event.key === 'Home' ||
+        event.key === 'End' ||
+        event.key === ' '
+      ) {
+        handleUserScrollIntent();
+      }
+    },
+    [handleUserScrollIntent]
+  );
 
   const combinedNodes = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
@@ -2957,14 +2995,19 @@ export function WorkspaceClient({
   useEffect(() => {
     shouldScrollToBottomRef.current = true;
     userInterruptedScrollRef.current = false;
-  }, [branchName]);
+    lastUserScrollIntentAtRef.current = 0;
+    lastScrollDistanceRef.current = null;
+    clearResumeFollowTimeout();
+  }, [branchName, clearResumeFollowTimeout]);
 
   useEffect(() => {
     if (!wasStreamingRef.current && state.isStreaming) {
       userInterruptedScrollRef.current = false;
+      shouldScrollToBottomRef.current = true;
+      clearResumeFollowTimeout();
     }
     wasStreamingRef.current = state.isStreaming;
-  }, [state.isStreaming]);
+  }, [state.isStreaming, clearResumeFollowTimeout]);
 
   useEffect(() => {
     if (!shouldScrollToBottomRef.current) return;
@@ -2981,29 +3024,33 @@ export function WorkspaceClient({
     if (!el) return;
     if (ignoreNextScrollRef.current) {
       ignoreNextScrollRef.current = false;
+      lastScrollDistanceRef.current = el.scrollHeight - el.scrollTop - el.clientHeight;
       return;
     }
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    shouldScrollToBottomRef.current = distance <= scrollFollowThreshold;
-    if (!state.isStreaming) {
-      if (distance <= scrollFollowThreshold) {
-        userInterruptedScrollRef.current = false;
-      }
-      return;
+    const wasDistance = lastScrollDistanceRef.current;
+    const movingTowardsBottom = wasDistance != null ? distance < wasDistance : false;
+    const withinThreshold = distance <= scrollFollowThreshold;
+    const userIntent = Date.now() - lastUserScrollIntentAtRef.current < userScrollIntentWindowMs;
+    lastScrollDistanceRef.current = distance;
+
+    if (!userInterruptedScrollRef.current) {
+      shouldScrollToBottomRef.current = withinThreshold;
     }
-    if (distance > scrollFollowThreshold) {
+
+    if (!userIntent) return;
+
+    if (userInterruptedScrollRef.current && movingTowardsBottom && withinThreshold) {
       if (resumeFollowTimeoutRef.current) {
         clearTimeout(resumeFollowTimeoutRef.current);
         resumeFollowTimeoutRef.current = null;
       }
-      userInterruptedScrollRef.current = true;
-      return;
+      resumeFollowTimeoutRef.current = setTimeout(() => {
+        userInterruptedScrollRef.current = false;
+        shouldScrollToBottomRef.current = true;
+        resumeFollowTimeoutRef.current = null;
+      }, AUTO_FOLLOW_RESUME_DELAY_MS);
     }
-    if (resumeFollowTimeoutRef.current) return;
-    resumeFollowTimeoutRef.current = setTimeout(() => {
-      userInterruptedScrollRef.current = false;
-      resumeFollowTimeoutRef.current = null;
-    }, AUTO_FOLLOW_RESUME_DELAY_MS);
   };
 
   const switchBranch = async (name: string) => {
@@ -4047,6 +4094,12 @@ export function WorkspaceClient({
                   data-testid="chat-message-list"
                   className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
                   onScroll={handleMessageListScroll}
+                  onWheel={handleUserScrollIntent}
+                  onTouchStart={handleUserScrollIntent}
+                  onTouchMove={handleUserScrollIntent}
+                  onPointerDown={handleUserScrollIntent}
+                  onKeyDown={handleMessageListKeyDown}
+                  tabIndex={0}
                 >
                   {isLoading ? (
                     <div className="flex flex-col gap-3 animate-pulse" role="status" aria-live="polite">
