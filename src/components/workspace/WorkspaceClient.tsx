@@ -2618,6 +2618,7 @@ export function WorkspaceClient({
   const resumeFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUserScrollIntentAtRef = useRef(0);
   const lastScrollDistanceRef = useRef<number | null>(null);
+  const messageListPointerDownRef = useRef(false);
   const scrollFollowThreshold = 72;
   const userScrollIntentWindowMs = 1500;
   const previousVisibleCountRef = useRef(0);
@@ -2649,10 +2650,14 @@ export function WorkspaceClient({
     shouldScrollToBottomRef.current = false;
   }, [clearResumeFollowTimeout]);
 
-  const handleUserScrollIntent = useCallback(() => {
+  const refreshUserScrollIntent = useCallback(() => {
     lastUserScrollIntentAtRef.current = Date.now();
+  }, []);
+
+  const handleUserScrollIntent = useCallback(() => {
+    refreshUserScrollIntent();
     cancelAutoFollow();
-  }, [cancelAutoFollow]);
+  }, [cancelAutoFollow, refreshUserScrollIntent]);
 
   const handleMessageListKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -2670,6 +2675,40 @@ export function WorkspaceClient({
     },
     [handleUserScrollIntent]
   );
+
+  const handleMessageListPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      messageListPointerDownRef.current = true;
+      handleUserScrollIntent();
+    },
+    [handleUserScrollIntent]
+  );
+
+  useEffect(() => {
+    const handlePointerUp = () => {
+      messageListPointerDownRef.current = false;
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!messageListPointerDownRef.current) return;
+      if (event.buttons === 0) {
+        messageListPointerDownRef.current = false;
+        return;
+      }
+      refreshUserScrollIntent();
+    };
+
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [refreshUserScrollIntent]);
 
   const combinedNodes = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
@@ -4104,7 +4143,7 @@ export function WorkspaceClient({
                   onWheel={handleUserScrollIntent}
                   onTouchStart={handleUserScrollIntent}
                   onTouchMove={handleUserScrollIntent}
-                  onPointerDown={handleUserScrollIntent}
+                  onPointerDown={handleMessageListPointerDown}
                   onKeyDown={handleMessageListKeyDown}
                   tabIndex={0}
                 >
