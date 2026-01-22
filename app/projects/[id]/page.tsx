@@ -47,6 +47,11 @@ async function loadWorkspaceBase(
 
   if (store.mode === 'pg') {
     const user = await requireUser();
+    if (user.email) {
+      const { rtAcceptProjectInvitesShadowV1 } = await import('@/src/store/pg/members');
+      await rtAcceptProjectInvitesShadowV1({ email: user.email });
+    }
+
     const { rtGetProjectShadowV1, rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
     const data = await rtGetProjectShadowV1({ projectId });
     if (!data) {

@@ -68,7 +68,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const { rtInviteProjectMemberShadowV1 } = await import('@/src/store/pg/members');
     const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
-    await rtInviteProjectMemberShadowV1({
+    const inviteResult = await rtInviteProjectMemberShadowV1({
       projectId: params.id,
       email: parsed.data.email,
       role: parsed.data.role
@@ -82,7 +82,8 @@ export async function POST(request: Request, { params }: RouteContext) {
           projectId: project.id,
           projectName: project.name,
           recipientEmail: parsed.data.email,
-          inviterEmail: user.email ?? null
+          inviterEmail: user.email ?? null,
+          isExistingUser: Boolean(inviteResult.memberUserId)
         });
       }
     } catch (emailError) {
