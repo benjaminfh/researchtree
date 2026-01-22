@@ -17,6 +17,53 @@ function isHiddenMessage(node: NodeRecord): boolean {
   return node.type === 'message' && Boolean((node as any).uiHidden);
 }
 
+const MERGE_ACK_INSTRUCTION = 'Task: acknowledge merged content by replying "Merge received" but take no other action.';
+
+function isMergeAckUserMessage(node: NodeRecord): boolean {
+  if (node.type !== 'message' || node.role !== 'user') return false;
+  const content = (node.content ?? '').trim();
+  return (
+    content.startsWith('Merged from ') &&
+    content.includes('Merge summary:') &&
+    content.includes('Merged payload:') &&
+    content.includes('Canvas diff:') &&
+    content.includes(MERGE_ACK_INSTRUCTION)
+  );
+}
+
+function isMergeAckAssistantMessage(node: NodeRecord): boolean {
+  if (node.type !== 'message' || node.role !== 'assistant') return false;
+  return (node.content ?? '').trim() === 'Merge received';
+}
+
+function filterVisibleNodes(nodes: NodeRecord[]): NodeRecord[] {
+  const filtered: NodeRecord[] = [];
+  let skipNextMergeAckAssistant = false;
+
+  for (const node of nodes) {
+    if (node.type === 'state') {
+      continue;
+    }
+    if (isHiddenMessage(node)) {
+      continue;
+    }
+    if (isMergeAckUserMessage(node)) {
+      skipNextMergeAckAssistant = true;
+      continue;
+    }
+    if (skipNextMergeAckAssistant && isMergeAckAssistantMessage(node)) {
+      skipNextMergeAckAssistant = false;
+      continue;
+    }
+    if (node.type === 'message') {
+      skipNextMergeAckAssistant = false;
+    }
+    filtered.push(node);
+  }
+
+  return filtered;
+}
+
 function resolveRefName(refId: string | null, refNameById: Map<string, string>, label: string): string {
   if (!refId) {
     console.error('[graph] missing ref id for node label', { label });
@@ -81,8 +128,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
             }
             const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: branch.id, limit: MAX_PER_BRANCH });
             const nodes = applyRefNames(rows.filter((r) => Boolean(r.nodeJson)) as any, refNameById);
-            const visible = nodes.filter((node) => !isHiddenMessage(node));
-            return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
+            return [branch.name, capNodesForGraph(filterVisibleNodes(nodes), MAX_PER_BRANCH)] as [string, NodeRecord[]];
           })
         ),
         rtGetStarredNodeIdsShadowV1({ projectId: params.id })
@@ -120,8 +166,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       Promise.all(
         visibleBranches.map(async (branch) => {
           const nodes = await readNodesFromRef(project.id, branch.name);
-          const visible = nodes.filter((node) => !isHiddenMessage(node));
-          return [branch.name, capNodesForGraph(visible, MAX_PER_BRANCH)] as [string, NodeRecord[]];
+          return [branch.name, capNodesForGraph(filterVisibleNodes(nodes), MAX_PER_BRANCH)] as [string, NodeRecord[]];
         })
       ),
       getStarredNodeIds(project.id)

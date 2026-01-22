@@ -230,7 +230,7 @@ const NodeBubble: FC<{
   const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
   const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
   const showThinkingNote = isAssistant && showOpenAiThinkingNote && !hasThinking && !thinkingInProgress;
-  const containerWidth = isAssistant ? 'w-full' : '';
+  const containerWidth = isMerge || isAssistant ? 'w-full' : '';
   const width = isMerge
     ? 'w-full max-w-[80%]'
     : isUser

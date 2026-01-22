@@ -158,28 +158,8 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
         content: payload
       });
     } else if (node.type === 'merge') {
-      const summary = `Merge summary from ${node.mergeFrom}: ${node.mergeSummary ?? ''}`.trim();
-      const cost = estimateTokens(summary);
-      if (tokenBudget - cost < 0) {
-        continue;
-      }
-      tokenBudget -= cost;
-      messages.push({
-        role: mergeUserRole,
-        content: summary
-      });
-
-      if (node.mergedAssistantContent?.trim()) {
-        const payloadCost = estimateTokens(node.mergedAssistantContent);
-        if (tokenBudget - payloadCost < 0) {
-          continue;
-        }
-        tokenBudget -= payloadCost;
-        messages.push({
-          role: 'assistant',
-          content: node.mergedAssistantContent
-        });
-      }
+      // Merge nodes are UI-only; merge payloads are carried by synthetic user messages.
+      continue;
     }
   }
 
