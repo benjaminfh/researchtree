@@ -2604,6 +2604,7 @@ export function WorkspaceClient({
   }, [showNewBranchModal, resetBranchQuestionState]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const ignoreNextScrollRef = useRef(false);
   const scrollNearBottomThreshold = 72;
   const autoScrollBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{
@@ -2615,6 +2616,8 @@ export function WorkspaceClient({
   const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
+  const [pinnedTopNodeId, setPinnedTopNodeId] = useState<string | null>(null);
+  const [pinnedTopSpacer, setPinnedTopSpacer] = useState(0);
 
   const scrollToBottom = useCallback(() => {
     const el = messageListRef.current;
@@ -2920,6 +2923,10 @@ export function WorkspaceClient({
           const containerRect = container.getBoundingClientRect();
           const elRect = el.getBoundingClientRect();
           const targetTop = elRect.top - containerRect.top + container.scrollTop;
+          const spacer = Math.max(0, container.clientHeight - elRect.height - paddingTop - extraGap);
+          setPinnedTopNodeId(pendingScrollTo.nodeId);
+          setPinnedTopSpacer(spacer);
+          ignoreNextScrollRef.current = true;
           container.scrollTop = Math.max(0, targetTop - paddingTop - extraGap);
         } else if (typeof el.scrollIntoView === 'function') {
           el.scrollIntoView({ block: pendingScrollTo.block ?? 'center' });
@@ -2957,6 +2964,15 @@ export function WorkspaceClient({
   }, [visibleNodes.length, streamPreview, isLoading, updateNearBottom]);
 
   const handleMessageListScroll = () => {
+    if (ignoreNextScrollRef.current) {
+      ignoreNextScrollRef.current = false;
+      updateNearBottom();
+      return;
+    }
+    if (pinnedTopNodeId) {
+      setPinnedTopNodeId(null);
+      setPinnedTopSpacer(0);
+    }
     updateNearBottom();
   };
 
@@ -4001,6 +4017,7 @@ export function WorkspaceClient({
                   ref={messageListRef}
                   data-testid="chat-message-list"
                   className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
+                  style={pinnedTopSpacer ? { paddingBottom: `${pinnedTopSpacer + 24}px` } : undefined}
                   onScroll={handleMessageListScroll}
                 >
                   {isLoading ? (
