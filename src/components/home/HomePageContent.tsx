@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
-import { ArchiveBoxArrowDownIcon, CheckIcon, ChevronRightIcon } from '@/src/components/workspace/HeroIcons';
+import { ArchiveBoxArrowDownIcon, CheckIcon, ChevronRightIcon, ShareIcon } from '@/src/components/workspace/HeroIcons';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
@@ -147,6 +147,11 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                           <ul className="grid min-w-0 grid-cols-1 gap-2">
                             {recentProjects.map((project) => {
                               const isConfirming = confirming.has(project.id);
+                              const showSharedIndicator = project.isOwner === false;
+                              const sharedTooltip = project.sharedByEmail ?? 'Shared workspace';
+                              const sharedLabel = project.sharedByEmail
+                                ? `Shared by ${project.sharedByEmail}`
+                                : 'Shared workspace';
                               return (
                                 <li
                                   key={project.id}
@@ -163,27 +168,43 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                         {dateFormatter.format(new Date(project.lastModified))}
                                       </div>
                                     </Link>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (isConfirming) {
-                                          handleArchive(project.id);
-                                        } else {
-                                          setConfirming((prev) => new Set(prev).add(project.id));
-                                        }
-                                      }}
-                                      data-confirm-action="true"
-                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
-                                        isConfirming
-                                          ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                                          : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
-                                      }`}
-                                      aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
-                                      data-testid="archive-workspace"
-                                      data-project-id={project.id}
-                                    >
-                                      {isConfirming ? <CheckIcon className="h-4 w-4" /> : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      {showSharedIndicator ? (
+                                        <span
+                                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider bg-white text-slate-600 shadow-sm"
+                                          title={sharedTooltip}
+                                          aria-label={sharedLabel}
+                                          data-testid="shared-workspace-indicator"
+                                        >
+                                          <ShareIcon className="h-4 w-4" />
+                                        </span>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (isConfirming) {
+                                            handleArchive(project.id);
+                                          } else {
+                                            setConfirming((prev) => new Set(prev).add(project.id));
+                                          }
+                                        }}
+                                        data-confirm-action="true"
+                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
+                                          isConfirming
+                                            ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                            : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
+                                        }`}
+                                        aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
+                                        data-testid="archive-workspace"
+                                        data-project-id={project.id}
+                                      >
+                                        {isConfirming ? (
+                                          <CheckIcon className="h-4 w-4" />
+                                        ) : (
+                                          <ArchiveBoxArrowDownIcon className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                    </div>
                                   </div>
                                 </li>
                               );
@@ -218,6 +239,11 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                             <ul className="grid min-w-0 grid-cols-1 gap-2">
                               {archivedProjects.map((project) => {
                                 const isConfirming = confirming.has(project.id);
+                                const showSharedIndicator = project.isOwner === false;
+                                const sharedTooltip = project.sharedByEmail ?? 'Shared workspace';
+                                const sharedLabel = project.sharedByEmail
+                                  ? `Shared by ${project.sharedByEmail}`
+                                  : 'Shared workspace';
                                 return (
                                   <li
                                     key={project.id}
@@ -232,6 +258,16 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                       >
                                         {project.name}
                                       </span>
+                                      {showSharedIndicator ? (
+                                        <span
+                                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-divider bg-white text-slate-600 shadow-sm"
+                                          title={sharedTooltip}
+                                          aria-label={sharedLabel}
+                                          data-testid="shared-workspace-indicator"
+                                        >
+                                          <ShareIcon className="h-4 w-4" />
+                                        </span>
+                                      ) : null}
                                       <button
                                         type="button"
                                         onClick={() => {

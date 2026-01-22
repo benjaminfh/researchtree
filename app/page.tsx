@@ -30,8 +30,9 @@ export default async function HomePage() {
   const defaultProvider = normalizeProviderForUi(resolveLLMProvider());
 
   if (store.mode === 'pg') {
-    await requireUser();
+    const user = await requireUser();
     const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
+    const { rtListProjectMembersShadowV1 } = await import('@/src/store/pg/members');
     const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const rows = await rtListProjectsShadowV1();
     const projectIds = rows.map((row) => row.id);
@@ -47,6 +48,21 @@ export default async function HomePage() {
       rows.map(async (row) => {
         const projectId = row.id;
         const createdAt = row.createdAt;
+        let isOwner: boolean | undefined;
+        let sharedByEmail: string | null = null;
+        try {
+          const members = await rtListProjectMembersShadowV1({ projectId });
+          const ownerMember = members.find((member) => member.role === 'owner');
+          if (ownerMember) {
+            isOwner = ownerMember.userId === user.id;
+            if (!isOwner) {
+              sharedByEmail = ownerMember.email ?? ownerMember.userId;
+            }
+          }
+        } catch {
+          isOwner = undefined;
+          sharedByEmail = null;
+        }
 
         let nodeCount = 0;
         try {
@@ -67,7 +83,9 @@ export default async function HomePage() {
           description: row.description ?? undefined,
           createdAt,
           nodeCount,
-          lastModified
+          lastModified,
+          isOwner,
+          sharedByEmail
         };
       })
     );

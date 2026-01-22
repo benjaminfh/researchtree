@@ -25,6 +25,7 @@ type WorkspaceProject = {
   createdAt: string;
   branchName?: string;
   isOwner?: boolean;
+  sharedByEmail?: string | null;
 };
 
 type WorkspaceData = {
@@ -47,13 +48,27 @@ async function loadWorkspaceBase(
 
   if (store.mode === 'pg') {
     const user = await requireUser();
-    const { rtGetProjectShadowV1, rtGetProjectOwnerShadowV1 } = await import('@/src/store/pg/projects');
+    const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
+    const { rtListProjectMembersShadowV1 } = await import('@/src/store/pg/members');
     const data = await rtGetProjectShadowV1({ projectId });
     if (!data) {
       notFound();
     }
-
-    const ownerUserId = await rtGetProjectOwnerShadowV1({ projectId });
+    let isOwner: boolean | undefined;
+    let sharedByEmail: string | null = null;
+    try {
+      const members = await rtListProjectMembersShadowV1({ projectId });
+      const ownerMember = members.find((member) => member.role === 'owner');
+      if (ownerMember) {
+        isOwner = ownerMember.userId === user.id;
+        if (!isOwner) {
+          sharedByEmail = ownerMember.email ?? ownerMember.userId;
+        }
+      }
+    } catch {
+      isOwner = undefined;
+      sharedByEmail = null;
+    }
     const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
     const current = await rtGetCurrentRefShadowV2({ projectId, defaultRefName: 'main' }).catch(() => ({
       refId: null,
@@ -66,7 +81,8 @@ async function loadWorkspaceBase(
       description: data.description ?? undefined,
       createdAt: data.createdAt,
       branchName: current.refName,
-      isOwner: ownerUserId === user.id
+      isOwner,
+      sharedByEmail
     };
   } else {
     const { getProject } = await import('@git/projects');

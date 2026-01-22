@@ -93,6 +93,7 @@ export interface ProjectMetadata {
   branchName?: string;
   pinnedBranchName?: string;
   isOwner?: boolean;
+  sharedByEmail?: string | null;
 }
 
 export interface BranchSummary {
