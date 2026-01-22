@@ -2641,7 +2641,7 @@ export function WorkspaceClient({
       if (!container) return;
       requestAnimationFrame(() => {
         const el = container.querySelector(`[data-node-id="${escapeCssSelector(nodeId)}"]`);
-        if (el instanceof HTMLElement) {
+        if (el instanceof HTMLElement && typeof el.scrollIntoView === 'function') {
           el.scrollIntoView({ block: 'start' });
         }
       });
@@ -2941,7 +2941,7 @@ export function WorkspaceClient({
 
     requestAnimationFrame(() => {
       const el = container.querySelector(`[data-node-id="${escapeCssSelector(pendingScrollTo.nodeId)}"]`);
-      if (el instanceof HTMLElement) {
+      if (el instanceof HTMLElement && typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ block: 'center' });
       }
       setHighlightedNodeId(pendingScrollTo.nodeId);
