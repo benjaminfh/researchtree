@@ -10,6 +10,18 @@ function buildInviteRedirect(projectId: string): string | undefined {
   return `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`;
 }
 
+function buildInviteNotificationLink(projectId: string, recipientEmail: string): string | undefined {
+  const origin = getRequestOrigin();
+  if (!origin) return undefined;
+  const redirectTo = `/auth/invite?projectId=${encodeURIComponent(projectId)}`;
+  const loginParams = new URLSearchParams({
+    redirectTo,
+    email: recipientEmail,
+    mode: 'signIn'
+  });
+  return `${origin}/login?${loginParams.toString()}`;
+}
+
 export async function sendWorkspaceInviteEmail(input: {
   projectId: string;
   projectName: string;
@@ -17,6 +29,7 @@ export async function sendWorkspaceInviteEmail(input: {
   inviterEmail: string | null;
 }): Promise<void> {
   const emailRedirectTo = buildInviteRedirect(input.projectId);
+  const notificationLink = buildInviteNotificationLink(input.projectId, input.recipientEmail);
   const invitePayload = {
     project_id: input.projectId,
     project_name: input.projectName,
@@ -26,6 +39,7 @@ export async function sendWorkspaceInviteEmail(input: {
   await sendWorkspaceInviteEmailViaAuth({
     recipientEmail: input.recipientEmail,
     emailRedirectTo,
+    notificationLink,
     payload: invitePayload
   });
 }
