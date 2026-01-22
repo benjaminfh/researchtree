@@ -57,7 +57,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (store.mode !== 'pg') {
       throw badRequest('Collaboration is only supported in Postgres mode');
     }
-    await requireUser();
+    const user = await requireUser();
     await requireProjectOwner({ id: params.id });
 
     const body = await request.json().catch(() => null);
@@ -67,11 +67,27 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const { rtInviteProjectMemberShadowV1 } = await import('@/src/store/pg/members');
+    const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
     await rtInviteProjectMemberShadowV1({
       projectId: params.id,
       email: parsed.data.email,
       role: parsed.data.role
     });
+
+    const project = await rtGetProjectShadowV1({ projectId: params.id });
+    if (project) {
+      const { sendWorkspaceInviteEmail } = await import('@/src/server/workspaceInvites');
+      try {
+        await sendWorkspaceInviteEmail({
+          projectId: project.id,
+          projectName: project.name,
+          recipientEmail: parsed.data.email,
+          inviterEmail: user.email ?? null
+        });
+      } catch (emailError) {
+        console.error('Workspace invite email failed', emailError);
+      }
+    }
 
     const data = await loadMembers(params.id);
     return Response.json(data, { status: 201 });
