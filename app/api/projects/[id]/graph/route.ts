@@ -36,11 +36,12 @@ function isMergeAckAssistantMessage(node: NodeRecord): boolean {
   return (node.content ?? '').trim() === 'Merge received';
 }
 
-function filterVisibleNodes(nodes: NodeRecord[]): NodeRecord[] {
+function filterVisibleGraphNodes(nodes: NodeRecord[]): NodeRecord[] {
   const filtered: NodeRecord[] = [];
   let skipNextMergeAckAssistant = false;
 
   for (const node of nodes) {
+    // Canvas snapshots (state nodes) are created on autosave, so keep them out of the graph UI.
     if (node.type === 'state') {
       continue;
     }
@@ -128,7 +129,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
             }
             const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: branch.id, limit: MAX_PER_BRANCH });
             const nodes = applyRefNames(rows.filter((r) => Boolean(r.nodeJson)) as any, refNameById);
-            return [branch.name, capNodesForGraph(filterVisibleNodes(nodes), MAX_PER_BRANCH)] as [string, NodeRecord[]];
+            return [branch.name, capNodesForGraph(filterVisibleGraphNodes(nodes), MAX_PER_BRANCH)] as [string, NodeRecord[]];
           })
         ),
         rtGetStarredNodeIdsShadowV1({ projectId: params.id })
@@ -166,7 +167,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       Promise.all(
         visibleBranches.map(async (branch) => {
           const nodes = await readNodesFromRef(project.id, branch.name);
-          return [branch.name, capNodesForGraph(filterVisibleNodes(nodes), MAX_PER_BRANCH)] as [string, NodeRecord[]];
+          return [branch.name, capNodesForGraph(filterVisibleGraphNodes(nodes), MAX_PER_BRANCH)] as [string, NodeRecord[]];
         })
       ),
       getStarredNodeIds(project.id)
