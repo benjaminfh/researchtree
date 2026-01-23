@@ -8,6 +8,7 @@ import { GET as GETHistory } from '@/app/api/projects/[id]/history/route';
 const mocks = vi.hoisted(() => ({
   listProjects: vi.fn(),
   rtListProjectMemberIdsShadowV1: vi.fn(),
+  rtAcceptProjectInvitesShadowV1: vi.fn(),
   rtListProjectsShadowV1: vi.fn(),
   getProject: vi.fn(),
   listBranches: vi.fn(),
@@ -26,7 +27,8 @@ vi.mock('@git/projects', () => ({
 }));
 
 vi.mock('@/src/store/pg/members', () => ({
-  rtListProjectMemberIdsShadowV1: mocks.rtListProjectMemberIdsShadowV1
+  rtListProjectMemberIdsShadowV1: mocks.rtListProjectMemberIdsShadowV1,
+  rtAcceptProjectInvitesShadowV1: mocks.rtAcceptProjectInvitesShadowV1
 }));
 
 vi.mock('@/src/store/pg/projects', () => ({
