@@ -2934,14 +2934,14 @@ export function WorkspaceClient({
   }, [streamHold, branchName, nodes]);
 
   useEffect(() => {
-    if (!streamHoldPending && streamBranchRef.current && streamBranchRef.current !== branchName) {
+    if (!streamHoldPending && streamBranchRef.current && streamBranchRef.current !== branchName && !state.isStreaming) {
       setStreamPreview('');
       streamPreviewRef.current = '';
       setStreamBlocks([]);
       streamBlocksRef.current = [];
       streamBranchRef.current = null;
     }
-  }, [branchName, streamHoldPending]);
+  }, [branchName, streamHoldPending, state.isStreaming]);
 
   useEffect(() => {
     if (!showMergeModal) {
