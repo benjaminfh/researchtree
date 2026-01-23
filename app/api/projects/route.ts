@@ -12,6 +12,10 @@ export async function GET() {
     const store = getStoreConfig();
 
     if (store.mode === 'pg') {
+      if (user.email) {
+        const { rtAcceptProjectInvitesShadowV1 } = await import('@/src/store/pg/members');
+        await rtAcceptProjectInvitesShadowV1({ email: user.email });
+      }
       const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
       const projects = (await rtListProjectsShadowV1()).map((project) => ({
         id: project.id,
