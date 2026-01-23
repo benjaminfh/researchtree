@@ -2161,7 +2161,15 @@ export function WorkspaceClient({
     return [...pinned, ...pendingGhosts, ...visible, ...hidden];
   }, [displayBranches]);
   const branchColorMap = useMemo(
-    () => buildBranchColorMap(sortedBranches.map((branch) => branch.name), trunkName),
+    () =>
+      buildBranchColorMap(
+        sortedBranches.map((branch) => ({
+          id: branch.id,
+          name: branch.name,
+          isTrunk: branch.isTrunk
+        })),
+        trunkName
+      ),
     [sortedBranches, trunkName]
   );
   const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
