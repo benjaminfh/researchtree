@@ -2922,7 +2922,7 @@ export function WorkspaceClient({
       }
       if (pendingScrollTo.block === 'start') {
         const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
-        const extraGap = 8;
+        const extraGap = 24;
         const desiredTop = Math.max(0, el.offsetTop - paddingTop - extraGap);
         const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
         const extraPadding = Math.max(0, desiredTop - maxScroll);
