@@ -2617,7 +2617,7 @@ export function WorkspaceClient({
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [pinnedTopNodeId, setPinnedTopNodeId] = useState<string | null>(null);
-  const [pinnedTopSpacer, setPinnedTopSpacer] = useState(0);
+  const [pinnedTopExtraPadding, setPinnedTopExtraPadding] = useState(0);
 
   const scrollToBottom = useCallback(() => {
     const el = messageListRef.current;
@@ -2922,13 +2922,16 @@ export function WorkspaceClient({
       if (pendingScrollTo.block === 'start') {
         const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
         const extraGap = 8;
-        const spacer = Math.max(0, container.clientHeight - el.getBoundingClientRect().height - paddingTop - extraGap);
-        container.style.paddingBottom = `${spacer + 24}px`;
+        const desiredTop = Math.max(0, el.offsetTop - paddingTop - extraGap);
+        const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+        const extraPadding = Math.max(0, desiredTop - maxScroll);
+        const totalPadding = 24 + extraPadding;
+        container.style.paddingBottom = `${totalPadding}px`;
         setPinnedTopNodeId(pendingScrollTo.nodeId);
-        setPinnedTopSpacer(spacer);
+        setPinnedTopExtraPadding(extraPadding);
         requestAnimationFrame(() => {
           ignoreNextScrollRef.current = true;
-          container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+          container.scrollTop = desiredTop;
           updateNearBottom();
           setHighlightedNodeId(pendingScrollTo.nodeId);
           setPendingScrollTo(null);
@@ -2972,7 +2975,7 @@ export function WorkspaceClient({
     if (!pinnedTopNodeId) return;
     if (pendingScrollTo?.targetBranch === branchName && pendingScrollTo.block === 'start') return;
     setPinnedTopNodeId(null);
-    setPinnedTopSpacer(0);
+    setPinnedTopExtraPadding(0);
     if (messageListRef.current) {
       messageListRef.current.style.paddingBottom = '';
     }
@@ -2993,7 +2996,7 @@ export function WorkspaceClient({
     }
     if (pinnedTopNodeId) {
       setPinnedTopNodeId(null);
-      setPinnedTopSpacer(0);
+      setPinnedTopExtraPadding(0);
     }
     updateNearBottom();
   };
@@ -4039,7 +4042,7 @@ export function WorkspaceClient({
                   ref={messageListRef}
                   data-testid="chat-message-list"
                   className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
-                  style={pinnedTopSpacer ? { paddingBottom: `${pinnedTopSpacer + 24}px` } : undefined}
+                  style={pinnedTopExtraPadding ? { paddingBottom: `${24 + pinnedTopExtraPadding}px` } : undefined}
                   onScroll={handleMessageListScroll}
                 >
                   {isLoading ? (
