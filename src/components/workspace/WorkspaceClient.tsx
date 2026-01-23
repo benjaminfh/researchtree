@@ -1536,7 +1536,8 @@ export function WorkspaceClient({
       const finalContent = streamPreviewRef.current;
       const finalBlocks = streamBlocksRef.current;
       if (finalContent || finalBlocks.length > 0) {
-        setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: branchName });
+        const streamBranch = streamBranchRef.current ?? branchName;
+        setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: streamBranch });
       } else {
         setStreamPreview('');
         streamPreviewRef.current = '';
