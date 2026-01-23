@@ -19,6 +19,12 @@ export const branchPalette = [
 ];
 export const trunkColor = '#0f172a';
 
+export type BranchColorDescriptor = {
+  id?: string;
+  name: string;
+  isTrunk?: boolean;
+};
+
 function hashBranchName(value: string) {
   let hash = 0;
   for (let i = 0; i < value.length; i++) {
@@ -31,33 +37,45 @@ function pickColorIndex(value: string) {
   return hashBranchName(value) % branchPalette.length;
 }
 
-export function buildBranchColorMap(branchNames: string[], trunkName: string) {
+function resolveBranchKey(branch: BranchColorDescriptor) {
+  return branch.id?.trim() || branch.name;
+}
+
+export function buildBranchColorMap(branches: BranchColorDescriptor[], trunkName: string) {
   const map: Record<string, string> = {};
   let lastColor: string | null = null;
   const seen = new Set<string>();
 
-  for (const name of branchNames) {
-    if (seen.has(name)) continue;
-    seen.add(name);
-    if (name === trunkName) {
-      map[name] = trunkColor;
+  for (const branch of branches) {
+    const key = resolveBranchKey(branch);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const isTrunk = branch.isTrunk || branch.name === trunkName;
+    if (isTrunk) {
+      map[branch.name] = trunkColor;
+      if (branch.id) {
+        map[branch.id] = trunkColor;
+      }
       lastColor = trunkColor;
       continue;
     }
-    let color = branchPalette[pickColorIndex(name)];
+    let color = branchPalette[pickColorIndex(key)];
     if (lastColor && color === lastColor) {
       let attempts = 0;
       while (attempts < 3 && color === lastColor) {
         attempts += 1;
-        color = branchPalette[pickColorIndex(`${name}:${attempts}`)];
+        color = branchPalette[pickColorIndex(`${key}:${attempts}`)];
       }
     }
     if (lastColor && color === lastColor && branchPalette.length > 1) {
       const lastIndex = branchPalette.indexOf(lastColor);
-      const nextIndex = lastIndex >= 0 ? (lastIndex + 1) % branchPalette.length : pickColorIndex(`${name}:fallback`);
+      const nextIndex = lastIndex >= 0 ? (lastIndex + 1) % branchPalette.length : pickColorIndex(`${key}:fallback`);
       color = branchPalette[nextIndex];
     }
-    map[name] = color;
+    map[branch.name] = color;
+    if (branch.id) {
+      map[branch.id] = color;
+    }
     lastColor = color;
   }
 
