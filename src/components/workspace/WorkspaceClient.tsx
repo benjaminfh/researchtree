@@ -1371,9 +1371,21 @@ export function WorkspaceClient({
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
+  const streamBlocksRef = useRef<ThinkingContentBlock[]>([]);
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
+  const [streamHoldPending, setStreamHoldPending] = useState<{
+    content: string;
+    contentBlocks: ThinkingContentBlock[];
+    branch: string;
+  } | null>(null);
+  const [streamHold, setStreamHold] = useState<{
+    targetId: string;
+    content: string;
+    contentBlocks: ThinkingContentBlock[];
+    branch: string;
+  } | null>(null);
   const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
   const activeBranchLease = useMemo(() => {
     if (!activeBranch?.id) return null;
@@ -1466,35 +1478,47 @@ export function WorkspaceClient({
           const last = prev[prev.length - 1];
           if (chunk.append && last?.type === 'thinking' && typeof (last as { thinking?: unknown }).thinking === 'string') {
             const updated = { ...last, thinking: `${(last as { thinking: string }).thinking}${chunk.content}` };
-            return [...prev.slice(0, -1), updated];
+            const next = [...prev.slice(0, -1), updated];
+            streamBlocksRef.current = next;
+            return next;
           }
-          return [
+          const next = [
             ...prev,
             {
               type: 'thinking',
               thinking: chunk.content
             }
           ];
+          streamBlocksRef.current = next;
+          return next;
         });
         return;
       }
       if (chunk.type === 'thinking_signature') {
-        setStreamBlocks((prev) => [
-          ...prev,
-          {
-            type: 'thinking_signature',
-            signature: chunk.content
-          }
-        ]);
+        setStreamBlocks((prev) => {
+          const next = [
+            ...prev,
+            {
+              type: 'thinking_signature',
+              signature: chunk.content
+            }
+          ];
+          streamBlocksRef.current = next;
+          return next;
+        });
         return;
       }
       setStreamBlocks((prev) => {
         const last = prev[prev.length - 1];
         if (last?.type === 'text' && typeof (last as { text?: unknown }).text === 'string') {
           const updated = { ...last, text: `${(last as { text: string }).text}${chunk.content}` };
-          return [...prev.slice(0, -1), updated];
+          const next = [...prev.slice(0, -1), updated];
+          streamBlocksRef.current = next;
+          return next;
         }
-        return [...prev, { type: 'text', text: chunk.content }];
+        const next = [...prev, { type: 'text', text: chunk.content }];
+        streamBlocksRef.current = next;
+        return next;
       });
       setStreamPreview((prev) => {
         const incoming = chunk.content ?? '';
@@ -1505,10 +1529,16 @@ export function WorkspaceClient({
     },
     onComplete: async () => {
       await Promise.all([refreshHistory(), mutateArtefact()]);
+      const finalContent = streamPreviewRef.current;
+      const finalBlocks = streamBlocksRef.current;
+      if (finalContent || finalBlocks.length > 0) {
+        setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: branchName });
+      }
       markHasEverSentMessage();
       setStreamPreview('');
       streamPreviewRef.current = '';
       setStreamBlocks([]);
+      streamBlocksRef.current = [];
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
       questionDraftRef.current = null;
@@ -1581,10 +1611,13 @@ export function WorkspaceClient({
       pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
+    setStreamHold(null);
+    setStreamHoldPending(null);
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
     setStreamBlocks([]);
+    streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -1634,9 +1667,12 @@ export function WorkspaceClient({
   }) => {
     if (!question.trim() || state.isStreaming) return;
     if (!ensureLeaseSessionReady()) return;
+    setStreamHold(null);
+    setStreamHoldPending(null);
     const optimisticContent = buildQuestionMessage(question, highlight);
     questionDraftRef.current = optimisticContent;
     setStreamBlocks([]);
+    streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -1716,8 +1752,11 @@ export function WorkspaceClient({
         return;
       }
     }
+    setStreamHold(null);
+    setStreamHoldPending(null);
     questionDraftRef.current = content;
     setStreamBlocks([]);
+    streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -2640,6 +2679,17 @@ export function WorkspaceClient({
     const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
     const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
     let baseNodes = nodes;
+    if (streamHold && streamHold.branch === branchName) {
+      baseNodes = baseNodes.map((node) => {
+        if (node.id !== streamHold.targetId) return node;
+        if (node.type !== 'message' || node.role !== 'assistant') return node;
+        return {
+          ...node,
+          content: streamHold.content,
+          contentBlocks: streamHold.contentBlocks
+        };
+      });
+    }
     if (allowOptimistic && optimisticMessage?.content && optimisticBranch) {
       const optimisticContent = normalizeMessageText(optimisticMessage.content);
       const reversedIndex = [...nodes].reverse().findIndex((node) => {
@@ -2667,7 +2717,7 @@ export function WorkspaceClient({
       }
     }
     return out;
-  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName]);
+  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName, streamHold]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
   const latestVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
@@ -2818,6 +2868,35 @@ export function WorkspaceClient({
     }
     return mergePayloadCandidates[mergePayloadCandidates.length - 1] ?? null;
   }, [mergePayloadCandidates, mergePayloadNodeId]);
+
+  useEffect(() => {
+    if (!streamHoldPending) return;
+    if (streamHoldPending.branch !== branchName) return;
+    const candidates = [...nodes]
+      .reverse()
+      .filter(
+        (node) =>
+          node.type === 'message' &&
+          node.role === 'assistant' &&
+          (node.createdOnBranch ? node.createdOnBranch === branchName : true)
+      ) as MessageNode[];
+    let target = candidates.find(
+      (node) =>
+        normalizeMessageText(getNodeText(node)) === normalizeMessageText(streamHoldPending.content) ||
+        normalizeMessageText(node.content) === normalizeMessageText(streamHoldPending.content)
+    );
+    if (!target) {
+      target = candidates[0] ?? null;
+    }
+    if (!target) return;
+    setStreamHold({
+      targetId: target.id,
+      content: streamHoldPending.content,
+      contentBlocks: streamHoldPending.contentBlocks,
+      branch: branchName
+    });
+    setStreamHoldPending(null);
+  }, [streamHoldPending, branchName, nodes]);
 
   useEffect(() => {
     if (!showMergeModal) {
