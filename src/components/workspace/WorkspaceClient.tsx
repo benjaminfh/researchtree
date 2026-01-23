@@ -2924,6 +2924,7 @@ export function WorkspaceClient({
           const elRect = el.getBoundingClientRect();
           const targetTop = elRect.top - containerRect.top + container.scrollTop;
           const spacer = Math.max(0, container.clientHeight - elRect.height - paddingTop - extraGap);
+          container.style.paddingBottom = `${spacer + 24}px`;
           setPinnedTopNodeId(pendingScrollTo.nodeId);
           setPinnedTopSpacer(spacer);
           ignoreNextScrollRef.current = true;
@@ -2955,6 +2956,16 @@ export function WorkspaceClient({
       setIsNearBottom(true);
     });
   }, [branchName, isLoading, pendingScrollTo, scrollToBottom]);
+
+  useEffect(() => {
+    if (!pinnedTopNodeId) return;
+    if (pendingScrollTo?.targetBranch === branchName && pendingScrollTo.block === 'start') return;
+    setPinnedTopNodeId(null);
+    setPinnedTopSpacer(0);
+    if (messageListRef.current) {
+      messageListRef.current.style.paddingBottom = '';
+    }
+  }, [branchName, pendingScrollTo, pinnedTopNodeId]);
 
   useEffect(() => {
     if (isLoading) return;
