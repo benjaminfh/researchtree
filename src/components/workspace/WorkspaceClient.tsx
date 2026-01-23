@@ -1533,12 +1533,13 @@ export function WorkspaceClient({
       const finalBlocks = streamBlocksRef.current;
       if (finalContent || finalBlocks.length > 0) {
         setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: branchName });
+      } else {
+        setStreamPreview('');
+        streamPreviewRef.current = '';
+        setStreamBlocks([]);
+        streamBlocksRef.current = [];
       }
       markHasEverSentMessage();
-      setStreamPreview('');
-      streamPreviewRef.current = '';
-      setStreamBlocks([]);
-      streamBlocksRef.current = [];
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
       questionDraftRef.current = null;
@@ -2896,6 +2897,10 @@ export function WorkspaceClient({
       branch: branchName
     });
     setStreamHoldPending(null);
+    setStreamPreview('');
+    streamPreviewRef.current = '';
+    setStreamBlocks([]);
+    streamBlocksRef.current = [];
   }, [streamHoldPending, branchName, nodes]);
 
   useEffect(() => {
