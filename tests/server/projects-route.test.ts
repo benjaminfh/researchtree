@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   rtCreateProjectShadow: vi.fn(),
   rtListProjectsShadowV1: vi.fn(),
   rtGetProjectShadowV1: vi.fn(),
-  rtListProjectMemberIdsShadowV1: vi.fn()
+  rtListProjectMemberIdsShadowV1: vi.fn(),
+  rtAcceptProjectInvitesShadowV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -26,7 +27,8 @@ vi.mock('@/src/store/pg/projects', () => ({
 }));
 
 vi.mock('@/src/store/pg/members', () => ({
-  rtListProjectMemberIdsShadowV1: mocks.rtListProjectMemberIdsShadowV1
+  rtListProjectMemberIdsShadowV1: mocks.rtListProjectMemberIdsShadowV1,
+  rtAcceptProjectInvitesShadowV1: mocks.rtAcceptProjectInvitesShadowV1
 }));
 
 const baseUrl = 'http://localhost/api/projects';
@@ -48,9 +50,11 @@ describe('/api/projects route', () => {
     mocks.rtListProjectsShadowV1.mockReset();
     mocks.rtGetProjectShadowV1.mockReset();
     mocks.rtListProjectMemberIdsShadowV1.mockReset();
+    mocks.rtAcceptProjectInvitesShadowV1.mockReset();
     process.env.RT_STORE = 'git';
     mocks.rtListProjectMemberIdsShadowV1.mockResolvedValue(['1']);
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: '1' });
+    mocks.rtAcceptProjectInvitesShadowV1.mockResolvedValue([]);
   });
 
   it('returns project list on GET', async () => {
