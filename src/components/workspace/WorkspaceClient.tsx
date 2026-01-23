@@ -2607,6 +2607,7 @@ export function WorkspaceClient({
   const ignoreNextScrollRef = useRef(false);
   const scrollNearBottomThreshold = 72;
   const autoScrollBranchRef = useRef<string | null>(null);
+  const pinnedTopBranchRef = useRef<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{
     nodeId: string;
     targetBranch: string;
@@ -2929,6 +2930,7 @@ export function WorkspaceClient({
         container.style.paddingBottom = `${totalPadding}px`;
         setPinnedTopNodeId(pendingScrollTo.nodeId);
         setPinnedTopExtraPadding(extraPadding);
+        pinnedTopBranchRef.current = branchName;
         requestAnimationFrame(() => {
           ignoreNextScrollRef.current = true;
           container.scrollTop = desiredTop;
@@ -2973,13 +2975,13 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (!pinnedTopNodeId) return;
-    if (pendingScrollTo?.targetBranch === branchName && pendingScrollTo.block === 'start') return;
+    if (pinnedTopBranchRef.current === branchName) return;
     setPinnedTopNodeId(null);
     setPinnedTopExtraPadding(0);
     if (messageListRef.current) {
       messageListRef.current.style.paddingBottom = '';
     }
-  }, [branchName, pendingScrollTo, pinnedTopNodeId]);
+  }, [branchName, pinnedTopNodeId]);
 
   useEffect(() => {
     if (isLoading) return;
