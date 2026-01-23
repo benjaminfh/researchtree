@@ -1620,6 +1620,8 @@ export function WorkspaceClient({
     setStreamHold(null);
     setStreamHoldPending(null);
     streamBranchRef.current = branchName;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
@@ -1677,6 +1679,8 @@ export function WorkspaceClient({
     setStreamHold(null);
     setStreamHoldPending(null);
     streamBranchRef.current = branchName;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
     const optimisticContent = buildQuestionMessage(question, highlight);
     questionDraftRef.current = optimisticContent;
     setStreamBlocks([]);
@@ -1763,6 +1767,8 @@ export function WorkspaceClient({
     setStreamHold(null);
     setStreamHoldPending(null);
     streamBranchRef.current = branchName;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
     questionDraftRef.current = content;
     setStreamBlocks([]);
     streamBlocksRef.current = [];
@@ -2889,14 +2895,7 @@ export function WorkspaceClient({
           node.role === 'assistant' &&
           (node.createdOnBranch ? node.createdOnBranch === branchName : true)
       ) as MessageNode[];
-    let target = candidates.find(
-      (node) =>
-        normalizeMessageText(getNodeText(node)) === normalizeMessageText(streamHoldPending.content) ||
-        normalizeMessageText(node.content) === normalizeMessageText(streamHoldPending.content)
-    );
-    if (!target) {
-      target = candidates[0] ?? null;
-    }
+    const target = candidates[0] ?? null;
     if (!target) return;
     setStreamHold({
       targetId: target.id,
@@ -2910,6 +2909,17 @@ export function WorkspaceClient({
     setStreamBlocks([]);
     streamBlocksRef.current = [];
   }, [streamHoldPending, branchName, nodes]);
+
+  useEffect(() => {
+    if (!streamHoldPending) return;
+    if (streamHoldPending.branch === branchName) return;
+    setStreamHoldPending(null);
+    setStreamPreview('');
+    streamPreviewRef.current = '';
+    setStreamBlocks([]);
+    streamBlocksRef.current = [];
+    streamBranchRef.current = null;
+  }, [streamHoldPending, branchName]);
 
   useEffect(() => {
     if (!streamHold || streamHold.branch !== branchName) return;
