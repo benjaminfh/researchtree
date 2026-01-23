@@ -58,6 +58,7 @@ async function sendWorkspaceInviteNotificationEmail(input: {
 }): Promise<void> {
   const apiKey = (process.env.RESEND_API_KEY ?? '').trim();
   const fromEmail = (process.env.RESEND_FROM_EMAIL ?? '').trim();
+  const replyToEmail = (process.env.RESEND_REPLY_TO_EMAIL ?? '').trim();
   if (!apiKey || !fromEmail) {
     throw new Error('Missing Resend email configuration for workspace invite notifications.');
   }
@@ -72,19 +73,24 @@ async function sendWorkspaceInviteNotificationEmail(input: {
     `<p><a href="${input.inviteLink}">${actionLine}</a></p>`
   ].join('');
 
+  const payload: Record<string, unknown> = {
+    from: fromEmail,
+    to: [input.recipientEmail],
+    subject,
+    text,
+    html
+  };
+  if (replyToEmail) {
+    payload.reply_to = replyToEmail;
+  }
+
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [input.recipientEmail],
-      subject,
-      text,
-      html
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
