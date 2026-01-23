@@ -1375,6 +1375,7 @@ export function WorkspaceClient({
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
+  const streamBranchRef = useRef<string | null>(null);
   const [streamHoldPending, setStreamHoldPending] = useState<{
     content: string;
     contentBlocks: ThinkingContentBlock[];
@@ -1465,6 +1466,9 @@ export function WorkspaceClient({
     webSearch: webSearchEnabled,
     leaseSessionId,
     onChunk: (chunk) => {
+      if (!streamBranchRef.current) {
+        streamBranchRef.current = branchName;
+      }
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
         if (assistantPendingTimerRef.current) {
@@ -1538,6 +1542,7 @@ export function WorkspaceClient({
         streamPreviewRef.current = '';
         setStreamBlocks([]);
         streamBlocksRef.current = [];
+        streamBranchRef.current = null;
       }
       markHasEverSentMessage();
       setOptimisticUserNode(null);
@@ -1614,6 +1619,7 @@ export function WorkspaceClient({
     }
     setStreamHold(null);
     setStreamHoldPending(null);
+    streamBranchRef.current = branchName;
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
@@ -1670,6 +1676,7 @@ export function WorkspaceClient({
     if (!ensureLeaseSessionReady()) return;
     setStreamHold(null);
     setStreamHoldPending(null);
+    streamBranchRef.current = branchName;
     const optimisticContent = buildQuestionMessage(question, highlight);
     questionDraftRef.current = optimisticContent;
     setStreamBlocks([]);
@@ -1755,6 +1762,7 @@ export function WorkspaceClient({
     }
     setStreamHold(null);
     setStreamHoldPending(null);
+    streamBranchRef.current = branchName;
     questionDraftRef.current = content;
     setStreamBlocks([]);
     streamBlocksRef.current = [];
@@ -2913,6 +2921,16 @@ export function WorkspaceClient({
       setStreamHold(null);
     }
   }, [streamHold, branchName, nodes]);
+
+  useEffect(() => {
+    if (!streamHoldPending && streamBranchRef.current && streamBranchRef.current !== branchName) {
+      setStreamPreview('');
+      streamPreviewRef.current = '';
+      setStreamBlocks([]);
+      streamBlocksRef.current = [];
+      streamBranchRef.current = null;
+    }
+  }, [branchName, streamHoldPending]);
 
   useEffect(() => {
     if (!showMergeModal) {
