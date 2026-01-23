@@ -14,13 +14,7 @@ import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import {
-  AUTO_FOLLOW_RESUME_DELAY_MS,
-  CHAT_COMPOSER_DEFAULT_LINES,
-  storageKey,
-  TRUNK_LABEL,
-  USER_MESSAGE_MAX_LINES
-} from '@/src/config/app';
+import { CHAT_COMPOSER_DEFAULT_LINES, storageKey, TRUNK_LABEL, USER_MESSAGE_MAX_LINES } from '@/src/config/app';
 import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 import {
   deriveTextFromBlocks,
@@ -1393,9 +1387,22 @@ export function WorkspaceClient({
   const [assistantPending, setAssistantPending] = useState(false);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
+  const streamBlocksRef = useRef<ThinkingContentBlock[]>([]);
   const hasReceivedAssistantChunkRef = useRef(false);
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
+  const streamBranchRef = useRef<string | null>(null);
+  const [streamHoldPending, setStreamHoldPending] = useState<{
+    content: string;
+    contentBlocks: ThinkingContentBlock[];
+    branch: string;
+  } | null>(null);
+  const [streamHold, setStreamHold] = useState<{
+    targetId: string;
+    content: string;
+    contentBlocks: ThinkingContentBlock[];
+    branch: string;
+  } | null>(null);
   const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
   const activeBranchLease = useMemo(() => {
     if (!activeBranch?.id) return null;
@@ -1475,6 +1482,9 @@ export function WorkspaceClient({
     webSearch: webSearchEnabled,
     leaseSessionId,
     onChunk: (chunk) => {
+      if (!streamBranchRef.current) {
+        streamBranchRef.current = branchName;
+      }
       if (!hasReceivedAssistantChunkRef.current) {
         hasReceivedAssistantChunkRef.current = true;
         if (assistantPendingTimerRef.current) {
@@ -1482,42 +1492,53 @@ export function WorkspaceClient({
           assistantPendingTimerRef.current = null;
         }
         setAssistantPending(false);
-        shouldScrollToBottomRef.current = true;
       }
       if (chunk.type === 'thinking') {
         setStreamBlocks((prev) => {
           const last = prev[prev.length - 1];
           if (chunk.append && last?.type === 'thinking' && typeof (last as { thinking?: unknown }).thinking === 'string') {
             const updated = { ...last, thinking: `${(last as { thinking: string }).thinking}${chunk.content}` };
-            return [...prev.slice(0, -1), updated];
+            const next = [...prev.slice(0, -1), updated];
+            streamBlocksRef.current = next;
+            return next;
           }
-          return [
+          const next = [
             ...prev,
             {
               type: 'thinking',
               thinking: chunk.content
             }
           ];
+          streamBlocksRef.current = next;
+          return next;
         });
         return;
       }
       if (chunk.type === 'thinking_signature') {
-        setStreamBlocks((prev) => [
-          ...prev,
-          {
-            type: 'thinking_signature',
-            signature: chunk.content
-          }
-        ]);
+        setStreamBlocks((prev) => {
+          const next = [
+            ...prev,
+            {
+              type: 'thinking_signature',
+              signature: chunk.content
+            }
+          ];
+          streamBlocksRef.current = next;
+          return next;
+        });
         return;
       }
       setStreamBlocks((prev) => {
         const last = prev[prev.length - 1];
         if (last?.type === 'text' && typeof (last as { text?: unknown }).text === 'string') {
           const updated = { ...last, text: `${(last as { text: string }).text}${chunk.content}` };
-          return [...prev.slice(0, -1), updated];
+          const next = [...prev.slice(0, -1), updated];
+          streamBlocksRef.current = next;
+          return next;
         }
-        return [...prev, { type: 'text', text: chunk.content }];
+        const next = [...prev, { type: 'text', text: chunk.content }];
+        streamBlocksRef.current = next;
+        return next;
       });
       setStreamPreview((prev) => {
         const incoming = chunk.content ?? '';
@@ -1528,10 +1549,19 @@ export function WorkspaceClient({
     },
     onComplete: async () => {
       await Promise.all([refreshHistory(), mutateArtefact()]);
+      const finalContent = streamPreviewRef.current;
+      const finalBlocks = streamBlocksRef.current;
+      if (finalContent || finalBlocks.length > 0) {
+        const streamBranch = streamBranchRef.current ?? branchName;
+        setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: streamBranch });
+      } else {
+        setStreamPreview('');
+        streamPreviewRef.current = '';
+        setStreamBlocks([]);
+        streamBlocksRef.current = [];
+        streamBranchRef.current = null;
+      }
       markHasEverSentMessage();
-      setStreamPreview('');
-      streamPreviewRef.current = '';
-      setStreamBlocks([]);
       setOptimisticUserNode(null);
       optimisticDraftRef.current = null;
       questionDraftRef.current = null;
@@ -1604,11 +1634,16 @@ export function WorkspaceClient({
       pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
-    shouldScrollToBottomRef.current = true;
+    setStreamHold(null);
+    setStreamHoldPending(null);
+    streamBranchRef.current = branchName;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
     const sent = draft;
     optimisticDraftRef.current = sent;
     setDraft('');
     setStreamBlocks([]);
+    streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -1625,6 +1660,7 @@ export function WorkspaceClient({
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
       createdOnBranch: branchName
     });
+    setPendingScrollTo({ nodeId: 'optimistic-user', targetBranch: branchName, block: 'start' });
     assistantPendingTimerRef.current = setTimeout(() => {
       setAssistantPending(true);
       assistantPendingTimerRef.current = null;
@@ -1657,10 +1693,15 @@ export function WorkspaceClient({
   }) => {
     if (!question.trim() || state.isStreaming) return;
     if (!ensureLeaseSessionReady()) return;
+    setStreamHold(null);
+    setStreamHoldPending(null);
+    streamBranchRef.current = branchName;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
     const optimisticContent = buildQuestionMessage(question, highlight);
-    shouldScrollToBottomRef.current = true;
     questionDraftRef.current = optimisticContent;
     setStreamBlocks([]);
+    streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -1677,6 +1718,7 @@ export function WorkspaceClient({
       parent: null,
       createdOnBranch: targetBranch
     });
+    setPendingScrollTo({ nodeId: 'optimistic-user', targetBranch, block: 'start' });
     assistantPendingTimerRef.current = setTimeout(() => {
       setAssistantPending(true);
       assistantPendingTimerRef.current = null;
@@ -1739,9 +1781,14 @@ export function WorkspaceClient({
         return;
       }
     }
-    shouldScrollToBottomRef.current = true;
+    setStreamHold(null);
+    setStreamHoldPending(null);
+    streamBranchRef.current = branchName;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
     questionDraftRef.current = content;
     setStreamBlocks([]);
+    streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
@@ -1758,6 +1805,7 @@ export function WorkspaceClient({
       parent: null,
       createdOnBranch: targetBranch
     });
+    setPendingScrollTo({ nodeId: 'optimistic-user', targetBranch, block: 'start' });
     assistantPendingTimerRef.current = setTimeout(() => {
       setAssistantPending(true);
       assistantPendingTimerRef.current = null;
@@ -2635,26 +2683,35 @@ export function WorkspaceClient({
   }, [showNewBranchModal, resetBranchQuestionState]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
-  const shouldScrollToBottomRef = useRef(true);
   const ignoreNextScrollRef = useRef(false);
-  const userInterruptedScrollRef = useRef(false);
-  const wasStreamingRef = useRef(false);
-  const resumeFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollFollowThreshold = 72;
-  const previousVisibleCountRef = useRef(0);
-  const previousVisibleBranchRef = useRef<string | null>(null);
-  const [pendingScrollTo, setPendingScrollTo] = useState<{ nodeId: string; targetBranch: string } | null>(null);
+  const scrollNearBottomThreshold = 72;
+  const autoScrollBranchRef = useRef<string | null>(null);
+  const pinnedTopBranchRef = useRef<string | null>(null);
+  const [pendingScrollTo, setPendingScrollTo] = useState<{
+    nodeId: string;
+    targetBranch: string;
+    block?: ScrollLogicalPosition;
+  } | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [pinnedTopNodeId, setPinnedTopNodeId] = useState<string | null>(null);
+  const [pinnedTopExtraPadding, setPinnedTopExtraPadding] = useState(0);
 
   const scrollToBottom = useCallback(() => {
     const el = messageListRef.current;
     if (!el) return;
     const targetScrollTop = el.scrollHeight - el.clientHeight;
     if (Math.abs(el.scrollTop - targetScrollTop) < 1) return;
-    ignoreNextScrollRef.current = true;
     el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const updateNearBottom = useCallback(() => {
+    const el = messageListRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setIsNearBottom(distance <= scrollNearBottomThreshold);
   }, []);
 
   const combinedNodes = useMemo(() => {
@@ -2662,6 +2719,17 @@ export function WorkspaceClient({
     const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
     const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
     let baseNodes = nodes;
+    if (streamHold && streamHold.branch === branchName) {
+      baseNodes = baseNodes.map((node) => {
+        if (node.id !== streamHold.targetId) return node;
+        if (node.type !== 'message' || node.role !== 'assistant') return node;
+        return {
+          ...node,
+          content: streamHold.content,
+          contentBlocks: streamHold.contentBlocks
+        };
+      });
+    }
     if (allowOptimistic && optimisticMessage?.content && optimisticBranch) {
       const optimisticContent = normalizeMessageText(optimisticMessage.content);
       const reversedIndex = [...nodes].reverse().findIndex((node) => {
@@ -2689,7 +2757,7 @@ export function WorkspaceClient({
       }
     }
     return out;
-  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName]);
+  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName, streamHold]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
   const latestVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
@@ -2761,22 +2829,6 @@ export function WorkspaceClient({
     setBranchSplitNodeId((prev) => prev ?? latestVisibleNodeId);
   }, [showNewBranchModal, latestVisibleNodeId]);
 
-  useEffect(() => {
-    if (previousVisibleBranchRef.current !== branchName) {
-      previousVisibleBranchRef.current = branchName;
-      previousVisibleCountRef.current = visibleNodes.length;
-      return;
-    }
-    if (visibleNodes.length > previousVisibleCountRef.current) {
-      const el = messageListRef.current;
-      if (el && shouldScrollToBottomRef.current && !userInterruptedScrollRef.current) {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-        });
-      }
-    }
-    previousVisibleCountRef.current = visibleNodes.length;
-  }, [visibleNodes.length, branchName]);
   const lastUpdatedTimestamp = useMemo(() => {
     const historyLatest = visibleNodes[visibleNodes.length - 1]?.timestamp ?? null;
     const artefactUpdated = artefactMeta?.lastUpdatedAt ?? null;
@@ -2858,6 +2910,64 @@ export function WorkspaceClient({
   }, [mergePayloadCandidates, mergePayloadNodeId]);
 
   useEffect(() => {
+    if (!streamHoldPending) return;
+    if (streamHoldPending.branch !== branchName) return;
+    const candidates = [...nodes]
+      .reverse()
+      .filter(
+        (node) =>
+          node.type === 'message' &&
+          node.role === 'assistant' &&
+          (node.createdOnBranch ? node.createdOnBranch === branchName : true)
+      ) as MessageNode[];
+    const target = candidates[0] ?? null;
+    if (!target) return;
+    setStreamHold({
+      targetId: target.id,
+      content: streamHoldPending.content,
+      contentBlocks: streamHoldPending.contentBlocks,
+      branch: branchName
+    });
+    setStreamHoldPending(null);
+    setStreamPreview('');
+    streamPreviewRef.current = '';
+    setStreamBlocks([]);
+    streamBlocksRef.current = [];
+  }, [streamHoldPending, branchName, nodes]);
+
+  useEffect(() => {
+    if (!streamHoldPending) return;
+    if (streamHoldPending.branch === branchName) return;
+    setStreamHoldPending(null);
+    setStreamPreview('');
+    streamPreviewRef.current = '';
+    setStreamBlocks([]);
+    streamBlocksRef.current = [];
+    streamBranchRef.current = null;
+  }, [streamHoldPending, branchName]);
+
+  useEffect(() => {
+    if (!streamHold || streamHold.branch !== branchName) return;
+    const target = nodes.find((node) => node.id === streamHold.targetId);
+    if (!target || target.type !== 'message' || target.role !== 'assistant') return;
+    const currentText = normalizeMessageText(getNodeText(target));
+    const holdText = normalizeMessageText(streamHold.content);
+    if (currentText && currentText === holdText) {
+      setStreamHold(null);
+    }
+  }, [streamHold, branchName, nodes]);
+
+  useEffect(() => {
+    if (!streamHoldPending && streamBranchRef.current && streamBranchRef.current !== branchName && !state.isStreaming) {
+      setStreamPreview('');
+      streamPreviewRef.current = '';
+      setStreamBlocks([]);
+      streamBlocksRef.current = [];
+      streamBranchRef.current = null;
+    }
+  }, [branchName, streamHoldPending, state.isStreaming]);
+
+  useEffect(() => {
     if (!showMergeModal) {
       setMergePayloadNodeId(null);
       setShowMergePayloadPicker(false);
@@ -2934,18 +3044,9 @@ export function WorkspaceClient({
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (resumeFollowTimeoutRef.current) {
-        clearTimeout(resumeFollowTimeoutRef.current);
-        resumeFollowTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!pendingScrollTo) return;
     if (branchName !== pendingScrollTo.targetBranch) return;
-    if (!nodes.some((node) => node.id === pendingScrollTo.nodeId)) return;
+    if (!combinedNodes.some((node) => node.id === pendingScrollTo.nodeId)) return;
     const container = messageListRef.current;
     if (!container) return;
 
@@ -2964,9 +3065,39 @@ export function WorkspaceClient({
 
     requestAnimationFrame(() => {
       const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
-      if (el instanceof HTMLElement) {
-        el.scrollIntoView({ block: 'center' });
+      if (!(el instanceof HTMLElement)) {
+        return;
       }
+      if (pendingScrollTo.block === 'start') {
+        const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
+        const extraGap = 24;
+        const desiredTop = Math.max(0, el.offsetTop - paddingTop - extraGap);
+        const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+        const extraPadding = Math.max(0, desiredTop - maxScroll);
+        const totalPadding = 24 + extraPadding;
+        container.style.paddingBottom = `${totalPadding}px`;
+        setPinnedTopNodeId(pendingScrollTo.nodeId);
+        setPinnedTopExtraPadding(extraPadding);
+        pinnedTopBranchRef.current = branchName;
+        requestAnimationFrame(() => {
+          ignoreNextScrollRef.current = true;
+          container.scrollTop = desiredTop;
+          updateNearBottom();
+          setHighlightedNodeId(pendingScrollTo.nodeId);
+          setPendingScrollTo(null);
+          if (highlightTimeoutRef.current) {
+            clearTimeout(highlightTimeoutRef.current);
+          }
+          highlightTimeoutRef.current = setTimeout(() => {
+            setHighlightedNodeId(null);
+          }, 2500);
+        });
+        return;
+      }
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: pendingScrollTo.block ?? 'center' });
+      }
+      updateNearBottom();
       setHighlightedNodeId(pendingScrollTo.nodeId);
       setPendingScrollTo(null);
       if (highlightTimeoutRef.current) {
@@ -2976,58 +3107,48 @@ export function WorkspaceClient({
         setHighlightedNodeId(null);
       }, 2500);
     });
-  }, [pendingScrollTo, branchName, nodes, hideShared, sharedNodes]);
+  }, [pendingScrollTo, branchName, combinedNodes, hideShared, sharedNodes, updateNearBottom]);
 
   useEffect(() => {
-    shouldScrollToBottomRef.current = true;
-    userInterruptedScrollRef.current = false;
-  }, [branchName]);
-
-  useEffect(() => {
-    if (!wasStreamingRef.current && state.isStreaming) {
-      userInterruptedScrollRef.current = false;
-    }
-    wasStreamingRef.current = state.isStreaming;
-  }, [state.isStreaming]);
-
-  useEffect(() => {
-    if (!shouldScrollToBottomRef.current) return;
-    if (userInterruptedScrollRef.current) return;
     if (isLoading) return;
-    // Ensure we scroll after the DOM has painted with the final node list.
+    if (!messageListRef.current) return;
+    if (pendingScrollTo?.targetBranch === branchName && pendingScrollTo.block === 'start') return;
+    if (autoScrollBranchRef.current === branchName) return;
+    autoScrollBranchRef.current = branchName;
     requestAnimationFrame(() => {
       scrollToBottom();
+      setIsNearBottom(true);
     });
-  }, [branchName, isLoading, visibleNodes.length, streamPreview]);
+  }, [branchName, isLoading, pendingScrollTo, scrollToBottom]);
+
+  useEffect(() => {
+    if (!pinnedTopNodeId) return;
+    if (pinnedTopBranchRef.current === branchName) return;
+    setPinnedTopNodeId(null);
+    setPinnedTopExtraPadding(0);
+    if (messageListRef.current) {
+      messageListRef.current.style.paddingBottom = '';
+    }
+  }, [branchName, pinnedTopNodeId]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    requestAnimationFrame(() => {
+      updateNearBottom();
+    });
+  }, [visibleNodes.length, streamPreview, isLoading, updateNearBottom]);
 
   const handleMessageListScroll = () => {
-    const el = messageListRef.current;
-    if (!el) return;
     if (ignoreNextScrollRef.current) {
       ignoreNextScrollRef.current = false;
+      updateNearBottom();
       return;
     }
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    shouldScrollToBottomRef.current = distance <= scrollFollowThreshold;
-    if (!state.isStreaming) {
-      if (distance <= scrollFollowThreshold) {
-        userInterruptedScrollRef.current = false;
-      }
-      return;
+    if (pinnedTopNodeId) {
+      setPinnedTopNodeId(null);
+      setPinnedTopExtraPadding(0);
     }
-    if (distance > scrollFollowThreshold) {
-      if (resumeFollowTimeoutRef.current) {
-        clearTimeout(resumeFollowTimeoutRef.current);
-        resumeFollowTimeoutRef.current = null;
-      }
-      userInterruptedScrollRef.current = true;
-      return;
-    }
-    if (resumeFollowTimeoutRef.current) return;
-    resumeFollowTimeoutRef.current = setTimeout(() => {
-      userInterruptedScrollRef.current = false;
-      resumeFollowTimeoutRef.current = null;
-    }, AUTO_FOLLOW_RESUME_DELAY_MS);
+    updateNearBottom();
   };
 
   const switchBranch = async (name: string) => {
@@ -4071,6 +4192,7 @@ export function WorkspaceClient({
                   ref={messageListRef}
                   data-testid="chat-message-list"
                   className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
+                  style={pinnedTopExtraPadding ? { paddingBottom: `${24 + pinnedTopExtraPadding}px` } : undefined}
                   onScroll={handleMessageListScroll}
                 >
                   {isLoading ? (
@@ -4174,6 +4296,20 @@ export function WorkspaceClient({
                     </div>
                   )}
                 </div>
+
+                {!isNearBottom ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      scrollToBottom();
+                      updateNearBottom();
+                    }}
+                    className="absolute bottom-[calc(1rem+44px+12px)] right-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    aria-label="Jump to bottom"
+                  >
+                    <BlueprintIcon icon="chevron-down" className="h-4 w-4" />
+                  </button>
+                ) : null}
 
                 {hideShared && branchNodes.length === 0 && sharedCount > 0 ? (
                   <p className="text-sm italic text-muted">No new messages on this branch yet.</p>

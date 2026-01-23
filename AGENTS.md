@@ -1,5 +1,6 @@
 ## Global design decisions
-All text forms submit on cmd+Enter if form state is valid.
+- All text forms submit on cmd+Enter if form state is valid.
+- Icons must come from Blueprint JS
 
 ## Ref identity (git-first)
 - Treat ref names as the default identifier everywhere; preserve git-like mutable names.
