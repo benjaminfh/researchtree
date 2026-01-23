@@ -2904,6 +2904,17 @@ export function WorkspaceClient({
   }, [streamHoldPending, branchName, nodes]);
 
   useEffect(() => {
+    if (!streamHold || streamHold.branch !== branchName) return;
+    const target = nodes.find((node) => node.id === streamHold.targetId);
+    if (!target || target.type !== 'message' || target.role !== 'assistant') return;
+    const currentText = normalizeMessageText(getNodeText(target));
+    const holdText = normalizeMessageText(streamHold.content);
+    if (currentText && currentText === holdText) {
+      setStreamHold(null);
+    }
+  }, [streamHold, branchName, nodes]);
+
+  useEffect(() => {
     if (!showMergeModal) {
       setMergePayloadNodeId(null);
       setShowMergePayloadPicker(false);
