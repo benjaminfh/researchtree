@@ -2916,22 +2916,33 @@ export function WorkspaceClient({
 
     requestAnimationFrame(() => {
       const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
-      if (el instanceof HTMLElement) {
-        if (pendingScrollTo.block === 'start') {
-          const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
-          const extraGap = 8;
-          const containerRect = container.getBoundingClientRect();
-          const elRect = el.getBoundingClientRect();
-          const targetTop = elRect.top - containerRect.top + container.scrollTop;
-          const spacer = Math.max(0, container.clientHeight - elRect.height - paddingTop - extraGap);
-          container.style.paddingBottom = `${spacer + 24}px`;
-          setPinnedTopNodeId(pendingScrollTo.nodeId);
-          setPinnedTopSpacer(spacer);
+      if (!(el instanceof HTMLElement)) {
+        return;
+      }
+      if (pendingScrollTo.block === 'start') {
+        const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
+        const extraGap = 8;
+        const spacer = Math.max(0, container.clientHeight - el.getBoundingClientRect().height - paddingTop - extraGap);
+        container.style.paddingBottom = `${spacer + 24}px`;
+        setPinnedTopNodeId(pendingScrollTo.nodeId);
+        setPinnedTopSpacer(spacer);
+        requestAnimationFrame(() => {
           ignoreNextScrollRef.current = true;
-          container.scrollTop = Math.max(0, targetTop - paddingTop - extraGap);
-        } else if (typeof el.scrollIntoView === 'function') {
-          el.scrollIntoView({ block: pendingScrollTo.block ?? 'center' });
-        }
+          container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+          updateNearBottom();
+          setHighlightedNodeId(pendingScrollTo.nodeId);
+          setPendingScrollTo(null);
+          if (highlightTimeoutRef.current) {
+            clearTimeout(highlightTimeoutRef.current);
+          }
+          highlightTimeoutRef.current = setTimeout(() => {
+            setHighlightedNodeId(null);
+          }, 2500);
+        });
+        return;
+      }
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: pendingScrollTo.block ?? 'center' });
       }
       updateNearBottom();
       setHighlightedNodeId(pendingScrollTo.nodeId);
