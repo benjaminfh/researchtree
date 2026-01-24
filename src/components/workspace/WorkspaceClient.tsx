@@ -1397,6 +1397,7 @@ export function WorkspaceClient({
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
   const streamBranchRef = useRef<string | null>(null);
+  const streamAnchorIdRef = useRef<string | null>(null);
   const [streamHoldPending, setStreamHoldPending] = useState<{
     content: string;
     contentBlocks: ThinkingContentBlock[];
@@ -1553,18 +1554,23 @@ export function WorkspaceClient({
       });
     },
     onComplete: async () => {
-      await Promise.all([refreshHistory(), mutateArtefact()]);
       const finalContent = streamPreviewRef.current;
       const finalBlocks = streamBlocksRef.current;
-      if (finalContent || finalBlocks.length > 0) {
-        const streamBranch = streamBranchRef.current ?? branchName;
+      const streamBranch = streamBranchRef.current ?? branchName;
+      const shouldHoldStream = Boolean(finalContent || finalBlocks.length > 0);
+      if (shouldHoldStream) {
         setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: streamBranch });
-      } else {
+      }
+      await Promise.all([refreshHistory(), mutateArtefact()]);
+      if (!shouldHoldStream) {
         setStreamPreview('');
         streamPreviewRef.current = '';
         setStreamBlocks([]);
         streamBlocksRef.current = [];
         streamBranchRef.current = null;
+        streamAnchorIdRef.current = null;
+      } else {
+        streamBranchRef.current = streamBranch;
       }
       markHasEverSentMessage();
       setOptimisticUserNode(null);
@@ -1632,6 +1638,7 @@ export function WorkspaceClient({
       setThinkingMenuOpen(true);
       return;
     }
+    streamAnchorIdRef.current = latestVisibleNodeId;
     if (!ensureLeaseSessionReady()) {
       return;
     }
@@ -1697,6 +1704,7 @@ export function WorkspaceClient({
     onFailure?: () => void;
   }) => {
     if (!question.trim() || state.isStreaming) return;
+    streamAnchorIdRef.current = targetBranch === branchName ? latestVisibleNodeId : null;
     if (!ensureLeaseSessionReady()) return;
     setStreamHold(null);
     setStreamHoldPending(null);
@@ -2709,19 +2717,52 @@ export function WorkspaceClient({
     setIsNearBottom(distance <= scrollNearBottomThreshold);
   }, []);
 
+  const resolveStreamHoldTarget = useCallback(
+    (list: NodeRecord[], targetBranch: string, anchorId: string | null) => {
+      const anchorIndex = anchorId ? list.findIndex((node) => node.id === anchorId) : -1;
+      if (anchorId && anchorIndex === -1) {
+        return null;
+      }
+      const scope = anchorIndex >= 0 ? list.slice(anchorIndex + 1) : list;
+      const candidates = scope.filter(
+        (node) =>
+          node.type === 'message' &&
+          (node as MessageNode).role === 'assistant' &&
+          (node.createdOnBranch ? node.createdOnBranch === targetBranch : true)
+      ) as MessageNode[];
+      return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+    },
+    []
+  );
+
   const combinedNodes = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
     const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
     const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
     let baseNodes = nodes;
-    if (streamHold && streamHold.branch === branchName) {
+    const pendingStreamHoldTarget =
+      streamHoldPending && streamHoldPending.branch === branchName
+        ? resolveStreamHoldTarget(nodes, branchName, streamAnchorIdRef.current)
+        : null;
+    const resolvedStreamHold =
+      streamHold && streamHold.branch === branchName
+        ? streamHold
+        : pendingStreamHoldTarget
+          ? {
+              targetId: pendingStreamHoldTarget.id,
+              content: streamHoldPending!.content,
+              contentBlocks: streamHoldPending!.contentBlocks,
+              branch: branchName
+            }
+          : null;
+    if (resolvedStreamHold) {
       baseNodes = baseNodes.map((node) => {
-        if (node.id !== streamHold.targetId) return node;
+        if (node.id !== resolvedStreamHold.targetId) return node;
         if (node.type !== 'message' || node.role !== 'assistant') return node;
         return {
           ...node,
-          content: streamHold.content,
-          contentBlocks: streamHold.contentBlocks
+          content: resolvedStreamHold.content,
+          contentBlocks: resolvedStreamHold.contentBlocks
         };
       });
     }
@@ -2747,12 +2788,21 @@ export function WorkspaceClient({
       if (assistantPendingNode) {
         out.push(assistantPendingNode);
       }
-      if (streamingNode) {
+      if (streamingNode && !resolvedStreamHold) {
         out.push(streamingNode);
       }
     }
     return out;
-  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName, streamHold]);
+  }, [
+    nodes,
+    optimisticUserNode,
+    assistantPendingNode,
+    streamingNode,
+    branchName,
+    streamHold,
+    streamHoldPending,
+    resolveStreamHoldTarget
+  ]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
   const latestVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
@@ -2957,15 +3007,7 @@ export function WorkspaceClient({
   useEffect(() => {
     if (!streamHoldPending) return;
     if (streamHoldPending.branch !== branchName) return;
-    const candidates = [...nodes]
-      .reverse()
-      .filter(
-        (node) =>
-          node.type === 'message' &&
-          node.role === 'assistant' &&
-          (node.createdOnBranch ? node.createdOnBranch === branchName : true)
-      ) as MessageNode[];
-    const target = candidates[0] ?? null;
+    const target = resolveStreamHoldTarget(nodes, branchName, streamAnchorIdRef.current);
     if (!target) return;
     setStreamHold({
       targetId: target.id,
@@ -2978,7 +3020,8 @@ export function WorkspaceClient({
     streamPreviewRef.current = '';
     setStreamBlocks([]);
     streamBlocksRef.current = [];
-  }, [streamHoldPending, branchName, nodes]);
+    streamAnchorIdRef.current = null;
+  }, [streamHoldPending, branchName, nodes, resolveStreamHoldTarget]);
 
   useEffect(() => {
     if (!streamHoldPending) return;
@@ -2989,6 +3032,7 @@ export function WorkspaceClient({
     setStreamBlocks([]);
     streamBlocksRef.current = [];
     streamBranchRef.current = null;
+    streamAnchorIdRef.current = null;
   }, [streamHoldPending, branchName]);
 
   useEffect(() => {
