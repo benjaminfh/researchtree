@@ -933,7 +933,7 @@ export function WorkspaceClient({
   }, []);
 
   const openEditModal = (node: MessageNode, highlightText?: string) => {
-    if (state.isStreaming) {
+    if (branchActionDisabled) {
       pushToast('info', 'Branching is disabled while streaming.');
       return;
     }
@@ -1881,6 +1881,7 @@ export function WorkspaceClient({
           interrupted: state.error !== null
         }
       : null;
+  const branchActionDisabled = state.isStreaming || Boolean(streamingNode);
   const isSending = state.isStreaming || assistantPending;
 
   const toggleComposerCollapsed = useCallback(
@@ -2774,6 +2775,16 @@ export function WorkspaceClient({
     if (visibleNodes.length === 0) return null;
     return visibleNodes[visibleNodes.length - 1]!.id;
   }, [visibleNodes]);
+  const latestPersistedVisibleNodeId = useMemo(() => {
+    if (visibleNodes.length === 0) return null;
+    for (let index = visibleNodes.length - 1; index >= 0; index -= 1) {
+      const nodeId = visibleNodes[index]!.id;
+      if (nodeId !== 'streaming' && nodeId !== 'assistant-pending' && nodeId !== 'optimistic-user') {
+        return nodeId;
+      }
+    }
+    return null;
+  }, [visibleNodes]);
   const visibleNodeRoleMap = useMemo(() => {
     return new Map(
       visibleNodes
@@ -2836,9 +2847,9 @@ export function WorkspaceClient({
   }, [getSelectionContext, visibleNodeRoleMap]);
 
   useEffect(() => {
-    if (!showNewBranchModal || !latestVisibleNodeId) return;
-    setBranchSplitNodeId((prev) => prev ?? latestVisibleNodeId);
-  }, [showNewBranchModal, latestVisibleNodeId]);
+    if (!showNewBranchModal || !latestPersistedVisibleNodeId) return;
+    setBranchSplitNodeId((prev) => prev ?? latestPersistedVisibleNodeId);
+  }, [showNewBranchModal, latestPersistedVisibleNodeId]);
 
   const lastUpdatedTimestamp = useMemo(() => {
     const historyLatest = visibleNodes[visibleNodes.length - 1]?.timestamp ?? null;
@@ -4028,7 +4039,7 @@ export function WorkspaceClient({
                     value={newBranchName}
                     onValueChange={setNewBranchName}
                     onSubmit={() => void createBranch()}
-                    disabled={isSwitching || isRenaming || state.isStreaming}
+                    disabled={isSwitching || isRenaming || branchActionDisabled}
                     submitting={isCreating}
                     error={branchActionError}
                     testId="branch-form-rail"
@@ -4042,7 +4053,7 @@ export function WorkspaceClient({
                             value={newBranchProvider}
                             onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                             className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                            disabled={isSwitching || isCreating || isRenaming || state.isStreaming}
+                            disabled={isSwitching || isCreating || isRenaming || branchActionDisabled}
                             data-testid="branch-provider-select-rail"
                           >
                             {selectableProviderOptions.map((option) => (
@@ -4058,7 +4069,7 @@ export function WorkspaceClient({
                             value={newBranchThinking}
                             onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
                             className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                            disabled={isSwitching || isCreating || isRenaming || state.isStreaming}
+                            disabled={isSwitching || isCreating || isRenaming || branchActionDisabled}
                           >
                             {(() => {
                               const branchModel =
@@ -4259,7 +4270,7 @@ export function WorkspaceClient({
                                   Boolean(activeBranchHighlight.text.trim())
                                 }
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
-                                branchActionDisabled={state.isStreaming}
+                                branchActionDisabled={branchActionDisabled}
                               />
                             ))}
                           </div>
@@ -4303,7 +4314,7 @@ export function WorkspaceClient({
                             Boolean(activeBranchHighlight.text.trim())
                           }
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
-                          branchActionDisabled={state.isStreaming}
+                          branchActionDisabled={branchActionDisabled}
                         />
                       ))}
                     </div>
@@ -4377,13 +4388,13 @@ export function WorkspaceClient({
                           onClick={() => {
                             setBranchActionError(null);
                             resetBranchQuestionState();
-                            setBranchSplitNodeId(latestVisibleNodeId);
+                            setBranchSplitNodeId(latestPersistedVisibleNodeId);
                             setShowNewBranchModal(true);
                           }}
-                          disabled={isCreating || isSwitching || state.isStreaming}
+                          disabled={isCreating || isSwitching || branchActionDisabled || !latestPersistedVisibleNodeId}
                           className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
                           aria-label="Show branch creator"
-                          title={state.isStreaming ? 'Branching is disabled while streaming' : undefined}
+                          title={branchActionDisabled ? 'Branching is disabled while streaming' : undefined}
                           data-testid="branch-new-button"
                         >
                           <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700">
@@ -5239,7 +5250,7 @@ export function WorkspaceClient({
                   closeNewBranchModal();
                   setNewBranchName('');
                 }}
-                disabled={isSwitching || state.isStreaming}
+                disabled={isSwitching || branchActionDisabled}
                 submitting={isCreating}
                 error={branchActionError}
                 testId="branch-form-modal"
@@ -5253,7 +5264,7 @@ export function WorkspaceClient({
                         value={newBranchProvider}
                         onChange={(event) => setNewBranchProvider(event.target.value as LLMProvider)}
                         className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                        disabled={isSwitching || isCreating || isRenaming || state.isStreaming}
+                        disabled={isSwitching || isCreating || isRenaming || branchActionDisabled}
                         data-testid="branch-provider-select"
                       >
                         {selectableProviderOptions.map((option) => (
@@ -5269,7 +5280,7 @@ export function WorkspaceClient({
                         value={newBranchThinking}
                         onChange={(event) => setNewBranchThinking(event.target.value as ThinkingSetting)}
                         className="rounded-lg border border-divider/60 bg-white px-2 py-1 text-xs text-slate-800 focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                        disabled={isSwitching || isCreating || isRenaming || state.isStreaming}
+                        disabled={isSwitching || isCreating || isRenaming || branchActionDisabled}
                       >
                         {(() => {
                           const branchModel =
