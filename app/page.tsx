@@ -30,7 +30,7 @@ export default async function HomePage() {
   const defaultProvider = normalizeProviderForUi(resolveLLMProvider());
 
   if (store.mode === 'pg') {
-    await requireUser();
+    const currentUser = await requireUser();
     const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
     const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const rows = await rtListProjectsShadowV1();
@@ -60,6 +60,7 @@ export default async function HomePage() {
         const lastModified = Number.isFinite(Date.parse(lastModifiedSource))
           ? new Date(lastModifiedSource).getTime()
           : new Date(createdAt).getTime();
+        const isOwner = row.ownerUserId === currentUser.id;
 
         return {
           id: projectId,
@@ -67,7 +68,9 @@ export default async function HomePage() {
           description: row.description ?? undefined,
           createdAt,
           nodeCount,
-          lastModified
+          lastModified,
+          isOwner,
+          ownerEmail: row.ownerEmail
         };
       })
     );

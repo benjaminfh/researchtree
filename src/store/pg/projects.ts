@@ -8,6 +8,8 @@ export interface PgProjectSummary {
   description?: string;
   createdAt: string;
   updatedAt: string;
+  ownerUserId?: string;
+  ownerEmail?: string;
 }
 
 export async function rtCreateProjectShadow(input: {
@@ -43,7 +45,9 @@ export async function rtListProjectsShadowV1(): Promise<PgProjectSummary[]> {
     name: String(row.name),
     description: row.description ?? undefined,
     createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at ?? row.created_at).toISOString()
+    updatedAt: new Date(row.updated_at ?? row.created_at).toISOString(),
+    ownerUserId: row.owner_user_id ? String(row.owner_user_id) : undefined,
+    ownerEmail: row.owner_email ?? undefined
   }));
 }
 

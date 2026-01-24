@@ -21,7 +21,10 @@ export async function GET() {
         id: project.id,
         name: project.name,
         description: project.description ?? undefined,
-        createdAt: project.createdAt
+        createdAt: project.createdAt,
+        ownerUserId: project.ownerUserId ?? null,
+        ownerEmail: project.ownerEmail ?? null,
+        isOwner: project.ownerUserId === user.id
       }));
       return Response.json({ projects });
     }
