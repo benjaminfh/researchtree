@@ -20,6 +20,8 @@ import 'reactflow/dist/style.css';
 import type { NodeRecord } from '@git/types';
 import { deriveTextFromBlocks, getContentBlocksWithLegacyFallback } from '@/src/shared/thinkingTraces';
 import { features } from '@/src/config/features';
+import type { GraphNode, GraphViews } from '@/src/shared/graph';
+import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { ArrowLeftCircleIcon, CpuChipIcon, UserIcon } from './HeroIcons';
@@ -27,6 +29,7 @@ import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 
 interface WorkspaceGraphProps {
   branchHistories: Record<string, NodeRecord[]>;
+  graphViews?: GraphViews;
   activeBranchName: string;
   trunkName: string;
   branchColors?: Record<string, string>;
@@ -69,6 +72,53 @@ const LABEL_ROW_GAP = 20; // gap after the right-most line when the node isn't o
 const EDGE_ANGULAR_BEND = 0.32;
 const EDGE_CURVE_BEND = 0.7;
 const EDGE_STYLE = features.graphEdgeStyle;
+const MERGE_ACK_INSTRUCTION = 'Task: acknowledge merged content by replying \"Merge received\" but take no other action.';
+
+const isHiddenMessage = (node: NodeRecord): boolean => node.type === 'message' && Boolean((node as any).uiHidden);
+
+const isMergeAckUserMessage = (node: NodeRecord): boolean => {
+  if (node.type !== 'message' || node.role !== 'user') return false;
+  const content = (node.content ?? '').trim();
+  return (
+    content.startsWith('Merged from ') &&
+    content.includes('Merge summary:') &&
+    content.includes('Merged payload:') &&
+    content.includes('Canvas diff:') &&
+    content.includes(MERGE_ACK_INSTRUCTION)
+  );
+};
+
+const isMergeAckAssistantMessage = (node: NodeRecord): boolean => {
+  if (node.type !== 'message' || node.role !== 'assistant') return false;
+  return (node.content ?? '').trim() === 'Merge received';
+};
+
+const filterVisibleBranchHistories = (branchHistories: Record<string, NodeRecord[]>) => {
+  const output: Record<string, NodeRecord[]> = {};
+  for (const [branchName, nodes] of Object.entries(branchHistories)) {
+    const visible: NodeRecord[] = [];
+    let skipNextMergeAckAssistant = false;
+    for (const node of nodes) {
+      if (node.type === 'state' || isHiddenMessage(node)) {
+        continue;
+      }
+      if (isMergeAckUserMessage(node)) {
+        skipNextMergeAckAssistant = true;
+        continue;
+      }
+      if (skipNextMergeAckAssistant && isMergeAckAssistantMessage(node)) {
+        skipNextMergeAckAssistant = false;
+        continue;
+      }
+      if (node.type === 'message') {
+        skipNextMergeAckAssistant = false;
+      }
+      visible.push(node);
+    }
+    output[branchName] = visible;
+  }
+  return output;
+};
 
 const DotNode = ({ data }: NodeProps<DotNodeData>) => (
   <div className="relative flex items-center gap-2">
@@ -280,17 +330,6 @@ function buildOrthogonalRoundedPath(sx: number, sy: number, tx: number, ty: numb
 function buildCurvePath(sx: number, sy: number, tx: number, ty: number) {
   const d = Math.abs(ty - sy) * EDGE_CURVE_BEND;
   return `M ${sx},${sy} C ${sx},${sy + d} ${tx},${ty - d} ${tx},${ty}`;
-}
-
-export interface GraphNode {
-  id: string;
-  parents: string[];
-  originBranchId: string;
-  laneBranchId: string;
-  isOnActiveBranch: boolean;
-  label: string;
-  icon?: 'assistant' | 'user' | 'merge';
-  hiddenCountByParent?: Record<string, number>;
 }
 
 interface Point {
@@ -819,11 +858,12 @@ function buildStarredGraphNodes(
   trunkName: string,
   starredNodeIds: string[]
 ): GraphNode[] {
+  const visibleBranchHistories = filterVisibleBranchHistories(branchHistories);
   const nodeById = new Map<string, NodeRecord>();
   const firstSeenBranchById = new Map<string, string>();
   const activeNodeIds = new Set<string>();
 
-  const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
+  const orderedBranchEntries = Object.entries(visibleBranchHistories).sort(([a], [b]) => {
     if (a === trunkName && b !== trunkName) return -1;
     if (a !== trunkName && b === trunkName) return 1;
     return a.localeCompare(b);
@@ -841,9 +881,10 @@ function buildStarredGraphNodes(
     }
   }
 
-  const trunkHistory = branchHistories[trunkName] ?? [];
+  const trunkHistory = visibleBranchHistories[trunkName] ?? [];
   const trunkRootId = trunkHistory[0]?.id ?? null;
-  const activeHeadId = branchHistories[activeBranchName]?.[branchHistories[activeBranchName].length - 1]?.id ?? null;
+  const activeHeadId =
+    visibleBranchHistories[activeBranchName]?.[visibleBranchHistories[activeBranchName].length - 1]?.id ?? null;
 
   const important = new Set<string>();
   for (const id of starredNodeIds) {
@@ -1120,6 +1161,7 @@ export function layoutGraph(
 
 export function WorkspaceGraph({
   branchHistories,
+  graphViews,
   activeBranchName,
   trunkName,
   branchColors,
@@ -1131,15 +1173,25 @@ export function WorkspaceGraph({
   onNavigateNode,
   onSwitchBranch
 }: WorkspaceGraphProps) {
-  const graphNodes = useMemo(
-    () =>
-      mode === 'starred'
-        ? buildStarredGraphNodes(branchHistories, activeBranchName, trunkName, starredNodeIds)
-        : mode === 'collapsed'
-        ? buildCollapsedGraphNodes(branchHistories, activeBranchName, trunkName)
-        : buildGraphNodes(branchHistories, activeBranchName, trunkName),
-    [branchHistories, activeBranchName, trunkName, mode, starredNodeIds]
-  );
+  const resolvedGraphViews = useMemo(() => {
+    if (graphViews) return graphViews;
+    const payload = buildGraphPayload({
+      branchHistories,
+      trunkName,
+      activeBranchName
+    });
+    return { all: payload.all, collapsed: payload.collapsed };
+  }, [graphViews, branchHistories, activeBranchName, trunkName]);
+
+  const graphNodes = useMemo(() => {
+    if (mode === 'starred') {
+      return buildStarredGraphNodes(branchHistories, activeBranchName, trunkName, starredNodeIds);
+    }
+    if (mode === 'collapsed') {
+      return resolvedGraphViews.collapsed;
+    }
+    return resolvedGraphViews.all;
+  }, [branchHistories, activeBranchName, trunkName, mode, starredNodeIds, resolvedGraphViews]);
 
   const { nodes, edges } = useMemo(
     () => layoutGraph(graphNodes, activeBranchName, trunkName, branchColors),
@@ -1147,9 +1199,12 @@ export function WorkspaceGraph({
   );
 
   const activeHeadId = useMemo(() => {
-    const activeHistory = branchHistories[activeBranchName] ?? [];
-    return activeHistory[activeHistory.length - 1]?.id ?? null;
-  }, [branchHistories, activeBranchName]);
+    for (let i = resolvedGraphViews.all.length - 1; i >= 0; i -= 1) {
+      const node = resolvedGraphViews.all[i];
+      if (node?.isOnActiveBranch) return node.id;
+    }
+    return null;
+  }, [resolvedGraphViews]);
   const activeHeadNode = useMemo(
     () => (activeHeadId ? nodes.find((node) => node.id === activeHeadId) ?? null : null),
     [nodes, activeHeadId]
