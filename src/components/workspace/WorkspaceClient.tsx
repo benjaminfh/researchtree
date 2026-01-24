@@ -2758,9 +2758,7 @@ export function WorkspaceClient({
       if (!prev) return prev;
       const MAX_PER_BRANCH = 500;
       const nextNodes =
-        visibleNodes.length <= MAX_PER_BRANCH
-          ? visibleNodes
-          : [visibleNodes[0]!, ...visibleNodes.slice(-(MAX_PER_BRANCH - 1))];
+        nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
       const current = prev[branchName];
       // Avoid wiping the cached graph when history briefly revalidates to an empty snapshot.
       if (nextNodes.length === 0 && current?.length) {
@@ -2786,7 +2784,7 @@ export function WorkspaceClient({
       setGraphViews({ all: graph.all, collapsed: graph.collapsed });
       return nextHistories;
     });
-  }, [isGraphVisible, branchName, visibleNodes, trunkName]);
+  }, [isGraphVisible, branchName, nodes, trunkName]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -2892,8 +2890,24 @@ export function WorkspaceClient({
       }
       return idx;
     }
-    return Math.min(trunkNodeCount, persistedNodes.length);
-  }, [branchName, trunkName, persistedNodes, trunkHistoryNodes, trunkNodeCount]);
+    const fallbackCount = Math.min(trunkNodeCount, persistedNodes.length);
+    if (fallbackCount > 0) {
+      return fallbackCount;
+    }
+    const trunkHistory = graphHistories?.[trunkName] ?? null;
+    const branchHistory = graphHistories?.[branchName] ?? null;
+    if (trunkHistory && branchHistory) {
+      const trunkVisible = trunkHistory.filter((node) => node.type !== 'state');
+      const branchVisible = branchHistory.filter((node) => node.type !== 'state');
+      const min = Math.min(trunkVisible.length, branchVisible.length);
+      let idx = 0;
+      while (idx < min && trunkVisible[idx]?.id === branchVisible[idx]?.id) {
+        idx += 1;
+      }
+      return idx;
+    }
+    return fallbackCount;
+  }, [branchName, trunkName, persistedNodes, trunkHistoryNodes, trunkNodeCount, graphHistories]);
   const [hideShared, setHideShared] = useState(branchName !== trunkName);
   useEffect(() => {
     setHideShared(branchName !== trunkName);
