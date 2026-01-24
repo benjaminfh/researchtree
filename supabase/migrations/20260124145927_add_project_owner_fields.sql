@@ -1,5 +1,7 @@
 -- Extend project list RPC to include owner metadata.
 
+drop function if exists public.rt_list_projects_v1();
+
 create or replace function public.rt_list_projects_v1()
 returns table (
   id uuid,
@@ -12,6 +14,8 @@ returns table (
 )
 language sql
 stable
+security definer
+set search_path to 'public'
 as $$
   select
     p.id,
@@ -27,4 +31,5 @@ as $$
   order by p.updated_at desc
 $$;
 
-alter function public.rt_list_projects_v1() set search_path = public;
+revoke all on function public.rt_list_projects_v1() from public;
+grant execute on function public.rt_list_projects_v1() to authenticated;

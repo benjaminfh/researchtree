@@ -115,8 +115,10 @@ describe('/api/projects route', () => {
       {
         id: 'p1',
         name: 'PG',
-        description: undefined,
-        createdAt: '2025-01-01T00:00:00.000Z'
+        createdAt: '2025-01-01T00:00:00.000Z',
+        ownerUserId: null,
+        ownerEmail: null,
+        isOwner: false
       }
     ]);
     expect(mocks.listProjects).not.toHaveBeenCalled();
