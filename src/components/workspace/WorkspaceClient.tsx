@@ -2792,6 +2792,11 @@ export function WorkspaceClient({
       return nextHistories;
     });
   }, [isGraphVisible, branchName, nodes, buildGraphViewsFromHistories]);
+  useEffect(() => {
+    if (!isGraphVisible) return;
+    if (!graphHistories) return;
+    setGraphViews(buildGraphViewsFromHistories(graphHistories, branchName));
+  }, [isGraphVisible, graphHistories, branchName, buildGraphViewsFromHistories]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
