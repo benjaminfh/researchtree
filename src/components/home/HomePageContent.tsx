@@ -149,7 +149,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                           No workspaces yet. Create one to get started.
                         </p>
                       ) : (
-                        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                        <div className="min-h-0 flex-1 overflow-y-auto pr-4 pt-4">
                           <ul className="grid min-w-0 grid-cols-1 gap-2">
                             {recentProjects.map((project) => {
                               const isConfirming = confirming.has(project.id);
@@ -234,7 +234,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                           </span>
                         </button>
                         {showArchived ? (
-                          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                          <div className="min-h-0 flex-1 overflow-y-auto pr-4 pt-4">
                             <ul className="grid min-w-0 grid-cols-1 gap-2">
                               {archivedProjects.map((project) => {
                                 const isConfirming = confirming.has(project.id);
