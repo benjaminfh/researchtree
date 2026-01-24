@@ -2225,6 +2225,17 @@ export function WorkspaceClient({
   );
   const graphRequestKey = useMemo(() => sortedBranches.map((b) => b.name).sort().join('|'), [sortedBranches]);
   const lastGraphRequestKeyRef = useRef<string | null>(null);
+  const buildGraphViewsFromHistories = useCallback(
+    (histories: Record<string, NodeRecord[]>, activeBranchOverride?: string) => {
+      const graph = buildGraphPayload({
+        branchHistories: histories,
+        trunkName,
+        activeBranchName: activeBranchOverride ?? branchName
+      });
+      return { all: graph.all, collapsed: graph.collapsed };
+    },
+    [branchName, trunkName]
+  );
   const loadGraphHistories = useCallback(
     async ({ force = false, signal }: { force?: boolean; signal?: AbortSignal } = {}) => {
       if (!force && (insightCollapsed || insightTab !== 'graph')) {
@@ -2241,8 +2252,9 @@ export function WorkspaceClient({
           branchHistories?: Record<string, NodeRecord[]>;
           graph?: GraphViews;
         };
-        setGraphHistories(data.branchHistories ?? {});
-        setGraphViews(data.graph ?? null);
+        const nextHistories = data.branchHistories ?? {};
+        setGraphHistories(nextHistories);
+        setGraphViews(data.graph ?? buildGraphViewsFromHistories(nextHistories));
         lastGraphRequestKeyRef.current = graphRequestKey;
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
@@ -2251,7 +2263,7 @@ export function WorkspaceClient({
         setGraphHistoryLoading(false);
       }
     },
-    [graphRequestKey, insightCollapsed, insightTab, project.id]
+    [graphRequestKey, insightCollapsed, insightTab, project.id, buildGraphViewsFromHistories]
   );
   const reloadBranches = useCallback(async () => {
     try {
@@ -2776,15 +2788,10 @@ export function WorkspaceClient({
         return prev;
       }
       const nextHistories = { ...prev, [branchName]: nextNodes };
-      const graph = buildGraphPayload({
-        branchHistories: nextHistories,
-        trunkName,
-        activeBranchName: branchName
-      });
-      setGraphViews({ all: graph.all, collapsed: graph.collapsed });
+      setGraphViews(buildGraphViewsFromHistories(nextHistories));
       return nextHistories;
     });
-  }, [isGraphVisible, branchName, nodes, trunkName]);
+  }, [isGraphVisible, branchName, nodes, buildGraphViewsFromHistories]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
