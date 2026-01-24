@@ -407,7 +407,7 @@ export function buildGraphPayload({
   branchHistories: Record<string, NodeRecord[]>;
   trunkName: string;
   activeBranchName: string;
-}): { all: GraphNode[]; collapsed: GraphNode[]; branchHistories: Record<string, NodeRecord[]> } {
+}): { all: GraphNode[]; collapsed: GraphNode[] } {
   const refNames = Object.keys(branchHistories);
   const canonicalNodes: NodeRecord[] = [];
   const seen = new Set<string>();
@@ -450,5 +450,5 @@ export function buildGraphPayload({
     hiddenNodeIds
   );
 
-  return { all, collapsed, branchHistories };
+  return { all, collapsed };
 }
