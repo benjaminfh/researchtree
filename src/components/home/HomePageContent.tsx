@@ -5,7 +5,12 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
-import { ArchiveBoxArrowDownIcon, CheckIcon, ChevronRightIcon } from '@/src/components/workspace/HeroIcons';
+import {
+  ArchiveBoxArrowDownIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  SharedWorkspaceIcon
+} from '@/src/components/workspace/HeroIcons';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
@@ -102,6 +107,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
 
   const recentProjects = useMemo(() => projects.filter((p) => !archived.has(p.id)).slice(0, 12), [projects, archived]);
   const archivedProjects = useMemo(() => projects.filter((p) => archived.has(p.id)), [projects, archived]);
+  const isSharedWorkspace = (project: ProjectMetadata) => project.isOwner === false;
 
   const handleArchive = (id: string) => {
     const next = new Set(archived);
@@ -143,17 +149,27 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                           No workspaces yet. Create one to get started.
                         </p>
                       ) : (
-                        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                        <div className="min-h-0 flex-1 overflow-y-auto pr-4 pt-4">
                           <ul className="grid min-w-0 grid-cols-1 gap-2">
                             {recentProjects.map((project) => {
                               const isConfirming = confirming.has(project.id);
                               return (
                                 <li
                                   key={project.id}
-                                  className="group w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
+                                  className="group relative w-full min-w-0 rounded-xl border border-divider/60 bg-white/90 px-3 py-2 shadow-sm transition hover:border-primary/50"
                                   title={project.name}
                                   data-project-id={project.id}
                                 >
+                                  {isSharedWorkspace(project) ? (
+                                    <span
+                                      className="absolute right-0 top-0 inline-flex h-6 w-6 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
+                                      title="Shared with you"
+                                      role="img"
+                                      aria-label="Shared with you"
+                                    >
+                                      <SharedWorkspaceIcon className="h-3 w-3 rotate-180" />
+                                    </span>
+                                  ) : null}
                                   <div className="flex min-w-0 items-center justify-between gap-3">
                                     <Link href={`/projects/${project.id}`} className="min-w-0 flex-1" title={project.name}>
                                       <div className="truncate text-sm font-semibold text-slate-900" title={project.name}>
@@ -182,7 +198,11 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                       data-testid="archive-workspace"
                                       data-project-id={project.id}
                                     >
-                                      {isConfirming ? <CheckIcon className="h-4 w-4" /> : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
+                                      {isConfirming ? (
+                                        <CheckIcon className="h-4 w-4" />
+                                      ) : (
+                                        <ArchiveBoxArrowDownIcon className="h-4 w-4" />
+                                      )}
                                     </button>
                                   </div>
                                 </li>
@@ -214,17 +234,27 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                           </span>
                         </button>
                         {showArchived ? (
-                          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                          <div className="min-h-0 flex-1 overflow-y-auto pr-4 pt-4">
                             <ul className="grid min-w-0 grid-cols-1 gap-2">
                               {archivedProjects.map((project) => {
                                 const isConfirming = confirming.has(project.id);
                                 return (
                                   <li
                                     key={project.id}
-                                    className="w-full min-w-0 rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm"
+                                    className="relative w-full min-w-0 rounded-xl border border-divider/60 bg-white/80 px-3 py-2 shadow-sm"
                                     title={project.name}
                                     data-project-id={project.id}
                                   >
+                                    {isSharedWorkspace(project) ? (
+                                      <span
+                                        className="absolute right-0 top-0 inline-flex h-6 w-6 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
+                                        title="Shared with you"
+                                        role="img"
+                                        aria-label="Shared with you"
+                                      >
+                                        <SharedWorkspaceIcon className="h-3 w-3 rotate-180" />
+                                      </span>
+                                    ) : null}
                                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                                       <span
                                         className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"

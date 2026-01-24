@@ -90,3 +90,7 @@ export function ConsoleIcon({ className }: IconProps) {
 export function PlusIcon({ className }: IconProps) {
   return <BlueprintIcon icon="folder-new" className={className} />;
 }
+
+export function SharedWorkspaceIcon({ className }: IconProps) {
+  return <BlueprintIcon icon="share" className={className} />;
+}

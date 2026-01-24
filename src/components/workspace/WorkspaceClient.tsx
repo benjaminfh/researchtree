@@ -46,6 +46,7 @@ import {
   PlusIcon,
   QuestionMarkCircleIcon,
   SearchIcon,
+  SharedWorkspaceIcon,
   Square2StackIcon,
   XMarkIcon
 } from './HeroIcons';
@@ -748,6 +749,7 @@ export function WorkspaceClient({
     isPgMode &&
     (features.uiShareMode === 'all' || (features.uiShareMode === 'admins' && Boolean(project.isOwner)));
   const canShare = isPgMode && Boolean(project.isOwner);
+  const isSharedWorkspace = project.isOwner === false;
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const [shareRole, setShareRole] = useState<'viewer' | 'editor'>('viewer');
@@ -3778,7 +3780,19 @@ export function WorkspaceClient({
             {!ctx.railCollapsed ? (
               <div className="flex min-h-0 flex-1 flex-col gap-3">
                 <div className="rounded-2xl border border-divider/70 bg-white/80 px-3 py-2 shadow-sm">
-                  <div className="truncate text-xs font-semibold text-slate-800">{project.name}</div>
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800">{project.name}</div>
+                    {isSharedWorkspace ? (
+                      <span
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
+                        title="Shared with you"
+                        role="img"
+                        aria-label="Shared with you"
+                      >
+                        <SharedWorkspaceIcon className="h-3.5 w-3.5 rotate-180" />
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="truncate text-[11px] text-muted">{project.description ?? 'No description provided.'}</div>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
