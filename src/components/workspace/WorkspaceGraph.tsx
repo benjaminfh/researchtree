@@ -28,7 +28,7 @@ import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 
 interface WorkspaceGraphProps {
   branchHistories: Record<string, NodeRecord[]>;
-  graphViews: GraphViews;
+  graphViews?: GraphViews;
   activeBranchName: string;
   trunkName: string;
   branchColors?: Record<string, string>;
@@ -1172,15 +1172,23 @@ export function WorkspaceGraph({
   onNavigateNode,
   onSwitchBranch
 }: WorkspaceGraphProps) {
+  const resolvedGraphViews = useMemo(() => {
+    if (graphViews) return graphViews;
+    return {
+      all: buildGraphNodes(branchHistories, activeBranchName, trunkName),
+      collapsed: buildCollapsedGraphNodes(branchHistories, activeBranchName, trunkName)
+    };
+  }, [graphViews, branchHistories, activeBranchName, trunkName]);
+
   const graphNodes = useMemo(() => {
     if (mode === 'starred') {
       return buildStarredGraphNodes(branchHistories, activeBranchName, trunkName, starredNodeIds);
     }
     if (mode === 'collapsed') {
-      return graphViews.collapsed;
+      return resolvedGraphViews.collapsed;
     }
-    return graphViews.all;
-  }, [branchHistories, activeBranchName, trunkName, mode, starredNodeIds, graphViews]);
+    return resolvedGraphViews.all;
+  }, [branchHistories, activeBranchName, trunkName, mode, starredNodeIds, resolvedGraphViews]);
 
   const { nodes, edges } = useMemo(
     () => layoutGraph(graphNodes, activeBranchName, trunkName, branchColors),
@@ -1188,12 +1196,12 @@ export function WorkspaceGraph({
   );
 
   const activeHeadId = useMemo(() => {
-    for (let i = graphViews.all.length - 1; i >= 0; i -= 1) {
-      const node = graphViews.all[i];
+    for (let i = resolvedGraphViews.all.length - 1; i >= 0; i -= 1) {
+      const node = resolvedGraphViews.all[i];
       if (node?.isOnActiveBranch) return node.id;
     }
     return null;
-  }, [graphViews]);
+  }, [resolvedGraphViews]);
   const activeHeadNode = useMemo(
     () => (activeHeadId ? nodes.find((node) => node.id === activeHeadId) ?? null : null),
     [nodes, activeHeadId]

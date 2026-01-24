@@ -2750,6 +2750,35 @@ export function WorkspaceClient({
         .map((node) => [node.id, (node as MessageNode).role] as const)
     );
   }, [visibleNodes]);
+
+  useEffect(() => {
+    if (!isGraphVisible) return;
+    setGraphHistories((prev) => {
+      if (!prev) return prev;
+      const MAX_PER_BRANCH = 500;
+      const nextNodes =
+        visibleNodes.length <= MAX_PER_BRANCH
+          ? visibleNodes
+          : [visibleNodes[0]!, ...visibleNodes.slice(-(MAX_PER_BRANCH - 1))];
+      const current = prev[branchName];
+      // Avoid wiping the cached graph when history briefly revalidates to an empty snapshot.
+      if (nextNodes.length === 0 && current?.length) {
+        return prev;
+      }
+      if (current === nextNodes) return prev;
+      if (current && nextNodes.length === 0) {
+        // Keep the last known graph when the incoming snapshot is temporarily empty (e.g. during history refetch).
+        return prev;
+      }
+      const currentTailId = current?.[current.length - 1]?.id ?? null;
+      const nextTailId = nextNodes[nextNodes.length - 1]?.id ?? null;
+      // Avoid thrashing the graph when the active history hasn't changed meaningfully.
+      if (current && current.length === nextNodes.length && currentTailId === nextTailId) {
+        return prev;
+      }
+      return { ...prev, [branchName]: nextNodes };
+    });
+  }, [isGraphVisible, branchName, visibleNodes]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -4577,7 +4606,7 @@ export function WorkspaceClient({
                           <div className="flex h-full min-h-0 flex-col">
                             <WorkspaceGraph
                               branchHistories={graphHistories ?? {}}
-                              graphViews={graphViews ?? { all: [], collapsed: [] }}
+                              graphViews={graphViews ?? undefined}
                               activeBranchName={branchName}
                               trunkName={trunkName}
                               branchColors={branchColorMap}
