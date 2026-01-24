@@ -51,6 +51,7 @@ import {
 } from './HeroIcons';
 import { MarkdownWithCopy } from './MarkdownWithCopy';
 import { copyTextToClipboard } from './clipboard';
+import type { GraphViews } from '@/src/shared/graph';
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -795,6 +796,7 @@ export function WorkspaceClient({
   const isResizingRef = useRef(false);
   const savedChatPaneWidthRef = useRef<number | null>(null);
   const [graphHistories, setGraphHistories] = useState<Record<string, NodeRecord[]> | null>(null);
+  const [graphViews, setGraphViews] = useState<GraphViews | null>(null);
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
@@ -2234,8 +2236,12 @@ export function WorkspaceClient({
         if (!res.ok) {
           throw new Error('Failed to load graph');
         }
-        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
+        const data = (await res.json()) as {
+          branchHistories?: Record<string, NodeRecord[]>;
+          graph?: GraphViews;
+        };
         setGraphHistories(data.branchHistories ?? {});
+        setGraphViews(data.graph ?? null);
         lastGraphRequestKeyRef.current = graphRequestKey;
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
@@ -2326,32 +2332,6 @@ export function WorkspaceClient({
     return () => window.removeEventListener('resize', handleResize);
   }, [draft, resizeComposer, updateBaseComposerPadding, updateComposerMetrics]);
 
-  useEffect(() => {
-    if (!isGraphVisible) return;
-    setGraphHistories((prev) => {
-      if (!prev) return prev;
-      const MAX_PER_BRANCH = 500;
-      const nextNodes =
-        nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
-      const current = prev[branchName];
-      // Avoid wiping the cached graph when history briefly revalidates to an empty snapshot.
-      if (nextNodes.length === 0 && current?.length) {
-        return prev;
-      }
-      if (current === nextNodes) return prev;
-      if (current && nextNodes.length === 0) {
-        // Keep the last known graph when the incoming snapshot is temporarily empty (e.g. during history refetch).
-        return prev;
-      }
-      const currentTailId = current?.[current.length - 1]?.id ?? null;
-      const nextTailId = nextNodes[nextNodes.length - 1]?.id ?? null;
-      // Avoid thrashing the graph when the active history hasn't changed meaningfully.
-      if (current && current.length === nextNodes.length && currentTailId === nextTailId) {
-        return prev;
-      }
-      return { ...prev, [branchName]: nextNodes };
-    });
-  }, [isGraphVisible, branchName, nodes]);
 
   useEffect(() => {
     if (insightTab !== 'graph') {
@@ -3559,6 +3539,7 @@ export function WorkspaceClient({
     const branchId = branch.id ?? branch.name;
     if (pendingVisibilityBranchIds.has(branchId)) return;
     const previousGraphHistories = graphHistories;
+    const previousGraphViews = graphViews;
     const wasHidden = branch.isHidden;
     setBranchActionError(null);
     setPendingVisibilityBranchIds((prev) => new Set(prev).add(branchId));
@@ -3573,6 +3554,7 @@ export function WorkspaceClient({
         const { [branch.name]: _omit, ...rest } = prev;
         return rest;
       });
+      setGraphViews(null);
     }
     try {
       const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}/visibility`, {
@@ -3591,13 +3573,12 @@ export function WorkspaceClient({
       if (data.branches) {
         setBranches(data.branches);
       }
-      if (wasHidden) {
-        await loadGraphHistories({ force: true });
-      }
+      await loadGraphHistories({ force: true });
     } catch (err) {
       setBranchActionError((err as Error).message);
       setBranches(prevBranches);
       setGraphHistories(previousGraphHistories ?? null);
+      setGraphViews(previousGraphViews ?? null);
     } finally {
       setPendingVisibilityBranchIds((prev) => {
         const next = new Set(prev);
@@ -4595,11 +4576,8 @@ export function WorkspaceClient({
                         ) : (
                           <div className="flex h-full min-h-0 flex-col">
                             <WorkspaceGraph
-                              branchHistories={
-                                graphHistories ?? {
-                                  [branchName]: visibleNodes
-                                }
-                              }
+                              branchHistories={graphHistories ?? {}}
+                              graphViews={graphViews ?? { all: [], collapsed: [] }}
                               activeBranchName={branchName}
                               trunkName={trunkName}
                               branchColors={branchColorMap}
