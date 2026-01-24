@@ -1402,6 +1402,8 @@ export function WorkspaceClient({
     content: string;
     contentBlocks: ThinkingContentBlock[];
     branch: string;
+    anchorId: string | null;
+    tailId: string | null;
   } | null>(null);
   const [streamHold, setStreamHold] = useState<{
     targetId: string;
@@ -1559,7 +1561,15 @@ export function WorkspaceClient({
       const streamBranch = streamBranchRef.current ?? branchName;
       const shouldHoldStream = Boolean(finalContent || finalBlocks.length > 0);
       if (shouldHoldStream) {
-        setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: streamBranch });
+        const pendingTailId =
+          persistedNodes.length > 0 ? persistedNodes[persistedNodes.length - 1]!.id : null;
+        setStreamHoldPending({
+          content: finalContent,
+          contentBlocks: finalBlocks,
+          branch: streamBranch,
+          anchorId: streamAnchorIdRef.current,
+          tailId: pendingTailId
+        });
       }
       await Promise.all([refreshHistory(), mutateArtefact()]);
       if (!shouldHoldStream) {
@@ -2718,10 +2728,11 @@ export function WorkspaceClient({
   }, []);
 
   const resolveStreamHoldTarget = useCallback(
-    (list: NodeRecord[], targetBranch: string, anchorId: string | null) => {
+    (list: NodeRecord[], targetBranch: string, anchorId: string | null, pendingTailId?: string | null) => {
       let anchorIndex = anchorId ? list.findIndex((node) => node.id === anchorId) : -1;
-      if (anchorId && anchorIndex === -1) {
-        anchorIndex = -1;
+      const currentTailId = list.length > 0 ? list[list.length - 1]!.id : null;
+      if (anchorIndex === -1 && pendingTailId && currentTailId === pendingTailId) {
+        return null;
       }
       const scope = anchorIndex >= 0 ? list.slice(anchorIndex + 1) : list;
       const candidates = scope.filter(
@@ -2742,7 +2753,7 @@ export function WorkspaceClient({
     let baseNodes = nodes;
     const pendingStreamHoldTarget =
       streamHoldPending && streamHoldPending.branch === branchName
-        ? resolveStreamHoldTarget(nodes, branchName, streamAnchorIdRef.current)
+        ? resolveStreamHoldTarget(nodes, branchName, streamHoldPending.anchorId, streamHoldPending.tailId)
         : null;
     const resolvedStreamHold =
       streamHold && streamHold.branch === branchName
@@ -3007,7 +3018,12 @@ export function WorkspaceClient({
   useEffect(() => {
     if (!streamHoldPending) return;
     if (streamHoldPending.branch !== branchName) return;
-    const target = resolveStreamHoldTarget(nodes, branchName, streamAnchorIdRef.current);
+    const target = resolveStreamHoldTarget(
+      nodes,
+      branchName,
+      streamHoldPending.anchorId,
+      streamHoldPending.tailId
+    );
     if (!target) return;
     setStreamHold({
       targetId: target.id,
