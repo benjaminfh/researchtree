@@ -3780,8 +3780,8 @@ export function WorkspaceClient({
             {!ctx.railCollapsed ? (
               <div className="flex min-h-0 flex-1 flex-col gap-3">
                 <div className="rounded-2xl border border-divider/70 bg-white/80 px-3 py-2 shadow-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="truncate text-xs font-semibold text-slate-800">{project.name}</div>
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800">{project.name}</div>
                     {isSharedWorkspace ? (
                       <span
                         className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
