@@ -2730,8 +2730,15 @@ export function WorkspaceClient({
   const resolveStreamHoldTarget = useCallback(
     (list: NodeRecord[], targetBranch: string, anchorId: string | null, pendingTailId?: string | null) => {
       let anchorIndex = anchorId ? list.findIndex((node) => node.id === anchorId) : -1;
-      const currentTailId = list.length > 0 ? list[list.length - 1]!.id : null;
-      if (anchorIndex === -1 && pendingTailId && currentTailId === pendingTailId) {
+      let currentTailId: string | null = null;
+      for (let index = list.length - 1; index >= 0; index -= 1) {
+        const node = list[index];
+        if (node && node.type !== 'state') {
+          currentTailId = node.id;
+          break;
+        }
+      }
+      if (pendingTailId && currentTailId === pendingTailId) {
         return null;
       }
       const scope = anchorIndex >= 0 ? list.slice(anchorIndex + 1) : list;
