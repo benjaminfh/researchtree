@@ -3789,7 +3789,7 @@ export function WorkspaceClient({
                         role="img"
                         aria-label="Shared with you"
                       >
-                        <SharedWorkspaceIcon className="h-3.5 w-3.5" />
+                        <SharedWorkspaceIcon className="h-3.5 w-3.5 rotate-180" />
                       </span>
                     ) : null}
                   </div>

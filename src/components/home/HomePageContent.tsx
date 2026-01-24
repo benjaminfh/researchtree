@@ -162,12 +162,12 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                 >
                                   {isSharedWorkspace(project) ? (
                                     <span
-                                      className="absolute right-0 top-0 inline-flex h-8 w-8 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
+                                      className="absolute right-0 top-0 inline-flex h-6 w-6 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
                                       title="Shared with you"
                                       role="img"
                                       aria-label="Shared with you"
                                     >
-                                      <SharedWorkspaceIcon className="h-4 w-4" />
+                                      <SharedWorkspaceIcon className="h-3 w-3 rotate-180" />
                                     </span>
                                   ) : null}
                                   <div className="flex min-w-0 items-center justify-between gap-3">
@@ -247,12 +247,12 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                   >
                                     {isSharedWorkspace(project) ? (
                                       <span
-                                        className="absolute right-0 top-0 inline-flex h-8 w-8 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
+                                        className="absolute right-0 top-0 inline-flex h-6 w-6 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
                                         title="Shared with you"
                                         role="img"
                                         aria-label="Shared with you"
                                       >
-                                        <SharedWorkspaceIcon className="h-4 w-4" />
+                                        <SharedWorkspaceIcon className="h-3 w-3 rotate-180" />
                                       </span>
                                     ) : null}
                                     <div className="flex min-w-0 flex-wrap items-center gap-2">
