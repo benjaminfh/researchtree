@@ -52,6 +52,7 @@ import {
 import { MarkdownWithCopy } from './MarkdownWithCopy';
 import { copyTextToClipboard } from './clipboard';
 import type { GraphViews } from '@/src/shared/graph';
+import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -2776,9 +2777,16 @@ export function WorkspaceClient({
       if (current && current.length === nextNodes.length && currentTailId === nextTailId) {
         return prev;
       }
-      return { ...prev, [branchName]: nextNodes };
+      const nextHistories = { ...prev, [branchName]: nextNodes };
+      const graph = buildGraphPayload({
+        branchHistories: nextHistories,
+        trunkName,
+        activeBranchName: branchName
+      });
+      setGraphViews({ all: graph.all, collapsed: graph.collapsed });
+      return nextHistories;
     });
-  }, [isGraphVisible, branchName, visibleNodes]);
+  }, [isGraphVisible, branchName, visibleNodes, trunkName]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;

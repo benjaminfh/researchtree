@@ -6,7 +6,7 @@ import type { NodeRecord } from '@git/types';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess } from '@/src/server/authz';
-import { buildGraphPayload } from '@/src/server/graph/buildGraph';
+import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
 
 interface RouteContext {
   params: { id: string };

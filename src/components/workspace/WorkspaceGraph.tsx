@@ -21,6 +21,7 @@ import type { NodeRecord } from '@git/types';
 import { deriveTextFromBlocks, getContentBlocksWithLegacyFallback } from '@/src/shared/thinkingTraces';
 import { features } from '@/src/config/features';
 import type { GraphNode, GraphViews } from '@/src/shared/graph';
+import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
 import { getBranchColor } from './branchColors';
 import { InsightFrame } from './InsightFrame';
 import { ArrowLeftCircleIcon, CpuChipIcon, UserIcon } from './HeroIcons';
@@ -1174,10 +1175,12 @@ export function WorkspaceGraph({
 }: WorkspaceGraphProps) {
   const resolvedGraphViews = useMemo(() => {
     if (graphViews) return graphViews;
-    return {
-      all: buildGraphNodes(branchHistories, activeBranchName, trunkName),
-      collapsed: buildCollapsedGraphNodes(branchHistories, activeBranchName, trunkName)
-    };
+    const payload = buildGraphPayload({
+      branchHistories,
+      trunkName,
+      activeBranchName
+    });
+    return { all: payload.all, collapsed: payload.collapsed };
   }, [graphViews, branchHistories, activeBranchName, trunkName]);
 
   const graphNodes = useMemo(() => {

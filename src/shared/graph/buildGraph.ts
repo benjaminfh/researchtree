@@ -5,7 +5,7 @@ import type { GraphNode } from '@/src/shared/graph';
 import { features } from '@/src/config/features';
 import { deriveTextFromBlocks, getContentBlocksWithLegacyFallback } from '@/src/shared/thinkingTraces';
 
-const MERGE_ACK_INSTRUCTION = 'Task: acknowledge merged content by replying \"Merge received\" but take no other action.';
+const MERGE_ACK_INSTRUCTION = 'Task: acknowledge merged content by replying "Merge received" but take no other action.';
 
 function isHiddenMessage(node: NodeRecord): boolean {
   return node.type === 'message' && Boolean((node as any).uiHidden);
