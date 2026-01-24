@@ -181,7 +181,7 @@ function buildVisibleBranchHistories(
 
 function buildAllGraphNodes(
   nodes: NodeRecord[],
-  refNames: string[],
+  branchHistories: Record<string, NodeRecord[]>,
   trunkName: string,
   activeBranchName: string,
   nodeById: Map<string, NodeRecord>,
@@ -190,12 +190,18 @@ function buildAllGraphNodes(
   const firstSeenBranchById = new Map<string, string>();
   const activeNodeIds = new Set<string>();
 
-  for (const refName of refNames) {
-    for (const node of nodes) {
+  const orderedBranchEntries = Object.entries(branchHistories).sort(([a], [b]) => {
+    if (a === trunkName && b !== trunkName) return -1;
+    if (a !== trunkName && b === trunkName) return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const [branchName, historyNodes] of orderedBranchEntries) {
+    for (const node of historyNodes) {
       if (!firstSeenBranchById.has(node.id)) {
-        firstSeenBranchById.set(node.id, refName);
+        firstSeenBranchById.set(node.id, branchName);
       }
-      if (refName === activeBranchName) {
+      if (branchName === activeBranchName) {
         activeNodeIds.add(node.id);
       }
     }
@@ -428,7 +434,14 @@ export function buildGraphPayload({
     }
   }
 
-  const all = buildAllGraphNodes(visibleNodes, refNames, trunkName, activeBranchName, nodeById, hiddenNodeIds);
+  const all = buildAllGraphNodes(
+    visibleNodes,
+    visibleBranchHistories,
+    trunkName,
+    activeBranchName,
+    nodeById,
+    hiddenNodeIds
+  );
   const collapsed = buildCollapsedGraphNodes(
     visibleBranchHistories,
     activeBranchName,
