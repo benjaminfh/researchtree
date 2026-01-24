@@ -5,7 +5,12 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CreateProjectForm } from '@/src/components/projects/CreateProjectForm';
-import { ArchiveBoxArrowDownIcon, CheckIcon, ChevronRightIcon } from '@/src/components/workspace/HeroIcons';
+import {
+  ArchiveBoxArrowDownIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  SharedWorkspaceIcon
+} from '@/src/components/workspace/HeroIcons';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { APP_NAME, storageKey } from '@/src/config/app';
@@ -102,6 +107,7 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
 
   const recentProjects = useMemo(() => projects.filter((p) => !archived.has(p.id)).slice(0, 12), [projects, archived]);
   const archivedProjects = useMemo(() => projects.filter((p) => archived.has(p.id)), [projects, archived]);
+  const isSharedWorkspace = (project: ProjectMetadata) => project.isOwner === false;
 
   const handleArchive = (id: string) => {
     const next = new Set(archived);
@@ -163,27 +169,43 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                         {dateFormatter.format(new Date(project.lastModified))}
                                       </div>
                                     </Link>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (isConfirming) {
-                                          handleArchive(project.id);
-                                        } else {
-                                          setConfirming((prev) => new Set(prev).add(project.id));
-                                        }
-                                      }}
-                                      data-confirm-action="true"
-                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
-                                        isConfirming
-                                          ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                                          : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
-                                      }`}
-                                      aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
-                                      data-testid="archive-workspace"
-                                      data-project-id={project.id}
-                                    >
-                                      {isConfirming ? <CheckIcon className="h-4 w-4" /> : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      {isSharedWorkspace(project) ? (
+                                        <span
+                                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
+                                          title="Shared with you"
+                                          role="img"
+                                          aria-label="Shared with you"
+                                        >
+                                          <SharedWorkspaceIcon className="h-4 w-4" />
+                                        </span>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (isConfirming) {
+                                            handleArchive(project.id);
+                                          } else {
+                                            setConfirming((prev) => new Set(prev).add(project.id));
+                                          }
+                                        }}
+                                        data-confirm-action="true"
+                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
+                                          isConfirming
+                                            ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                            : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
+                                        }`}
+                                        aria-label={isConfirming ? 'Confirm archive' : 'Archive workspace'}
+                                        data-testid="archive-workspace"
+                                        data-project-id={project.id}
+                                      >
+                                        {isConfirming ? (
+                                          <CheckIcon className="h-4 w-4" />
+                                        ) : (
+                                          <ArchiveBoxArrowDownIcon className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                    </div>
                                   </div>
                                 </li>
                               );
@@ -232,31 +254,43 @@ export function HomePageContent({ projects, providerOptions, defaultProvider }: 
                                       >
                                         {project.name}
                                       </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (isConfirming) {
-                                            handleUnarchive(project.id);
-                                          } else {
-                                            setConfirming((prev) => new Set(prev).add(project.id));
-                                          }
-                                        }}
-                                        data-confirm-action="true"
-                                        className={`ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
-                                          isConfirming
-                                            ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                            : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
-                                        }`}
-                                        aria-label={isConfirming ? 'Confirm unarchive' : 'Unarchive workspace'}
-                                        data-testid="unarchive-workspace"
-                                        data-project-id={project.id}
-                                      >
-                                        {isConfirming ? (
-                                          <CheckIcon className="h-4 w-4" />
-                                        ) : (
-                                          <BlueprintIcon icon="unarchive" className="h-4 w-4" />
-                                        )}
-                                      </button>
+                                      <div className="ml-auto inline-flex items-center gap-2">
+                                        {isSharedWorkspace(project) ? (
+                                          <span
+                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider bg-white text-slate-700"
+                                            title="Shared with you"
+                                            role="img"
+                                            aria-label="Shared with you"
+                                          >
+                                            <SharedWorkspaceIcon className="h-4 w-4" />
+                                          </span>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (isConfirming) {
+                                              handleUnarchive(project.id);
+                                            } else {
+                                              setConfirming((prev) => new Set(prev).add(project.id));
+                                            }
+                                          }}
+                                          data-confirm-action="true"
+                                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
+                                            isConfirming
+                                              ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                              : 'border border-divider bg-white text-slate-700 hover:bg-primary/10'
+                                          }`}
+                                          aria-label={isConfirming ? 'Confirm unarchive' : 'Unarchive workspace'}
+                                          data-testid="unarchive-workspace"
+                                          data-project-id={project.id}
+                                        >
+                                          {isConfirming ? (
+                                            <CheckIcon className="h-4 w-4" />
+                                          ) : (
+                                            <BlueprintIcon icon="unarchive" className="h-4 w-4" />
+                                          )}
+                                        </button>
+                                      </div>
                                     </div>
                                   </li>
                                 );
