@@ -2719,9 +2719,9 @@ export function WorkspaceClient({
 
   const resolveStreamHoldTarget = useCallback(
     (list: NodeRecord[], targetBranch: string, anchorId: string | null) => {
-      const anchorIndex = anchorId ? list.findIndex((node) => node.id === anchorId) : -1;
+      let anchorIndex = anchorId ? list.findIndex((node) => node.id === anchorId) : -1;
       if (anchorId && anchorIndex === -1) {
-        return null;
+        anchorIndex = -1;
       }
       const scope = anchorIndex >= 0 ? list.slice(anchorIndex + 1) : list;
       const candidates = scope.filter(
