@@ -4388,10 +4388,14 @@ export function WorkspaceClient({
                           onClick={() => {
                             setBranchActionError(null);
                             resetBranchQuestionState();
-                            setBranchSplitNodeId(latestPersistedVisibleNodeId);
+                            if (latestPersistedVisibleNodeId) {
+                              setBranchSplitNodeId(latestPersistedVisibleNodeId);
+                            } else {
+                              setBranchSplitNodeId(null);
+                            }
                             setShowNewBranchModal(true);
                           }}
-                          disabled={isCreating || isSwitching || branchActionDisabled || !latestPersistedVisibleNodeId}
+                          disabled={isCreating || isSwitching || branchActionDisabled}
                           className="inline-flex h-11 items-center gap-2 rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10 disabled:opacity-60"
                           aria-label="Show branch creator"
                           title={branchActionDisabled ? 'Branching is disabled while streaming' : undefined}
