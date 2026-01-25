@@ -3164,11 +3164,8 @@ export function WorkspaceClient({
     if (!shouldTrimPinnedPadding) return;
     if (!pinHoldActiveRef.current && listPaddingExtra === 0) return;
     const container = messageListRef.current;
-    const anchorId = latestPersistedVisibleNodeId ?? latestVisibleNodeId;
-    const anchorEl =
-      container && anchorId ? (container.querySelector(`[data-node-id="${anchorId}"]`) as HTMLElement | null) : null;
-    const beforeTop =
-      container && anchorEl ? anchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top : null;
+    const currentScrollTop = container?.scrollTop ?? null;
+    const currentExtra = listPaddingExtra;
     pinHoldActiveRef.current = false;
     pinnedScrollTopRef.current = null;
     pinnedNodeIdRef.current = null;
@@ -3176,15 +3173,13 @@ export function WorkspaceClient({
     lastPinKeyRef.current = null;
     setListPaddingExtra(0);
     requestAnimationFrame(() => {
-      if (!container || beforeTop == null || !anchorEl) return;
-      const afterTop = anchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top;
-      const delta = afterTop - beforeTop;
-      if (delta !== 0) {
-        container.scrollTop += delta;
-      }
+      if (!container || currentScrollTop == null) return;
+      const nextMax = Math.max(0, container.scrollHeight - container.clientHeight);
+      const nextScrollTop = Math.max(0, currentScrollTop - currentExtra);
+      container.scrollTop = Math.min(nextMax, nextScrollTop);
       updateScrollState();
     });
-  }, [shouldTrimPinnedPadding, listPaddingExtra, updateScrollState, latestPersistedVisibleNodeId, latestVisibleNodeId]);
+  }, [shouldTrimPinnedPadding, listPaddingExtra, updateScrollState]);
 
   const handleMessageListScroll = () => {
     if (suppressPinScrollRef.current) {
