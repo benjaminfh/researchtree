@@ -3638,6 +3638,9 @@ export function WorkspaceClient({
         if (activeIndex >= 0) {
           targetBranch = branchName;
           revealShared = activeIndex < sharedCount;
+        } else if (resolved.targetBranch === branchName) {
+          targetBranch = branchName;
+          revealShared = true;
         } else if (resolved.record.createdOnBranch) {
           targetBranch = resolved.record.createdOnBranch;
         }
@@ -5309,7 +5312,17 @@ export function WorkspaceClient({
                                             </button>
                                           )
                                         ) : null}
-                                        {/* TODO: Restore "Jump to message" button (pill, primary, right of add-canvas actions). */}
+                                        <button
+                                          type="button"
+                                          className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90"
+                                          aria-label="Jump to message"
+                                          onClick={() => {
+                                            if (!selectedGraphNodeId) return;
+                                            void jumpToGraphNode(selectedGraphNodeId);
+                                          }}
+                                        >
+                                          Jump to message
+                                        </button>
                                       </div>
                                     </div>
                                   );
