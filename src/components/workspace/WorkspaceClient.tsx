@@ -3073,31 +3073,6 @@ export function WorkspaceClient({
     setGraphViews(buildGraphViewsFromHistories(graphHistories, branchName));
   }, [isGraphVisible, graphHistories, branchName, buildGraphViewsFromHistories]);
 
-  useEffect(() => {
-    const pending = pendingJumpRef.current;
-    if (!pending) return;
-    if (pending.targetBranch !== branchName) return;
-    if (pending.revealShared && hideShared) {
-      setHideShared(false);
-      return;
-    }
-    const success = attemptJumpToNode(pending.nodeId);
-    if (!success) {
-      pending.attempts += 1;
-      if (pending.attempts > 12) {
-        pendingJumpRef.current = null;
-      }
-      return;
-    }
-    setJumpHighlightNodeId(pending.nodeId);
-    if (jumpHighlightTimeoutRef.current) {
-      clearTimeout(jumpHighlightTimeoutRef.current);
-    }
-    jumpHighlightTimeoutRef.current = setTimeout(() => {
-      setJumpHighlightNodeId(null);
-    }, 1400);
-    pendingJumpRef.current = null;
-  }, [attemptJumpToNode, branchName, hideShared]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -3391,6 +3366,31 @@ export function WorkspaceClient({
   useEffect(() => {
     setHideShared(branchName !== trunkName);
   }, [branchName, trunkName]);
+  useEffect(() => {
+    const pending = pendingJumpRef.current;
+    if (!pending) return;
+    if (pending.targetBranch !== branchName) return;
+    if (pending.revealShared && hideShared) {
+      setHideShared(false);
+      return;
+    }
+    const success = attemptJumpToNode(pending.nodeId);
+    if (!success) {
+      pending.attempts += 1;
+      if (pending.attempts > 12) {
+        pendingJumpRef.current = null;
+      }
+      return;
+    }
+    setJumpHighlightNodeId(pending.nodeId);
+    if (jumpHighlightTimeoutRef.current) {
+      clearTimeout(jumpHighlightTimeoutRef.current);
+    }
+    jumpHighlightTimeoutRef.current = setTimeout(() => {
+      setJumpHighlightNodeId(null);
+    }, 1400);
+    pendingJumpRef.current = null;
+  }, [attemptJumpToNode, branchName, hideShared]);
   const { sharedNodes, branchNodes } = useMemo(() => {
     const shared = visibleNodes.slice(0, sharedCount);
     return {
