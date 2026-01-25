@@ -59,7 +59,7 @@ describe('pg store RPC wrappers', () => {
 
   it('rtGetHistoryShadowV2 maps params and data', async () => {
     mocks.rpc.mockResolvedValue({
-      data: [{ ordinal: 1, node_json: { id: 'n1' } }],
+      data: [{ ordinal: 1, node_json: { id: 'n1', clientRequestId: 'req-1' } }],
       error: null
     });
 
@@ -71,7 +71,9 @@ describe('pg store RPC wrappers', () => {
       p_before_ordinal: null,
       p_include_raw_response: false
     });
-    expect(result).toEqual([{ ordinal: 1, nodeJson: { id: 'n1' }, createdOnRefId: null, mergeFromRefId: null }]);
+    expect(result).toEqual([
+      { ordinal: 1, nodeJson: { id: 'n1', clientRequestId: 'req-1' }, createdOnRefId: null, mergeFromRefId: null }
+    ]);
   });
 
   it('rtGetCanvasShadowV2 maps data and handles missing row', async () => {
@@ -289,7 +291,8 @@ describe('pg store RPC wrappers', () => {
       kind: 'message',
       role: undefined,
       contentJson: { text: 'hello' },
-      nodeId: 'n1'
+      nodeId: 'n1',
+      clientRequestId: 'req-1'
     });
 
     expect(mocks.rpc).toHaveBeenCalledWith('rt_append_node_to_ref_v2', {
@@ -304,7 +307,7 @@ describe('pg store RPC wrappers', () => {
       p_artefact_kind: 'canvas_md',
       p_lock_timeout_ms: 3000,
       p_raw_response: null,
-      p_client_request_id: null
+      p_client_request_id: 'req-1'
     });
     expect(result).toEqual({
       newCommitId: 'c1',

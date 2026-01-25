@@ -125,8 +125,8 @@ type StreamMeta = {
 
 const CHAT_COMPOSER_MAX_LINES = 9;
 const MESSAGE_LIST_BASE_PADDING = 24;
-const DEBUG_ASSISTANT_LIFECYCLE = process.env.NODE_ENV !== 'production';
-const DEBUG_MESSAGE_SCROLL = process.env.NODE_ENV !== 'production';
+const DEBUG_ASSISTANT_LIFECYCLE = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
+const DEBUG_MESSAGE_SCROLL = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
 
 type BackgroundTask = {
   id: string;
@@ -1445,6 +1445,51 @@ export function WorkspaceClient({
     contentBlocks: ThinkingContentBlock[];
     branch: string;
   } | null>(null);
+  const beginTurn = (params: {
+    content: string;
+    branch: string;
+    createdOnBranch: string;
+    parent: string | null;
+    optimisticDraft: string | null;
+    questionDraft: string | null;
+  }) => {
+    const { content, branch, createdOnBranch, parent, optimisticDraft, questionDraft } = params;
+    setStreamHold(null);
+    setStreamHoldPending(null);
+    streamBranchRef.current = branch;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
+    optimisticDraftRef.current = optimisticDraft;
+    questionDraftRef.current = questionDraft;
+    turnUserRenderIdRef.current = createClientId();
+    turnAssistantRenderIdRef.current = createClientId();
+    setStreamBlocks([]);
+    streamBlocksRef.current = [];
+    hasReceivedAssistantChunkRef.current = false;
+    setAssistantLifecycle('idle');
+    setStreamMeta({ branch, startedAt: Date.now() });
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    const clientRequestId = createClientId();
+    setOptimisticUserNode({
+      id: 'optimistic-user',
+      type: 'message',
+      role: 'user',
+      content,
+      contentBlocks: [{ type: 'text', text: content }],
+      clientRequestId,
+      timestamp: Date.now(),
+      parent,
+      createdOnBranch
+    });
+    assistantPendingTimerRef.current = setTimeout(() => {
+      setAssistantLifecycle('pending');
+      assistantPendingTimerRef.current = null;
+    }, 100);
+    return clientRequestId;
+  };
   const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
   const activeBranchLease = useMemo(() => {
     if (!activeBranch?.id) return null;
@@ -1603,10 +1648,10 @@ export function WorkspaceClient({
       const finalContent = streamPreviewRef.current;
       const finalBlocks = streamBlocksRef.current;
       if (finalContent || finalBlocks.length > 0) {
-        const streamBranch = streamBranchRef.current ?? branchName;
-      setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: streamBranch });
-      setStreamCache({ preview: finalContent, blocks: finalBlocks });
-      setAssistantLifecycle('final');
+        const streamBranch = streamMeta?.branch ?? streamBranchRef.current ?? branchName;
+        setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: streamBranch });
+        setStreamCache({ preview: finalContent, blocks: finalBlocks });
+        setAssistantLifecycle('final');
         if (DEBUG_ASSISTANT_LIFECYCLE) {
           console.debug('[assistant-lifecycle] stream-complete', {
             branch: branchName,
@@ -1702,41 +1747,16 @@ export function WorkspaceClient({
       pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
-    setStreamHold(null);
-    setStreamHoldPending(null);
-    streamBranchRef.current = branchName;
-    setStreamPreview('');
-    streamPreviewRef.current = '';
     const sent = draft;
-    const clientRequestId = createClientId();
-    optimisticDraftRef.current = sent;
-    turnUserRenderIdRef.current = createClientId();
-    turnAssistantRenderIdRef.current = createClientId();
     setDraft('');
-    setStreamBlocks([]);
-    streamBlocksRef.current = [];
-    hasReceivedAssistantChunkRef.current = false;
-    setAssistantLifecycle('idle');
-    setStreamMeta({ branch: branchName, startedAt: Date.now() });
-    if (assistantPendingTimerRef.current) {
-      clearTimeout(assistantPendingTimerRef.current);
-      assistantPendingTimerRef.current = null;
-    }
-    setOptimisticUserNode({
-      id: 'optimistic-user',
-      type: 'message',
-      role: 'user',
+    const clientRequestId = beginTurn({
       content: sent,
-      contentBlocks: [{ type: 'text', text: sent }],
-      clientRequestId,
-      timestamp: Date.now(),
+      branch: branchName,
+      createdOnBranch: branchName,
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
-      createdOnBranch: branchName
+      optimisticDraft: sent,
+      questionDraft: null
     });
-    assistantPendingTimerRef.current = setTimeout(() => {
-      setAssistantLifecycle('pending');
-      assistantPendingTimerRef.current = null;
-    }, 100);
     await sendMessage({ message: sent, clientRequestId });
   };
 
@@ -1765,40 +1785,15 @@ export function WorkspaceClient({
   }) => {
     if (!question.trim() || state.isStreaming) return;
     if (!ensureLeaseSessionReady()) return;
-    setStreamHold(null);
-    setStreamHoldPending(null);
-    streamBranchRef.current = branchName;
-    setStreamPreview('');
-    streamPreviewRef.current = '';
     const optimisticContent = buildQuestionMessage(question, highlight);
-    const clientRequestId = createClientId();
-    questionDraftRef.current = optimisticContent;
-    turnUserRenderIdRef.current = createClientId();
-    turnAssistantRenderIdRef.current = createClientId();
-    setStreamBlocks([]);
-    streamBlocksRef.current = [];
-    hasReceivedAssistantChunkRef.current = false;
-    setAssistantLifecycle('idle');
-    setStreamMeta({ branch: targetBranch, startedAt: Date.now() });
-    if (assistantPendingTimerRef.current) {
-      clearTimeout(assistantPendingTimerRef.current);
-      assistantPendingTimerRef.current = null;
-    }
-    setOptimisticUserNode({
-      id: 'optimistic-user',
-      type: 'message',
-      role: 'user',
+    const clientRequestId = beginTurn({
       content: optimisticContent,
-      contentBlocks: [{ type: 'text', text: optimisticContent }],
-      clientRequestId,
-      timestamp: Date.now(),
+      branch: targetBranch,
+      createdOnBranch: targetBranch,
       parent: null,
-      createdOnBranch: targetBranch
+      optimisticDraft: null,
+      questionDraft: optimisticContent
     });
-    assistantPendingTimerRef.current = setTimeout(() => {
-      setAssistantLifecycle('pending');
-      assistantPendingTimerRef.current = null;
-    }, 100);
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/branch-question`,
@@ -1858,39 +1853,14 @@ export function WorkspaceClient({
         return;
       }
     }
-    setStreamHold(null);
-    setStreamHoldPending(null);
-    streamBranchRef.current = branchName;
-    setStreamPreview('');
-    streamPreviewRef.current = '';
-    questionDraftRef.current = content;
-    const clientRequestId = createClientId();
-    turnUserRenderIdRef.current = createClientId();
-    turnAssistantRenderIdRef.current = createClientId();
-    setStreamBlocks([]);
-    streamBlocksRef.current = [];
-    hasReceivedAssistantChunkRef.current = false;
-    setAssistantLifecycle('idle');
-    setStreamMeta({ branch: targetBranch, startedAt: Date.now() });
-    if (assistantPendingTimerRef.current) {
-      clearTimeout(assistantPendingTimerRef.current);
-      assistantPendingTimerRef.current = null;
-    }
-    setOptimisticUserNode({
-      id: 'optimistic-user',
-      type: 'message',
-      role: 'user',
+    const clientRequestId = beginTurn({
       content,
-      contentBlocks: [{ type: 'text', text: content }],
-      clientRequestId,
-      timestamp: Date.now(),
+      branch: targetBranch,
+      createdOnBranch: targetBranch,
       parent: null,
-      createdOnBranch: targetBranch
+      optimisticDraft: null,
+      questionDraft: content
     });
-    assistantPendingTimerRef.current = setTimeout(() => {
-      setAssistantLifecycle('pending');
-      assistantPendingTimerRef.current = null;
-    }, 100);
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/edit-stream`,
@@ -2592,6 +2562,10 @@ export function WorkspaceClient({
         clearTimeout(graphCopyFeedbackTimeoutRef.current);
         graphCopyFeedbackTimeoutRef.current = null;
       }
+      if (jumpHighlightTimeoutRef.current) {
+        clearTimeout(jumpHighlightTimeoutRef.current);
+        jumpHighlightTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -2724,6 +2698,11 @@ export function WorkspaceClient({
   const hintsButtonRef = useRef<HTMLButtonElement | null>(null);
   const [showNewBranchModal, setShowNewBranchModal] = useState(false);
   const newBranchModalRef = useRef<HTMLDivElement | null>(null);
+  const [jumpHighlightNodeId, setJumpHighlightNodeId] = useState<string | null>(null);
+  const jumpHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingJumpRef = useRef<{ nodeId: string; targetBranch: string; revealShared: boolean; attempts: number } | null>(
+    null
+  );
 
   useEffect(() => {
     if (isLoading || !hasEverSentMessageHydrated || !isNewUser || autoOpenedHintsRef.current) return;
@@ -2982,6 +2961,18 @@ export function WorkspaceClient({
     if (visibleNodes.length === 0) return null;
     return visibleNodes[visibleNodes.length - 1]!.id;
   }, [visibleNodes]);
+
+  useEffect(() => {
+    if (visibleNodes.length === 0) return;
+    const renderIdByNodeId = renderIdByNodeIdRef.current;
+    if (renderIdByNodeId.size === 0) return;
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    for (const nodeId of renderIdByNodeId.keys()) {
+      if (!visibleNodeIds.has(nodeId)) {
+        renderIdByNodeId.delete(nodeId);
+      }
+    }
+  }, [visibleNodes]);
   const latestPersistedVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
     for (let index = visibleNodes.length - 1; index >= 0; index -= 1) {
@@ -3030,6 +3021,24 @@ export function WorkspaceClient({
     container.scrollTop = container.scrollHeight;
   }, []);
 
+  const attemptJumpToNode = useCallback(
+    (nodeId: string) => {
+      const container = messageListRef.current;
+      if (!container) return false;
+      const el = container.querySelector(`[data-node-id="${nodeId}"]`);
+      if (!(el instanceof HTMLElement)) return false;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const baseOffset = (pillBottomOffset ?? 0) + (messageLineHeight ?? 0) * 0.5;
+      const desiredScrollTop = Math.max(0, container.scrollTop + (elRect.top - containerRect.top) - baseOffset);
+      container.scrollTop = desiredScrollTop;
+      suppressPinScrollRef.current = true;
+      updateScrollState();
+      return true;
+    },
+    [messageLineHeight, pillBottomOffset, updateScrollState]
+  );
+
   useEffect(() => {
     if (!isGraphVisible) return;
     setGraphHistories((prev) => {
@@ -3063,6 +3072,32 @@ export function WorkspaceClient({
     if (!graphHistories) return;
     setGraphViews(buildGraphViewsFromHistories(graphHistories, branchName));
   }, [isGraphVisible, graphHistories, branchName, buildGraphViewsFromHistories]);
+
+  useEffect(() => {
+    const pending = pendingJumpRef.current;
+    if (!pending) return;
+    if (pending.targetBranch !== branchName) return;
+    if (pending.revealShared && hideShared) {
+      setHideShared(false);
+      return;
+    }
+    const success = attemptJumpToNode(pending.nodeId);
+    if (!success) {
+      pending.attempts += 1;
+      if (pending.attempts > 12) {
+        pendingJumpRef.current = null;
+      }
+      return;
+    }
+    setJumpHighlightNodeId(pending.nodeId);
+    if (jumpHighlightTimeoutRef.current) {
+      clearTimeout(jumpHighlightTimeoutRef.current);
+    }
+    jumpHighlightTimeoutRef.current = setTimeout(() => {
+      setJumpHighlightNodeId(null);
+    }, 1400);
+    pendingJumpRef.current = null;
+  }, [attemptJumpToNode, branchName, hideShared]);
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -3585,15 +3620,33 @@ export function WorkspaceClient({
   };
 
   const jumpToGraphNode = useCallback(
-    async (nodeId: string) => {
+    async (nodeId: string, options?: { mode?: 'nearest' | 'origin'; originBranchId?: string }) => {
       const resolved = resolveGraphNode(nodeId);
       if (!resolved) return;
-      if (resolved.targetBranch !== branchName) {
-        await switchBranch(resolved.targetBranch);
+      const mode = options?.mode ?? 'nearest';
+      const originBranch = options?.originBranchId ?? resolved.record.createdOnBranch ?? resolved.targetBranch;
+      let targetBranch = resolved.targetBranch;
+      let revealShared = false;
+
+      if (mode === 'origin') {
+        targetBranch = originBranch;
+      } else {
+        const activeIndex = visibleNodes.findIndex((node) => node.id === resolved.record.id);
+        if (activeIndex >= 0) {
+          targetBranch = branchName;
+          revealShared = activeIndex < sharedCount;
+        }
       }
-      // TODO: Reintroduce chat jump + highlight for graph selections (scroll to node, flash highlight).
+
+      if (targetBranch !== branchName) {
+        pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared: false, attempts: 0 };
+        await switchBranch(targetBranch);
+        return;
+      }
+
+      pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared, attempts: 0 };
     },
-    [resolveGraphNode, branchName, switchBranch]
+    [resolveGraphNode, branchName, switchBranch, visibleNodes, sharedCount]
   );
 
   const startEditTask = useCallback(
@@ -3632,6 +3685,7 @@ export function WorkspaceClient({
           return;
         }
       }
+      const clientRequestId = createClientId();
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'edit',
@@ -3653,7 +3707,8 @@ export function WorkspaceClient({
                   llmProvider: provider,
                   llmModel: model,
                   thinking: thinkingSetting,
-                  nodeId
+                  nodeId,
+                  clientRequestId
                 },
                 leaseSessionId
               )
@@ -3793,6 +3848,7 @@ export function WorkspaceClient({
         onFailure?.();
         return;
       }
+      const clientRequestId = createClientId();
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'question',
@@ -3816,7 +3872,8 @@ export function WorkspaceClient({
                   question,
                   highlight,
                   thinking: thinkingSetting,
-                  switch: switchOnCreate
+                  switch: switchOnCreate,
+                  clientRequestId
                 },
                 leaseSessionId
               )
@@ -4515,8 +4572,8 @@ export function WorkspaceClient({
                     <li>⌘ + B to toggle the rail.</li>
                     <li>⌘ + K to toggle the composer.</li>
                     <li>⌘ + Shift + K to collapse or restore all panels.</li>
-                    <li>⌘ + click a graph node to jump to its message.</li>
-                    <li>⌥ + click a graph node to switch to its parent branch.</li>
+                    <li>⌘ + click a graph node to jump to its nearest message.</li>
+                    <li>⌥ + click a graph node to jump to its origin branch.</li>
                     <li>← Thred graph · → Canvas.</li>
                     <li>⌃ + B to toggle the graph/canvas panel.</li>
                     <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
@@ -4658,6 +4715,7 @@ export function WorkspaceClient({
                                 }
                                 isCanvasDiffTagged={undefined}
                                 onTagCanvasDiff={undefined}
+                                highlighted={jumpHighlightNodeId === node.id}
                                 branchQuestionCandidate={
                                   node.type === 'message' &&
                                   node.role === 'assistant' &&
@@ -4701,6 +4759,7 @@ export function WorkspaceClient({
                           }
                           isCanvasDiffTagged={node.type === 'merge' ? taggedCanvasDiffMergeIds.has(node.id) : undefined}
                           onTagCanvasDiff={node.type === 'merge' ? tagCanvasDiffToCurrentBranch : undefined}
+                          highlighted={jumpHighlightNodeId === node.id}
                           branchQuestionCandidate={
                             node.type === 'message' &&
                             node.role === 'assistant' &&
@@ -5029,7 +5088,6 @@ export function WorkspaceClient({
                               selectedNodeId={selectedGraphNodeId}
                               onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
                               onNavigateNode={(nodeId) => void jumpToGraphNode(nodeId)}
-                              onSwitchBranch={(branchName) => void switchBranch(branchName)}
                             />
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
