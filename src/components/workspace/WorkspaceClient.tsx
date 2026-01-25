@@ -5146,7 +5146,7 @@ export function WorkspaceClient({
                               starredNodeIds={stableStarredNodeIds}
                               selectedNodeId={selectedGraphNodeId}
                               onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
-                              onNavigateNode={(nodeId) => void jumpToGraphNode(nodeId)}
+                              onNavigateNode={(nodeId, options) => void jumpToGraphNode(nodeId, options)}
                             />
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
