@@ -19,7 +19,8 @@ export const chatRequestSchema = z
     ref: z.string().min(1).max(120).optional(),
     thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
     webSearch: z.boolean().optional(),
-    leaseSessionId: z.string().min(1).optional()
+    leaseSessionId: z.string().min(1).optional(),
+    clientRequestId: z.string().min(1).optional()
   })
   .refine((value) => Boolean(value.message?.trim() || value.question?.trim()), {
     message: 'Message or question is required.'
@@ -47,7 +48,8 @@ export const branchQuestionSchema = z.object({
   highlight: z.string().trim().min(1).max(CHAT_LIMITS.highlightMaxChars),
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   switch: z.boolean().optional(),
-  leaseSessionId: z.string().min(1).optional()
+  leaseSessionId: z.string().min(1).optional(),
+  clientRequestId: z.string().min(1).optional()
 });
 
 export const switchBranchSchema = z.object({
@@ -88,7 +90,8 @@ export const editMessageSchema = z.object({
   thinking: z.enum(['off', 'low', 'medium', 'high']).optional(),
   nodeId: z.string().min(1),
   replaceNode: z.boolean().optional(),
-  leaseSessionId: z.string().min(1).optional()
+  leaseSessionId: z.string().min(1).optional(),
+  clientRequestId: z.string().min(1).optional()
 });
 
 export const updateArtefactSchema = z.object({

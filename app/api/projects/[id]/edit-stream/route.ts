@@ -58,10 +58,12 @@ export async function POST(request: Request, { params }: RouteContext) {
       llmProvider,
       llmModel,
       thinking,
-      leaseSessionId
+      leaseSessionId,
+      clientRequestId
     } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
     };
+    const trimmedClientRequestId = clientRequestId?.trim() || null;
     const currentBranch = await getPreferredBranch(params.id);
     const targetBranch = branchName?.trim() || `edit-${Date.now()}`;
     const explicitFromRef = fromRef?.trim() || null;
@@ -169,6 +171,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             role: targetNode.role,
             content,
             contentBlocks: buildTextBlock(content),
+            clientRequestId: trimmedClientRequestId ?? undefined,
             timestamp: Date.now(),
             parent: parentId,
             createdOnBranch: targetBranch
@@ -182,7 +185,8 @@ export async function POST(request: Request, { params }: RouteContext) {
             contentJson: editedNode,
             nodeId: editedNode.id,
             commitMessage: 'edit_message',
-            attachDraft: true
+            attachDraft: true,
+            clientRequestId: trimmedClientRequestId ?? undefined
           });
 
           const abortController = new AbortController();
@@ -285,6 +289,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                     role: 'assistant',
                     content: contentText,
                     contentBlocks,
+                    clientRequestId: trimmedClientRequestId ?? undefined,
                     timestamp: Date.now(),
                     parent: editedNode.id,
                     createdOnBranch: targetBranch,
@@ -302,7 +307,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                     nodeId: assistantNode.id,
                     commitMessage: 'assistant_message',
                     attachDraft: false,
-                    rawResponse: rawResponseForStorage
+                    rawResponse: rawResponseForStorage,
+                    clientRequestId: trimmedClientRequestId ?? undefined
                   });
                   if (provider === 'openai_responses' && responseId) {
                     await setPreviousResponseId(params.id, { id: targetRef.id, name: targetBranch }, responseId);
@@ -397,7 +403,8 @@ export async function POST(request: Request, { params }: RouteContext) {
             type: 'message',
             role: targetNode.role,
             content,
-            contentBlocks: buildTextBlock(content)
+            contentBlocks: buildTextBlock(content),
+            clientRequestId: trimmedClientRequestId ?? undefined
           },
           { ref: targetBranch }
         );
@@ -509,6 +516,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                     role: 'assistant',
                     content: contentText,
                     contentBlocks,
+                    clientRequestId: trimmedClientRequestId ?? undefined,
                     modelUsed: modelName,
                     responseId: responseId ?? undefined,
                     interrupted: abortController.signal.aborted || streamError !== null,

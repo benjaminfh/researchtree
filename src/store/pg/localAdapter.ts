@@ -53,7 +53,8 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
       'p_attach_draft',
       'p_artefact_kind',
       'p_lock_timeout_ms',
-      'p_raw_response'
+      'p_raw_response',
+      'p_client_request_id'
     ],
     returnType: 'set'
   },

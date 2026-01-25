@@ -117,11 +117,13 @@ export async function POST(request: Request, { params }: RouteContext) {
       ref,
       thinking,
       webSearch,
-      leaseSessionId
+      leaseSessionId,
+      clientRequestId
     } = parsed.data as typeof parsed.data & {
       thinking?: ThinkingSetting;
       webSearch?: boolean;
     };
+    const trimmedClientRequestId = clientRequestId?.trim() || null;
     const userContent = buildUserMessage({ message, question, highlight });
     if (!userContent.trim()) {
       throw badRequest('Message is required.');
@@ -317,6 +319,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   role: 'user',
                   content: userContent,
                   contentBlocks: buildTextBlock(userContent),
+                  clientRequestId: trimmedClientRequestId ?? undefined,
                   timestamp: Date.now(),
                   parent: parentId,
                   // TODO: drop createdOnBranch from PG node JSON once readers use refs for labels.
@@ -332,7 +335,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                   contentJson: userNode,
                   nodeId: userNode.id,
                   commitMessage: 'user_message',
-                  attachDraft: userCanvasDiff.hasChanges
+                  attachDraft: userCanvasDiff.hasChanges,
+                  clientRequestId: trimmedClientRequestId ?? undefined
                 });
                 persistedUser = true;
                 return;
@@ -349,6 +353,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 role: 'user',
                 content: userContent,
                 contentBlocks: buildTextBlock(userContent),
+                clientRequestId: trimmedClientRequestId ?? undefined,
                 contextWindow: [],
                 tokensUsed: undefined
               });
@@ -413,6 +418,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                     role: 'assistant',
                     content: contentText,
                     contentBlocks,
+                    clientRequestId: trimmedClientRequestId ?? undefined,
                     timestamp: Date.now(),
                     parent: persistedUserNodeId,
                     createdOnBranch: targetRefName,
@@ -430,7 +436,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                     nodeId: assistantNode.id,
                     commitMessage: 'assistant_message',
                     attachDraft: assistantCanvasDiff.hasChanges,
-                    rawResponse: rawResponseForStorage
+                    rawResponse: rawResponseForStorage,
+                    clientRequestId: trimmedClientRequestId ?? undefined
                   });
                   if (assistantCanvasDiff.message) {
                     const hiddenNode = {
@@ -564,6 +571,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 role: 'user',
                 content: userContent,
                 contentBlocks: buildTextBlock(userContent),
+                clientRequestId: trimmedClientRequestId ?? undefined,
                 timestamp: Date.now(),
                 parent: parentId,
                 createdOnBranch: targetRefName,
@@ -578,7 +586,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                 contentJson: userNode,
                 nodeId: userNode.id,
                 commitMessage: 'user_message',
-                attachDraft: userCanvasDiff.hasChanges
+                attachDraft: userCanvasDiff.hasChanges,
+                clientRequestId: trimmedClientRequestId ?? undefined
               });
               persistedUser = true;
               return;
@@ -599,6 +608,7 @@ export async function POST(request: Request, { params }: RouteContext) {
               role: 'user',
               content: userContent,
               contentBlocks: buildTextBlock(userContent),
+              clientRequestId: trimmedClientRequestId ?? undefined,
               contextWindow: [],
               tokensUsed: undefined
             });
@@ -688,6 +698,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   role: 'assistant',
                   content: contentText,
                   contentBlocks,
+                  clientRequestId: trimmedClientRequestId ?? undefined,
                   timestamp: Date.now(),
                   parent: persistedUserNodeId,
                   createdOnBranch: targetRefName,
@@ -705,7 +716,8 @@ export async function POST(request: Request, { params }: RouteContext) {
                   nodeId: assistantNode.id,
                   commitMessage: 'assistant_message',
                   attachDraft: assistantCanvasDiff.hasChanges,
-                  rawResponse: rawResponseForStorage
+                  rawResponse: rawResponseForStorage,
+                  clientRequestId: trimmedClientRequestId ?? undefined
                 });
                 if (assistantCanvasDiff.message) {
                   const hiddenNode = {
@@ -739,6 +751,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                   role: 'assistant',
                   content: contentText,
                   contentBlocks,
+                  clientRequestId: trimmedClientRequestId ?? undefined,
                   modelUsed: modelName,
                   responseId: responseId ?? undefined,
                   interrupted: abortController.signal.aborted || streamError !== null,

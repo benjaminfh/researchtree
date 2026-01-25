@@ -1708,6 +1708,7 @@ export function WorkspaceClient({
     setStreamPreview('');
     streamPreviewRef.current = '';
     const sent = draft;
+    const clientRequestId = createClientId();
     optimisticDraftRef.current = sent;
     turnUserRenderIdRef.current = createClientId();
     turnAssistantRenderIdRef.current = createClientId();
@@ -1727,6 +1728,7 @@ export function WorkspaceClient({
       role: 'user',
       content: sent,
       contentBlocks: [{ type: 'text', text: sent }],
+      clientRequestId,
       timestamp: Date.now(),
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
       createdOnBranch: branchName
@@ -1735,7 +1737,7 @@ export function WorkspaceClient({
       setAssistantLifecycle('pending');
       assistantPendingTimerRef.current = null;
     }, 100);
-    await sendMessage(sent);
+    await sendMessage({ message: sent, clientRequestId });
   };
 
   const sendQuestionWithStream = async ({
@@ -1769,6 +1771,7 @@ export function WorkspaceClient({
     setStreamPreview('');
     streamPreviewRef.current = '';
     const optimisticContent = buildQuestionMessage(question, highlight);
+    const clientRequestId = createClientId();
     questionDraftRef.current = optimisticContent;
     turnUserRenderIdRef.current = createClientId();
     turnAssistantRenderIdRef.current = createClientId();
@@ -1787,6 +1790,7 @@ export function WorkspaceClient({
       role: 'user',
       content: optimisticContent,
       contentBlocks: [{ type: 'text', text: optimisticContent }],
+      clientRequestId,
       timestamp: Date.now(),
       parent: null,
       createdOnBranch: targetBranch
@@ -1808,7 +1812,8 @@ export function WorkspaceClient({
           question,
           highlight,
           thinking: thinkingSetting,
-          switch: true
+          switch: true,
+          clientRequestId
         },
         leaseSessionId
       ),
@@ -1859,6 +1864,7 @@ export function WorkspaceClient({
     setStreamPreview('');
     streamPreviewRef.current = '';
     questionDraftRef.current = content;
+    const clientRequestId = createClientId();
     turnUserRenderIdRef.current = createClientId();
     turnAssistantRenderIdRef.current = createClientId();
     setStreamBlocks([]);
@@ -1876,6 +1882,7 @@ export function WorkspaceClient({
       role: 'user',
       content,
       contentBlocks: [{ type: 'text', text: content }],
+      clientRequestId,
       timestamp: Date.now(),
       parent: null,
       createdOnBranch: targetBranch
@@ -1895,7 +1902,8 @@ export function WorkspaceClient({
           llmProvider: provider,
           llmModel: model,
           thinking: thinkingSetting,
-          nodeId
+          nodeId,
+          clientRequestId
         },
         leaseSessionId
       ),
@@ -2865,25 +2873,19 @@ export function WorkspaceClient({
     }
 
     let persistedUserMatch: MessageNode | null = null;
-    if (allowOptimistic && optimisticMessage?.content && optimisticBranch) {
-      const optimisticContent = normalizeMessageText(optimisticMessage.content);
-      const optimisticTimestamp = optimisticMessage.timestamp ?? Date.now();
+    const optimisticRequestId = optimisticMessage?.clientRequestId ?? null;
+    if (allowOptimistic && optimisticRequestId) {
       const reversedIndex = [...nodes].reverse().findIndex((node) => {
         if (node.type !== 'message') return false;
         if (node.role !== 'user') return false;
-        if (normalizeMessageText(node.content) !== optimisticContent) return false;
+        if (node.clientRequestId !== optimisticRequestId) return false;
         const createdOn = node.createdOnBranch ?? branchName;
-        return createdOn === optimisticBranch;
+        return createdOn === (optimisticBranch ?? branchName);
       });
       if (reversedIndex >= 0) {
         const index = nodes.length - 1 - reversedIndex;
         const persisted = nodes[index] ?? null;
-        if (
-          persisted &&
-          persisted.type === 'message' &&
-          persisted.timestamp >= optimisticTimestamp - 1000 &&
-          (!optimisticMessage.parent || persisted.parent === optimisticMessage.parent)
-        ) {
+        if (persisted && persisted.type === 'message' && persisted.role === 'user') {
           persistedUserMatch = persisted;
           if (turnUserRenderIdRef.current) {
             renderIdByNodeId.set(persisted.id, turnUserRenderIdRef.current);
@@ -2893,12 +2895,12 @@ export function WorkspaceClient({
     }
 
     let persistedAssistantMatch: MessageNode | null = null;
-    if (streamMeta && streamMeta.branch === branchName) {
+    if (streamMeta && streamMeta.branch === branchName && optimisticRequestId) {
       const reversedIndex = [...nodes].reverse().findIndex((node) => {
         if (node.type !== 'message' || node.role !== 'assistant') return false;
+        if (node.clientRequestId !== optimisticRequestId) return false;
         const nodeBranch = node.createdOnBranch ?? branchName;
-        if (nodeBranch !== streamMeta.branch) return false;
-        return node.timestamp >= streamMeta.startedAt;
+        return nodeBranch === streamMeta.branch;
       });
       if (reversedIndex >= 0) {
         const index = nodes.length - 1 - reversedIndex;
