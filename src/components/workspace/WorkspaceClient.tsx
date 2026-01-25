@@ -125,8 +125,8 @@ type StreamMeta = {
 
 const CHAT_COMPOSER_MAX_LINES = 9;
 const MESSAGE_LIST_BASE_PADDING = 24;
-const DEBUG_ASSISTANT_LIFECYCLE = false // process.env.NODE_ENV !== 'production';
-const DEBUG_MESSAGE_SCROLL = false // process.env.NODE_ENV !== 'production';
+const DEBUG_ASSISTANT_LIFECYCLE = process.env.NODE_ENV !== 'production';
+const DEBUG_MESSAGE_SCROLL = process.env.NODE_ENV !== 'production';
 
 type BackgroundTask = {
   id: string;
