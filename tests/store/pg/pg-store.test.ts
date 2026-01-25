@@ -303,7 +303,8 @@ describe('pg store RPC wrappers', () => {
       p_attach_draft: false,
       p_artefact_kind: 'canvas_md',
       p_lock_timeout_ms: 3000,
-      p_raw_response: null
+      p_raw_response: null,
+      p_client_request_id: null
     });
     expect(result).toEqual({
       newCommitId: 'c1',

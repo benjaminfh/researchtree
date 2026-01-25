@@ -308,7 +308,9 @@ describe('WorkspaceClient', () => {
     await user.keyboard('{Meta>}{Enter}{/Meta}');
 
     await waitFor(() => {
-      expect(sendMessageMock).toHaveBeenCalledWith('New investigation');
+      expect(sendMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'New investigation', clientRequestId: expect.any(String) })
+      );
     });
   });
 
@@ -326,6 +328,10 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     expect(capturedChatOptions).not.toBeNull();
+    const user = userEvent.setup();
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'New investigation');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
 
     await act(async () => {
       capturedChatOptions?.onChunk?.({ type: 'text', content: 'partial response' });
@@ -337,6 +343,10 @@ describe('WorkspaceClient', () => {
   it('refreshes history and artefact when the stream completes', async () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
     expect(capturedChatOptions).not.toBeNull();
+    const user = userEvent.setup();
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'New investigation');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
 
     await act(async () => {
       await capturedChatOptions?.onComplete?.();
@@ -378,10 +388,10 @@ describe('WorkspaceClient', () => {
       <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
     );
 
-    expect(screen.getByRole('button', { name: 'Add canvas diff to context' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tag canvas diff in chat' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Add canvas diff to context' }));
-    await user.click(screen.getByRole('button', { name: 'Confirm add canvas diff to context' }));
+    await user.click(screen.getByRole('button', { name: 'Tag canvas diff in chat' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm tag canvas diff in chat' }));
 
     await waitFor(() => {
       expect(mutateHistoryMock).toHaveBeenCalled();
@@ -1081,23 +1091,14 @@ describe('WorkspaceClient', () => {
     });
 
     await act(async () => {
-      capturedWorkspaceGraphProps?.onSelectNode?.('node-user');
+      capturedWorkspaceGraphProps?.onNavigateNode?.('node-user');
     });
 
-    expect(screen.getByRole('button', { name: 'Jump to message' })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('button', { name: 'Jump to message' })).not.toBeInTheDocument();
-
-    await act(async () => {
-      capturedWorkspaceGraphProps?.onSelectNode?.('node-user');
-    });
-    await user.click(screen.getByRole('button', { name: 'Jump to message' }));
-
-    await waitFor(() => {
-      const list = screen.getByTestId('chat-message-list');
-      expect(within(list).getByText('How is progress going?')).toBeInTheDocument();
-      expect(scrollIntoViewMock).toHaveBeenCalled();
-    });
+    const branchPatchCall = fetchMock.mock.calls.find(
+      ([input, init]: [RequestInfo | URL, RequestInit]) => input.toString().includes('/branches') && init?.method === 'PATCH'
+    );
+    expect(branchPatchCall).toBeFalsy();
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
     globalThis.requestAnimationFrame = raf;
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
@@ -1128,7 +1129,8 @@ describe('WorkspaceClient', () => {
         role: 'user',
         content: 'Other branch node',
         timestamp: 1700000000000,
-        parent: null
+        parent: null,
+        createdOnBranch: 'feature/other'
       },
       {
         id: 'other-2',
@@ -1136,7 +1138,8 @@ describe('WorkspaceClient', () => {
         role: 'assistant',
         content: 'Other branch response',
         timestamp: 1700000001000,
-        parent: 'other-1'
+        parent: 'other-1',
+        createdOnBranch: 'feature/other'
       }
     ];
 
@@ -1210,13 +1213,10 @@ describe('WorkspaceClient', () => {
     });
 
     await act(async () => {
-      capturedWorkspaceGraphProps?.onSelectNode?.('other-1');
+      capturedWorkspaceGraphProps?.onNavigateNode?.('other-1');
     });
 
-    await user.click(screen.getByRole('button', { name: 'Jump to message' }));
-
     await waitFor(() => {
-      expect(scrollIntoViewMock).toHaveBeenCalled();
       const list = screen.getByTestId('chat-message-list');
       expect(within(list).getByText('Other branch node')).toBeInTheDocument();
     });
@@ -1305,7 +1305,7 @@ describe('WorkspaceClient', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm add canvas changes to chat' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Canvas changes added')).toBeInTheDocument();
+      expect(screen.getByLabelText('Canvas changes already tagged')).toBeInTheDocument();
     });
 
     const pinCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/merge/pin-canvas-diff'));
