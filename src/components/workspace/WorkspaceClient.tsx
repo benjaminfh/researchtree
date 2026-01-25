@@ -3442,7 +3442,7 @@ export function WorkspaceClient({
       setJumpHighlightNodeId(null);
     }, 1400);
     pendingJumpRef.current = null;
-  }, [attemptJumpToNode, branchName, hideShared, jumpRequestId]);
+  }, [attemptJumpToNode, branchName, hideShared, jumpRequestId, visibleNodes.length]);
   const { sharedNodes, branchNodes } = useMemo(() => {
     const shared = visibleNodes.slice(0, sharedCount);
     return {
