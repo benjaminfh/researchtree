@@ -1895,7 +1895,9 @@ export function WorkspaceClient({
   };
 
   const finalAssistantPresent = useMemo(() => {
-    const requestId = streamMeta?.clientRequestId ?? optimisticUserNode?.clientRequestId ?? null;
+    const requestId =
+      streamMeta?.clientRequestId ??
+      (optimisticUserNode?.type === 'message' ? optimisticUserNode.clientRequestId ?? null : null);
     if (!requestId) return false;
     const targetBranch = streamMeta?.branch ?? branchName;
     if (branchName !== targetBranch) return false;
