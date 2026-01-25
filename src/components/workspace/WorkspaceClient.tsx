@@ -2995,6 +2995,27 @@ export function WorkspaceClient({
         .map((node) => [node.id, (node as MessageNode).role] as const)
     );
   }, [visibleNodes]);
+  const shouldTrimPinnedPadding = useMemo(() => {
+    if (!optimisticUserNode || optimisticUserNode.type !== 'message') return false;
+    const requestId = optimisticUserNode.clientRequestId;
+    if (!requestId) return false;
+    const turnBranch = optimisticUserNode.createdOnBranch ?? branchName;
+    if (turnBranch !== branchName) return false;
+    const hasPersistedUser = nodes.some((node) => {
+      if (node.type !== 'message' || node.role !== 'user') return false;
+      if (node.clientRequestId !== requestId) return false;
+      const nodeBranch = node.createdOnBranch ?? branchName;
+      return nodeBranch === turnBranch;
+    });
+    if (!hasPersistedUser) return false;
+    const hasPersistedAssistant = nodes.some((node) => {
+      if (node.type !== 'message' || node.role !== 'assistant') return false;
+      if (node.clientRequestId !== requestId) return false;
+      const nodeBranch = node.createdOnBranch ?? branchName;
+      return nodeBranch === turnBranch;
+    });
+    return hasPersistedAssistant;
+  }, [optimisticUserNode, nodes, branchName]);
 
   const updateScrollState = useCallback(() => {
     const container = messageListRef.current;
@@ -3138,6 +3159,27 @@ export function WorkspaceClient({
       updateScrollState();
     });
   }, [visibleNodes.length, streamPreview.length, streamBlocks.length, listPaddingExtra, messageLineHeight, isLoading, updateScrollState]);
+  useEffect(() => {
+    if (!shouldTrimPinnedPadding) return;
+    if (!pinHoldActiveRef.current && listPaddingExtra === 0) return;
+    const container = messageListRef.current;
+    const beforeHeight = container?.scrollHeight ?? null;
+    pinHoldActiveRef.current = false;
+    pinnedScrollTopRef.current = null;
+    pinnedNodeIdRef.current = null;
+    pinnedOffsetRef.current = null;
+    lastPinKeyRef.current = null;
+    setListPaddingExtra(0);
+    requestAnimationFrame(() => {
+      if (!container || beforeHeight == null) return;
+      const afterHeight = container.scrollHeight;
+      const delta = afterHeight - beforeHeight;
+      if (delta !== 0) {
+        container.scrollTop += delta;
+      }
+      updateScrollState();
+    });
+  }, [shouldTrimPinnedPadding, listPaddingExtra, updateScrollState]);
 
   const handleMessageListScroll = () => {
     if (suppressPinScrollRef.current) {
