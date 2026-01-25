@@ -2708,6 +2708,7 @@ export function WorkspaceClient({
   const pendingJumpRef = useRef<{ nodeId: string; targetBranch: string; revealShared: boolean; attempts: number } | null>(
     null
   );
+  const [jumpRequestId, setJumpRequestId] = useState(0);
 
   useEffect(() => {
     if (isLoading || !hasEverSentMessageHydrated || !isNewUser || autoOpenedHintsRef.current) return;
@@ -3163,7 +3164,10 @@ export function WorkspaceClient({
     if (!shouldTrimPinnedPadding) return;
     if (!pinHoldActiveRef.current && listPaddingExtra === 0) return;
     const container = messageListRef.current;
-    const beforeHeight = container?.scrollHeight ?? null;
+    const beforePadding =
+      container && typeof window !== 'undefined'
+        ? Number.parseFloat(window.getComputedStyle(container).paddingBottom || '0')
+        : null;
     pinHoldActiveRef.current = false;
     pinnedScrollTopRef.current = null;
     pinnedNodeIdRef.current = null;
@@ -3171,11 +3175,11 @@ export function WorkspaceClient({
     lastPinKeyRef.current = null;
     setListPaddingExtra(0);
     requestAnimationFrame(() => {
-      if (!container || beforeHeight == null) return;
-      const afterHeight = container.scrollHeight;
-      const delta = afterHeight - beforeHeight;
-      if (delta !== 0) {
-        container.scrollTop += delta;
+      if (!container || beforePadding == null || typeof window === 'undefined') return;
+      const afterPadding = Number.parseFloat(window.getComputedStyle(container).paddingBottom || '0');
+      const paddingDelta = beforePadding - afterPadding;
+      if (paddingDelta !== 0) {
+        container.scrollTop += paddingDelta;
       }
       updateScrollState();
     });
@@ -3437,7 +3441,7 @@ export function WorkspaceClient({
       setJumpHighlightNodeId(null);
     }, 1400);
     pendingJumpRef.current = null;
-  }, [attemptJumpToNode, branchName, hideShared]);
+  }, [attemptJumpToNode, branchName, hideShared, jumpRequestId]);
   const { sharedNodes, branchNodes } = useMemo(() => {
     const shared = visibleNodes.slice(0, sharedCount);
     return {
@@ -3692,11 +3696,13 @@ export function WorkspaceClient({
 
       if (targetBranch !== branchName) {
         pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared, attempts: 0 };
+        setJumpRequestId((prev) => prev + 1);
         await switchBranch(targetBranch);
         return;
       }
 
       pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared, attempts: 0 };
+      setJumpRequestId((prev) => prev + 1);
     },
     [resolveGraphNode, branchName, switchBranch, visibleNodes, sharedCount]
   );
