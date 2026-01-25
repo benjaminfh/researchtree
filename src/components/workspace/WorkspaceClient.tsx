@@ -121,6 +121,7 @@ type AssistantLifecycle = 'idle' | 'pending' | 'streaming' | 'final' | 'error';
 type StreamMeta = {
   branch: string;
   startedAt: number;
+  clientRequestId: string;
 };
 
 const CHAT_COMPOSER_MAX_LINES = 9;
@@ -1467,12 +1468,12 @@ export function WorkspaceClient({
     streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
     setAssistantLifecycle('idle');
-    setStreamMeta({ branch, startedAt: Date.now() });
+    const clientRequestId = createClientId();
+    setStreamMeta({ branch, startedAt: Date.now(), clientRequestId });
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
       assistantPendingTimerRef.current = null;
     }
-    const clientRequestId = createClientId();
     setOptimisticUserNode({
       id: 'optimistic-user',
       type: 'message',
@@ -1894,15 +1895,17 @@ export function WorkspaceClient({
   };
 
   const finalAssistantPresent = useMemo(() => {
-    if (!streamMeta) return false;
-    if (branchName !== streamMeta.branch) return false;
+    const requestId = streamMeta?.clientRequestId ?? optimisticUserNode?.clientRequestId ?? null;
+    if (!requestId) return false;
+    const targetBranch = streamMeta?.branch ?? branchName;
+    if (branchName !== targetBranch) return false;
     return nodes.some((node) => {
       if (node.type !== 'message' || node.role !== 'assistant') return false;
       const nodeBranch = node.createdOnBranch ?? branchName;
-      if (nodeBranch !== streamMeta.branch) return false;
-      return node.timestamp >= streamMeta.startedAt;
+      if (nodeBranch !== targetBranch) return false;
+      return node.clientRequestId === requestId;
     });
-  }, [nodes, streamMeta, branchName]);
+  }, [nodes, streamMeta, branchName, optimisticUserNode]);
 
   const streamingPayload =
     streamPreview.length > 0 || streamBlocks.length > 0
@@ -2917,7 +2920,7 @@ export function WorkspaceClient({
 
     const shouldRenderAssistantTurn =
       streamMeta?.branch === branchName &&
-      !persistedAssistantMatch &&
+      (!persistedAssistantMatch || !persistedUserMatch) &&
       (assistantLifecycle === 'pending' ||
         assistantLifecycle === 'streaming' ||
         assistantLifecycle === 'final' ||
@@ -3635,11 +3638,13 @@ export function WorkspaceClient({
         if (activeIndex >= 0) {
           targetBranch = branchName;
           revealShared = activeIndex < sharedCount;
+        } else if (resolved.record.createdOnBranch) {
+          targetBranch = resolved.record.createdOnBranch;
         }
       }
 
       if (targetBranch !== branchName) {
-        pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared: false, attempts: 0 };
+        pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared, attempts: 0 };
         await switchBranch(targetBranch);
         return;
       }
