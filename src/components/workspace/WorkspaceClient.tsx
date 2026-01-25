@@ -117,6 +117,8 @@ type DiffLine = {
 };
 
 const CHAT_COMPOSER_MAX_LINES = 9;
+const MESSAGE_LIST_BASE_PADDING = 24;
+const MESSAGE_LIST_MIN_LINES = 4;
 
 type BackgroundTask = {
   id: string;
@@ -1958,6 +1960,16 @@ export function WorkspaceClient({
     setComposerMaxHeight(lineHeight * CHAT_COMPOSER_MAX_LINES + paddingTop + paddingBottom);
   }, []);
 
+  const updateMessageLineHeight = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const sample = messageLineHeightSampleRef.current;
+    if (!sample) return;
+    const styles = window.getComputedStyle(sample);
+    const lineHeight = Number.parseFloat(styles.lineHeight || '');
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
+    setMessageLineHeight(lineHeight);
+  }, []);
+
   const resizeComposer = useCallback(() => {
     const textarea = composerTextareaRef.current;
     if (!textarea) return;
@@ -1982,8 +1994,26 @@ export function WorkspaceClient({
   }, [updateComposerMetrics]);
 
   useLayoutEffect(() => {
+    updateMessageLineHeight();
+  }, [updateMessageLineHeight]);
+
+  useLayoutEffect(() => {
     resizeComposer();
   }, [draft, resizeComposer]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sample = messageLineHeightSampleRef.current;
+    if (!sample) return;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => updateMessageLineHeight()) : null;
+    resizeObserver?.observe(sample);
+    window.addEventListener('resize', updateMessageLineHeight);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateMessageLineHeight);
+    };
+  }, [updateMessageLineHeight]);
 
   useEffect(() => {
     if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
@@ -2690,6 +2720,7 @@ export function WorkspaceClient({
   }, [showNewBranchModal, resetBranchQuestionState]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const messageLineHeightSampleRef = useRef<HTMLSpanElement | null>(null);
   const ignoreNextScrollRef = useRef(false);
   const scrollNearBottomThreshold = 72;
   const autoScrollBranchRef = useRef<string | null>(null);
@@ -2705,6 +2736,19 @@ export function WorkspaceClient({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [pinnedTopNodeId, setPinnedTopNodeId] = useState<string | null>(null);
   const [pinnedTopExtraPadding, setPinnedTopExtraPadding] = useState(0);
+  const [messageLineHeight, setMessageLineHeight] = useState<number | null>(null);
+
+  const minMessageListPadding = useMemo(() => {
+    if (!Number.isFinite(messageLineHeight ?? NaN) || (messageLineHeight ?? 0) <= 0) {
+      return MESSAGE_LIST_BASE_PADDING;
+    }
+    return Math.max(MESSAGE_LIST_BASE_PADDING, Math.ceil((messageLineHeight ?? 0) * MESSAGE_LIST_MIN_LINES));
+  }, [messageLineHeight]);
+
+  const messageListPaddingBottom = Math.max(
+    minMessageListPadding,
+    MESSAGE_LIST_BASE_PADDING + pinnedTopExtraPadding
+  );
 
   const scrollToBottom = useCallback(() => {
     const el = messageListRef.current;
@@ -3137,14 +3181,15 @@ export function WorkspaceClient({
       }
       if (pendingScrollTo.block === 'start') {
         const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
-        const extraGap = 24;
+        const extraGap = MESSAGE_LIST_BASE_PADDING;
         const desiredTop = Math.max(0, el.offsetTop - paddingTop - extraGap);
         const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
         const extraPadding = Math.max(0, desiredTop - maxScroll);
-        const totalPadding = 24 + extraPadding;
+        const totalPadding = Math.max(minMessageListPadding, MESSAGE_LIST_BASE_PADDING + extraPadding);
+        const nextExtraPadding = Math.max(0, totalPadding - MESSAGE_LIST_BASE_PADDING);
         container.style.paddingBottom = `${totalPadding}px`;
         setPinnedTopNodeId(pendingScrollTo.nodeId);
-        setPinnedTopExtraPadding(extraPadding);
+        setPinnedTopExtraPadding(nextExtraPadding);
         pinnedTopBranchRef.current = branchName;
         requestAnimationFrame(() => {
           ignoreNextScrollRef.current = true;
@@ -3174,7 +3219,7 @@ export function WorkspaceClient({
         setHighlightedNodeId(null);
       }, 2500);
     });
-  }, [pendingScrollTo, branchName, combinedNodes, hideShared, sharedNodes, updateNearBottom]);
+  }, [pendingScrollTo, branchName, combinedNodes, hideShared, sharedNodes, updateNearBottom, minMessageListPadding]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -3194,9 +3239,9 @@ export function WorkspaceClient({
     setPinnedTopNodeId(null);
     setPinnedTopExtraPadding(0);
     if (messageListRef.current) {
-      messageListRef.current.style.paddingBottom = '';
+      messageListRef.current.style.paddingBottom = `${minMessageListPadding}px`;
     }
-  }, [branchName, pinnedTopNodeId]);
+  }, [branchName, pinnedTopNodeId, minMessageListPadding]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -4271,10 +4316,17 @@ export function WorkspaceClient({
                 <div
                   ref={messageListRef}
                   data-testid="chat-message-list"
-                  className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
-                  style={pinnedTopExtraPadding ? { paddingBottom: `${24 + pinnedTopExtraPadding}px` } : undefined}
+                  className="relative flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12"
+                  style={{ paddingBottom: `${messageListPaddingBottom}px` }}
                   onScroll={handleMessageListScroll}
                 >
+                  <span
+                    ref={messageLineHeightSampleRef}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute h-0 w-0 overflow-hidden text-sm leading-relaxed text-transparent"
+                  >
+                    M
+                  </span>
                   {isLoading ? (
                     <div className="flex flex-col gap-3 animate-pulse" role="status" aria-live="polite">
                       <span className="sr-only">Loading history…</span>
