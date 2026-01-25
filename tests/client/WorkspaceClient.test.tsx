@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
 import React, { act } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BranchSummary, ProjectMetadata, NodeRecord } from '@git/types';
@@ -1435,13 +1435,17 @@ describe('WorkspaceClient', () => {
       expect(screen.getByRole('button', { name: 'Ask a question on a new branch' })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Ask a question on a new branch' }));
+    const askButton = screen.getByRole('button', { name: 'Ask a question on a new branch' });
+    fireEvent.click(askButton);
 
     const modal = await screen.findByTestId('branch-modal');
     expect(modal).toBeInTheDocument();
 
     await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
-    await user.type(screen.getByLabelText(/question/i), 'What should we do next?');
+    await user.type(
+      within(modal).getByPlaceholderText(/what do you want to ask on this branch/i),
+      'What should we do next?'
+    );
     await user.click(screen.getByRole('checkbox', { name: /switch to the new branch after creating/i }));
     await user.click(screen.getByTestId('branch-form-modal-submit'));
 
