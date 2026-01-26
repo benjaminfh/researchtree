@@ -3067,6 +3067,11 @@ export function WorkspaceClient({
       const baseOffset = (pillBottomOffset ?? 0) + (messageLineHeight ?? 0) * 0.5;
       const desiredScrollTop = Math.max(0, container.scrollTop + (elRect.top - containerRect.top) - baseOffset);
       container.scrollTop = desiredScrollTop;
+      pinHoldActiveRef.current = false;
+      pinnedScrollTopRef.current = null;
+      pinnedNodeIdRef.current = null;
+      pinnedOffsetRef.current = null;
+      lastPinKeyRef.current = null;
       suppressPinScrollRef.current = true;
       updateScrollState();
       return true;
