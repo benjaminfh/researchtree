@@ -3004,28 +3004,6 @@ export function WorkspaceClient({
         .map((node) => [node.id, (node as MessageNode).role] as const)
     );
   }, [visibleNodes]);
-  const shouldTrimPinnedPadding = useMemo(() => {
-    if (!optimisticUserNode || optimisticUserNode.type !== 'message') return false;
-    const requestId = optimisticUserNode.clientRequestId;
-    if (!requestId) return false;
-    const turnBranch = optimisticUserNode.createdOnBranch ?? branchName;
-    if (turnBranch !== branchName) return false;
-    const hasPersistedUser = nodes.some((node) => {
-      if (node.type !== 'message' || node.role !== 'user') return false;
-      if (node.clientRequestId !== requestId) return false;
-      const nodeBranch = node.createdOnBranch ?? branchName;
-      return nodeBranch === turnBranch;
-    });
-    if (!hasPersistedUser) return false;
-    const hasPersistedAssistant = nodes.some((node) => {
-      if (node.type !== 'message' || node.role !== 'assistant') return false;
-      if (node.clientRequestId !== requestId) return false;
-      const nodeBranch = node.createdOnBranch ?? branchName;
-      return nodeBranch === turnBranch;
-    });
-    return hasPersistedAssistant;
-  }, [optimisticUserNode, nodes, branchName]);
-
   const updateScrollState = useCallback(() => {
     const container = messageListRef.current;
     if (!container) return;
@@ -3173,31 +3151,6 @@ export function WorkspaceClient({
       updateScrollState();
     });
   }, [visibleNodes.length, streamPreview.length, streamBlocks.length, listPaddingExtra, messageLineHeight, isLoading, updateScrollState]);
-  useEffect(() => {
-    if (!shouldTrimPinnedPadding) return;
-    if (!pinHoldActiveRef.current && listPaddingExtra === 0) return;
-    const container = messageListRef.current;
-    const anchorId = latestPersistedVisibleNodeId ?? latestVisibleNodeId;
-    const anchorEl =
-      container && anchorId ? (container.querySelector(`[data-node-id="${anchorId}"]`) as HTMLElement | null) : null;
-    const beforeTop =
-      container && anchorEl ? anchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top : null;
-    pinHoldActiveRef.current = false;
-    pinnedScrollTopRef.current = null;
-    pinnedNodeIdRef.current = null;
-    pinnedOffsetRef.current = null;
-    lastPinKeyRef.current = null;
-    setListPaddingExtra(0);
-    requestAnimationFrame(() => {
-      if (!container || beforeTop == null || !anchorEl) return;
-      const afterTop = anchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top;
-      const delta = afterTop - beforeTop;
-      if (delta !== 0) {
-        container.scrollTop += delta;
-      }
-      updateScrollState();
-    });
-  }, [shouldTrimPinnedPadding, listPaddingExtra, updateScrollState, latestPersistedVisibleNodeId, latestVisibleNodeId]);
 
   const handleMessageListScroll = () => {
     if (suppressPinScrollRef.current) {
