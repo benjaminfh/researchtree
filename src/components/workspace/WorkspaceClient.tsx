@@ -369,6 +369,7 @@ const NodeBubble: FC<{
   branchActionDisabled?: boolean;
   inlineComments?: InlineComment[];
   onInlineCommentContextMenu?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
+  onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
   muted = false,
@@ -385,15 +386,18 @@ const NodeBubble: FC<{
   branchActionDisabled = false,
   inlineComments,
   onInlineCommentContextMenu
+  onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
   const isAssistantPending = node.clientState === 'turn-assistant-pending';
   const isTransientNode = node.clientState != null;
+  const isAssistant = node.type === 'message' && node.role === 'assistant';
   const messageText = getNodeText(node);
   const thinkingText = getNodeThinkingText(node);
   const canCopy = node.type === 'message' && messageText.length > 0;
+  const canQuoteReply = isAssistant && messageText.length > 0 && onQuoteReply;
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
@@ -405,7 +409,6 @@ const NodeBubble: FC<{
   const [isTaggingCanvasDiff, setIsTaggingCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
-  const isAssistant = node.type === 'message' && node.role === 'assistant';
   const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
   const thinkingInProgress = isAssistantPending || (node.clientState === 'turn-assistant' && messageText.length === 0);
@@ -802,6 +805,18 @@ const NodeBubble: FC<{
               {copyFeedback ? <CheckIcon className="h-4 w-4" /> : <Square2StackIcon className="h-4 w-4" />}
             </button>
           ) : null}
+          {canQuoteReply ? (
+            <button
+              type="button"
+              onClick={() => onQuoteReply(messageText)}
+              disabled={branchActionDisabled}
+              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="Quote reply"
+              title={branchActionDisabled ? 'Quote reply is disabled while streaming' : undefined}
+            >
+              <BlueprintIcon icon="comment" className="h-4 w-4" />
+            </button>
+          ) : null}
           {node.type === 'message' &&
           onEdit &&
           !isTransientNode &&
@@ -860,6 +875,7 @@ const ChatNodeRow: FC<{
   branchActionDisabled?: boolean;
   inlineComments?: InlineComment[];
   onInlineCommentContextMenu?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
+  onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
   trunkName,
@@ -882,6 +898,7 @@ const ChatNodeRow: FC<{
   branchActionDisabled,
   inlineComments,
   onInlineCommentContextMenu
+  onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
@@ -926,6 +943,7 @@ const ChatNodeRow: FC<{
             branchActionDisabled={branchActionDisabled}
             inlineComments={inlineComments}
             onInlineCommentContextMenu={onInlineCommentContextMenu}
+            onQuoteReply={onQuoteReply}
           />
           {showBranchSplit ? (
             <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
@@ -1062,6 +1080,7 @@ export function WorkspaceClient({
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
   const [composerCollapsed, setComposerCollapsed] = useState(false);
+  const [composerCornerRadius, setComposerCornerRadius] = useState<number | null>(null);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
@@ -1082,6 +1101,7 @@ export function WorkspaceClient({
 
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerBasePaddingRef = useRef<number>(composerPadding);
+  const composerCornerRadiusRef = useRef<number | null>(null);
   const [composerMinHeight, setComposerMinHeight] = useState<number | null>(null);
   const [composerMaxHeight, setComposerMaxHeight] = useState<number | null>(null);
 
@@ -2285,6 +2305,27 @@ export function WorkspaceClient({
   );
 
   const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
+  const handleQuoteReply = useCallback(
+    (messageText: string) => {
+      const normalized = messageText.replace(/\r\n/g, '\n');
+      const quoted = normalized
+        .split('\n')
+        .map((line) => (line ? `> ${line}` : '>'))
+        .join('\n');
+      setDraft((prev) => (prev ? `${prev}\n\n${quoted}` : quoted));
+      if (composerCollapsed) {
+        expandComposer();
+      }
+      window.setTimeout(() => {
+        const input = composerTextareaRef.current;
+        if (!input) return;
+        input.focus();
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      }, 0);
+    },
+    [composerCollapsed, expandComposer]
+  );
   const toggleAllWorkspacePanels = useCallback(() => {
     const railState = railStateRef.current;
     if (!railState) return;
@@ -2353,6 +2394,22 @@ export function WorkspaceClient({
     textarea.style.height = `${nextHeight}px`;
   }, [composerMaxHeight, composerMinHeight]);
 
+  const updateComposerCornerRadius = useCallback(() => {
+    const composer = composerRef.current;
+    const textarea = composerTextareaRef.current;
+    if (!composer || !textarea) return;
+    const minHeight = composerMinHeight;
+    if (!minHeight) return;
+    const composerHeight = composer.getBoundingClientRect().height;
+    const textareaHeight = textarea.getBoundingClientRect().height;
+    const delta = Math.max(0, composerHeight - textareaHeight);
+    const baseHeight = minHeight + delta;
+    const nextRadius = Math.ceil(baseHeight / 2);
+    if (composerCornerRadiusRef.current === nextRadius) return;
+    composerCornerRadiusRef.current = nextRadius;
+    setComposerCornerRadius(nextRadius);
+  }, [composerMinHeight]);
+
   const updateBaseComposerPadding = useCallback(() => {
     const composer = composerRef.current;
     if (!composer) return;
@@ -2368,6 +2425,10 @@ export function WorkspaceClient({
   useLayoutEffect(() => {
     resizeComposer();
   }, [draft, resizeComposer]);
+
+  useLayoutEffect(() => {
+    updateComposerCornerRadius();
+  }, [draft, updateComposerCornerRadius]);
 
   useEffect(() => {
     if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
@@ -2763,13 +2824,14 @@ export function WorkspaceClient({
     const handleResize = () => {
       updateComposerMetrics();
       resizeComposer();
+      updateComposerCornerRadius();
       if (!draft.trim()) {
         updateBaseComposerPadding();
       }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [draft, resizeComposer, updateBaseComposerPadding, updateComposerMetrics]);
+  }, [draft, resizeComposer, updateBaseComposerPadding, updateComposerMetrics, updateComposerCornerRadius]);
 
 
   useEffect(() => {
@@ -5202,6 +5264,7 @@ export function WorkspaceClient({
                                 branchActionDisabled={branchActionDisabled}
                                 inlineComments={inlineComments}
                                 onInlineCommentContextMenu={handleInlineCommentContextMenu}
+                                onQuoteReply={handleQuoteReply}
                               />
                             ))}
                           </div>
@@ -5248,6 +5311,7 @@ export function WorkspaceClient({
                           branchActionDisabled={branchActionDisabled}
                           inlineComments={inlineComments}
                           onInlineCommentContextMenu={handleInlineCommentContextMenu}
+                          onQuoteReply={handleQuoteReply}
                         />
                       ))}
                     </div>
@@ -5870,7 +5934,10 @@ export function WorkspaceClient({
               >
                 <div
                   ref={composerRef}
-                  className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                  className="flex items-center gap-2 border border-divider bg-white px-3 py-2 shadow-composer"
+                  style={{
+                    borderRadius: composerCornerRadius ? `${composerCornerRadius}px` : '9999px'
+                  }}
                 >
                   <div className="flex items-center gap-2">
                     <button
@@ -5885,11 +5952,11 @@ export function WorkspaceClient({
                           : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
                       } ${!webSearchAvailable ? 'opacity-50' : ''}`}
                       aria-label="Toggle web search"
+                      title="Web search"
                       aria-pressed={webSearchEnabled}
                       disabled={composerDisabled || !webSearchAvailable}
                     >
                       <SearchIcon className="h-4 w-4" />
-                      <span>Web search</span>
                     </button>
                     {/* <div className="flex h-10 w-10 items-center justify-center">
                       {features.uiAttachments ? (
@@ -5952,17 +6019,21 @@ export function WorkspaceClient({
                         onClick={() => setThinkingMenuOpen((prev) => !prev)}
                         className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         aria-label="Thinking mode"
+                        title="Thinking level"
                         aria-haspopup="menu"
                         aria-expanded={thinkingMenuOpen}
                         disabled={state.isStreaming}
                       >
-                        Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                        {THINKING_SETTING_LABELS[thinking]} ▾
                       </button>
                       {thinkingMenuOpen ? (
                         <div
                           role="menu"
-                          className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                          className="absolute bottom-full right-0 z-50 mb-2 w-26 rounded-xl border border-divider bg-white p-1 shadow-lg"
                         >
+                          <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            Thinking level
+                          </div>
 	                        {allowedThinking.map((setting) => {
 	                          const active = thinking === setting;
 	                          return (
