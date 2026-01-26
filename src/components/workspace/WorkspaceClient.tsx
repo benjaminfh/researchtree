@@ -2915,7 +2915,12 @@ export function WorkspaceClient({
     });
 
     const out: RenderNode[] = [...baseNodes];
-    if (allowOptimistic && optimisticUserNode && !persistedUserMatch) {
+    const shouldRenderOptimisticUser =
+      allowOptimistic &&
+      optimisticUserNode &&
+      !persistedUserMatch &&
+      (streamMeta?.requiresUserMatch ?? true);
+    if (shouldRenderOptimisticUser) {
       let renderId = turnUserRenderIdRef.current ?? optimisticUserNode.id;
       if (usedRenderIds.has(renderId)) {
         renderId = createClientId();
