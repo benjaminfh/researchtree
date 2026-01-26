@@ -5555,7 +5555,7 @@ export function WorkspaceClient({
                       {thinkingMenuOpen ? (
                         <div
                           role="menu"
-                          className="absolute bottom-full right-0 z-50 mb-2 w-32 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                          className="absolute bottom-full right-0 z-50 mb-2 w-26 rounded-xl border border-divider bg-white p-1 shadow-lg"
                         >
                           <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                             Thinking level
