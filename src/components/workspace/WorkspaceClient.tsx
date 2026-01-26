@@ -385,7 +385,7 @@ const NodeBubble: FC<{
   showOpenAiThinkingNote = false,
   branchActionDisabled = false,
   inlineComments,
-  onInlineCommentContextMenu
+  onInlineCommentContextMenu,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
