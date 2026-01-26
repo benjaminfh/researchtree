@@ -122,6 +122,7 @@ type StreamMeta = {
   branch: string;
   startedAt: number;
   clientRequestId: string;
+  requiresUserMatch: boolean;
 };
 
 const CHAT_COMPOSER_MAX_LINES = 9;
@@ -1453,8 +1454,9 @@ export function WorkspaceClient({
     parent: string | null;
     optimisticDraft: string | null;
     questionDraft: string | null;
+    requiresUserMatch: boolean;
   }) => {
-    const { content, branch, createdOnBranch, parent, optimisticDraft, questionDraft } = params;
+    const { content, branch, createdOnBranch, parent, optimisticDraft, questionDraft, requiresUserMatch } = params;
     setStreamHold(null);
     setStreamHoldPending(null);
     streamBranchRef.current = branch;
@@ -1469,7 +1471,7 @@ export function WorkspaceClient({
     hasReceivedAssistantChunkRef.current = false;
     setAssistantLifecycle('idle');
     const clientRequestId = createClientId();
-    setStreamMeta({ branch, startedAt: Date.now(), clientRequestId });
+    setStreamMeta({ branch, startedAt: Date.now(), clientRequestId, requiresUserMatch });
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);
       assistantPendingTimerRef.current = null;
@@ -1756,7 +1758,8 @@ export function WorkspaceClient({
       createdOnBranch: branchName,
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
       optimisticDraft: sent,
-      questionDraft: null
+      questionDraft: null,
+      requiresUserMatch: true
     });
     await sendMessage({ message: sent, clientRequestId });
   };
@@ -1793,7 +1796,8 @@ export function WorkspaceClient({
       createdOnBranch: targetBranch,
       parent: null,
       optimisticDraft: null,
-      questionDraft: optimisticContent
+      questionDraft: optimisticContent,
+      requiresUserMatch: true
     });
     let responded = false;
     await sendStreamRequest({
@@ -1854,13 +1858,17 @@ export function WorkspaceClient({
         return;
       }
     }
+    const targetNode = nodes.find((node) => node.id === nodeId);
+    const requiresUserMatch =
+      targetNode?.type === 'message' && targetNode.role === 'user';
     const clientRequestId = beginTurn({
       content,
       branch: targetBranch,
       createdOnBranch: targetBranch,
       parent: null,
       optimisticDraft: null,
-      questionDraft: content
+      questionDraft: content,
+      requiresUserMatch
     });
     let responded = false;
     await sendStreamRequest({
@@ -2923,7 +2931,7 @@ export function WorkspaceClient({
 
     const shouldRenderAssistantTurn =
       streamMeta?.branch === branchName &&
-      (!persistedAssistantMatch || !persistedUserMatch) &&
+      (!persistedAssistantMatch || (streamMeta?.requiresUserMatch && !persistedUserMatch)) &&
       (assistantLifecycle === 'pending' ||
         assistantLifecycle === 'streaming' ||
         assistantLifecycle === 'final' ||
@@ -3690,8 +3698,6 @@ export function WorkspaceClient({
         } else if (resolved.targetBranch === branchName) {
           targetBranch = branchName;
           revealShared = true;
-        } else if (resolved.record.createdOnBranch) {
-          targetBranch = resolved.record.createdOnBranch;
         }
       }
 
