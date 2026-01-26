@@ -853,6 +853,7 @@ export function WorkspaceClient({
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
   const [composerCollapsed, setComposerCollapsed] = useState(false);
+  const [composerCornerRadius, setComposerCornerRadius] = useState<number | null>(null);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
@@ -873,6 +874,7 @@ export function WorkspaceClient({
 
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerBasePaddingRef = useRef<number>(composerPadding);
+  const composerCornerRadiusRef = useRef<number | null>(null);
   const [composerMinHeight, setComposerMinHeight] = useState<number | null>(null);
   const [composerMaxHeight, setComposerMaxHeight] = useState<number | null>(null);
 
@@ -2047,6 +2049,22 @@ export function WorkspaceClient({
     textarea.style.height = `${nextHeight}px`;
   }, [composerMaxHeight, composerMinHeight]);
 
+  const updateComposerCornerRadius = useCallback(() => {
+    const composer = composerRef.current;
+    const textarea = composerTextareaRef.current;
+    if (!composer || !textarea) return;
+    const minHeight = composerMinHeight;
+    if (!minHeight) return;
+    const composerHeight = composer.getBoundingClientRect().height;
+    const textareaHeight = textarea.getBoundingClientRect().height;
+    const delta = Math.max(0, composerHeight - textareaHeight);
+    const baseHeight = minHeight + delta;
+    const nextRadius = Math.ceil(baseHeight / 2);
+    if (composerCornerRadiusRef.current === nextRadius) return;
+    composerCornerRadiusRef.current = nextRadius;
+    setComposerCornerRadius(nextRadius);
+  }, [composerMinHeight]);
+
   const updateBaseComposerPadding = useCallback(() => {
     const composer = composerRef.current;
     if (!composer) return;
@@ -2062,6 +2080,10 @@ export function WorkspaceClient({
   useLayoutEffect(() => {
     resizeComposer();
   }, [draft, resizeComposer]);
+
+  useLayoutEffect(() => {
+    updateComposerCornerRadius();
+  }, [draft, updateComposerCornerRadius]);
 
   useEffect(() => {
     if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
@@ -2457,13 +2479,14 @@ export function WorkspaceClient({
     const handleResize = () => {
       updateComposerMetrics();
       resizeComposer();
+      updateComposerCornerRadius();
       if (!draft.trim()) {
         updateBaseComposerPadding();
       }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [draft, resizeComposer, updateBaseComposerPadding, updateComposerMetrics]);
+  }, [draft, resizeComposer, updateBaseComposerPadding, updateComposerMetrics, updateComposerCornerRadius]);
 
 
   useEffect(() => {
@@ -5463,7 +5486,10 @@ export function WorkspaceClient({
               >
                 <div
                   ref={composerRef}
-                  className="flex items-center gap-2 rounded-full border border-divider bg-white px-3 py-2 shadow-composer"
+                  className="flex items-center gap-2 border border-divider bg-white px-3 py-2 shadow-composer"
+                  style={{
+                    borderRadius: composerCornerRadius ? `${composerCornerRadius}px` : '9999px'
+                  }}
                 >
                   <div className="flex items-center gap-2">
                     <button
