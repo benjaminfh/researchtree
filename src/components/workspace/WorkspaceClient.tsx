@@ -111,6 +111,165 @@ const createClientId = (): string => {
   return `id-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 };
 
+const INLINE_COMMENT_MARKER_PATTERN = /\[\[comment:(\d+)]]/g;
+const INLINE_COMMENT_REMOVAL_DELAY_MS = 2000;
+
+type InlineComment = {
+  id: string;
+  marker: string;
+  nodeId: string;
+  startOffset: number;
+  endOffset: number;
+  selectionText: string;
+  response: string;
+  attached: boolean;
+  createdAt: number;
+};
+
+type InlineCommentSelection = {
+  nodeId: string;
+  startOffset: number;
+  endOffset: number;
+  selectionText: string;
+};
+
+type InlineCommentMenuState = InlineCommentSelection & {
+  x: number;
+  y: number;
+};
+
+const buildInlineCommentMarker = (id: number) => `[[comment:${id}]]`;
+
+const extractInlineCommentMarkers = (value: string) => {
+  const markers = new Set<string>();
+  for (const match of value.matchAll(INLINE_COMMENT_MARKER_PATTERN)) {
+    markers.add(match[0]);
+  }
+  return markers;
+};
+
+const formatQuotedLines = (value: string) => {
+  const normalized = value.replace(/\r\n/g, '\n');
+  return normalized.split('\n').map((line) => `> ${line}`).join('\n');
+};
+
+const buildInlineCommentBlock = (comment: InlineComment) => {
+  const quoted = formatQuotedLines(comment.selectionText);
+  const response = comment.response.trim();
+  return response ? `${quoted}\n${response}` : quoted;
+};
+
+const applyInlineCommentsToDraft = (value: string, comments: InlineComment[]) => {
+  if (!value) return value;
+  const markerSet = extractInlineCommentMarkers(value);
+  if (markerSet.size === 0) return value;
+  const commentMap = new Map(comments.map((comment) => [comment.marker, comment]));
+  return value.replace(INLINE_COMMENT_MARKER_PATTERN, (match) => {
+    if (!markerSet.has(match)) {
+      return match;
+    }
+    const comment = commentMap.get(match);
+    if (!comment) {
+      return match;
+    }
+    return buildInlineCommentBlock(comment);
+  });
+};
+
+const clearInlineHighlights = (container: HTMLElement) => {
+  const highlights = container.querySelectorAll<HTMLElement>('[data-inline-highlight]');
+  highlights.forEach((highlight) => {
+    const textNode = document.createTextNode(highlight.textContent ?? '');
+    highlight.replaceWith(textNode);
+  });
+};
+
+const findTextNodeAtOffset = (
+  container: HTMLElement,
+  offset: number
+): { node: Text; offset: number } | null => {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let currentOffset = 0;
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode as Text;
+    const textLength = textNode.textContent?.length ?? 0;
+    if (offset <= currentOffset + textLength) {
+      return { node: textNode, offset: Math.max(offset - currentOffset, 0) };
+    }
+    currentOffset += textLength;
+  }
+  return null;
+};
+
+const createRangeFromOffsets = (container: HTMLElement, startOffset: number, endOffset: number) => {
+  const start = findTextNodeAtOffset(container, startOffset);
+  const end = findTextNodeAtOffset(container, endOffset);
+  if (!start || !end) return null;
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  return range;
+};
+
+const applyInlineHighlight = (container: HTMLElement, highlight: InlineComment) => {
+  const range = createRangeFromOffsets(container, highlight.startOffset, highlight.endOffset);
+  if (!range || range.collapsed) return;
+  const textNodes: Text[] = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => (range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT)
+  });
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode as Text);
+  }
+  textNodes.forEach((node) => {
+    const text = node.textContent ?? '';
+    if (!text) return;
+    const start = node === range.startContainer ? range.startOffset : 0;
+    const end = node === range.endContainer ? range.endOffset : text.length;
+    if (start === end) return;
+    const fragment = document.createDocumentFragment();
+    const before = text.slice(0, start);
+    const middle = text.slice(start, end);
+    const after = text.slice(end);
+    if (before) {
+      fragment.appendChild(document.createTextNode(before));
+    }
+    const mark = document.createElement('mark');
+    mark.dataset.inlineHighlight = highlight.id;
+    mark.className = 'rounded bg-amber-200/70 px-0.5';
+    mark.textContent = middle;
+    fragment.appendChild(mark);
+    if (after) {
+      fragment.appendChild(document.createTextNode(after));
+    }
+    node.parentNode?.replaceChild(fragment, node);
+  });
+};
+
+const getInlineSelection = (container: HTMLElement): InlineCommentSelection | null => {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!container.contains(range.commonAncestorContainer)) return null;
+  const selectionText = selection.toString();
+  if (!selectionText.trim()) return null;
+  const startRange = range.cloneRange();
+  startRange.selectNodeContents(container);
+  startRange.setEnd(range.startContainer, range.startOffset);
+  const endRange = range.cloneRange();
+  endRange.selectNodeContents(container);
+  endRange.setEnd(range.endContainer, range.endOffset);
+  const startOffset = startRange.toString().length;
+  const endOffset = endRange.toString().length;
+  if (startOffset === endOffset) return null;
+  return {
+    nodeId: container.dataset.nodeId ?? '',
+    startOffset: Math.min(startOffset, endOffset),
+    endOffset: Math.max(startOffset, endOffset),
+    selectionText
+  };
+};
+
 type DiffLine = {
   type: 'context' | 'added' | 'removed';
   value: string;
@@ -208,6 +367,8 @@ const NodeBubble: FC<{
   branchQuestionCandidate?: boolean;
   showOpenAiThinkingNote?: boolean;
   branchActionDisabled?: boolean;
+  inlineComments?: InlineComment[];
+  onInlineCommentContextMenu?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
 }> = ({
   node,
   muted = false,
@@ -221,7 +382,9 @@ const NodeBubble: FC<{
   highlighted = false,
   branchQuestionCandidate = false,
   showOpenAiThinkingNote = false,
-  branchActionDisabled = false
+  branchActionDisabled = false,
+  inlineComments,
+  onInlineCommentContextMenu
 }) => {
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
@@ -265,6 +428,12 @@ const NodeBubble: FC<{
     ? 'bg-slate-50 text-slate-900'
     : 'bg-white text-slate-900';
   const align = isMerge ? 'mx-auto items-center' : isUser ? 'ml-auto items-end' : 'mr-auto items-start';
+  const assistantMessageRef = useRef<HTMLDivElement | null>(null);
+  const [highlightPositions, setHighlightPositions] = useState<Record<string, { top: number; left: number }>>({});
+  const activeInlineComments = useMemo(
+    () => (inlineComments ?? []).filter((comment) => comment.attached && comment.nodeId === node.id),
+    [inlineComments, node.id]
+  );
 
   useEffect(() => {
     return () => {
@@ -340,6 +509,31 @@ const NodeBubble: FC<{
     };
   }, [isUser, messageText, isUserMessageExpanded, measureUserMessageOverflow]);
 
+  useLayoutEffect(() => {
+    if (!assistantMessageRef.current || activeInlineComments.length === 0) {
+      if (assistantMessageRef.current) {
+        clearInlineHighlights(assistantMessageRef.current);
+      }
+      setHighlightPositions({});
+      return;
+    }
+    const container = assistantMessageRef.current;
+    clearInlineHighlights(container);
+    activeInlineComments.forEach((comment) => applyInlineHighlight(container, comment));
+    const containerRect = container.getBoundingClientRect();
+    const nextPositions: Record<string, { top: number; left: number }> = {};
+    activeInlineComments.forEach((comment) => {
+      const range = createRangeFromOffsets(container, comment.startOffset, comment.endOffset);
+      if (!range) return;
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+      const left = Math.max(rect.right - containerRect.left + 6, 0);
+      const top = Math.max(rect.top - containerRect.top - 6, 0);
+      nextPositions[comment.id] = { top, left };
+    });
+    setHighlightPositions(nextPositions);
+  }, [activeInlineComments, messageText, renderId]);
+
   return (
     <article className={`flex flex-col gap-1 ${align} ${containerWidth}`}>
       <div
@@ -390,8 +584,28 @@ const NodeBubble: FC<{
         ) : null}
         {node.type === 'message' && messageText ? (
           isAssistant ? (
-            <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
-              <MarkdownWithCopy content={messageText} />
+            <div className="prose prose-sm prose-slate relative mt-2 max-w-none break-words">
+              <div
+                ref={assistantMessageRef}
+                data-node-id={node.id}
+                onContextMenu={(event) => onInlineCommentContextMenu?.(event, node, assistantMessageRef.current)}
+              >
+                <MarkdownWithCopy content={messageText} />
+              </div>
+              {activeInlineComments.map((comment) => {
+                const position = highlightPositions[comment.id];
+                if (!position) return null;
+                return (
+                  <span
+                    key={comment.id}
+                    className="pointer-events-none absolute flex h-5 w-5 items-center justify-center rounded-full border border-amber-200 bg-white text-amber-600 shadow-sm"
+                    style={{ top: position.top, left: position.left }}
+                    aria-hidden="true"
+                  >
+                    <BlueprintIcon icon="comment" className="h-3 w-3" />
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <div className="mt-2 flex flex-col">
@@ -644,6 +858,8 @@ const ChatNodeRow: FC<{
   branchQuestionCandidate?: boolean;
   showBranchSplit?: boolean;
   branchActionDisabled?: boolean;
+  inlineComments?: InlineComment[];
+  onInlineCommentContextMenu?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
 }> = ({
   node,
   trunkName,
@@ -663,7 +879,9 @@ const ChatNodeRow: FC<{
   highlighted,
   branchQuestionCandidate,
   showBranchSplit,
-  branchActionDisabled
+  branchActionDisabled,
+  inlineComments,
+  onInlineCommentContextMenu
 }) => {
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
@@ -706,6 +924,8 @@ const ChatNodeRow: FC<{
             branchQuestionCandidate={branchQuestionCandidate}
             showOpenAiThinkingNote={showOpenAiThinkingNote}
             branchActionDisabled={branchActionDisabled}
+            inlineComments={inlineComments}
+            onInlineCommentContextMenu={onInlineCommentContextMenu}
           />
           {showBranchSplit ? (
             <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
@@ -741,6 +961,13 @@ export function WorkspaceClient({
   const [branches, setBranches] = useState(initialBranches);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [inlineComments, setInlineComments] = useState<InlineComment[]>([]);
+  const [inlineCommentMenu, setInlineCommentMenu] = useState<InlineCommentMenuState | null>(null);
+  const [inlineCommentModal, setInlineCommentModal] = useState<InlineCommentSelection | null>(null);
+  const [inlineCommentDraft, setInlineCommentDraft] = useState('');
+  const inlineCommentRemovalTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const inlineCommentIdRef = useRef(1);
+  const draftRef = useRef('');
   const [newBranchName, setNewBranchName] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -1423,6 +1650,121 @@ export function WorkspaceClient({
       setComposerError(null);
     }
   }, [composerError, draft]);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+  useEffect(() => {
+    const markers = extractInlineCommentMarkers(draft);
+    setInlineComments((prev) => {
+      let changed = false;
+      const next = prev.map((comment) => {
+        if (markers.has(comment.marker) && !comment.attached) {
+          changed = true;
+          return { ...comment, attached: true };
+        }
+        return comment;
+      });
+      return changed ? next : prev;
+    });
+    inlineComments.forEach((comment) => {
+      const isPresent = markers.has(comment.marker);
+      const existingTimer = inlineCommentRemovalTimersRef.current.get(comment.id);
+      if (!isPresent && comment.attached && !existingTimer) {
+        const timer = setTimeout(() => {
+          const currentMarkers = extractInlineCommentMarkers(draftRef.current);
+          if (currentMarkers.has(comment.marker)) {
+            return;
+          }
+          setInlineComments((prev) =>
+            prev.map((entry) => (entry.id === comment.id ? { ...entry, attached: false } : entry))
+          );
+          inlineCommentRemovalTimersRef.current.delete(comment.id);
+        }, INLINE_COMMENT_REMOVAL_DELAY_MS);
+        inlineCommentRemovalTimersRef.current.set(comment.id, timer);
+      }
+      if (isPresent && existingTimer) {
+        clearTimeout(existingTimer);
+        inlineCommentRemovalTimersRef.current.delete(comment.id);
+      }
+    });
+  }, [draft, inlineComments]);
+  useEffect(() => {
+    return () => {
+      inlineCommentRemovalTimersRef.current.forEach((timer) => clearTimeout(timer));
+      inlineCommentRemovalTimersRef.current.clear();
+    };
+  }, []);
+  const insertInlineCommentMarker = useCallback(
+    (marker: string) => {
+      const textarea = composerTextareaRef.current;
+      const currentValue = draft;
+      const start = textarea?.selectionStart ?? currentValue.length;
+      const end = textarea?.selectionEnd ?? currentValue.length;
+      const prefix = start > 0 && !/\s/.test(currentValue[start - 1]) ? ' ' : '';
+      const suffix = end < currentValue.length && !/\s/.test(currentValue[end]) ? ' ' : '';
+      const nextValue = `${currentValue.slice(0, start)}${prefix}${marker}${suffix}${currentValue.slice(end)}`;
+      setDraft(nextValue);
+      requestAnimationFrame(() => {
+        if (!textarea) return;
+        const cursor = start + prefix.length + marker.length + suffix.length;
+        textarea.selectionStart = cursor;
+        textarea.selectionEnd = cursor;
+        textarea.focus();
+      });
+    },
+    [draft]
+  );
+
+  const handleInlineCommentContextMenu = useCallback(
+    (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => {
+      if (node.type !== 'message' || node.role !== 'assistant' || !container) return;
+      const selection = getInlineSelection(container);
+      if (!selection) return;
+      event.preventDefault();
+      setInlineCommentMenu({
+        ...selection,
+        nodeId: node.id,
+        x: event.clientX,
+        y: event.clientY
+      });
+    },
+    []
+  );
+
+  const handleInlineCommentSubmit = useCallback(() => {
+    if (!inlineCommentModal) return;
+    const response = inlineCommentDraft.trim();
+    if (!response) return;
+    const newId = inlineCommentIdRef.current++;
+    const marker = buildInlineCommentMarker(newId);
+    const newComment: InlineComment = {
+      id: createClientId(),
+      marker,
+      nodeId: inlineCommentModal.nodeId,
+      startOffset: inlineCommentModal.startOffset,
+      endOffset: inlineCommentModal.endOffset,
+      selectionText: inlineCommentModal.selectionText,
+      response,
+      attached: true,
+      createdAt: Date.now()
+    };
+    setInlineComments((prev) => [...prev, newComment]);
+    insertInlineCommentMarker(marker);
+    setInlineCommentDraft('');
+    setInlineCommentModal(null);
+    window.getSelection()?.removeAllRanges();
+  }, [inlineCommentDraft, inlineCommentModal, insertInlineCommentMarker]);
+
+  useEffect(() => {
+    if (!inlineCommentMenu) return;
+    const handleClose = () => setInlineCommentMenu(null);
+    window.addEventListener('click', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+    };
+  }, [inlineCommentMenu]);
   const [assistantLifecycle, setAssistantLifecycle] = useState<AssistantLifecycle>('idle');
   const [streamMeta, setStreamMeta] = useState<StreamMeta | null>(null);
   const [streamCache, setStreamCache] = useState<{ preview: string; blocks: ThinkingContentBlock[] } | null>(null);
@@ -1733,7 +2075,8 @@ export function WorkspaceClient({
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
-    const draftLength = draft.length;
+    const sent = applyInlineCommentsToDraft(draft, inlineComments);
+    const draftLength = sent.length;
     if (draftLength > CHAT_LIMITS.messageMaxChars) {
       setComposerError(formatCharLimitMessage('Message', draftLength, CHAT_LIMITS.messageMaxChars));
       return;
@@ -1750,8 +2093,10 @@ export function WorkspaceClient({
       pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
-    const sent = draft;
     setDraft('');
+    setInlineComments([]);
+    inlineCommentRemovalTimersRef.current.forEach((timer) => clearTimeout(timer));
+    inlineCommentRemovalTimersRef.current.clear();
     const clientRequestId = beginTurn({
       content: sent,
       branch: branchName,
@@ -4202,6 +4547,10 @@ export function WorkspaceClient({
     setMergeSummary('');
     setMergeError(null);
   }, [isMerging]);
+  const closeInlineCommentModal = useCallback(() => {
+    setInlineCommentModal(null);
+    setInlineCommentDraft('');
+  }, []);
 
   const handleNewBranchBackdrop = useMemo(
     () => buildModalBackdropHandler(closeNewBranchModal),
@@ -4230,6 +4579,10 @@ export function WorkspaceClient({
     () => buildModalBackdropHandler(closeCreateWorkspaceModal),
     [buildModalBackdropHandler, closeCreateWorkspaceModal]
   );
+  const handleInlineCommentBackdrop = useMemo(
+    () => buildModalBackdropHandler(closeInlineCommentModal),
+    [buildModalBackdropHandler, closeInlineCommentModal]
+  );
 
   return (
     <>
@@ -4251,6 +4604,97 @@ export function WorkspaceClient({
               </button>
             </div>
           ))}
+        </div>
+      ) : null}
+      {inlineCommentMenu ? (
+        <div
+          className="fixed z-50"
+          style={{ top: inlineCommentMenu.y, left: inlineCommentMenu.x }}
+          role="menu"
+          onMouseDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <div className="rounded-xl border border-divider/80 bg-white p-1 shadow-lg">
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-primary/10"
+              onClick={() => {
+                setInlineCommentModal(inlineCommentMenu);
+                setInlineCommentMenu(null);
+                setInlineCommentDraft('');
+              }}
+              role="menuitem"
+            >
+              <BlueprintIcon icon="comment" className="h-3.5 w-3.5 text-slate-600" />
+              Respond
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {inlineCommentModal ? (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4"
+          onMouseDown={handleInlineCommentBackdrop}
+          onTouchStart={handleInlineCommentBackdrop}
+        >
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="inline-comment-modal">
+            <CommandEnterForm
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleInlineCommentSubmit();
+              }}
+              enableCommandEnter={inlineCommentDraft.trim().length > 0}
+              className="space-y-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Respond to highlight</h3>
+                  <p className="text-sm text-muted">Your response will be inserted at the marker in the composer.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeInlineCommentModal}
+                  className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-primary/10"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="rounded-xl border border-divider/70 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                {formatQuotedLines(inlineCommentModal.selectionText)}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-800" htmlFor="inline-comment-response">
+                  Response
+                </label>
+                <textarea
+                  id="inline-comment-response"
+                  value={inlineCommentDraft}
+                  onChange={(event) => setInlineCommentDraft(event.target.value)}
+                  rows={4}
+                  className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                  placeholder="Write your response…"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeInlineCommentModal}
+                  className="rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={!inlineCommentDraft.trim()}
+                >
+                  Add response
+                </button>
+              </div>
+            </CommandEnterForm>
+          </div>
         </div>
       ) : null}
       <RailPageLayout
@@ -4756,6 +5200,8 @@ export function WorkspaceClient({
                                 }
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                                 branchActionDisabled={branchActionDisabled}
+                                inlineComments={inlineComments}
+                                onInlineCommentContextMenu={handleInlineCommentContextMenu}
                               />
                             ))}
                           </div>
@@ -4800,6 +5246,8 @@ export function WorkspaceClient({
                           }
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                           branchActionDisabled={branchActionDisabled}
+                          inlineComments={inlineComments}
+                          onInlineCommentContextMenu={handleInlineCommentContextMenu}
                         />
                       ))}
                     </div>
