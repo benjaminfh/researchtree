@@ -12,7 +12,7 @@ let lastFlowInstance: { setViewport: ReturnType<typeof vi.fn> } | null = null;
 let lastOnMoveEnd: ((event: any, viewport: any) => void) | null = null;
 
 const ROW_SPACING = 45;
-const BOTTOM_VIEWPORT_PADDING = 56;
+const BOTTOM_VIEWPORT_PADDING = 120;
 const CENTER_VIEWPORT_THRESHOLD = 0.75;
 
 const expectedPreferredY = (nodeCount: number, viewportHeight: number) => {
