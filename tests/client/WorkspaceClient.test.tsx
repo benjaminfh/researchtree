@@ -898,12 +898,12 @@ describe('WorkspaceClient', () => {
     );
 
     const thinkingTrigger = screen.getByRole('button', { name: 'Thinking mode' });
-    expect(thinkingTrigger).toHaveTextContent('Thinking: Medium');
+    expect(thinkingTrigger).toHaveTextContent('Medium');
 
     await user.click(thinkingTrigger);
     await user.click(screen.getByRole('menuitemradio', { name: 'High' }));
 
-    expect(thinkingTrigger).toHaveTextContent('Thinking: High');
+    expect(thinkingTrigger).toHaveTextContent('High');
     expect(window.localStorage.getItem('researchtree:thinking:proj-1:feature/phase-2')).toBe('high');
     await waitFor(() => {
       expect(capturedChatOptions?.thinking).toBe('high');
