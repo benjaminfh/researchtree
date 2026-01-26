@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
 
 import React, { act } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BranchSummary, ProjectMetadata, NodeRecord } from '@git/types';
@@ -308,7 +308,9 @@ describe('WorkspaceClient', () => {
     await user.keyboard('{Meta>}{Enter}{/Meta}');
 
     await waitFor(() => {
-      expect(sendMessageMock).toHaveBeenCalledWith('New investigation');
+      expect(sendMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'New investigation', clientRequestId: expect.any(String) })
+      );
     });
   });
 
@@ -326,6 +328,10 @@ describe('WorkspaceClient', () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
     expect(capturedChatOptions).not.toBeNull();
+    const user = userEvent.setup();
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'New investigation');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
 
     await act(async () => {
       capturedChatOptions?.onChunk?.({ type: 'text', content: 'partial response' });
@@ -337,6 +343,10 @@ describe('WorkspaceClient', () => {
   it('refreshes history and artefact when the stream completes', async () => {
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
     expect(capturedChatOptions).not.toBeNull();
+    const user = userEvent.setup();
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'New investigation');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
 
     await act(async () => {
       await capturedChatOptions?.onComplete?.();
@@ -378,10 +388,10 @@ describe('WorkspaceClient', () => {
       <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
     );
 
-    expect(screen.getByRole('button', { name: 'Add canvas diff to context' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tag canvas diff in chat' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Add canvas diff to context' }));
-    await user.click(screen.getByRole('button', { name: 'Confirm add canvas diff to context' }));
+    await user.click(screen.getByRole('button', { name: 'Tag canvas diff in chat' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm tag canvas diff in chat' }));
 
     await waitFor(() => {
       expect(mutateHistoryMock).toHaveBeenCalled();
@@ -1081,23 +1091,14 @@ describe('WorkspaceClient', () => {
     });
 
     await act(async () => {
-      capturedWorkspaceGraphProps?.onSelectNode?.('node-user');
+      capturedWorkspaceGraphProps?.onNavigateNode?.('node-user');
     });
 
-    expect(screen.getByRole('button', { name: 'Jump to message' })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('button', { name: 'Jump to message' })).not.toBeInTheDocument();
-
-    await act(async () => {
-      capturedWorkspaceGraphProps?.onSelectNode?.('node-user');
-    });
-    await user.click(screen.getByRole('button', { name: 'Jump to message' }));
-
-    await waitFor(() => {
-      const list = screen.getByTestId('chat-message-list');
-      expect(within(list).getByText('How is progress going?')).toBeInTheDocument();
-      expect(scrollIntoViewMock).toHaveBeenCalled();
-    });
+    const branchPatchCall = fetchMock.mock.calls.find(
+      ([input, init]: [RequestInfo | URL, RequestInit]) => input.toString().includes('/branches') && init?.method === 'PATCH'
+    );
+    expect(branchPatchCall).toBeFalsy();
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
     globalThis.requestAnimationFrame = raf;
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
@@ -1128,7 +1129,8 @@ describe('WorkspaceClient', () => {
         role: 'user',
         content: 'Other branch node',
         timestamp: 1700000000000,
-        parent: null
+        parent: null,
+        createdOnBranch: 'feature/other'
       },
       {
         id: 'other-2',
@@ -1136,7 +1138,8 @@ describe('WorkspaceClient', () => {
         role: 'assistant',
         content: 'Other branch response',
         timestamp: 1700000001000,
-        parent: 'other-1'
+        parent: 'other-1',
+        createdOnBranch: 'feature/other'
       }
     ];
 
@@ -1210,13 +1213,10 @@ describe('WorkspaceClient', () => {
     });
 
     await act(async () => {
-      capturedWorkspaceGraphProps?.onSelectNode?.('other-1');
+      capturedWorkspaceGraphProps?.onNavigateNode?.('other-1');
     });
 
-    await user.click(screen.getByRole('button', { name: 'Jump to message' }));
-
     await waitFor(() => {
-      expect(scrollIntoViewMock).toHaveBeenCalled();
       const list = screen.getByTestId('chat-message-list');
       expect(within(list).getByText('Other branch node')).toBeInTheDocument();
     });
@@ -1305,7 +1305,7 @@ describe('WorkspaceClient', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm add canvas changes to chat' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Canvas changes added')).toBeInTheDocument();
+      expect(screen.getByLabelText('Canvas changes already tagged')).toBeInTheDocument();
     });
 
     const pinCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/merge/pin-canvas-diff'));
@@ -1406,10 +1406,134 @@ describe('WorkspaceClient', () => {
         llmProvider: 'openai',
         llmModel: 'gpt-5.2',
         thinking: getDefaultThinkingSetting('openai', 'gpt-5.2'),
-        nodeId: 'node-user'
+        nodeId: 'node-user',
+        clientRequestId: expect.any(String)
       });
     });
 
     expect(await screen.findByText('Edit queued for feature/edit-branch.')).toBeInTheDocument();
+  });
+
+  it('includes clientRequestId when branching with a question', async () => {
+    const user = userEvent.setup();
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+    const assistantMessage = await screen.findByText('All tasks queued.');
+    const selection = window.getSelection();
+    if (!selection) {
+      throw new Error('Selection API not available in test environment.');
+    }
+    const range = document.createRange();
+    range.selectNodeContents(assistantMessage);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Ask a question on a new branch' })).toBeInTheDocument();
+    });
+
+    const askButton = screen.getByRole('button', { name: 'Ask a question on a new branch' });
+    fireEvent.click(askButton);
+
+    const modal = await screen.findByTestId('branch-modal');
+    expect(modal).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
+    await user.type(
+      within(modal).getByPlaceholderText(/what do you want to ask on this branch/i),
+      'What should we do next?'
+    );
+    await user.click(screen.getByRole('checkbox', { name: /switch to the new branch after creating/i }));
+    await user.click(screen.getByTestId('branch-form-modal-submit'));
+
+    await waitFor(() => {
+      expect(sendStreamRequestMock).toHaveBeenCalled();
+    });
+
+    const call = sendStreamRequestMock.mock.calls[0]?.[0];
+    expect(call).toBeTruthy();
+    expect(call.body).toMatchObject({
+      name: 'feature/question-branch',
+      fromRef: 'feature/phase-2',
+      question: 'What should we do next?',
+      clientRequestId: expect.any(String)
+    });
+  });
+
+  it('reconciles optimistic nodes by clientRequestId instead of content', async () => {
+    const user = userEvent.setup();
+    let currentNodes: NodeRecord[] = [];
+
+    mockUseProjectData.mockImplementation(() => ({
+      nodes: currentNodes,
+      artefact: '',
+      artefactMeta: null,
+      isLoading: false,
+      error: undefined,
+      mutateHistory: mutateHistoryMock,
+      mutateArtefact: mutateArtefactMock
+    }) as ReturnType<typeof useProjectData>);
+
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'New investigation');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalled();
+    });
+
+    const clientRequestId = sendMessageMock.mock.calls[0]?.[0]?.clientRequestId;
+    expect(clientRequestId).toBeTruthy();
+
+    await act(async () => {
+      capturedChatOptions?.onChunk?.({ type: 'text', content: 'partial response' });
+    });
+
+    currentNodes = [
+      {
+        id: 'persisted-user',
+        type: 'message',
+        role: 'user',
+        content: 'Persisted user content',
+        timestamp: 1700000003000,
+        parent: null,
+        clientRequestId,
+        createdOnBranch: 'feature/phase-2'
+      },
+      {
+        id: 'persisted-assistant',
+        type: 'message',
+        role: 'assistant',
+        content: 'Persisted assistant content',
+        timestamp: 1700000004000,
+        parent: 'persisted-user',
+        clientRequestId,
+        createdOnBranch: 'feature/phase-2'
+      }
+    ];
+
+    rerender(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    await act(async () => {
+      await capturedChatOptions?.onComplete?.();
+    });
+
+    const list = screen.getByTestId('chat-message-list');
+
+    await waitFor(() => {
+      expect(within(list).queryByText('New investigation')).not.toBeInTheDocument();
+      expect(within(list).getByText('Persisted user content')).toBeInTheDocument();
+      expect(list.querySelector('[data-node-id="optimistic-user"]')).toBeNull();
+      expect(list.querySelector('[data-node-id="optimistic-assistant"]')).toBeNull();
+    });
   });
 });

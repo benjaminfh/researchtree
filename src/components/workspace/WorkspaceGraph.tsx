@@ -38,8 +38,7 @@ interface WorkspaceGraphProps {
   onModeChange?: (mode: 'nodes' | 'collapsed' | 'starred') => void;
   selectedNodeId?: string | null;
   onSelectNode?: (nodeId: string | null) => void;
-  onNavigateNode?: (nodeId: string) => void;
-  onSwitchBranch?: (branchName: string) => void;
+  onNavigateNode?: (nodeId: string, options?: { mode?: 'nearest' | 'origin'; originBranchId?: string }) => void;
 }
 
 interface DotNodeData {
@@ -65,7 +64,7 @@ const rowSpacing = 45;
 const laneSpacing = 18;
 const NULL_VERTEX_ID = -1;
 const DEFAULT_VIEWPORT = { x: 48, y: 88, zoom: 1 } as const;
-const BOTTOM_VIEWPORT_PADDING = 56;
+const BOTTOM_VIEWPORT_PADDING = 120;
 const CENTER_VIEWPORT_THRESHOLD = 0.75;
 const LABEL_BASE_OFFSET = 24; // icon (16) + gap (8)
 const LABEL_ROW_GAP = 20; // gap after the right-most line when the node isn't on it
@@ -1171,7 +1170,6 @@ export function WorkspaceGraph({
   selectedNodeId,
   onSelectNode,
   onNavigateNode,
-  onSwitchBranch
 }: WorkspaceGraphProps) {
   const resolvedGraphViews = useMemo(() => {
     if (graphViews) return graphViews;
@@ -1467,11 +1465,11 @@ export function WorkspaceGraph({
               defaultViewport={DEFAULT_VIEWPORT}
               onNodeClick={(event, node) => {
                 if (event?.altKey) {
-                  onSwitchBranch?.(node.data.originBranchId);
+                  onNavigateNode?.(node.id, { mode: 'origin', originBranchId: node.data.originBranchId });
                   return;
                 }
                 if (event?.metaKey) {
-                  onNavigateNode?.(node.id);
+                  onNavigateNode?.(node.id, { mode: 'nearest' });
                   return;
                 }
                 onSelectNode?.(node.id);

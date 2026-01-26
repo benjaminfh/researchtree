@@ -116,7 +116,19 @@ type DiffLine = {
   value: string;
 };
 
+type AssistantLifecycle = 'idle' | 'pending' | 'streaming' | 'final' | 'error';
+
+type StreamMeta = {
+  branch: string;
+  startedAt: number;
+  clientRequestId: string;
+  requiresUserMatch: boolean;
+};
+
 const CHAT_COMPOSER_MAX_LINES = 9;
+const MESSAGE_LIST_BASE_PADDING = 24;
+const DEBUG_ASSISTANT_LIFECYCLE = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
+const DEBUG_MESSAGE_SCROLL = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
 
 type BackgroundTask = {
   id: string;
@@ -177,16 +189,21 @@ interface ProviderOption {
   defaultModel: string;
 }
 
+type RenderNode = NodeRecord & {
+  renderId: string;
+  clientState?: 'turn-user' | 'turn-assistant-pending' | 'turn-assistant';
+};
+
 const NodeBubble: FC<{
-  node: NodeRecord;
+  node: RenderNode;
   muted?: boolean;
   subtitle?: string;
   isStarred?: boolean;
   isStarPending?: boolean;
   onToggleStar?: () => void;
   onEdit?: (node: MessageNode) => void;
-  isCanvasDiffPinned?: boolean;
-  onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
+  isCanvasDiffTagged?: boolean;
+  onTagCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
   branchQuestionCandidate?: boolean;
   showOpenAiThinkingNote?: boolean;
@@ -199,17 +216,18 @@ const NodeBubble: FC<{
   isStarPending = false,
   onToggleStar,
   onEdit,
-  isCanvasDiffPinned = false,
-  onPinCanvasDiff,
+  isCanvasDiffTagged = false,
+  onTagCanvasDiff,
   highlighted = false,
   branchQuestionCandidate = false,
   showOpenAiThinkingNote = false,
   branchActionDisabled = false
 }) => {
+  const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
-  const isAssistantPending = node.type === 'message' && node.role === 'assistant' && node.id === 'assistant-pending';
-  const isTransientNode = node.id === 'streaming' || node.id === 'assistant-pending' || node.id === 'optimistic-user';
+  const isAssistantPending = node.clientState === 'turn-assistant-pending';
+  const isTransientNode = node.clientState != null;
   const messageText = getNodeText(node);
   const thinkingText = getNodeThinkingText(node);
   const canCopy = node.type === 'message' && messageText.length > 0;
@@ -219,15 +237,15 @@ const NodeBubble: FC<{
   const [canExpandUserMessage, setCanExpandUserMessage] = useState(false);
   const userMessageRef = useRef<HTMLParagraphElement | null>(null);
   const [showCanvasDiff, setShowCanvasDiff] = useState(false);
-  const [confirmPinCanvasDiff, setConfirmPinCanvasDiff] = useState(false);
-  const [pinCanvasDiffError, setPinCanvasDiffError] = useState<string | null>(null);
-  const [isPinningCanvasDiff, setIsPinningCanvasDiff] = useState(false);
+  const [confirmTagCanvasDiff, setConfirmTagCanvasDiff] = useState(false);
+  const [tagCanvasDiffError, setTagCanvasDiffError] = useState<string | null>(null);
+  const [isTaggingCanvasDiff, setIsTaggingCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const isAssistant = node.type === 'message' && node.role === 'assistant';
   const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
-  const thinkingInProgress = isAssistantPending || (node.id === 'streaming' && messageText.length === 0);
+  const thinkingInProgress = isAssistantPending || (node.clientState === 'turn-assistant' && messageText.length === 0);
   const showThinkingNote = isAssistant && showOpenAiThinkingNote && !hasThinking && !thinkingInProgress;
   const containerWidth = isMerge || isAssistant ? 'w-full' : '';
   const width = isMerge
@@ -260,7 +278,7 @@ const NodeBubble: FC<{
   useEffect(() => {
     setIsUserMessageExpanded(false);
     setCanExpandUserMessage(false);
-  }, [node.id, messageText]);
+  }, [renderId, messageText]);
 
   const measureUserMessageOverflow = useCallback(() => {
     if (!isUser || !messageText) return;
@@ -457,35 +475,35 @@ const NodeBubble: FC<{
                 {showCanvasDiff ? 'Hide canvas diff' : 'Show canvas diff'}
               </button>
 
-              {onPinCanvasDiff ? (
-                isCanvasDiffPinned ? (
-                  <span className="font-semibold text-emerald-700" aria-label="Canvas diff is in context">
+              {onTagCanvasDiff ? (
+                isCanvasDiffTagged ? (
+                  <span className="font-semibold text-emerald-700" aria-label="Canvas diff tagged in chat">
                     Diff in context
                   </span>
-                ) : confirmPinCanvasDiff ? (
+                ) : confirmTagCanvasDiff ? (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      disabled={isPinningCanvasDiff}
+                      disabled={isTaggingCanvasDiff}
                       onClick={() => {
                         void (async () => {
                           if (node.type !== 'merge') return;
-                          setPinCanvasDiffError(null);
-                          setIsPinningCanvasDiff(true);
+                          setTagCanvasDiffError(null);
+                          setIsTaggingCanvasDiff(true);
                           try {
-                            await onPinCanvasDiff(node.id);
-                            setConfirmPinCanvasDiff(false);
+                            await onTagCanvasDiff(node.id);
+                            setConfirmTagCanvasDiff(false);
                           } catch (err) {
-                            setPinCanvasDiffError((err as Error)?.message ?? 'Failed to add diff to context');
+                            setTagCanvasDiffError((err as Error)?.message ?? 'Failed to tag diff in chat');
                           } finally {
-                            setIsPinningCanvasDiff(false);
+                            setIsTaggingCanvasDiff(false);
                           }
                         })();
                       }}
                       className="rounded-full bg-primary px-3 py-1 font-semibold text-white transition hover:bg-primary/90 disabled:opacity-60"
-                      aria-label="Confirm add canvas diff to context"
+                      aria-label="Confirm tag canvas diff in chat"
                     >
-                      {isPinningCanvasDiff ? (
+                      {isTaggingCanvasDiff ? (
                         <span className="inline-flex items-center gap-2">
                           <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/60 border-t-white" />
                           <span>Adding…</span>
@@ -496,13 +514,13 @@ const NodeBubble: FC<{
                     </button>
                     <button
                       type="button"
-                      disabled={isPinningCanvasDiff}
+                      disabled={isTaggingCanvasDiff}
                       onClick={() => {
-                        setConfirmPinCanvasDiff(false);
-                        setPinCanvasDiffError(null);
+                        setConfirmTagCanvasDiff(false);
+                        setTagCanvasDiffError(null);
                       }}
                       className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-                      aria-label="Cancel add canvas diff to context"
+                      aria-label="Cancel tag canvas diff in chat"
                     >
                       Cancel
                     </button>
@@ -510,11 +528,11 @@ const NodeBubble: FC<{
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setConfirmPinCanvasDiff(true)}
+                    onClick={() => setConfirmTagCanvasDiff(true)}
                     className="rounded-full border border-divider/70 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-primary/10"
-                    aria-label="Add canvas diff to context"
+                    aria-label="Tag canvas diff in chat"
                   >
-                    Add diff to context
+                    Tag diff in chat
                   </button>
                 )
               ) : null}
@@ -525,7 +543,7 @@ const NodeBubble: FC<{
                 {node.canvasDiff}
               </pre>
             ) : null}
-            {pinCanvasDiffError ? <p className="mt-2 text-xs text-red-600">{pinCanvasDiffError}</p> : null}
+            {tagCanvasDiffError ? <p className="mt-2 text-xs text-red-600">{tagCanvasDiffError}</p> : null}
           </div>
         ) : null}
         {subtitle ? <div className="mt-2 text-xs text-slate-500">{subtitle}</div> : null}
@@ -607,7 +625,7 @@ const NodeBubble: FC<{
 };
 
 const ChatNodeRow: FC<{
-  node: NodeRecord;
+  node: RenderNode;
   trunkName: string;
   currentBranchName: string;
   defaultProvider: LLMProvider;
@@ -620,8 +638,8 @@ const ChatNodeRow: FC<{
   isStarPending?: boolean;
   onToggleStar?: () => void;
   onEdit?: (node: MessageNode) => void;
-  isCanvasDiffPinned?: boolean;
-  onPinCanvasDiff?: (mergeNodeId: string) => Promise<void>;
+  isCanvasDiffTagged?: boolean;
+  onTagCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
   branchQuestionCandidate?: boolean;
   showBranchSplit?: boolean;
@@ -640,13 +658,14 @@ const ChatNodeRow: FC<{
   isStarPending,
   onToggleStar,
   onEdit,
-  isCanvasDiffPinned,
-  onPinCanvasDiff,
+  isCanvasDiffTagged,
+  onTagCanvasDiff,
   highlighted,
   branchQuestionCandidate,
   showBranchSplit,
   branchActionDisabled
 }) => {
+  const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
   const nodeBranch = node.createdOnBranch ?? currentBranchName;
@@ -655,7 +674,11 @@ const ChatNodeRow: FC<{
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
 
   return (
-    <div className="grid min-w-0 grid-cols-[14px_1fr] items-stretch" data-node-id={node.id}>
+    <div
+      className="grid min-w-0 grid-cols-[14px_1fr] items-stretch"
+      data-node-id={node.id}
+      data-render-id={renderId}
+    >
       <div className="flex justify-center">
         <div
           data-testid="chat-row-stripe"
@@ -677,8 +700,8 @@ const ChatNodeRow: FC<{
             isStarPending={isStarPending}
             onToggleStar={onToggleStar}
             onEdit={onEdit}
-            isCanvasDiffPinned={isCanvasDiffPinned}
-            onPinCanvasDiff={onPinCanvasDiff}
+            isCanvasDiffTagged={isCanvasDiffTagged}
+            onTagCanvasDiff={onTagCanvasDiff}
             highlighted={!!highlighted}
             branchQuestionCandidate={branchQuestionCandidate}
             showOpenAiThinkingNote={showOpenAiThinkingNote}
@@ -1400,7 +1423,9 @@ export function WorkspaceClient({
       setComposerError(null);
     }
   }, [composerError, draft]);
-  const [assistantPending, setAssistantPending] = useState(false);
+  const [assistantLifecycle, setAssistantLifecycle] = useState<AssistantLifecycle>('idle');
+  const [streamMeta, setStreamMeta] = useState<StreamMeta | null>(null);
+  const [streamCache, setStreamCache] = useState<{ preview: string; blocks: ThinkingContentBlock[] } | null>(null);
   const assistantPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streamBlocks, setStreamBlocks] = useState<ThinkingContentBlock[]>([]);
   const streamBlocksRef = useRef<ThinkingContentBlock[]>([]);
@@ -1408,6 +1433,9 @@ export function WorkspaceClient({
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
   const streamBranchRef = useRef<string | null>(null);
+  const renderIdByNodeIdRef = useRef<Map<string, string>>(new Map());
+  const turnUserRenderIdRef = useRef<string | null>(null);
+  const turnAssistantRenderIdRef = useRef<string | null>(null);
   const [streamHoldPending, setStreamHoldPending] = useState<{
     content: string;
     contentBlocks: ThinkingContentBlock[];
@@ -1419,6 +1447,52 @@ export function WorkspaceClient({
     contentBlocks: ThinkingContentBlock[];
     branch: string;
   } | null>(null);
+  const beginTurn = (params: {
+    content: string;
+    branch: string;
+    createdOnBranch: string;
+    parent: string | null;
+    optimisticDraft: string | null;
+    questionDraft: string | null;
+    requiresUserMatch: boolean;
+  }) => {
+    const { content, branch, createdOnBranch, parent, optimisticDraft, questionDraft, requiresUserMatch } = params;
+    setStreamHold(null);
+    setStreamHoldPending(null);
+    streamBranchRef.current = branch;
+    setStreamPreview('');
+    streamPreviewRef.current = '';
+    optimisticDraftRef.current = optimisticDraft;
+    questionDraftRef.current = questionDraft;
+    turnUserRenderIdRef.current = createClientId();
+    turnAssistantRenderIdRef.current = createClientId();
+    setStreamBlocks([]);
+    streamBlocksRef.current = [];
+    hasReceivedAssistantChunkRef.current = false;
+    setAssistantLifecycle('idle');
+    const clientRequestId = createClientId();
+    setStreamMeta({ branch, startedAt: Date.now(), clientRequestId, requiresUserMatch });
+    if (assistantPendingTimerRef.current) {
+      clearTimeout(assistantPendingTimerRef.current);
+      assistantPendingTimerRef.current = null;
+    }
+    setOptimisticUserNode({
+      id: 'optimistic-user',
+      type: 'message',
+      role: 'user',
+      content,
+      contentBlocks: [{ type: 'text', text: content }],
+      clientRequestId,
+      timestamp: Date.now(),
+      parent,
+      createdOnBranch
+    });
+    assistantPendingTimerRef.current = setTimeout(() => {
+      setAssistantLifecycle('pending');
+      assistantPendingTimerRef.current = null;
+    }, 100);
+    return clientRequestId;
+  };
   const activeBranch = useMemo(() => branches.find((branch) => branch.name === branchName), [branches, branchName]);
   const activeBranchLease = useMemo(() => {
     if (!activeBranch?.id) return null;
@@ -1507,7 +1581,16 @@ export function WorkspaceClient({
           clearTimeout(assistantPendingTimerRef.current);
           assistantPendingTimerRef.current = null;
         }
-        setAssistantPending(false);
+        if (DEBUG_ASSISTANT_LIFECYCLE) {
+          console.debug('[assistant-lifecycle] first-chunk', {
+            branch: branchName,
+            streamMeta: streamMeta ?? null
+          });
+        }
+        setAssistantLifecycle('streaming');
+      }
+      if (streamCache) {
+        setStreamCache(null);
       }
       if (chunk.type === 'thinking') {
         setStreamBlocks((prev) => {
@@ -1568,17 +1651,35 @@ export function WorkspaceClient({
       const finalContent = streamPreviewRef.current;
       const finalBlocks = streamBlocksRef.current;
       if (finalContent || finalBlocks.length > 0) {
-        const streamBranch = streamBranchRef.current ?? branchName;
+        const streamBranch = streamMeta?.branch ?? streamBranchRef.current ?? branchName;
         setStreamHoldPending({ content: finalContent, contentBlocks: finalBlocks, branch: streamBranch });
+        setStreamCache({ preview: finalContent, blocks: finalBlocks });
+        setAssistantLifecycle('final');
+        if (DEBUG_ASSISTANT_LIFECYCLE) {
+          console.debug('[assistant-lifecycle] stream-complete', {
+            branch: branchName,
+            streamBranch,
+            previewLength: finalContent.length,
+            blocks: finalBlocks.length
+          });
+        }
       } else {
         setStreamPreview('');
         streamPreviewRef.current = '';
         setStreamBlocks([]);
         streamBlocksRef.current = [];
         streamBranchRef.current = null;
+        setAssistantLifecycle('idle');
+        setStreamCache(null);
+        setStreamMeta(null);
       }
       markHasEverSentMessage();
-      setOptimisticUserNode(null);
+      if (DEBUG_ASSISTANT_LIFECYCLE) {
+        console.debug('[assistant-lifecycle] stream-complete-cleanup-pending', {
+          branch: branchName,
+          optimisticUserId: optimisticUserNode?.id ?? null
+        });
+      }
       optimisticDraftRef.current = null;
       questionDraftRef.current = null;
       hasReceivedAssistantChunkRef.current = false;
@@ -1586,7 +1687,6 @@ export function WorkspaceClient({
         clearTimeout(assistantPendingTimerRef.current);
         assistantPendingTimerRef.current = null;
       }
-      setAssistantPending(false);
     }
   });
   const activeProvider = useMemo(
@@ -1650,38 +1750,18 @@ export function WorkspaceClient({
       pushToast('error', 'Editing locked. Editor access required.');
       return;
     }
-    setStreamHold(null);
-    setStreamHoldPending(null);
-    streamBranchRef.current = branchName;
-    setStreamPreview('');
-    streamPreviewRef.current = '';
     const sent = draft;
-    optimisticDraftRef.current = sent;
     setDraft('');
-    setStreamBlocks([]);
-    streamBlocksRef.current = [];
-    hasReceivedAssistantChunkRef.current = false;
-    if (assistantPendingTimerRef.current) {
-      clearTimeout(assistantPendingTimerRef.current);
-      assistantPendingTimerRef.current = null;
-    }
-    setAssistantPending(false);
-    setOptimisticUserNode({
-      id: 'optimistic-user',
-      type: 'message',
-      role: 'user',
+    const clientRequestId = beginTurn({
       content: sent,
-      contentBlocks: [{ type: 'text', text: sent }],
-      timestamp: Date.now(),
+      branch: branchName,
+      createdOnBranch: branchName,
       parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
-      createdOnBranch: branchName
+      optimisticDraft: sent,
+      questionDraft: null,
+      requiresUserMatch: true
     });
-    setPendingScrollTo({ nodeId: 'optimistic-user', targetBranch: branchName, block: 'start' });
-    assistantPendingTimerRef.current = setTimeout(() => {
-      setAssistantPending(true);
-      assistantPendingTimerRef.current = null;
-    }, 100);
-    await sendMessage(sent);
+    await sendMessage({ message: sent, clientRequestId });
   };
 
   const sendQuestionWithStream = async ({
@@ -1709,36 +1789,16 @@ export function WorkspaceClient({
   }) => {
     if (!question.trim() || state.isStreaming) return;
     if (!ensureLeaseSessionReady()) return;
-    setStreamHold(null);
-    setStreamHoldPending(null);
-    streamBranchRef.current = branchName;
-    setStreamPreview('');
-    streamPreviewRef.current = '';
     const optimisticContent = buildQuestionMessage(question, highlight);
-    questionDraftRef.current = optimisticContent;
-    setStreamBlocks([]);
-    streamBlocksRef.current = [];
-    hasReceivedAssistantChunkRef.current = false;
-    if (assistantPendingTimerRef.current) {
-      clearTimeout(assistantPendingTimerRef.current);
-      assistantPendingTimerRef.current = null;
-    }
-    setAssistantPending(false);
-    setOptimisticUserNode({
-      id: 'optimistic-user',
-      type: 'message',
-      role: 'user',
+    const clientRequestId = beginTurn({
       content: optimisticContent,
-      contentBlocks: [{ type: 'text', text: optimisticContent }],
-      timestamp: Date.now(),
+      branch: targetBranch,
+      createdOnBranch: targetBranch,
       parent: null,
-      createdOnBranch: targetBranch
+      optimisticDraft: null,
+      questionDraft: optimisticContent,
+      requiresUserMatch: true
     });
-    setPendingScrollTo({ nodeId: 'optimistic-user', targetBranch, block: 'start' });
-    assistantPendingTimerRef.current = setTimeout(() => {
-      setAssistantPending(true);
-      assistantPendingTimerRef.current = null;
-    }, 100);
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/branch-question`,
@@ -1752,7 +1812,8 @@ export function WorkspaceClient({
           question,
           highlight,
           thinking: thinkingSetting,
-          switch: true
+          switch: true,
+          clientRequestId
         },
         leaseSessionId
       ),
@@ -1797,35 +1858,18 @@ export function WorkspaceClient({
         return;
       }
     }
-    setStreamHold(null);
-    setStreamHoldPending(null);
-    streamBranchRef.current = branchName;
-    setStreamPreview('');
-    streamPreviewRef.current = '';
-    questionDraftRef.current = content;
-    setStreamBlocks([]);
-    streamBlocksRef.current = [];
-    hasReceivedAssistantChunkRef.current = false;
-    if (assistantPendingTimerRef.current) {
-      clearTimeout(assistantPendingTimerRef.current);
-      assistantPendingTimerRef.current = null;
-    }
-    setAssistantPending(false);
-    setOptimisticUserNode({
-      id: 'optimistic-user',
-      type: 'message',
-      role: 'user',
+    const targetNode = nodes.find((node) => node.id === nodeId);
+    const requiresUserMatch =
+      targetNode?.type === 'message' && targetNode.role === 'user';
+    const clientRequestId = beginTurn({
       content,
-      contentBlocks: [{ type: 'text', text: content }],
-      timestamp: Date.now(),
+      branch: targetBranch,
+      createdOnBranch: targetBranch,
       parent: null,
-      createdOnBranch: targetBranch
+      optimisticDraft: null,
+      questionDraft: content,
+      requiresUserMatch
     });
-    setPendingScrollTo({ nodeId: 'optimistic-user', targetBranch, block: 'start' });
-    assistantPendingTimerRef.current = setTimeout(() => {
-      setAssistantPending(true);
-      assistantPendingTimerRef.current = null;
-    }, 100);
     let responded = false;
     await sendStreamRequest({
       url: `/api/projects/${project.id}/edit-stream`,
@@ -1837,7 +1881,8 @@ export function WorkspaceClient({
           llmProvider: provider,
           llmModel: model,
           thinking: thinkingSetting,
-          nodeId
+          nodeId,
+          clientRequestId
         },
         leaseSessionId
       ),
@@ -1857,37 +1902,31 @@ export function WorkspaceClient({
     await sendDraft();
   };
 
-  const assistantPendingNode: NodeRecord | null =
-    assistantPending && optimisticUserNode && streamPreview.length === 0
-      ? {
-          id: 'assistant-pending',
-          type: 'message',
-          role: 'assistant',
-          content: '',
-          contentBlocks: [],
-          timestamp: Date.now(),
-          parent: optimisticUserNode.id,
-          interrupted: false,
-          createdOnBranch: branchName
-        }
-      : null;
+  const finalAssistantPresent = useMemo(() => {
+    const requestId =
+      streamMeta?.clientRequestId ??
+      (optimisticUserNode?.type === 'message' ? optimisticUserNode.clientRequestId ?? null : null);
+    if (!requestId) return false;
+    const targetBranch = streamMeta?.branch ?? branchName;
+    if (branchName !== targetBranch) return false;
+    return nodes.some((node) => {
+      if (node.type !== 'message' || node.role !== 'assistant') return false;
+      const nodeBranch = node.createdOnBranch ?? branchName;
+      if (nodeBranch !== targetBranch) return false;
+      return node.clientRequestId === requestId;
+    });
+  }, [nodes, streamMeta, branchName, optimisticUserNode]);
 
-  const streamingNode: NodeRecord | null =
+  const streamingPayload =
     streamPreview.length > 0 || streamBlocks.length > 0
-      ? {
-          id: 'streaming',
-          type: 'message',
-          role: 'assistant',
-          content: streamPreview,
-          contentBlocks: streamBlocks,
-          timestamp: Date.now(),
-          parent: optimisticUserNode?.id ?? null,
-          createdOnBranch: optimisticUserNode?.createdOnBranch ?? branchName,
-          interrupted: state.error !== null
-        }
-      : null;
-  const branchActionDisabled = state.isStreaming || Boolean(streamingNode);
-  const isSending = state.isStreaming || assistantPending;
+      ? { preview: streamPreview, blocks: streamBlocks }
+      : streamCache;
+  const streamingPayloadSource =
+    streamPreview.length > 0 || streamBlocks.length > 0 ? 'live' : streamCache ? 'cache' : 'none';
+  const hasStreamingPayload = Boolean(streamingPayload);
+  const branchActionDisabled =
+    state.isStreaming || assistantLifecycle === 'pending' || assistantLifecycle === 'streaming';
+  const isSending = state.isStreaming || assistantLifecycle === 'pending' || assistantLifecycle === 'streaming';
 
   const toggleComposerCollapsed = useCallback(
     (next?: boolean) => {
@@ -1994,6 +2033,10 @@ export function WorkspaceClient({
     setOptimisticUserNode(null);
     setStreamPreview('');
     setStreamBlocks([]);
+    setStreamCache(null);
+    setStreamMeta(null);
+    turnUserRenderIdRef.current = null;
+    turnAssistantRenderIdRef.current = null;
     if (!hasReceivedAssistantChunkRef.current) {
       if (sent) {
         setDraft(sent);
@@ -2004,9 +2047,33 @@ export function WorkspaceClient({
       clearTimeout(assistantPendingTimerRef.current);
       assistantPendingTimerRef.current = null;
     }
-    setAssistantPending(false);
+    setAssistantLifecycle('error');
   }, [state.error, mutateArtefact, refreshHistory]);
 
+  useEffect(() => {
+    if (!finalAssistantPresent) return;
+    setAssistantLifecycle('final');
+    if (optimisticUserNode && DEBUG_ASSISTANT_LIFECYCLE) {
+      console.debug('[assistant-lifecycle] reconcile-optimistic', {
+        branch: branchName,
+        optimisticUserId: optimisticUserNode.id
+      });
+    }
+    setStreamMeta(null);
+    setStreamPreview('');
+    streamPreviewRef.current = '';
+    setStreamBlocks([]);
+    streamBlocksRef.current = [];
+    setStreamCache(null);
+    streamBranchRef.current = null;
+    if (DEBUG_ASSISTANT_LIFECYCLE) {
+      console.debug('[assistant-lifecycle] final-assistant-present', {
+        branch: branchName,
+        streamMeta: streamMeta ?? null,
+        nodes: nodes.length
+      });
+    }
+  }, [finalAssistantPresent, optimisticUserNode, branchName, nodes.length, streamMeta]);
   useEffect(() => {
     return () => {
       if (assistantPendingTimerRef.current) {
@@ -2508,6 +2575,10 @@ export function WorkspaceClient({
         clearTimeout(graphCopyFeedbackTimeoutRef.current);
         graphCopyFeedbackTimeoutRef.current = null;
       }
+      if (jumpHighlightTimeoutRef.current) {
+        clearTimeout(jumpHighlightTimeoutRef.current);
+        jumpHighlightTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -2640,6 +2711,12 @@ export function WorkspaceClient({
   const hintsButtonRef = useRef<HTMLButtonElement | null>(null);
   const [showNewBranchModal, setShowNewBranchModal] = useState(false);
   const newBranchModalRef = useRef<HTMLDivElement | null>(null);
+  const [jumpHighlightNodeId, setJumpHighlightNodeId] = useState<string | null>(null);
+  const jumpHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingJumpRef = useRef<{ nodeId: string; targetBranch: string; revealShared: boolean; attempts: number } | null>(
+    null
+  );
+  const [jumpRequestId, setJumpRequestId] = useState(0);
 
   useEffect(() => {
     if (isLoading || !hasEverSentMessageHydrated || !isNewUser || autoOpenedHintsRef.current) return;
@@ -2690,92 +2767,237 @@ export function WorkspaceClient({
   }, [showNewBranchModal, resetBranchQuestionState]);
 
   const messageListRef = useRef<HTMLDivElement | null>(null);
-  const ignoreNextScrollRef = useRef(false);
-  const scrollNearBottomThreshold = 72;
-  const autoScrollBranchRef = useRef<string | null>(null);
-  const pinnedTopBranchRef = useRef<string | null>(null);
-  const [pendingScrollTo, setPendingScrollTo] = useState<{
-    nodeId: string;
-    targetBranch: string;
-    block?: ScrollLogicalPosition;
-  } | null>(null);
-  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
-  const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
-  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messageLineHeightSampleRef = useRef<HTMLSpanElement | null>(null);
+  const providerPillRef = useRef<HTMLDivElement | null>(null);
+  const initialScrollKeyRef = useRef<string | null>(null);
+  const lastPinKeyRef = useRef<string | null>(null);
+  const pinnedScrollTopRef = useRef<number | null>(null);
+  const pinnedNodeIdRef = useRef<string | null>(null);
+  const pinnedOffsetRef = useRef<number | null>(null);
+  const suppressPinScrollRef = useRef(false);
+  const pinHoldActiveRef = useRef(false);
+  const userScrollIntentRef = useRef(false);
+  const [messageLineHeight, setMessageLineHeight] = useState<number | null>(null);
+  const [pillBottomOffset, setPillBottomOffset] = useState<number | null>(null);
+  const [listPaddingExtra, setListPaddingExtra] = useState(0);
   const [isNearBottom, setIsNearBottom] = useState(true);
-  const [pinnedTopNodeId, setPinnedTopNodeId] = useState<string | null>(null);
-  const [pinnedTopExtraPadding, setPinnedTopExtraPadding] = useState(0);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
 
-  const scrollToBottom = useCallback(() => {
-    const el = messageListRef.current;
-    if (!el) return;
-    const targetScrollTop = el.scrollHeight - el.clientHeight;
-    if (Math.abs(el.scrollTop - targetScrollTop) < 1) return;
-    el.scrollTop = el.scrollHeight;
+  const minMessageListPadding = useMemo(() => {
+    if (!Number.isFinite(messageLineHeight ?? NaN) || (messageLineHeight ?? 0) <= 0) {
+      return MESSAGE_LIST_BASE_PADDING;
+    }
+    return Math.ceil((messageLineHeight ?? 0) * 4);
+  }, [messageLineHeight]);
+
+  const messageListPaddingBottom = minMessageListPadding + listPaddingExtra;
+  if (DEBUG_MESSAGE_SCROLL) {
+    console.debug('[message-scroll] padding', {
+      minMessageListPadding,
+      listPaddingExtra,
+      messageListPaddingBottom
+    });
+  }
+
+  const updateMessageLineHeight = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const sample = messageLineHeightSampleRef.current;
+    if (!sample) return;
+    const styles = window.getComputedStyle(sample);
+    const lineHeight = Number.parseFloat(styles.lineHeight || '');
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
+    setMessageLineHeight(lineHeight);
   }, []);
 
-  const updateNearBottom = useCallback(() => {
-    const el = messageListRef.current;
-    if (!el) return;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setIsNearBottom(distance <= scrollNearBottomThreshold);
+  const updatePillOffset = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const container = messageListRef.current;
+    const pill = providerPillRef.current;
+    if (!container || !pill) return;
+    const containerRect = container.getBoundingClientRect();
+    const pillRect = pill.getBoundingClientRect();
+    const offset = Math.max(0, pillRect.bottom - containerRect.top);
+    setPillBottomOffset(offset);
   }, []);
 
-  const combinedNodes = useMemo(() => {
+  useLayoutEffect(() => {
+    updateMessageLineHeight();
+  }, [updateMessageLineHeight]);
+
+  useLayoutEffect(() => {
+    updatePillOffset();
+  }, [updatePillOffset]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sample = messageLineHeightSampleRef.current;
+    const pill = providerPillRef.current;
+    if (!sample && !pill) return;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            updateMessageLineHeight();
+            updatePillOffset();
+          })
+        : null;
+    if (sample) {
+      resizeObserver?.observe(sample);
+    }
+    if (pill) {
+      resizeObserver?.observe(pill);
+    }
+    window.addEventListener('resize', updatePillOffset);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updatePillOffset);
+    };
+  }, [updateMessageLineHeight, updatePillOffset]);
+
+  const { combinedNodes } = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
     const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
     const allowOptimistic = optimisticBranch == null || optimisticBranch === branchName;
-    let baseNodes = nodes;
-    if (streamHold && streamHold.branch === branchName) {
-      baseNodes = baseNodes.map((node) => {
-        if (node.id !== streamHold.targetId) return node;
-        if (node.type !== 'message' || node.role !== 'assistant') return node;
-        return {
-          ...node,
-          content: streamHold.content,
-          contentBlocks: streamHold.contentBlocks
-        };
-      });
+    const renderIdByNodeId = renderIdByNodeIdRef.current;
+    const usedRenderIds = new Set<string>();
+
+    if (turnUserRenderIdRef.current && turnUserRenderIdRef.current === turnAssistantRenderIdRef.current) {
+      turnAssistantRenderIdRef.current = createClientId();
     }
-    if (allowOptimistic && optimisticMessage?.content && optimisticBranch) {
-      const optimisticContent = normalizeMessageText(optimisticMessage.content);
+
+    let persistedUserMatch: MessageNode | null = null;
+    const optimisticRequestId = optimisticMessage?.clientRequestId ?? null;
+    if (allowOptimistic && optimisticRequestId) {
       const reversedIndex = [...nodes].reverse().findIndex((node) => {
         if (node.type !== 'message') return false;
         if (node.role !== 'user') return false;
-        if (normalizeMessageText(node.content) !== optimisticContent) return false;
+        if (node.clientRequestId !== optimisticRequestId) return false;
         const createdOn = node.createdOnBranch ?? branchName;
-        return createdOn === optimisticBranch;
+        return createdOn === (optimisticBranch ?? branchName);
       });
       if (reversedIndex >= 0) {
         const index = nodes.length - 1 - reversedIndex;
-        baseNodes = nodes.filter((_, idx) => idx !== index);
+        const persisted = nodes[index] ?? null;
+        if (persisted && persisted.type === 'message' && persisted.role === 'user') {
+          persistedUserMatch = persisted;
+          if (turnUserRenderIdRef.current) {
+            renderIdByNodeId.set(persisted.id, turnUserRenderIdRef.current);
+          }
+        }
       }
     }
-    const out: NodeRecord[] = [...baseNodes];
-    if (allowOptimistic) {
-      if (optimisticUserNode) {
-        out.push(optimisticUserNode);
-      }
-      if (assistantPendingNode) {
-        out.push(assistantPendingNode);
-      }
-      if (streamingNode) {
-        out.push(streamingNode);
+
+    let persistedAssistantMatch: MessageNode | null = null;
+    if (streamMeta && streamMeta.branch === branchName && optimisticRequestId) {
+      const reversedIndex = [...nodes].reverse().findIndex((node) => {
+        if (node.type !== 'message' || node.role !== 'assistant') return false;
+        if (node.clientRequestId !== optimisticRequestId) return false;
+        const nodeBranch = node.createdOnBranch ?? branchName;
+        return nodeBranch === streamMeta.branch;
+      });
+      if (reversedIndex >= 0) {
+        const index = nodes.length - 1 - reversedIndex;
+        const persisted = nodes[index] ?? null;
+        if (persisted && persisted.type === 'message' && persisted.role === 'assistant') {
+          persistedAssistantMatch = persisted;
+          if (turnAssistantRenderIdRef.current) {
+            renderIdByNodeId.set(persisted.id, turnAssistantRenderIdRef.current);
+          }
+        }
       }
     }
-    return out;
-  }, [nodes, optimisticUserNode, assistantPendingNode, streamingNode, branchName, streamHold]);
+
+    const baseNodes: RenderNode[] = nodes.map((node) => {
+      const mapped = renderIdByNodeId.get(node.id) ?? node.id;
+      const renderId = usedRenderIds.has(mapped) ? node.id : mapped;
+      usedRenderIds.add(renderId);
+      return { ...node, renderId };
+    });
+
+    const out: RenderNode[] = [...baseNodes];
+    const shouldRenderOptimisticUser =
+      allowOptimistic &&
+      optimisticUserNode &&
+      !persistedUserMatch &&
+      (streamMeta?.requiresUserMatch ?? true);
+    if (shouldRenderOptimisticUser) {
+      let renderId = turnUserRenderIdRef.current ?? optimisticUserNode.id;
+      if (usedRenderIds.has(renderId)) {
+        renderId = createClientId();
+        turnUserRenderIdRef.current = renderId;
+      }
+      usedRenderIds.add(renderId);
+      out.push({
+        ...(optimisticUserNode as RenderNode),
+        renderId,
+        clientState: 'turn-user'
+      });
+    }
+
+    const shouldRenderAssistantTurn =
+      streamMeta?.branch === branchName &&
+      (!persistedAssistantMatch || (streamMeta?.requiresUserMatch && !persistedUserMatch)) &&
+      (assistantLifecycle === 'pending' ||
+        assistantLifecycle === 'streaming' ||
+        assistantLifecycle === 'final' ||
+        hasStreamingPayload);
+    if (shouldRenderAssistantTurn) {
+      const isPending = assistantLifecycle === 'pending' && !hasStreamingPayload;
+      let renderId = turnAssistantRenderIdRef.current ?? 'optimistic-assistant';
+      if (usedRenderIds.has(renderId)) {
+        renderId = createClientId();
+        turnAssistantRenderIdRef.current = renderId;
+      }
+      usedRenderIds.add(renderId);
+      out.push({
+        id: 'optimistic-assistant',
+        type: 'message',
+        role: 'assistant',
+        content: streamingPayload?.preview ?? '',
+        contentBlocks: streamingPayload?.blocks ?? [],
+        timestamp: Date.now(),
+        parent: persistedUserMatch?.id ?? optimisticUserNode?.id ?? null,
+        createdOnBranch: optimisticUserNode?.createdOnBranch ?? branchName,
+        interrupted: state.error !== null,
+        renderId,
+        clientState: isPending ? 'turn-assistant-pending' : 'turn-assistant'
+      });
+    }
+
+    return { combinedNodes: out };
+  }, [
+    nodes,
+    optimisticUserNode,
+    assistantLifecycle,
+    hasStreamingPayload,
+    streamMeta,
+    streamingPayload,
+    branchName,
+    state.error
+  ]);
   const visibleNodes = useMemo(() => combinedNodes.filter((node) => node.type !== 'state'), [combinedNodes]);
   const latestVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
     return visibleNodes[visibleNodes.length - 1]!.id;
   }, [visibleNodes]);
+
+  useEffect(() => {
+    if (visibleNodes.length === 0) return;
+    const renderIdByNodeId = renderIdByNodeIdRef.current;
+    if (renderIdByNodeId.size === 0) return;
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    for (const nodeId of renderIdByNodeId.keys()) {
+      if (!visibleNodeIds.has(nodeId)) {
+        renderIdByNodeId.delete(nodeId);
+      }
+    }
+  }, [visibleNodes]);
   const latestPersistedVisibleNodeId = useMemo(() => {
     if (visibleNodes.length === 0) return null;
     for (let index = visibleNodes.length - 1; index >= 0; index -= 1) {
-      const nodeId = visibleNodes[index]!.id;
-      if (nodeId !== 'streaming' && nodeId !== 'assistant-pending' && nodeId !== 'optimistic-user') {
-        return nodeId;
+      const node = visibleNodes[index]!;
+      if (!node.clientState) {
+        return node.id;
       }
     }
     return null;
@@ -2787,6 +3009,58 @@ export function WorkspaceClient({
         .map((node) => [node.id, (node as MessageNode).role] as const)
     );
   }, [visibleNodes]);
+  const updateScrollState = useCallback(() => {
+    const container = messageListRef.current;
+    if (!container) return;
+    const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const threshold = (messageLineHeight ?? 18) * 2;
+    setIsNearBottom(distance <= threshold);
+    setHasOverflow(container.scrollHeight > container.clientHeight + 1);
+    if (DEBUG_MESSAGE_SCROLL) {
+      console.debug('[message-scroll] state', {
+        distance,
+        threshold,
+        scrollTop: container.scrollTop,
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+        hasOverflow: container.scrollHeight > container.clientHeight + 1
+      });
+    }
+  }, [messageLineHeight]);
+
+  const scrollToBottom = useCallback(() => {
+    const container = messageListRef.current;
+    if (!container) return;
+    pinnedScrollTopRef.current = null;
+    pinnedNodeIdRef.current = null;
+    pinnedOffsetRef.current = null;
+    lastPinKeyRef.current = null;
+    pinHoldActiveRef.current = false;
+    container.scrollTop = container.scrollHeight;
+  }, []);
+
+  const attemptJumpToNode = useCallback(
+    (nodeId: string) => {
+      const container = messageListRef.current;
+      if (!container) return false;
+      const el = container.querySelector(`[data-node-id="${nodeId}"]`);
+      if (!(el instanceof HTMLElement)) return false;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const baseOffset = (pillBottomOffset ?? 0) + (messageLineHeight ?? 0) * 0.5;
+      const desiredScrollTop = Math.max(0, container.scrollTop + (elRect.top - containerRect.top) - baseOffset);
+      container.scrollTop = desiredScrollTop;
+      pinHoldActiveRef.current = false;
+      pinnedScrollTopRef.current = null;
+      pinnedNodeIdRef.current = null;
+      pinnedOffsetRef.current = null;
+      lastPinKeyRef.current = null;
+      suppressPinScrollRef.current = true;
+      updateScrollState();
+      return true;
+    },
+    [messageLineHeight, pillBottomOffset, updateScrollState]
+  );
 
   useEffect(() => {
     if (!isGraphVisible) return;
@@ -2821,6 +3095,7 @@ export function WorkspaceClient({
     if (!graphHistories) return;
     setGraphViews(buildGraphViewsFromHistories(graphHistories, branchName));
   }, [isGraphVisible, graphHistories, branchName, buildGraphViewsFromHistories]);
+
   const resolveGraphNode = useCallback(
     (nodeId: string) => {
       const activeMatch = visibleNodes.find((node) => node.id === nodeId) ?? null;
@@ -2874,6 +3149,172 @@ export function WorkspaceClient({
       document.removeEventListener('keyup', handleSelectionChange);
     };
   }, [getSelectionContext, visibleNodeRoleMap]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    requestAnimationFrame(() => {
+      updateScrollState();
+    });
+  }, [visibleNodes.length, streamPreview.length, streamBlocks.length, listPaddingExtra, messageLineHeight, isLoading, updateScrollState]);
+
+  const handleMessageListScroll = () => {
+    if (suppressPinScrollRef.current) {
+      suppressPinScrollRef.current = false;
+      updateScrollState();
+      return;
+    }
+    if (userScrollIntentRef.current) {
+      userScrollIntentRef.current = false;
+      pinHoldActiveRef.current = false;
+      pinnedScrollTopRef.current = null;
+      pinnedNodeIdRef.current = null;
+      pinnedOffsetRef.current = null;
+      updateScrollState();
+      return;
+    }
+    if (pinHoldActiveRef.current) {
+      updateScrollState();
+      return;
+    }
+    pinnedScrollTopRef.current = null;
+    pinnedNodeIdRef.current = null;
+    pinnedOffsetRef.current = null;
+    updateScrollState();
+  };
+  const handleUserScrollIntent = () => {
+    userScrollIntentRef.current = true;
+  };
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (optimisticUserNode) return;
+    if (initialScrollKeyRef.current === branchName) return;
+    initialScrollKeyRef.current = branchName;
+    requestAnimationFrame(() => {
+      scrollToBottom();
+      updateScrollState();
+      if (DEBUG_MESSAGE_SCROLL) {
+        console.debug('[message-scroll] initial-scroll', { branchName });
+      }
+    });
+  }, [branchName, isLoading, optimisticUserNode, scrollToBottom, updateScrollState]);
+
+  useEffect(() => {
+    if (!optimisticUserNode) return;
+    if (messageLineHeight == null || pillBottomOffset == null) {
+      if (DEBUG_MESSAGE_SCROLL) {
+        console.debug('[message-scroll] pin-skip', {
+          reason: 'missing-metrics',
+          messageLineHeight,
+          pillBottomOffset
+        });
+      }
+      return;
+    }
+    const pinTargetRenderId = turnUserRenderIdRef.current ?? optimisticUserNode.id;
+    const pinKey = `${pinTargetRenderId}:${optimisticUserNode.id}`;
+    if (lastPinKeyRef.current === pinKey) return;
+    const container = messageListRef.current;
+    if (!container) return;
+    lastPinKeyRef.current = pinKey;
+    requestAnimationFrame(() => {
+      const el = container.querySelector(`[data-render-id="${pinTargetRenderId}"]`);
+      if (!(el instanceof HTMLElement)) {
+        if (DEBUG_MESSAGE_SCROLL) {
+          console.debug('[message-scroll] pin-skip', { reason: 'node-missing', nodeId: pinTargetRenderId });
+        }
+        lastPinKeyRef.current = null;
+        return;
+      }
+      const pinOffset = pillBottomOffset + messageLineHeight * 0.5;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const desiredScrollTop = Math.max(0, container.scrollTop + (elRect.top - containerRect.top) - pinOffset);
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const extraPadding = Math.max(0, desiredScrollTop - maxScrollTop);
+      if (extraPadding > 0) {
+        setListPaddingExtra((prev) => Math.max(prev, extraPadding));
+      }
+      if (DEBUG_MESSAGE_SCROLL) {
+        console.debug('[message-scroll] pin-submit', {
+          pinOffset,
+          desiredScrollTop,
+          maxScrollTop,
+          extraPadding,
+          pillBottomOffset,
+          lineHeight: messageLineHeight,
+          scrollHeight: container.scrollHeight,
+          clientHeight: container.clientHeight
+        });
+      }
+      requestAnimationFrame(() => {
+        container.scrollTop = desiredScrollTop;
+        suppressPinScrollRef.current = true;
+        pinnedScrollTopRef.current = desiredScrollTop;
+        pinnedNodeIdRef.current = pinTargetRenderId;
+        pinnedOffsetRef.current = pinOffset;
+        pinHoldActiveRef.current = true;
+        updateScrollState();
+      });
+    });
+  }, [optimisticUserNode, messageLineHeight, pillBottomOffset, updateScrollState]);
+
+  useEffect(() => {
+    setOptimisticUserNode(null);
+    lastPinKeyRef.current = null;
+    setListPaddingExtra(0);
+    pinnedScrollTopRef.current = null;
+    pinnedNodeIdRef.current = null;
+    pinnedOffsetRef.current = null;
+    suppressPinScrollRef.current = false;
+    pinHoldActiveRef.current = false;
+    userScrollIntentRef.current = false;
+    turnUserRenderIdRef.current = null;
+    turnAssistantRenderIdRef.current = null;
+    renderIdByNodeIdRef.current.clear();
+  }, [branchName]);
+
+  useLayoutEffect(() => {
+    const container = messageListRef.current;
+    if (!container || !pinHoldActiveRef.current) return;
+    const pinnedNodeId = pinnedNodeIdRef.current;
+    const pinOffset = pinnedOffsetRef.current;
+    if (pinnedNodeId && pinOffset != null) {
+      const el = container.querySelector(`[data-render-id="${pinnedNodeId}"]`);
+      if (el instanceof HTMLElement) {
+        const containerRect = container.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const desiredScrollTop = Math.max(0, container.scrollTop + (elRect.top - containerRect.top) - pinOffset);
+        if (Math.abs(container.scrollTop - desiredScrollTop) >= 1) {
+          container.scrollTop = desiredScrollTop;
+          suppressPinScrollRef.current = true;
+          pinnedScrollTopRef.current = desiredScrollTop;
+          updateScrollState();
+          if (DEBUG_MESSAGE_SCROLL) {
+            console.debug('[message-scroll] pin-lock', { pinnedScrollTop: desiredScrollTop });
+          }
+        }
+        return;
+      }
+    }
+    const pinned = pinnedScrollTopRef.current;
+    if (pinned == null) return;
+    if (Math.abs(container.scrollTop - pinned) < 1) return;
+    container.scrollTop = pinned;
+    suppressPinScrollRef.current = true;
+    updateScrollState();
+    if (DEBUG_MESSAGE_SCROLL) {
+      console.debug('[message-scroll] pin-lock', { pinnedScrollTop: pinned });
+    }
+  }, [
+    assistantLifecycle,
+    visibleNodes.length,
+    streamPreview.length,
+    streamBlocks.length,
+    messageLineHeight,
+    pillBottomOffset,
+    updateScrollState
+  ]);
 
   useEffect(() => {
     if (!showNewBranchModal || !latestPersistedVisibleNodeId) return;
@@ -2948,6 +3389,31 @@ export function WorkspaceClient({
   useEffect(() => {
     setHideShared(branchName !== trunkName);
   }, [branchName, trunkName]);
+  useEffect(() => {
+    const pending = pendingJumpRef.current;
+    if (!pending) return;
+    if (pending.targetBranch !== branchName) return;
+    if (pending.revealShared && hideShared) {
+      setHideShared(false);
+      return;
+    }
+    const success = attemptJumpToNode(pending.nodeId);
+    if (!success) {
+      pending.attempts += 1;
+      if (pending.attempts > 12) {
+        pendingJumpRef.current = null;
+      }
+      return;
+    }
+    setJumpHighlightNodeId(pending.nodeId);
+    if (jumpHighlightTimeoutRef.current) {
+      clearTimeout(jumpHighlightTimeoutRef.current);
+    }
+    jumpHighlightTimeoutRef.current = setTimeout(() => {
+      setJumpHighlightNodeId(null);
+    }, 1400);
+    pendingJumpRef.current = null;
+  }, [attemptJumpToNode, branchName, hideShared, jumpRequestId, latestVisibleNodeId]);
   const { sharedNodes, branchNodes } = useMemo(() => {
     const shared = visibleNodes.slice(0, sharedCount);
     return {
@@ -2956,12 +3422,14 @@ export function WorkspaceClient({
     };
   }, [visibleNodes, sharedCount]);
 
+  const getNodeRenderKey = useCallback((node: RenderNode) => node.renderId ?? node.id, []);
+
   const mergePayloadCandidates = useMemo(() => {
     return branchNodes.filter(
       (node) =>
         node.type === 'message' &&
         node.role === 'assistant' &&
-        node.id !== 'streaming' &&
+        !node.clientState &&
         getNodeText(node).trim().length > 0 &&
         (node.createdOnBranch ? node.createdOnBranch === branchName : true)
     ) as MessageNode[];
@@ -3000,6 +3468,7 @@ export function WorkspaceClient({
     streamPreviewRef.current = '';
     setStreamBlocks([]);
     streamBlocksRef.current = [];
+    setStreamCache(null);
   }, [streamHoldPending, branchName, nodes]);
 
   useEffect(() => {
@@ -3010,6 +3479,7 @@ export function WorkspaceClient({
     streamPreviewRef.current = '';
     setStreamBlocks([]);
     streamBlocksRef.current = [];
+    setStreamCache(null);
     streamBranchRef.current = null;
   }, [streamHoldPending, branchName]);
 
@@ -3025,12 +3495,43 @@ export function WorkspaceClient({
   }, [streamHold, branchName, nodes]);
 
   useEffect(() => {
+    if (!DEBUG_ASSISTANT_LIFECYCLE) return;
+    const latestNodeId = visibleNodes[visibleNodes.length - 1]?.id ?? null;
+    console.debug('[assistant-lifecycle] snapshot', {
+      branch: branchName,
+      assistantLifecycle,
+      finalAssistantPresent,
+      optimisticUserId: optimisticUserNode?.id ?? null,
+      streamMeta: streamMeta ?? null,
+      streamingPayloadSource,
+      streamPreviewLength: streamPreview.length,
+      streamBlocksLength: streamBlocks.length,
+      nodesCount: nodes.length,
+      visibleCount: visibleNodes.length,
+      latestNodeId
+    });
+  }, [
+    branchName,
+    assistantLifecycle,
+    finalAssistantPresent,
+    optimisticUserNode?.id,
+    streamMeta,
+    streamPreview.length,
+    streamBlocks.length,
+    nodes.length,
+    visibleNodes.length
+  ]);
+
+  useEffect(() => {
     if (!streamHoldPending && streamBranchRef.current && streamBranchRef.current !== branchName && !state.isStreaming) {
       setStreamPreview('');
       streamPreviewRef.current = '';
       setStreamBlocks([]);
       streamBlocksRef.current = [];
+      setStreamCache(null);
       streamBranchRef.current = null;
+      setAssistantLifecycle('idle');
+      setStreamMeta(null);
     }
   }, [branchName, streamHoldPending, state.isStreaming]);
 
@@ -3064,7 +3565,7 @@ export function WorkspaceClient({
     setMergePayloadNodeId(mergePayloadCandidates[mergePayloadCandidates.length - 1]?.id ?? null);
   }, [showMergeModal, mergePayloadCandidates, mergePayloadNodeId, trunkName, branchName, branches]);
 
-  const pinnedCanvasDiffMergeIds = useMemo(() => {
+  const taggedCanvasDiffMergeIds = useMemo(() => {
     const ids = new Set<string>();
     for (const node of visibleNodes) {
       if (node.type === 'message' && node.pinnedFromMergeId) {
@@ -3074,7 +3575,7 @@ export function WorkspaceClient({
     return ids;
   }, [visibleNodes]);
 
-  const pinCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
+  const tagCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
     if (!ensureLeaseSessionReady()) {
       throw new Error('Editing session is still initializing.');
     }
@@ -3096,126 +3597,9 @@ export function WorkspaceClient({
     return (await res.json().catch(() => null)) as { pinnedNode?: NodeRecord; alreadyPinned?: boolean } | null;
   };
 
-  const pinCanvasDiffToCurrentBranch = async (mergeNodeId: string) => {
-    await pinCanvasDiffToContext(mergeNodeId, branchName);
+  const tagCanvasDiffToCurrentBranch = async (mergeNodeId: string) => {
+    await tagCanvasDiffToContext(mergeNodeId, branchName);
     await refreshHistory();
-  };
-
-  useEffect(() => {
-    return () => {
-      if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
-        highlightTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!pendingScrollTo) return;
-    if (branchName !== pendingScrollTo.targetBranch) return;
-    if (!combinedNodes.some((node) => node.id === pendingScrollTo.nodeId)) return;
-    const container = messageListRef.current;
-    if (!container) return;
-
-    const escapeSelector = (value: string) => {
-      if (typeof (globalThis as any).CSS?.escape === 'function') {
-        return (globalThis as any).CSS.escape(value);
-      }
-      return value.replace(/["\\]/g, '\\$&');
-    };
-
-    if (hideShared && sharedNodes.some((node) => node.id === pendingScrollTo.nodeId)) {
-      // Ensure the target node is actually rendered before attempting to scroll.
-      setHideShared(false);
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      const el = container.querySelector(`[data-node-id="${escapeSelector(pendingScrollTo.nodeId)}"]`);
-      if (!(el instanceof HTMLElement)) {
-        return;
-      }
-      if (pendingScrollTo.block === 'start') {
-        const paddingTop = Number.parseFloat(getComputedStyle(container).paddingTop || '0') || 0;
-        const extraGap = 24;
-        const desiredTop = Math.max(0, el.offsetTop - paddingTop - extraGap);
-        const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-        const extraPadding = Math.max(0, desiredTop - maxScroll);
-        const totalPadding = 24 + extraPadding;
-        container.style.paddingBottom = `${totalPadding}px`;
-        setPinnedTopNodeId(pendingScrollTo.nodeId);
-        setPinnedTopExtraPadding(extraPadding);
-        pinnedTopBranchRef.current = branchName;
-        requestAnimationFrame(() => {
-          ignoreNextScrollRef.current = true;
-          container.scrollTop = desiredTop;
-          updateNearBottom();
-          setHighlightedNodeId(pendingScrollTo.nodeId);
-          setPendingScrollTo(null);
-          if (highlightTimeoutRef.current) {
-            clearTimeout(highlightTimeoutRef.current);
-          }
-          highlightTimeoutRef.current = setTimeout(() => {
-            setHighlightedNodeId(null);
-          }, 2500);
-        });
-        return;
-      }
-      if (typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ block: pendingScrollTo.block ?? 'center' });
-      }
-      updateNearBottom();
-      setHighlightedNodeId(pendingScrollTo.nodeId);
-      setPendingScrollTo(null);
-      if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
-      }
-      highlightTimeoutRef.current = setTimeout(() => {
-        setHighlightedNodeId(null);
-      }, 2500);
-    });
-  }, [pendingScrollTo, branchName, combinedNodes, hideShared, sharedNodes, updateNearBottom]);
-
-  useEffect(() => {
-    if (isLoading) return;
-    if (!messageListRef.current) return;
-    if (pendingScrollTo?.targetBranch === branchName && pendingScrollTo.block === 'start') return;
-    if (autoScrollBranchRef.current === branchName) return;
-    autoScrollBranchRef.current = branchName;
-    requestAnimationFrame(() => {
-      scrollToBottom();
-      setIsNearBottom(true);
-    });
-  }, [branchName, isLoading, pendingScrollTo, scrollToBottom]);
-
-  useEffect(() => {
-    if (!pinnedTopNodeId) return;
-    if (pinnedTopBranchRef.current === branchName) return;
-    setPinnedTopNodeId(null);
-    setPinnedTopExtraPadding(0);
-    if (messageListRef.current) {
-      messageListRef.current.style.paddingBottom = '';
-    }
-  }, [branchName, pinnedTopNodeId]);
-
-  useEffect(() => {
-    if (isLoading) return;
-    requestAnimationFrame(() => {
-      updateNearBottom();
-    });
-  }, [visibleNodes.length, streamPreview, isLoading, updateNearBottom]);
-
-  const handleMessageListScroll = () => {
-    if (ignoreNextScrollRef.current) {
-      ignoreNextScrollRef.current = false;
-      updateNearBottom();
-      return;
-    }
-    if (pinnedTopNodeId) {
-      setPinnedTopNodeId(null);
-      setPinnedTopExtraPadding(0);
-    }
-    updateNearBottom();
   };
 
   const switchBranch = async (name: string) => {
@@ -3258,6 +3642,45 @@ export function WorkspaceClient({
     }
   };
 
+  const jumpToGraphNode = useCallback(
+    async (nodeId: string, options?: { mode?: 'nearest' | 'origin'; originBranchId?: string }) => {
+      const resolved = resolveGraphNode(nodeId);
+      if (!resolved) return;
+      const mode = options?.mode ?? 'nearest';
+      const originBranch = options?.originBranchId ?? resolved.record.createdOnBranch ?? resolved.targetBranch;
+      let targetBranch = resolved.targetBranch;
+      let revealShared = false;
+
+      if (mode === 'origin') {
+        targetBranch = originBranch;
+      } else {
+        // Nearest jumps are deterministic: stay on current branch when present; otherwise jump to origin branch.
+        // We intentionally avoid "first branch that contains the node" to prevent confusing cross-branch jumps.
+        const activeIndex = visibleNodes.findIndex((node) => node.id === resolved.record.id);
+        if (activeIndex >= 0) {
+          targetBranch = branchName;
+          revealShared = activeIndex < sharedCount;
+        } else if (resolved.targetBranch === branchName) {
+          targetBranch = branchName;
+          revealShared = true;
+        } else {
+          targetBranch = originBranch;
+        }
+      }
+
+      if (targetBranch !== branchName) {
+        pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared, attempts: 0 };
+        setJumpRequestId((prev) => prev + 1);
+        await switchBranch(targetBranch);
+        return;
+      }
+
+      pendingJumpRef.current = { nodeId: resolved.record.id, targetBranch, revealShared, attempts: 0 };
+      setJumpRequestId((prev) => prev + 1);
+    },
+    [resolveGraphNode, branchName, switchBranch, visibleNodes, sharedCount]
+  );
+
   const startEditTask = useCallback(
     ({
       targetBranch,
@@ -3294,6 +3717,7 @@ export function WorkspaceClient({
           return;
         }
       }
+      const clientRequestId = createClientId();
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'edit',
@@ -3315,7 +3739,8 @@ export function WorkspaceClient({
                   llmProvider: provider,
                   llmModel: model,
                   thinking: thinkingSetting,
-                  nodeId
+                  nodeId,
+                  clientRequestId
                 },
                 leaseSessionId
               )
@@ -3362,18 +3787,6 @@ export function WorkspaceClient({
       startBackgroundTask,
       switchBranch
     ]
-  );
-
-  const jumpToGraphNode = useCallback(
-    async (nodeId: string) => {
-      const resolved = resolveGraphNode(nodeId);
-      if (!resolved) return;
-      setPendingScrollTo({ nodeId, targetBranch: resolved.targetBranch });
-      if (resolved.targetBranch !== branchName) {
-        await switchBranch(resolved.targetBranch);
-      }
-    },
-    [resolveGraphNode, branchName, switchBranch]
   );
 
   const createBranch = async ({ switchToNew = true }: { switchToNew?: boolean } = {}) => {
@@ -3467,6 +3880,7 @@ export function WorkspaceClient({
         onFailure?.();
         return;
       }
+      const clientRequestId = createClientId();
       const taskId = startBackgroundTask({
         branchName: targetBranch,
         kind: 'question',
@@ -3490,7 +3904,8 @@ export function WorkspaceClient({
                   question,
                   highlight,
                   thinking: thinkingSetting,
-                  switch: switchOnCreate
+                  switch: switchOnCreate,
+                  clientRequestId
                 },
                 leaseSessionId
               )
@@ -4189,8 +4604,8 @@ export function WorkspaceClient({
                     <li>⌘ + B to toggle the rail.</li>
                     <li>⌘ + K to toggle the composer.</li>
                     <li>⌘ + Shift + K to collapse or restore all panels.</li>
-                    <li>⌘ + click a graph node to jump to its message.</li>
-                    <li>⌥ + click a graph node to switch to its parent branch.</li>
+                    <li>⌘ + click a graph node to jump to its nearest message.</li>
+                    <li>⌥ + click a graph node to jump to its origin branch.</li>
                     <li>← Thred graph · → Canvas.</li>
                     <li>⌃ + B to toggle the graph/canvas panel.</li>
                     <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
@@ -4256,7 +4671,10 @@ export function WorkspaceClient({
                       </div>
                     ) : null}
                     <div className="pointer-events-auto ml-auto flex flex-wrap items-center justify-end gap-2 md:mr-4">
-                      <div className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs shadow-sm">
+                      <div
+                        ref={providerPillRef}
+                        className="flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs shadow-sm"
+                      >
                         <span className="font-medium text-slate-700">Provider</span>
                         <span
                           className="rounded-lg border border-divider/60 bg-white px-2 py-2 text-xs text-slate-800"
@@ -4271,10 +4689,19 @@ export function WorkspaceClient({
                 <div
                   ref={messageListRef}
                   data-testid="chat-message-list"
-                  className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 pb-6"
-                  style={pinnedTopExtraPadding ? { paddingBottom: `${24 + pinnedTopExtraPadding}px` } : undefined}
+                  className="relative flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12"
+                  style={{ paddingBottom: `${messageListPaddingBottom}px` }}
                   onScroll={handleMessageListScroll}
+                  onWheel={handleUserScrollIntent}
+                  onTouchStart={handleUserScrollIntent}
                 >
+                  <span
+                    ref={messageLineHeightSampleRef}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute h-0 w-0 overflow-hidden text-sm leading-relaxed text-transparent"
+                  >
+                    M
+                  </span>
                   {isLoading ? (
                     <div className="flex flex-col gap-3 animate-pulse" role="status" aria-live="polite">
                       <span className="sr-only">Loading history…</span>
@@ -4293,12 +4720,12 @@ export function WorkspaceClient({
                         <div className="relative">
                           <div className="pointer-events-none absolute left-[14px] right-0 top-0 h-full rounded-2xl bg-slate-50" />
                           <div className="relative flex flex-col">
-                            {sharedNodes.map((node) => (
+                              {sharedNodes.map((node) => (
                               <ChatNodeRow
-                                key={node.id}
+                                key={getNodeRenderKey(node)}
                                 node={node}
-                                trunkName={trunkName}
-                                currentBranchName={branchName}
+                                  trunkName={trunkName}
+                                  currentBranchName={branchName}
                                 defaultProvider={defaultProvider}
                                 providerByBranch={providerByBranch}
                                 branchColors={branchColorMap}
@@ -4318,9 +4745,9 @@ export function WorkspaceClient({
                                         )
                                     : undefined
                                 }
-                                isCanvasDiffPinned={undefined}
-                                onPinCanvasDiff={undefined}
-                                highlighted={highlightedNodeId === node.id}
+                                isCanvasDiffTagged={undefined}
+                                onTagCanvasDiff={undefined}
+                                highlighted={jumpHighlightNodeId === node.id}
                                 branchQuestionCandidate={
                                   node.type === 'message' &&
                                   node.role === 'assistant' &&
@@ -4341,7 +4768,7 @@ export function WorkspaceClient({
 
                       {branchNodes.map((node) => (
                         <ChatNodeRow
-                          key={node.id}
+                          key={getNodeRenderKey(node)}
                           node={node}
                           trunkName={trunkName}
                           currentBranchName={branchName}
@@ -4362,9 +4789,9 @@ export function WorkspaceClient({
                                   )
                               : undefined
                           }
-                          isCanvasDiffPinned={node.type === 'merge' ? pinnedCanvasDiffMergeIds.has(node.id) : undefined}
-                          onPinCanvasDiff={node.type === 'merge' ? pinCanvasDiffToCurrentBranch : undefined}
-                          highlighted={highlightedNodeId === node.id}
+                          isCanvasDiffTagged={node.type === 'merge' ? taggedCanvasDiffMergeIds.has(node.id) : undefined}
+                          onTagCanvasDiff={node.type === 'merge' ? tagCanvasDiffToCurrentBranch : undefined}
+                          highlighted={jumpHighlightNodeId === node.id}
                           branchQuestionCandidate={
                             node.type === 'message' &&
                             node.role === 'assistant' &&
@@ -4379,12 +4806,12 @@ export function WorkspaceClient({
                   )}
                 </div>
 
-                {!isNearBottom ? (
+                {hasOverflow && !isNearBottom ? (
                   <button
                     type="button"
                     onClick={() => {
                       scrollToBottom();
-                      updateNearBottom();
+                      updateScrollState();
                     }}
                     className="absolute bottom-[calc(1rem+44px+12px)] right-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-800 shadow-sm transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                     aria-label="Jump to bottom"
@@ -4692,8 +5119,7 @@ export function WorkspaceClient({
                               starredNodeIds={stableStarredNodeIds}
                               selectedNodeId={selectedGraphNodeId}
                               onSelectNode={(nodeId) => setSelectedGraphNodeId(nodeId)}
-                              onNavigateNode={(nodeId) => void jumpToGraphNode(nodeId)}
-                              onSwitchBranch={(branchName) => void switchBranch(branchName)}
+                              onNavigateNode={(nodeId, options) => void jumpToGraphNode(nodeId, options)}
                             />
                             {selectedGraphNodeId ? (
                               <div className="border-t border-divider/80 bg-white/90 p-3 text-sm backdrop-blur">
@@ -4734,7 +5160,7 @@ export function WorkspaceClient({
                                   const hasCanvasDiff = !!mergeRecord && canvasDiff.length > 0;
                                   const nodesOnTargetBranch =
                                     targetBranch === branchName ? visibleNodes : graphHistories?.[targetBranch] ?? [];
-                                  const isCanvasDiffPinned =
+                                  const isCanvasDiffTagged =
                                     !!mergeRecord &&
                                     nodesOnTargetBranch.some(
                                       (node) =>
@@ -4837,9 +5263,9 @@ export function WorkspaceClient({
 
                                       <div className="flex justify-end gap-2">
                                         {mergeRecord && hasCanvasDiff ? (
-                                          isCanvasDiffPinned ? (
-                                            <span className="self-center text-xs font-semibold text-emerald-700" aria-label="Canvas changes already added">
-                                              Canvas changes added
+                                          isCanvasDiffTagged ? (
+                                            <span className="self-center text-xs font-semibold text-emerald-700" aria-label="Canvas changes already tagged">
+                                              Canvas changes tagged
                                             </span>
                                           ) : confirmGraphAddCanvas ? (
                                             <>
@@ -4854,9 +5280,9 @@ export function WorkspaceClient({
                                                     setIsGraphDetailBusy(true);
                                                     try {
                                                       if (targetBranch === branchName) {
-                                                        await pinCanvasDiffToCurrentBranch(mergeRecord.id);
+                                                        await tagCanvasDiffToCurrentBranch(mergeRecord.id);
                                                       } else {
-                                                        const result = await pinCanvasDiffToContext(mergeRecord.id, targetBranch);
+                                                        const result = await tagCanvasDiffToContext(mergeRecord.id, targetBranch);
                                                         const pinnedNode = result?.pinnedNode;
                                                         if (pinnedNode && graphHistories?.[targetBranch]) {
                                                           setGraphHistories((prev) => {
@@ -4914,11 +5340,9 @@ export function WorkspaceClient({
                                           type="button"
                                           className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90"
                                           aria-label="Jump to message"
-                                          onClick={async () => {
-                                            setPendingScrollTo({ nodeId: selectedGraphNodeId, targetBranch });
-                                            if (targetBranch !== branchName) {
-                                              await switchBranch(targetBranch);
-                                            }
+                                          onClick={() => {
+                                            if (!selectedGraphNodeId) return;
+                                            void jumpToGraphNode(selectedGraphNodeId);
                                           }}
                                         >
                                           Jump to message
@@ -5640,7 +6064,7 @@ export function WorkspaceClient({
                     const data = (await res.json().catch(() => null)) as { mergeNode?: { id: string } } | null;
                     const mergeNodeId = data?.mergeNode?.id ?? null;
                     if (mergeNodeId) {
-                      setPendingScrollTo({ nodeId: mergeNodeId, targetBranch: mergeTargetBranch });
+                      // TODO: Reintroduce post-merge jump/highlight in chat (scroll to new merge node).
                     }
 
                     // Switch to the target so the user immediately sees the merge node created there.

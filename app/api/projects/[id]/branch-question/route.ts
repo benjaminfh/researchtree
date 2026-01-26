@@ -46,10 +46,12 @@ export async function POST(request: Request, { params }: RouteContext) {
       highlight,
       thinking,
       switch: shouldSwitch,
-      leaseSessionId
+      leaseSessionId,
+      clientRequestId
     } = parsed.data;
     const fromNode = fromNodeId.trim();
     const highlightText = highlight.trim();
+    const trimmedClientRequestId = clientRequestId?.trim() || null;
     if (!fromNode || !highlightText) {
       throw badRequest('Question branches require an assistant highlight and fromNodeId.');
     }
@@ -189,7 +191,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       llmProvider: createResult.provider,
       ref: createResult.branchName,
       thinking,
-      leaseSessionId
+      leaseSessionId,
+      clientRequestId: trimmedClientRequestId ?? undefined
     });
     const chatRequest = new Request(request.url, {
       method: 'POST',

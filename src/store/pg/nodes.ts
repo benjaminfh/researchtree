@@ -12,6 +12,7 @@ export async function rtAppendNodeToRefShadowV2(input: {
   commitMessage?: string;
   attachDraft?: boolean;
   rawResponse?: unknown;
+  clientRequestId?: string;
 }): Promise<{ newCommitId: string; nodeId: string; ordinal: number; artefactId: string | null; artefactContentHash: string | null }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_append_node_to_ref_v2', {
@@ -25,7 +26,8 @@ export async function rtAppendNodeToRefShadowV2(input: {
     p_attach_draft: input.attachDraft ?? false,
     p_artefact_kind: 'canvas_md',
     p_lock_timeout_ms: 3000,
-    p_raw_response: input.rawResponse ?? null
+    p_raw_response: input.rawResponse ?? null,
+    p_client_request_id: input.clientRequestId ?? null
   });
 
   if (error) {

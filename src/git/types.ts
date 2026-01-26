@@ -20,6 +20,7 @@ export interface MessageNode extends BaseNode {
   type: 'message';
   role: 'system' | 'user' | 'assistant';
   content: string;
+  clientRequestId?: string;
   uiHidden?: boolean;
   interrupted?: boolean;
   pinnedFromMergeId?: string;
@@ -53,6 +54,7 @@ export type MessageNodeInput = Pick<
   | 'type'
   | 'role'
   | 'content'
+  | 'clientRequestId'
   | 'uiHidden'
   | 'interrupted'
   | 'pinnedFromMergeId'

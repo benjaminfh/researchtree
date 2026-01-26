@@ -29,6 +29,7 @@ export type ChatSendPayload =
       thinking?: ThinkingSetting;
       webSearch?: boolean;
       leaseSessionId?: string;
+      clientRequestId?: string;
     };
 
 export interface StreamRequestOptions {
@@ -210,7 +211,8 @@ export function useChatStream({
         llmProvider: normalized.llmProvider ?? provider,
         ref: normalized.ref ?? ref,
         thinking: normalized.thinking ?? thinking,
-        webSearch: normalized.webSearch ?? webSearch
+        webSearch: normalized.webSearch ?? webSearch,
+        clientRequestId: normalized.clientRequestId
       };
       const resolvedLeaseSessionId = normalized.leaseSessionId ?? leaseSessionId;
       const requestBody = resolvedLeaseSessionId ? { ...basePayload, leaseSessionId: resolvedLeaseSessionId } : basePayload;
