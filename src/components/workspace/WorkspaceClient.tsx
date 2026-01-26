@@ -208,6 +208,7 @@ const NodeBubble: FC<{
   branchQuestionCandidate?: boolean;
   showOpenAiThinkingNote?: boolean;
   branchActionDisabled?: boolean;
+  onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
   muted = false,
@@ -221,16 +222,19 @@ const NodeBubble: FC<{
   highlighted = false,
   branchQuestionCandidate = false,
   showOpenAiThinkingNote = false,
-  branchActionDisabled = false
+  branchActionDisabled = false,
+  onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
   const isAssistantPending = node.clientState === 'turn-assistant-pending';
   const isTransientNode = node.clientState != null;
+  const isAssistant = node.type === 'message' && node.role === 'assistant';
   const messageText = getNodeText(node);
   const thinkingText = getNodeThinkingText(node);
   const canCopy = node.type === 'message' && messageText.length > 0;
+  const canQuoteReply = isAssistant && messageText.length > 0 && onQuoteReply;
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
@@ -242,7 +246,6 @@ const NodeBubble: FC<{
   const [isTaggingCanvasDiff, setIsTaggingCanvasDiff] = useState(false);
   const [showMergePayload, setShowMergePayload] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
-  const isAssistant = node.type === 'message' && node.role === 'assistant';
   const hasThinking = isAssistant && thinkingText.trim().length > 0;
   const showThinkingBox = isAssistantPending || hasThinking || (isAssistant && showOpenAiThinkingNote);
   const thinkingInProgress = isAssistantPending || (node.clientState === 'turn-assistant' && messageText.length === 0);
@@ -588,6 +591,18 @@ const NodeBubble: FC<{
               {copyFeedback ? <CheckIcon className="h-4 w-4" /> : <Square2StackIcon className="h-4 w-4" />}
             </button>
           ) : null}
+          {canQuoteReply ? (
+            <button
+              type="button"
+              onClick={() => onQuoteReply(messageText)}
+              disabled={branchActionDisabled}
+              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="Quote reply"
+              title={branchActionDisabled ? 'Quote reply is disabled while streaming' : undefined}
+            >
+              <BlueprintIcon icon="comment" className="h-4 w-4" />
+            </button>
+          ) : null}
           {node.type === 'message' &&
           onEdit &&
           !isTransientNode &&
@@ -644,6 +659,7 @@ const ChatNodeRow: FC<{
   branchQuestionCandidate?: boolean;
   showBranchSplit?: boolean;
   branchActionDisabled?: boolean;
+  onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
   trunkName,
@@ -663,7 +679,8 @@ const ChatNodeRow: FC<{
   highlighted,
   branchQuestionCandidate,
   showBranchSplit,
-  branchActionDisabled
+  branchActionDisabled,
+  onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
@@ -706,6 +723,7 @@ const ChatNodeRow: FC<{
             branchQuestionCandidate={branchQuestionCandidate}
             showOpenAiThinkingNote={showOpenAiThinkingNote}
             branchActionDisabled={branchActionDisabled}
+            onQuoteReply={onQuoteReply}
           />
           {showBranchSplit ? (
             <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
@@ -1940,6 +1958,27 @@ export function WorkspaceClient({
   );
 
   const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
+  const handleQuoteReply = useCallback(
+    (messageText: string) => {
+      const normalized = messageText.replace(/\r\n/g, '\n');
+      const quoted = normalized
+        .split('\n')
+        .map((line) => (line ? `> ${line}` : '>'))
+        .join('\n');
+      setDraft((prev) => (prev ? `${prev}\n\n${quoted}` : quoted));
+      if (composerCollapsed) {
+        expandComposer();
+      }
+      window.setTimeout(() => {
+        const input = composerTextareaRef.current;
+        if (!input) return;
+        input.focus();
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      }, 0);
+    },
+    [composerCollapsed, expandComposer]
+  );
   const toggleAllWorkspacePanels = useCallback(() => {
     const railState = railStateRef.current;
     if (!railState) return;
@@ -4756,6 +4795,7 @@ export function WorkspaceClient({
                                 }
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                                 branchActionDisabled={branchActionDisabled}
+                                onQuoteReply={handleQuoteReply}
                               />
                             ))}
                           </div>
@@ -4800,6 +4840,7 @@ export function WorkspaceClient({
                           }
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                           branchActionDisabled={branchActionDisabled}
+                          onQuoteReply={handleQuoteReply}
                         />
                       ))}
                     </div>
