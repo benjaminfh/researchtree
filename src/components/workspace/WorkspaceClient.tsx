@@ -127,6 +127,7 @@ type StreamMeta = {
 
 const CHAT_COMPOSER_MAX_LINES = 9;
 const MESSAGE_LIST_BASE_PADDING = 24;
+const PADDING_TRIM_SAFETY_FACTOR = 0.85;
 const DEBUG_ASSISTANT_LIFECYCLE = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
 const DEBUG_MESSAGE_SCROLL = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
 
@@ -1433,6 +1434,8 @@ export function WorkspaceClient({
   const [streamPreview, setStreamPreview] = useState('');
   const streamPreviewRef = useRef('');
   const streamBranchRef = useRef<string | null>(null);
+  const assistantHeightAtPinRef = useRef<number | null>(null);
+  const hasTrimmedPaddingRef = useRef(false);
   const renderIdByNodeIdRef = useRef<Map<string, string>>(new Map());
   const turnUserRenderIdRef = useRef<string | null>(null);
   const turnAssistantRenderIdRef = useRef<string | null>(null);
@@ -1466,6 +1469,8 @@ export function WorkspaceClient({
     questionDraftRef.current = questionDraft;
     turnUserRenderIdRef.current = createClientId();
     turnAssistantRenderIdRef.current = createClientId();
+    assistantHeightAtPinRef.current = 0;
+    hasTrimmedPaddingRef.current = false;
     setStreamBlocks([]);
     streamBlocksRef.current = [];
     hasReceivedAssistantChunkRef.current = false;
@@ -2780,6 +2785,7 @@ export function WorkspaceClient({
   const [messageLineHeight, setMessageLineHeight] = useState<number | null>(null);
   const [pillBottomOffset, setPillBottomOffset] = useState<number | null>(null);
   const [listPaddingExtra, setListPaddingExtra] = useState(0);
+  const [isTrimmingPadding, setIsTrimmingPadding] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
@@ -3009,6 +3015,15 @@ export function WorkspaceClient({
         .map((node) => [node.id, (node as MessageNode).role] as const)
     );
   }, [visibleNodes]);
+  useEffect(() => {
+    if (!streamMeta?.clientRequestId) return;
+    if (assistantHeightAtPinRef.current != null && assistantHeightAtPinRef.current > 0) return;
+    const container = messageListRef.current;
+    if (!container) return;
+    const assistantEl = container.querySelector('[data-node-id="optimistic-assistant"]');
+    if (!(assistantEl instanceof HTMLElement)) return;
+    assistantHeightAtPinRef.current = assistantEl.getBoundingClientRect().height;
+  }, [assistantLifecycle, streamPreview.length, streamBlocks.length, streamMeta?.clientRequestId]);
   const updateScrollState = useCallback(() => {
     const container = messageListRef.current;
     if (!container) return;
@@ -3156,6 +3171,58 @@ export function WorkspaceClient({
       updateScrollState();
     });
   }, [visibleNodes.length, streamPreview.length, streamBlocks.length, listPaddingExtra, messageLineHeight, isLoading, updateScrollState]);
+  useEffect(() => {
+    if (!streamMeta || hasTrimmedPaddingRef.current) return;
+    if (streamMeta.branch !== branchName) return;
+    if (!isNearBottom) return;
+    if (listPaddingExtra <= 0) return;
+    const requestId = streamMeta.clientRequestId;
+    if (!requestId) return;
+    const persistedAssistant = [...nodes]
+      .reverse()
+      .find((node) => {
+        if (node.type !== 'message' || node.role !== 'assistant') return false;
+        if (node.clientRequestId !== requestId) return false;
+        const nodeBranch = node.createdOnBranch ?? branchName;
+        return nodeBranch === streamMeta.branch;
+      }) as MessageNode | undefined;
+    if (!persistedAssistant) return;
+    if (streamMeta.requiresUserMatch) {
+      const persistedUser = nodes.some((node) => {
+        if (node.type !== 'message' || node.role !== 'user') return false;
+        if (node.clientRequestId !== requestId) return false;
+        const nodeBranch = node.createdOnBranch ?? branchName;
+        return nodeBranch === streamMeta.branch;
+      });
+      if (!persistedUser) return;
+    }
+    const container = messageListRef.current;
+    if (!container) return;
+    const assistantEl = container.querySelector(`[data-node-id="${persistedAssistant.id}"]`);
+    if (!(assistantEl instanceof HTMLElement)) return;
+    const baseline = assistantHeightAtPinRef.current ?? 0;
+    const finalHeight = assistantEl.getBoundingClientRect().height;
+    const delta = Math.max(0, finalHeight - baseline);
+    const trimAmount = Math.min(listPaddingExtra, Math.floor(delta * PADDING_TRIM_SAFETY_FACTOR));
+    if (trimAmount <= 0) {
+      hasTrimmedPaddingRef.current = true;
+      return;
+    }
+    pinHoldActiveRef.current = false;
+    pinnedScrollTopRef.current = null;
+    pinnedNodeIdRef.current = null;
+    pinnedOffsetRef.current = null;
+    lastPinKeyRef.current = null;
+    setIsTrimmingPadding(true);
+    hasTrimmedPaddingRef.current = true;
+    const currentScrollTop = container.scrollTop;
+    setListPaddingExtra((prev) => Math.max(0, prev - trimAmount));
+    requestAnimationFrame(() => {
+      container.scrollTop = Math.max(0, currentScrollTop - trimAmount);
+      updateScrollState();
+      setTimeout(() => setIsTrimmingPadding(false), 260);
+    });
+  }, [branchName, isNearBottom, listPaddingExtra, nodes, streamMeta, updateScrollState]);
 
   const handleMessageListScroll = () => {
     if (suppressPinScrollRef.current) {
@@ -3263,12 +3330,15 @@ export function WorkspaceClient({
     setOptimisticUserNode(null);
     lastPinKeyRef.current = null;
     setListPaddingExtra(0);
+    setIsTrimmingPadding(false);
     pinnedScrollTopRef.current = null;
     pinnedNodeIdRef.current = null;
     pinnedOffsetRef.current = null;
     suppressPinScrollRef.current = false;
     pinHoldActiveRef.current = false;
     userScrollIntentRef.current = false;
+    assistantHeightAtPinRef.current = null;
+    hasTrimmedPaddingRef.current = false;
     turnUserRenderIdRef.current = null;
     turnAssistantRenderIdRef.current = null;
     renderIdByNodeIdRef.current.clear();
@@ -4689,7 +4759,9 @@ export function WorkspaceClient({
                 <div
                   ref={messageListRef}
                   data-testid="chat-message-list"
-                  className="relative flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12"
+                  className={`relative flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-1 pt-12 ${
+                    isTrimmingPadding ? 'transition-[padding-bottom] duration-300 ease-out' : ''
+                  }`}
                   style={{ paddingBottom: `${messageListPaddingBottom}px` }}
                   onScroll={handleMessageListScroll}
                   onWheel={handleUserScrollIntent}
