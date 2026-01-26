@@ -897,7 +897,7 @@ const ChatNodeRow: FC<{
   showBranchSplit,
   branchActionDisabled,
   inlineComments,
-  onInlineCommentContextMenu
+  onInlineCommentContextMenu,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
