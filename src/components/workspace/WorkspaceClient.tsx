@@ -3696,6 +3696,8 @@ export function WorkspaceClient({
       if (mode === 'origin') {
         targetBranch = originBranch;
       } else {
+        // Nearest jumps are deterministic: stay on current branch when present; otherwise jump to origin branch.
+        // We intentionally avoid "first branch that contains the node" to prevent confusing cross-branch jumps.
         const activeIndex = visibleNodes.findIndex((node) => node.id === resolved.record.id);
         if (activeIndex >= 0) {
           targetBranch = branchName;
@@ -3703,6 +3705,8 @@ export function WorkspaceClient({
         } else if (resolved.targetBranch === branchName) {
           targetBranch = branchName;
           revealShared = true;
+        } else {
+          targetBranch = originBranch;
         }
       }
 
