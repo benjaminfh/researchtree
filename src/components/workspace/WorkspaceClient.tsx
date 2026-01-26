@@ -5504,11 +5504,11 @@ export function WorkspaceClient({
                           : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
                       } ${!webSearchAvailable ? 'opacity-50' : ''}`}
                       aria-label="Toggle web search"
+                      title="Web search"
                       aria-pressed={webSearchEnabled}
                       disabled={composerDisabled || !webSearchAvailable}
                     >
                       <SearchIcon className="h-4 w-4" />
-                      <span>Web search</span>
                     </button>
                     {/* <div className="flex h-10 w-10 items-center justify-center">
                       {features.uiAttachments ? (
@@ -5571,17 +5571,21 @@ export function WorkspaceClient({
                         onClick={() => setThinkingMenuOpen((prev) => !prev)}
                         className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         aria-label="Thinking mode"
+                        title="Thinking level"
                         aria-haspopup="menu"
                         aria-expanded={thinkingMenuOpen}
                         disabled={state.isStreaming}
                       >
-                        Thinking: {THINKING_SETTING_LABELS[thinking]} ▾
+                        {THINKING_SETTING_LABELS[thinking]} ▾
                       </button>
                       {thinkingMenuOpen ? (
                         <div
                           role="menu"
-                          className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                          className="absolute bottom-full right-0 z-50 mb-2 w-26 rounded-xl border border-divider bg-white p-1 shadow-lg"
                         >
+                          <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            Thinking level
+                          </div>
 	                        {allowedThinking.map((setting) => {
 	                          const active = thinking === setting;
 	                          return (
