@@ -1171,6 +1171,7 @@ export function WorkspaceClient({
     (branch: BranchSummary) => branchLookup.identityByName.get(branch.name) ?? branch.name,
     [branchLookup]
   );
+  const questionBranchPattern = useMemo(() => /^Highlighted passage\:/i, []);
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
     setChatPaneWidth(null);
@@ -1295,6 +1296,69 @@ export function WorkspaceClient({
     [resolveQuestionBranchName]
   );
 
+  const mergeQuestionBranchMaps = useCallback(
+    (base: Record<string, QuestionBranchRef[]>, incoming: Record<string, QuestionBranchRef[]>) => {
+      const next: Record<string, QuestionBranchRef[]> = { ...base };
+      for (const [nodeId, entries] of Object.entries(incoming)) {
+        const existing = next[nodeId] ?? [];
+        const merged = [...existing];
+        for (const entry of entries) {
+          const alreadyTracked = entry.refId
+            ? merged.some((item) => item.refId === entry.refId)
+            : merged.some((item) => item.refName === entry.refName);
+          if (!alreadyTracked) {
+            merged.push(entry);
+          }
+        }
+        next[nodeId] = merged;
+      }
+      return next;
+    },
+    []
+  );
+
+  const inferQuestionBranchesFromHistories = useCallback(
+    (histories: Record<string, NodeRecord[]>) => {
+      const entries = Object.entries(histories);
+      const questionBranches = entries.filter(([, nodes]) =>
+        nodes.some(
+          (node) =>
+            node.type === 'message' &&
+            node.role === 'user' &&
+            typeof node.content === 'string' &&
+            questionBranchPattern.test(node.content)
+        )
+      );
+      const result: Record<string, QuestionBranchRef[]> = {};
+
+      for (const [branchName, nodes] of questionBranches) {
+        if (nodes.length === 0) continue;
+        let bestShared = 0;
+        let forkNodeId: string | null = null;
+        for (const [otherName, otherNodes] of entries) {
+          if (otherName === branchName) continue;
+          const max = Math.min(nodes.length, otherNodes.length);
+          let idx = 0;
+          while (idx < max && nodes[idx]?.id === otherNodes[idx]?.id) {
+            idx += 1;
+          }
+          if (idx > bestShared) {
+            bestShared = idx;
+            forkNodeId = idx > 0 ? otherNodes[idx - 1]?.id ?? null : null;
+          }
+        }
+        if (!forkNodeId) continue;
+        const refId = branchLookup.idByName.get(branchName) ?? null;
+        const entry: QuestionBranchRef = { refId, refName: branchName };
+        const existing = result[forkNodeId] ?? [];
+        result[forkNodeId] = [...existing, entry];
+      }
+
+      return result;
+    },
+    [branchLookup.idByName, questionBranchPattern]
+  );
+
   const addQuestionBranchForNode = useCallback(
     (nodeId: string | null | undefined, branchName: string) => {
     if (!nodeId) return;
@@ -1329,6 +1393,38 @@ export function WorkspaceClient({
       return changed ? next : prev;
     });
   }, [branchLookup]);
+
+  const questionBranchRequestKey = useMemo(() => branches.map((b) => b.name).sort().join('|'), [branches]);
+  const lastQuestionBranchRequestKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!questionBranchRequestKey) return;
+    if (lastQuestionBranchRequestKeyRef.current === questionBranchRequestKey) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${project.id}/graph?includeHidden=true`, {
+          signal: controller.signal
+        });
+        if (!res.ok) {
+          throw new Error('Failed to load question branch histories');
+        }
+        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
+        const histories = data.branchHistories ?? {};
+        const inferred = inferQuestionBranchesFromHistories(histories);
+        setQuestionBranchesByNode((prev) => mergeQuestionBranchMaps(prev, inferred));
+        lastQuestionBranchRequestKeyRef.current = questionBranchRequestKey;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        console.error('[workspace] question branch inference failed', err);
+      }
+    })();
+    return () => controller.abort();
+  }, [
+    inferQuestionBranchesFromHistories,
+    mergeQuestionBranchMaps,
+    project.id,
+    questionBranchRequestKey
+  ]);
 
   const toggleQuestionBranchesForNode = useCallback((nodeId: string) => {
     setOpenQuestionBranchIndex(0);
