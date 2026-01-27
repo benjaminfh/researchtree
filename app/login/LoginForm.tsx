@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { signInWithPassword, signUpWithPassword } from './actions';
 import Link from 'next/link';
 import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
+import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
 import { PASSWORD_MIN_LENGTH, PASSWORD_POLICY_HINT } from '@/src/utils/passwordPolicy';
 
 function SubmitButton({ label }: { label: string }) {
@@ -47,6 +48,8 @@ export function LoginForm({
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
   const [mode, setMode] = useState<'signUp' | 'signIn'>(initialMode);
   const [emailValue, setEmailValue] = useState(initialEmail ?? '');
+  const [showSignInPassword, setShowSignInPassword] = useState(false);
+  const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const handleSignInCommandEnter = useCommandEnterSubmit();
   const handleSignUpCommandEnter = useCommandEnterSubmit();
 
@@ -94,13 +97,23 @@ export function LoginForm({
           </label>
           <label className="block">
             <span className="text-sm font-medium text-slate-800">Password</span>
-            <input
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
+            <div className="relative mt-1">
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2 pr-10 text-sm outline-none ring-slate-900/20 focus:ring-2"
+                name="password"
+                type={showSignInPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-2 flex items-center justify-center text-slate-600 hover:text-slate-900"
+                onClick={() => setShowSignInPassword((current) => !current)}
+                aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
+              >
+                <BlueprintIcon icon={showSignInPassword ? 'eye-off' : 'eye-open'} className="h-4 w-4" />
+              </button>
+            </div>
           </label>
 
           {activeError ? <p className="text-sm text-red-700">{activeError}</p> : null}
@@ -141,19 +154,27 @@ export function LoginForm({
           </label>
           <label className="block">
             <span className="text-sm font-medium text-slate-800">Password</span>
-            <input
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-900/20 focus:ring-2"
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              minLength={PASSWORD_MIN_LENGTH}
-              pattern={`(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${PASSWORD_MIN_LENGTH},}`}
-              title={PASSWORD_POLICY_HINT}
-              required
-            />
-            <span className="mt-1 block text-xs text-slate-600">
-              {PASSWORD_POLICY_HINT}
-            </span>
+            <div className="relative mt-1">
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2 pr-10 text-sm outline-none ring-slate-900/20 focus:ring-2"
+                name="password"
+                type={showSignUpPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                minLength={PASSWORD_MIN_LENGTH}
+                pattern={`(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${PASSWORD_MIN_LENGTH},}`}
+                title={PASSWORD_POLICY_HINT}
+                required
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-2 flex items-center justify-center text-slate-600 hover:text-slate-900"
+                onClick={() => setShowSignUpPassword((current) => !current)}
+                aria-label={showSignUpPassword ? 'Hide password' : 'Show password'}
+              >
+                <BlueprintIcon icon={showSignUpPassword ? 'eye-off' : 'eye-open'} className="h-4 w-4" />
+              </button>
+            </div>
+            <span className="mt-1 block text-xs text-slate-600">{PASSWORD_POLICY_HINT}</span>
           </label>
 
           {activeError ? <p className="text-sm text-red-700">{activeError}</p> : null}
