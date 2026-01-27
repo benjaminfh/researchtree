@@ -5524,7 +5524,7 @@ export function WorkspaceClient({
                       )}
                     </div> */}
                   </div>
-                  <div className="relative flex-1">
+                  <div className="relative flex-1 translate-y-[1px]">
                     <textarea
 
                       ref={composerTextareaRef}
@@ -5532,7 +5532,7 @@ export function WorkspaceClient({
                       onChange={(event) => setDraft(event.target.value)}
                       placeholder="Ask anything"
                       rows={CHAT_COMPOSER_DEFAULT_LINES}
-                      className="flex-1 w-full resize-none overflow-y-auto rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-2 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                      className="flex-1 w-full resize-none overflow-y-auto rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
                       style={{
                         minHeight: composerMinHeight ? `${composerMinHeight}px` : undefined,
                         maxHeight: composerMaxHeight ? `${composerMaxHeight}px` : undefined
