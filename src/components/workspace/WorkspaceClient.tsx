@@ -1333,20 +1333,8 @@ export function WorkspaceClient({
 
       for (const [branchName, nodes] of questionBranches) {
         if (nodes.length === 0) continue;
-        let bestShared = 0;
-        let forkNodeId: string | null = null;
-        for (const [otherName, otherNodes] of entries) {
-          if (otherName === branchName) continue;
-          const max = Math.min(nodes.length, otherNodes.length);
-          let idx = 0;
-          while (idx < max && nodes[idx]?.id === otherNodes[idx]?.id) {
-            idx += 1;
-          }
-          if (idx > bestShared) {
-            bestShared = idx;
-            forkNodeId = idx > 0 ? otherNodes[idx - 1]?.id ?? null : null;
-          }
-        }
+        const forkNode = nodes.find((node) => node.createdOnBranch === branchName && node.parent);
+        const forkNodeId = forkNode?.parent ?? null;
         if (!forkNodeId) continue;
         const refId = branchLookup.idByName.get(branchName) ?? null;
         const entry: QuestionBranchRef = { refId, refName: branchName };

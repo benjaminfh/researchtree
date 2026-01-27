@@ -54,6 +54,28 @@ function capNodesForGraph(nodes: NodeRecord[], max: number): NodeRecord[] {
   return [nodes[0]!, ...nodes.slice(-(max - 1))];
 }
 
+function capNodesForGraphWithFork(nodes: NodeRecord[], max: number, branchName: string): NodeRecord[] {
+  if (max <= 0) return [];
+  if (nodes.length <= max) return nodes;
+  const root = nodes[0];
+  const forkNode = nodes.find((node) => node.createdOnBranch === branchName && node.parent);
+  const result: NodeRecord[] = [];
+  const seen = new Set<string>();
+  const pushUnique = (node?: NodeRecord | null) => {
+    if (!node || seen.has(node.id)) return;
+    seen.add(node.id);
+    result.push(node);
+  };
+  pushUnique(root);
+  pushUnique(forkNode);
+
+  for (let i = nodes.length - 1; i >= 0 && result.length < max; i -= 1) {
+    pushUnique(nodes[i]);
+  }
+
+  return result;
+}
+
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     await requireUser();
@@ -80,7 +102,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
             }
             const rows = await rtGetHistoryShadowV2({ projectId: params.id, refId: branch.id, limit: MAX_PER_BRANCH });
             const nodes = applyRefNames(rows.filter((r) => Boolean(r.nodeJson)) as any, refNameById);
-            return [branch.name, capNodesForGraph(nodes, MAX_PER_BRANCH)] as [string, NodeRecord[]];
+            return [branch.name, capNodesForGraphWithFork(nodes, MAX_PER_BRANCH, branch.name)] as [string, NodeRecord[]];
           })
         ),
         rtGetStarredNodeIdsShadowV1({ projectId: params.id })
@@ -125,7 +147,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       Promise.all(
         visibleBranches.map(async (branch) => {
           const nodes = await readNodesFromRef(project.id, branch.name);
-          return [branch.name, capNodesForGraph(nodes, MAX_PER_BRANCH)] as [string, NodeRecord[]];
+          return [branch.name, capNodesForGraphWithFork(nodes, MAX_PER_BRANCH, branch.name)] as [string, NodeRecord[]];
         })
       ),
       getStarredNodeIds(project.id)
