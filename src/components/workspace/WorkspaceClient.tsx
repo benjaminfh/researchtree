@@ -5890,7 +5890,7 @@ export function WorkspaceClient({
                     </div>
                   </div>
                 }
-                autoFocus
+                autoFocus={!(branchModalMode === 'question' && Boolean(newBranchHighlight.trim()))}
                 variant="plain"
               >
                 {branchModalMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
@@ -5930,6 +5930,7 @@ export function WorkspaceClient({
                         className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
                         placeholder="What do you want to ask on this branch?"
                         disabled={isSwitching || isCreating}
+                        autoFocus={branchModalMode === 'question' && Boolean(newBranchHighlight.trim())}
                       />
                     </div>
                     <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
