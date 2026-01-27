@@ -372,6 +372,11 @@ type BranchListItem = BranchSummary & {
 
 type StoreMode = 'pg' | 'git';
 
+type QuestionBranchRef = {
+  refId?: string | null;
+  refName: string;
+};
+
 type ProjectMember = {
   userId: string;
   email: string | null;
@@ -1111,7 +1116,7 @@ export function WorkspaceClient({
   const [newBranchQuestion, setNewBranchQuestion] = useState('');
   const [newBranchHighlight, setNewBranchHighlight] = useState('');
   const [switchToNewBranch, setSwitchToNewBranch] = useState(false);
-  const [questionBranchesByNode, setQuestionBranchesByNode] = useState<Record<string, string[]>>({});
+  const [questionBranchesByNode, setQuestionBranchesByNode] = useState<Record<string, QuestionBranchRef[]>>({});
   const [openQuestionBranchNodeId, setOpenQuestionBranchNodeId] = useState<string | null>(null);
   const [openQuestionBranchIndex, setOpenQuestionBranchIndex] = useState(0);
   const autosaveControllerRef = useRef<AbortController | null>(null);
@@ -1149,6 +1154,23 @@ export function WorkspaceClient({
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const [composerCornerRadius, setComposerCornerRadius] = useState<number | null>(null);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+  const branchLookup = useMemo(() => {
+    const nameById = new Map<string, string>();
+    const idByName = new Map<string, string>();
+    const identityByName = new Map<string, string>();
+    for (const branch of branches) {
+      identityByName.set(branch.name, branch.id ?? branch.name);
+      if (branch.id) {
+        nameById.set(branch.id, branch.name);
+        idByName.set(branch.name, branch.id);
+      }
+    }
+    return { nameById, idByName, identityByName };
+  }, [branches]);
+  const getBranchIdentity = useCallback(
+    (branch: BranchSummary) => branchLookup.identityByName.get(branch.name) ?? branch.name,
+    [branchLookup]
+  );
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
     setChatPaneWidth(null);
@@ -1258,17 +1280,55 @@ export function WorkspaceClient({
     return true;
   }, [isPgMode, leaseSessionId, leaseSessionReady, pushToast]);
 
-  const addQuestionBranchForNode = useCallback((nodeId: string | null | undefined, branchName: string) => {
+  const resolveQuestionBranchName = useCallback(
+    (entry: QuestionBranchRef) => {
+      if (entry.refId) {
+        return branchLookup.nameById.get(entry.refId) ?? entry.refName;
+      }
+      return entry.refName;
+    },
+    [branchLookup]
+  );
+
+  const resolveQuestionBranchNames = useCallback(
+    (entries: QuestionBranchRef[]) => entries.map(resolveQuestionBranchName),
+    [resolveQuestionBranchName]
+  );
+
+  const addQuestionBranchForNode = useCallback(
+    (nodeId: string | null | undefined, branchName: string) => {
     if (!nodeId) return;
     const key = String(nodeId);
+    const refId = branchLookup.idByName.get(branchName) ?? null;
     setQuestionBranchesByNode((prev) => {
       const existing = prev[key] ?? [];
-      if (existing.includes(branchName)) {
+      const alreadyTracked = refId
+        ? existing.some((entry) => entry.refId === refId)
+        : existing.some((entry) => entry.refName === branchName);
+      if (alreadyTracked) {
         return prev;
       }
-      return { ...prev, [key]: [...existing, branchName] };
+      return { ...prev, [key]: [...existing, { refId, refName: branchName }] };
     });
-  }, []);
+  }, [branchLookup]);
+
+  useEffect(() => {
+    setQuestionBranchesByNode((prev) => {
+      let changed = false;
+      const next: Record<string, QuestionBranchRef[]> = {};
+      for (const [nodeId, entries] of Object.entries(prev)) {
+        const updated = entries.map((entry) => {
+          if (entry.refId) return entry;
+          const resolvedId = branchLookup.idByName.get(entry.refName);
+          if (!resolvedId) return entry;
+          changed = true;
+          return { ...entry, refId: resolvedId };
+        });
+        next[nodeId] = updated;
+      }
+      return changed ? next : prev;
+    });
+  }, [branchLookup]);
 
   const toggleQuestionBranchesForNode = useCallback((nodeId: string) => {
     setOpenQuestionBranchIndex(0);
@@ -4406,7 +4466,7 @@ export function WorkspaceClient({
     setRenameError(null);
     setBranchActionError(null);
     try {
-      const branchId = renameTarget.id ?? renameTarget.name;
+      const branchId = getBranchIdentity(renameTarget);
       const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -4436,7 +4496,7 @@ export function WorkspaceClient({
   };
 
   const togglePinnedBranch = async (branch: BranchSummary) => {
-    const branchId = branch.id ?? branch.name;
+    const branchId = getBranchIdentity(branch);
     if (pendingPinBranchIds.has(branchId)) return;
     setBranchActionError(null);
     setPendingPinBranchIds((prev) => new Set(prev).add(branchId));
@@ -4475,7 +4535,7 @@ export function WorkspaceClient({
   };
 
   const toggleBranchVisibility = async (branch: BranchSummary) => {
-    const branchId = branch.id ?? branch.name;
+    const branchId = getBranchIdentity(branch);
     if (pendingVisibilityBranchIds.has(branchId)) return;
     const previousGraphHistories = graphHistories;
     const previousGraphViews = graphViews;
@@ -4529,7 +4589,7 @@ export function WorkspaceClient({
 
   const ensureBranchVisible = async (branch: BranchSummary): Promise<boolean> => {
     if (!branch.isHidden) return true;
-    const branchId = branch.id ?? branch.name;
+    const branchId = getBranchIdentity(branch);
     if (pendingVisibilityBranchIds.has(branchId)) return false;
     const prevBranches = branches;
     setBranchActionError(null);
@@ -4725,7 +4785,7 @@ export function WorkspaceClient({
                   </div>
                   <div className="flex-1 space-y-1 overflow-y-auto pr-1">
                     {sortedBranches.map((branch) => {
-                      const branchId = branch.id ?? branch.name;
+                      const branchId = getBranchIdentity(branch);
                       const pinPending = pendingPinBranchIds.has(branchId);
                       const visibilityPending = pendingVisibilityBranchIds.has(branchId);
                       const isPending = pendingBranchNames.has(branch.name);
@@ -5192,7 +5252,7 @@ export function WorkspaceClient({
                                   activeBranchHighlight?.nodeId === node.id &&
                                   Boolean(activeBranchHighlight.text.trim())
                                 }
-                                questionBranchNames={questionBranchesByNode[node.id] ?? []}
+                                questionBranchNames={resolveQuestionBranchNames(questionBranchesByNode[node.id] ?? [])}
                                 isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                                 questionBranchIndex={openQuestionBranchIndex}
                                 onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
@@ -5246,7 +5306,7 @@ export function WorkspaceClient({
                             activeBranchHighlight?.nodeId === node.id &&
                             Boolean(activeBranchHighlight.text.trim())
                           }
-                          questionBranchNames={questionBranchesByNode[node.id] ?? []}
+                          questionBranchNames={resolveQuestionBranchNames(questionBranchesByNode[node.id] ?? [])}
                           isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                           questionBranchIndex={openQuestionBranchIndex}
                           onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
