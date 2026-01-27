@@ -259,7 +259,7 @@ const NodeBubble: FC<{
     : isUser
       ? 'min-w-[14rem] max-w-[82%]'
       : isAssistant
-        ? 'w-full max-w-[85%] md:max-w-[calc(100%-14rem)]'
+        ? 'w-full'
         : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl border px-4 py-3 transition`;
   const mergeChrome = isMerge ? 'border-emerald-200/80 pb-6 pr-10' : 'border-transparent';
