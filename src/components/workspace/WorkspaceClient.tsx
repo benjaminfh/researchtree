@@ -140,17 +140,18 @@ const QuestionBranchModal: FC<{
   branchName: string;
   index: number;
   total: number;
-  width?: number;
-  placement?: 'above' | 'below';
   onClose: () => void;
   onPrevious: () => void;
   onNext: () => void;
-}> = ({ projectId, branchName, index, total, width, placement = 'above', onClose, onPrevious, onNext }) => {
+}> = ({ projectId, branchName, index, total, onClose, onPrevious, onNext }) => {
   const { nodes, isLoading, error } = useProjectData(projectId, { ref: branchName });
   const messageNodes = useMemo(
     () => nodes.filter((node): node is MessageNode => node.type === 'message'),
     [nodes]
   );
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const questionNodeIndex = useMemo(() => {
     for (let i = messageNodes.length - 1; i >= 0; i -= 1) {
       if (messageNodes[i]?.role === 'user') {
@@ -167,73 +168,138 @@ const QuestionBranchModal: FC<{
       : null;
   const displayNodes = answerNode ? [answerNode] : [];
   const canNavigate = total > 1;
+  const clampDragOffset = useCallback((nextX: number, nextY: number) => {
+    if (typeof window === 'undefined') return { x: nextX, y: nextY };
+    const modal = modalRef.current;
+    if (!modal) return { x: nextX, y: nextY };
+    const maxX = Math.max(0, (window.innerWidth - modal.offsetWidth) / 2 - 16);
+    const maxY = Math.max(0, (window.innerHeight - modal.offsetHeight) / 2 - 16);
+    return {
+      x: Math.min(maxX, Math.max(-maxX, nextX)),
+      y: Math.min(maxY, Math.max(-maxY, nextY))
+    };
+  }, []);
+
+  const handleDragStart = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('button')) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      dragStateRef.current = {
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: dragOffset.x,
+        originY: dragOffset.y
+      };
+    },
+    [dragOffset]
+  );
+
+  const handleDragMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragStateRef.current) return;
+      const { startX, startY, originX, originY } = dragStateRef.current;
+      const nextX = originX + event.clientX - startX;
+      const nextY = originY + event.clientY - startY;
+      setDragOffset(clampDragOffset(nextX, nextY));
+    },
+    [clampDragOffset]
+  );
+
+  const handleDragEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStateRef.current) return;
+    dragStateRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
 
   return (
     <div
-      className={`absolute left-8 z-20 max-w-full rounded-2xl border border-divider/70 bg-white shadow-xl ${
-        placement === 'below' ? 'top-full mt-2' : 'bottom-full mb-2'
-      }`}
-      style={width ? { width } : undefined}
-      data-question-branches-modal="true"
-      role="dialog"
-      aria-label="Question branch preview"
+      className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+      onTouchStart={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-divider/60 px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question branch</p>
-          <p className="truncate text-sm font-semibold text-slate-900">{branchName}</p>
+      <div
+        ref={modalRef}
+        className="w-full max-w-xl rounded-2xl border border-divider/70 bg-white shadow-2xl"
+        style={dragOffset.x || dragOffset.y ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : undefined}
+        data-question-branches-modal="true"
+        role="dialog"
+        aria-label="Question branch preview"
+      >
+        <div
+          className="flex cursor-move items-center justify-between gap-2 border-b border-divider/60 px-4 py-3 touch-none"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question branch</p>
+            <p className="truncate text-sm font-semibold text-slate-900">{branchName}</p>
+          </div>
+          <div className="flex items-center gap-1">
+            {canNavigate ? (
+              <div className="flex items-center gap-1 text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={onPrevious}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+                  aria-label="Previous question branch"
+                >
+                  <BlueprintIcon icon="chevron-left" className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-[40px] text-center">
+                  {index + 1} / {total}
+                </span>
+                <button
+                  type="button"
+                  onClick={onNext}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+                  aria-label="Next question branch"
+                >
+                  <BlueprintIcon icon="chevron-right" className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+              aria-label="Close question branch preview"
+            >
+              <BlueprintIcon icon="cross" className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          {canNavigate ? (
-            <div className="flex items-center gap-1 text-xs text-slate-500">
-              <button
-                type="button"
-                onClick={onPrevious}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
-                aria-label="Previous question branch"
-              >
-                <BlueprintIcon icon="chevron-left" className="h-3.5 w-3.5" />
-              </button>
-              <span className="min-w-[40px] text-center">
-                {index + 1} / {total}
-              </span>
-              <button
-                type="button"
-                onClick={onNext}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
-                aria-label="Next question branch"
-              >
-                <BlueprintIcon icon="chevron-right" className="h-3.5 w-3.5" />
-              </button>
+        <div className="px-4 py-3">
+          {questionText ? (
+            <div className="rounded-xl border border-slate-200/70 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question</p>
+              <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed">{questionText}</p>
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
-            aria-label="Close question branch preview"
-          >
-            <BlueprintIcon icon="cross" className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-      <div className="px-4 py-3">
-        {questionText ? (
-          <div className="rounded-xl border border-slate-200/70 bg-slate-50 p-3 text-sm text-slate-700">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question</p>
-            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed">{questionText}</p>
+          <div className="mt-3 max-h-64 space-y-3 overflow-y-auto">
+            {isLoading ? (
+              <p className="text-sm text-slate-500">Loading branch history…</p>
+            ) : error ? (
+              <p className="text-sm text-red-600">Failed to load branch history.</p>
+            ) : displayNodes.length === 0 ? (
+              <p className="text-sm text-slate-500">No responses yet.</p>
+            ) : (
+              displayNodes.map((node) => <MiniChatMessage key={node.id} node={node} />)
+            )}
           </div>
-        ) : null}
-        <div className="mt-3 max-h-64 space-y-3 overflow-y-auto">
-          {isLoading ? (
-            <p className="text-sm text-slate-500">Loading branch history…</p>
-          ) : error ? (
-            <p className="text-sm text-red-600">Failed to load branch history.</p>
-          ) : displayNodes.length === 0 ? (
-            <p className="text-sm text-slate-500">No responses yet.</p>
-          ) : (
-            displayNodes.map((node) => <MiniChatMessage key={node.id} node={node} />)
-          )}
         </div>
       </div>
     </div>
@@ -820,7 +886,6 @@ const ChatNodeRow: FC<{
   questionBranchNames?: string[];
   isQuestionBranchesOpen?: boolean;
   questionBranchIndex?: number;
-  questionBranchModalWidth?: number;
   onToggleQuestionBranches?: () => void;
   onQuestionBranchIndexChange?: (index: number) => void;
   projectId: string;
@@ -849,7 +914,6 @@ const ChatNodeRow: FC<{
   questionBranchNames,
   isQuestionBranchesOpen = false,
   questionBranchIndex = 0,
-  questionBranchModalWidth,
   onToggleQuestionBranches,
   onQuestionBranchIndexChange,
   projectId,
@@ -869,22 +933,6 @@ const ChatNodeRow: FC<{
       ? questionBranches[Math.min(questionBranchIndex, questionBranches.length - 1)]
       : null;
   const rowRef = useRef<HTMLDivElement | null>(null);
-  const [questionBranchPlacement, setQuestionBranchPlacement] = useState<'above' | 'below'>('above');
-
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!isQuestionBranchesOpen) return;
-    const container = rowRef.current;
-    if (!container) return;
-    const button = container.querySelector('[data-question-branches-button="true"]');
-    if (!(button instanceof HTMLElement)) return;
-    const rect = button.getBoundingClientRect();
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) return;
-    const center = rect.top + rect.height / 2;
-    const preferred = center <= viewportHeight * 0.4 ? 'below' : 'above';
-    setQuestionBranchPlacement(preferred);
-  }, [isQuestionBranchesOpen]);
 
   return (
     <div
@@ -931,8 +979,6 @@ const ChatNodeRow: FC<{
               branchName={activeQuestionBranch}
               index={questionBranchIndex}
               total={questionBranches.length}
-              width={questionBranchModalWidth}
-              placement={questionBranchPlacement}
               onClose={() => onToggleQuestionBranches?.()}
               onPrevious={() =>
                 onQuestionBranchIndexChange?.(
@@ -5123,7 +5169,6 @@ export function WorkspaceClient({
                                 questionBranchNames={questionBranchesByNode[node.id] ?? []}
                                 isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                                 questionBranchIndex={openQuestionBranchIndex}
-                                questionBranchModalWidth={chatListWidth ? Math.round(chatListWidth * 0.7) : undefined}
                                 onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
                                 onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                                 quoteSelectionText={
@@ -5178,7 +5223,6 @@ export function WorkspaceClient({
                           questionBranchNames={questionBranchesByNode[node.id] ?? []}
                           isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                           questionBranchIndex={openQuestionBranchIndex}
-                          questionBranchModalWidth={chatListWidth ? Math.round(chatListWidth * 0.7) : undefined}
                           onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
                           onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                           quoteSelectionText={
