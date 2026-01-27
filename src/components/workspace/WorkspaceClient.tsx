@@ -97,7 +97,7 @@ const isQuestionBranchHistory = (nodes: NodeRecord[], branchName: string): boole
   const firstCreated = findFirstCreatedOnBranchNode(nodes, branchName);
   if (!firstCreated || firstCreated.type !== 'message') return false;
   const text = getNodeText(firstCreated);
-  return text.includes(QUESTION_BRANCH_MARKER);
+  return QUESTION_BRANCH_MARKER_REGEX.test(text);
 };
 
 const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
@@ -121,7 +121,7 @@ const buildQuestionMessage = (question: string, highlight?: string) => {
   return ['Highlighted passage:', `"""${trimmedHighlight}"""`, '', 'Question:', trimmedQuestion].join('\n');
 };
 
-const QUESTION_BRANCH_MARKER = 'Highlighted passage:';
+const QUESTION_BRANCH_MARKER_REGEX = /highlighted passage:/i;
 
 const createClientId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -1313,6 +1313,7 @@ export function WorkspaceClient({
     (entries: QuestionBranchRef[]) => entries.map(resolveQuestionBranchName),
     [resolveQuestionBranchName]
   );
+  const missingQuestionBranchForkWarningRef = useRef<Set<string>>(new Set());
 
   const addQuestionBranchForNode = useCallback(
     (nodeId: string | null | undefined, branchName: string) => {
@@ -1338,7 +1339,14 @@ export function WorkspaceClient({
       for (const [branchName, nodes] of Object.entries(histories)) {
         if (!isQuestionBranchHistory(nodes, branchName)) continue;
         const forkParentId = deriveForkParentNodeId(histories, branchName);
-        if (!forkParentId) continue;
+        if (!forkParentId) {
+          const warned = missingQuestionBranchForkWarningRef.current;
+          if (!warned.has(branchName)) {
+            warned.add(branchName);
+            console.warn(`[workspace] question branch rehydrate missing fork parent for ${branchName}`);
+          }
+          continue;
+        }
         addQuestionBranchForNode(forkParentId, branchName);
       }
     },
@@ -1775,7 +1783,7 @@ export function WorkspaceClient({
     };
     void loadQuestionBranchGraph();
     return () => controller.abort();
-  }, [project.id, historyEpoch, rehydrateQuestionBranches]);
+  }, [project.id, rehydrateQuestionBranches]);
   const clearPendingAutosave = useCallback(() => {
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
