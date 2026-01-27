@@ -1363,26 +1363,6 @@ export function WorkspaceClient({
     });
   }, [branchLookup]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const loadQuestionBranchGraph = async () => {
-      try {
-        const res = await fetch(`/api/projects/${project.id}/graph?includeHidden=true`, { signal: controller.signal });
-        if (!res.ok) {
-          throw new Error('Failed to load graph');
-        }
-        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
-        if (!data.branchHistories) return;
-        rehydrateQuestionBranches(data.branchHistories);
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        console.error('[workspace] question branch rehydrate failed', err);
-      }
-    };
-    void loadQuestionBranchGraph();
-    return () => controller.abort();
-  }, [project.id, historyEpoch, rehydrateQuestionBranches]);
-
   const toggleQuestionBranchesForNode = useCallback((nodeId: string) => {
     setOpenQuestionBranchIndex(0);
     setOpenQuestionBranchNodeId((prev) => (prev === nodeId ? null : nodeId));
@@ -1777,6 +1757,25 @@ export function WorkspaceClient({
   const refreshCoreData = useCallback(() => {
     void Promise.allSettled([refreshHistory(), mutateArtefact()]);
   }, [refreshHistory, mutateArtefact]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadQuestionBranchGraph = async () => {
+      try {
+        const res = await fetch(`/api/projects/${project.id}/graph?includeHidden=true`, { signal: controller.signal });
+        if (!res.ok) {
+          throw new Error('Failed to load graph');
+        }
+        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
+        if (!data.branchHistories) return;
+        rehydrateQuestionBranches(data.branchHistories);
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        console.error('[workspace] question branch rehydrate failed', err);
+      }
+    };
+    void loadQuestionBranchGraph();
+    return () => controller.abort();
+  }, [project.id, historyEpoch, rehydrateQuestionBranches]);
   const clearPendingAutosave = useCallback(() => {
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
