@@ -111,6 +111,118 @@ const createClientId = (): string => {
   return `id-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 };
 
+const MiniChatMessage: FC<{ node: MessageNode }> = ({ node }) => {
+  const messageText = getNodeText(node);
+  if (!messageText) return null;
+  const isUser = node.role === 'user';
+  const align = isUser ? 'items-end' : 'items-start';
+  const bubble = isUser
+    ? 'bg-slate-100 text-slate-900'
+    : 'border border-divider/70 bg-white text-slate-900';
+
+  return (
+    <div className={`flex ${align}`}>
+      <div className={`max-w-full rounded-xl px-3 py-2 text-sm ${bubble}`}>
+        {isUser ? (
+          <p className="whitespace-pre-line break-words text-sm leading-relaxed">{messageText}</p>
+        ) : (
+          <div className="prose prose-sm prose-slate max-w-none break-words">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageText}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const QuestionBranchModal: FC<{
+  projectId: string;
+  branchName: string;
+  index: number;
+  total: number;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+}> = ({ projectId, branchName, index, total, onClose, onPrevious, onNext }) => {
+  const { nodes, isLoading, error } = useProjectData(projectId, { ref: branchName });
+  const messageNodes = useMemo(
+    () => nodes.filter((node): node is MessageNode => node.type === 'message'),
+    [nodes]
+  );
+  const questionNode = messageNodes.find((node) => node.role === 'user');
+  const questionText = questionNode ? getNodeText(questionNode) : '';
+  const displayNodes = questionNode ? messageNodes.filter((node) => node.id !== questionNode.id) : messageNodes;
+  const canNavigate = total > 1;
+
+  return (
+    <div
+      className="absolute left-8 top-full z-20 mt-2 w-[320px] max-w-full rounded-2xl border border-divider/70 bg-white shadow-xl"
+      data-question-branches-modal="true"
+      role="dialog"
+      aria-label="Question branch preview"
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-divider/60 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question branch</p>
+          <p className="truncate text-sm font-semibold text-slate-900">{branchName}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          {canNavigate ? (
+            <div className="flex items-center gap-1 text-xs text-slate-500">
+              <button
+                type="button"
+                onClick={onPrevious}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+                aria-label="Previous question branch"
+              >
+                <BlueprintIcon icon="chevron-left" className="h-3.5 w-3.5" />
+              </button>
+              <span className="min-w-[40px] text-center">
+                {index + 1} / {total}
+              </span>
+              <button
+                type="button"
+                onClick={onNext}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+                aria-label="Next question branch"
+              >
+                <BlueprintIcon icon="chevron-right" className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+            aria-label="Close question branch preview"
+          >
+            <BlueprintIcon icon="cross" className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className="px-4 py-3">
+        {questionText ? (
+          <div className="rounded-xl border border-slate-200/70 bg-slate-50 p-3 text-sm text-slate-700">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question</p>
+            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed">{questionText}</p>
+          </div>
+        ) : null}
+        <div className="mt-3 max-h-64 space-y-3 overflow-y-auto">
+          {isLoading ? (
+            <p className="text-sm text-slate-500">Loading branch history…</p>
+          ) : error ? (
+            <p className="text-sm text-red-600">Failed to load branch history.</p>
+          ) : displayNodes.length === 0 ? (
+            <p className="text-sm text-slate-500">No responses yet.</p>
+          ) : (
+            displayNodes.map((node) => <MiniChatMessage key={node.id} node={node} />)
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 type DiffLine = {
   type: 'context' | 'added' | 'removed';
   value: string;
@@ -208,6 +320,9 @@ const NodeBubble: FC<{
   branchQuestionCandidate?: boolean;
   showOpenAiThinkingNote?: boolean;
   branchActionDisabled?: boolean;
+  questionBranchCount?: number;
+  isQuestionBranchesOpen?: boolean;
+  onToggleQuestionBranches?: () => void;
   onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
@@ -223,6 +338,9 @@ const NodeBubble: FC<{
   branchQuestionCandidate = false,
   showOpenAiThinkingNote = false,
   branchActionDisabled = false,
+  questionBranchCount = 0,
+  isQuestionBranchesOpen = false,
+  onToggleQuestionBranches,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -235,6 +353,7 @@ const NodeBubble: FC<{
   const thinkingText = getNodeThinkingText(node);
   const canCopy = node.type === 'message' && messageText.length > 0;
   const canQuoteReply = isAssistant && messageText.length > 0 && onQuoteReply;
+  const hasQuestionBranches = questionBranchCount > 0 && onToggleQuestionBranches;
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
@@ -632,6 +751,21 @@ const NodeBubble: FC<{
               )}
             </button>
           ) : null}
+          {hasQuestionBranches ? (
+            <button
+              type="button"
+              onClick={onToggleQuestionBranches}
+              data-question-branches-button="true"
+              className={`rounded-full px-2 py-1 focus:outline-none transition ${
+                isQuestionBranchesOpen
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-slate-100 text-slate-600 hover:bg-primary/10 hover:text-primary'
+              }`}
+              aria-label="View question branches"
+            >
+              <BlueprintIcon icon="comment" className="h-4 w-4" />
+            </button>
+          ) : null}
           {!isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
         </div>
       </div>
@@ -659,6 +793,12 @@ const ChatNodeRow: FC<{
   branchQuestionCandidate?: boolean;
   showBranchSplit?: boolean;
   branchActionDisabled?: boolean;
+  questionBranchNames?: string[];
+  isQuestionBranchesOpen?: boolean;
+  questionBranchIndex?: number;
+  onToggleQuestionBranches?: () => void;
+  onQuestionBranchIndexChange?: (index: number) => void;
+  projectId: string;
   onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
@@ -680,6 +820,12 @@ const ChatNodeRow: FC<{
   branchQuestionCandidate,
   showBranchSplit,
   branchActionDisabled,
+  questionBranchNames,
+  isQuestionBranchesOpen = false,
+  questionBranchIndex = 0,
+  onToggleQuestionBranches,
+  onQuestionBranchIndexChange,
+  projectId,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -689,6 +835,11 @@ const ChatNodeRow: FC<{
   const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
   const showOpenAiThinkingNote = nodeProvider === 'openai';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
+  const questionBranches = questionBranchNames ?? [];
+  const activeQuestionBranch =
+    questionBranches.length > 0
+      ? questionBranches[Math.min(questionBranchIndex, questionBranches.length - 1)]
+      : null;
 
   return (
     <div
@@ -708,7 +859,7 @@ const ChatNodeRow: FC<{
           isMerge ? 'flex justify-center' : isUser ? 'flex justify-end' : 'flex justify-start'
         }`}
       >
-        <div className="flex w-full flex-col">
+        <div className="relative flex w-full flex-col">
           <NodeBubble
             node={node}
             muted={muted}
@@ -723,8 +874,28 @@ const ChatNodeRow: FC<{
             branchQuestionCandidate={branchQuestionCandidate}
             showOpenAiThinkingNote={showOpenAiThinkingNote}
             branchActionDisabled={branchActionDisabled}
+            questionBranchCount={questionBranches.length}
+            isQuestionBranchesOpen={isQuestionBranchesOpen}
+            onToggleQuestionBranches={onToggleQuestionBranches}
             onQuoteReply={onQuoteReply}
           />
+          {isQuestionBranchesOpen && activeQuestionBranch ? (
+            <QuestionBranchModal
+              projectId={projectId}
+              branchName={activeQuestionBranch}
+              index={questionBranchIndex}
+              total={questionBranches.length}
+              onClose={() => onToggleQuestionBranches?.()}
+              onPrevious={() =>
+                onQuestionBranchIndexChange?.(
+                  (questionBranchIndex - 1 + questionBranches.length) % questionBranches.length
+                )
+              }
+              onNext={() =>
+                onQuestionBranchIndexChange?.((questionBranchIndex + 1) % questionBranches.length)
+              }
+            />
+          ) : null}
           {showBranchSplit ? (
             <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
               <span className="flex-1 border-t border-dashed border-slate-200" />
@@ -820,6 +991,9 @@ export function WorkspaceClient({
   const [newBranchQuestion, setNewBranchQuestion] = useState('');
   const [newBranchHighlight, setNewBranchHighlight] = useState('');
   const [switchToNewBranch, setSwitchToNewBranch] = useState(false);
+  const [questionBranchesByNode, setQuestionBranchesByNode] = useState<Record<string, string[]>>({});
+  const [openQuestionBranchNodeId, setOpenQuestionBranchNodeId] = useState<string | null>(null);
+  const [openQuestionBranchIndex, setOpenQuestionBranchIndex] = useState(0);
   const autosaveControllerRef = useRef<AbortController | null>(null);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveSavingTokenRef = useRef(0);
@@ -960,6 +1134,55 @@ export function WorkspaceClient({
     }
     return true;
   }, [isPgMode, leaseSessionId, leaseSessionReady, pushToast]);
+
+  const addQuestionBranchForNode = useCallback((nodeId: string | null | undefined, branchName: string) => {
+    if (!nodeId) return;
+    const key = String(nodeId);
+    setQuestionBranchesByNode((prev) => {
+      const existing = prev[key] ?? [];
+      if (existing.includes(branchName)) {
+        return prev;
+      }
+      return { ...prev, [key]: [...existing, branchName] };
+    });
+  }, []);
+
+  const toggleQuestionBranchesForNode = useCallback((nodeId: string) => {
+    setOpenQuestionBranchIndex(0);
+    setOpenQuestionBranchNodeId((prev) => (prev === nodeId ? null : nodeId));
+  }, []);
+
+  useEffect(() => {
+    if (!openQuestionBranchNodeId) return;
+    const branches = questionBranchesByNode[openQuestionBranchNodeId] ?? [];
+    if (branches.length === 0) {
+      setOpenQuestionBranchNodeId(null);
+      setOpenQuestionBranchIndex(0);
+      return;
+    }
+    if (openQuestionBranchIndex > branches.length - 1) {
+      setOpenQuestionBranchIndex(0);
+    }
+  }, [openQuestionBranchIndex, openQuestionBranchNodeId, questionBranchesByNode]);
+
+  useEffect(() => {
+    if (!openQuestionBranchNodeId) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        target.closest('[data-question-branches-modal="true"]') ||
+        target.closest('[data-question-branches-button="true"]')
+      ) {
+        return;
+      }
+      setOpenQuestionBranchNodeId(null);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [openQuestionBranchNodeId]);
 
   useEffect(() => {
     return () => {
@@ -1839,6 +2062,7 @@ export function WorkspaceClient({
       ),
       onResponse: () => {
         responded = true;
+        addQuestionBranchForNode(fromNodeId, targetBranch);
         onResponse?.();
       },
       debugLabel: 'branch-question'
@@ -3978,6 +4202,7 @@ export function WorkspaceClient({
             throw new Error(data?.error?.message ?? 'Failed to send question to new branch');
           }
           responded = true;
+          addQuestionBranchForNode(fromNodeId, targetBranch);
           onResponse?.();
           const reader = res.body.getReader();
           const { errorMessage } = await consumeNdjsonStream(reader, {
@@ -3999,6 +4224,7 @@ export function WorkspaceClient({
       })();
     },
     [
+      addQuestionBranchForNode,
       displayBranchName,
       ensureLeaseSessionReady,
       finishBackgroundTask,
@@ -4786,6 +5012,7 @@ export function WorkspaceClient({
                               <ChatNodeRow
                                 key={getNodeRenderKey(node)}
                                 node={node}
+                                projectId={project.id}
                                   trunkName={trunkName}
                                   currentBranchName={branchName}
                                 defaultProvider={defaultProvider}
@@ -4816,6 +5043,11 @@ export function WorkspaceClient({
                                   activeBranchHighlight?.nodeId === node.id &&
                                   Boolean(activeBranchHighlight.text.trim())
                                 }
+                                questionBranchNames={questionBranchesByNode[node.id] ?? []}
+                                isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
+                                questionBranchIndex={openQuestionBranchIndex}
+                                onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
+                                onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                                 branchActionDisabled={branchActionDisabled}
                                 onQuoteReply={handleQuoteReply}
@@ -4833,6 +5065,7 @@ export function WorkspaceClient({
                         <ChatNodeRow
                           key={getNodeRenderKey(node)}
                           node={node}
+                          projectId={project.id}
                           trunkName={trunkName}
                           currentBranchName={branchName}
                           defaultProvider={defaultProvider}
@@ -4861,6 +5094,11 @@ export function WorkspaceClient({
                             activeBranchHighlight?.nodeId === node.id &&
                             Boolean(activeBranchHighlight.text.trim())
                           }
+                          questionBranchNames={questionBranchesByNode[node.id] ?? []}
+                          isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
+                          questionBranchIndex={openQuestionBranchIndex}
+                          onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
+                          onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                           branchActionDisabled={branchActionDisabled}
                           onQuoteReply={handleQuoteReply}
