@@ -149,9 +149,21 @@ const QuestionBranchModal: FC<{
     () => nodes.filter((node): node is MessageNode => node.type === 'message'),
     [nodes]
   );
-  const questionNode = messageNodes.find((node) => node.role === 'user');
+  const questionNodeIndex = useMemo(() => {
+    for (let i = messageNodes.length - 1; i >= 0; i -= 1) {
+      if (messageNodes[i]?.role === 'user') {
+        return i;
+      }
+    }
+    return -1;
+  }, [messageNodes]);
+  const questionNode = questionNodeIndex >= 0 ? messageNodes[questionNodeIndex] : null;
   const questionText = questionNode ? getNodeText(questionNode) : '';
-  const displayNodes = questionNode ? messageNodes.filter((node) => node.id !== questionNode.id) : messageNodes;
+  const answerNode =
+    questionNodeIndex >= 0
+      ? messageNodes.slice(questionNodeIndex + 1).find((node) => node.role === 'assistant') ?? null
+      : null;
+  const displayNodes = answerNode ? [answerNode] : [];
   const canNavigate = total > 1;
 
   return (
