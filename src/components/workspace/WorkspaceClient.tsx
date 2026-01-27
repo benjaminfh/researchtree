@@ -396,7 +396,7 @@ const NodeBubble: FC<{
         ) : null}
         {node.type === 'message' && messageText ? (
           isAssistant ? (
-            <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
+            <div className="prose prose-sm prose-slate mt-2 max-w-none break-words" data-message-content>
               <MarkdownWithCopy content={messageText} />
             </div>
           ) : (
@@ -918,6 +918,9 @@ export function WorkspaceClient({
     const anchorContainer = anchorEl.closest('[data-node-id]');
     const focusContainer = focusEl.closest('[data-node-id]');
     if (!anchorContainer || anchorContainer !== focusContainer) return null;
+    const anchorContent = anchorEl.closest('[data-message-content]');
+    const focusContent = focusEl.closest('[data-message-content]');
+    if (!anchorContent || anchorContent !== focusContent) return null;
     const nodeId = anchorContainer.getAttribute('data-node-id');
     if (!nodeId) return null;
     return { nodeId, text };
