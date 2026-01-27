@@ -140,10 +140,12 @@ const QuestionBranchModal: FC<{
   branchName: string;
   index: number;
   total: number;
+  width?: number;
+  placement?: 'above' | 'below';
   onClose: () => void;
   onPrevious: () => void;
   onNext: () => void;
-}> = ({ projectId, branchName, index, total, onClose, onPrevious, onNext }) => {
+}> = ({ projectId, branchName, index, total, width, placement = 'above', onClose, onPrevious, onNext }) => {
   const { nodes, isLoading, error } = useProjectData(projectId, { ref: branchName });
   const messageNodes = useMemo(
     () => nodes.filter((node): node is MessageNode => node.type === 'message'),
@@ -168,7 +170,10 @@ const QuestionBranchModal: FC<{
 
   return (
     <div
-      className="absolute left-8 top-full z-20 mt-2 w-[320px] max-w-full rounded-2xl border border-divider/70 bg-white shadow-xl"
+      className={`absolute left-8 z-20 max-w-full rounded-2xl border border-divider/70 bg-white shadow-xl ${
+        placement === 'below' ? 'top-full mt-2' : 'bottom-full mb-2'
+      }`}
+      style={width ? { width } : undefined}
       data-question-branches-modal="true"
       role="dialog"
       aria-label="Question branch preview"
@@ -775,7 +780,7 @@ const NodeBubble: FC<{
               }`}
               aria-label="View question branches"
             >
-              <BlueprintIcon icon="comment" className="h-4 w-4" />
+              <BlueprintIcon icon="endnote" className="h-4 w-4" />
             </button>
           ) : null}
           {!isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
@@ -808,6 +813,7 @@ const ChatNodeRow: FC<{
   questionBranchNames?: string[];
   isQuestionBranchesOpen?: boolean;
   questionBranchIndex?: number;
+  questionBranchModalWidth?: number;
   onToggleQuestionBranches?: () => void;
   onQuestionBranchIndexChange?: (index: number) => void;
   projectId: string;
@@ -835,6 +841,7 @@ const ChatNodeRow: FC<{
   questionBranchNames,
   isQuestionBranchesOpen = false,
   questionBranchIndex = 0,
+  questionBranchModalWidth,
   onToggleQuestionBranches,
   onQuestionBranchIndexChange,
   projectId,
@@ -852,6 +859,23 @@ const ChatNodeRow: FC<{
     questionBranches.length > 0
       ? questionBranches[Math.min(questionBranchIndex, questionBranches.length - 1)]
       : null;
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [questionBranchPlacement, setQuestionBranchPlacement] = useState<'above' | 'below'>('above');
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isQuestionBranchesOpen) return;
+    const container = rowRef.current;
+    if (!container) return;
+    const button = container.querySelector('[data-question-branches-button="true"]');
+    if (!(button instanceof HTMLElement)) return;
+    const rect = button.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) return;
+    const center = rect.top + rect.height / 2;
+    const preferred = center <= viewportHeight * 0.4 ? 'below' : 'above';
+    setQuestionBranchPlacement(preferred);
+  }, [isQuestionBranchesOpen]);
 
   return (
     <div
@@ -871,7 +895,7 @@ const ChatNodeRow: FC<{
           isMerge ? 'flex justify-center' : isUser ? 'flex justify-end' : 'flex justify-start'
         }`}
       >
-        <div className="relative flex w-full flex-col">
+        <div ref={rowRef} className="relative flex w-full flex-col">
           <NodeBubble
             node={node}
             muted={muted}
@@ -897,6 +921,8 @@ const ChatNodeRow: FC<{
               branchName={activeQuestionBranch}
               index={questionBranchIndex}
               total={questionBranches.length}
+              width={questionBranchModalWidth}
+              placement={questionBranchPlacement}
               onClose={() => onToggleQuestionBranches?.()}
               onPrevious={() =>
                 onQuestionBranchIndexChange?.(
@@ -3081,6 +3107,7 @@ export function WorkspaceClient({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
+  const [chatListWidth, setChatListWidth] = useState<number | null>(null);
 
   const minMessageListPadding = useMemo(() => {
     if (!Number.isFinite(messageLineHeight ?? NaN) || (messageLineHeight ?? 0) <= 0) {
@@ -3119,6 +3146,15 @@ export function WorkspaceClient({
     setPillBottomOffset(offset);
   }, []);
 
+  const updateChatListWidth = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const container = messageListRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || rect.width <= 0) return;
+    setChatListWidth(rect.width);
+  }, []);
+
   useLayoutEffect(() => {
     updateMessageLineHeight();
   }, [updateMessageLineHeight]);
@@ -3126,6 +3162,10 @@ export function WorkspaceClient({
   useLayoutEffect(() => {
     updatePillOffset();
   }, [updatePillOffset]);
+
+  useLayoutEffect(() => {
+    updateChatListWidth();
+  }, [updateChatListWidth]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -3137,6 +3177,7 @@ export function WorkspaceClient({
         ? new ResizeObserver(() => {
             updateMessageLineHeight();
             updatePillOffset();
+            updateChatListWidth();
           })
         : null;
     if (sample) {
@@ -3146,11 +3187,13 @@ export function WorkspaceClient({
       resizeObserver?.observe(pill);
     }
     window.addEventListener('resize', updatePillOffset);
+    window.addEventListener('resize', updateChatListWidth);
     return () => {
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updatePillOffset);
+      window.removeEventListener('resize', updateChatListWidth);
     };
-  }, [updateMessageLineHeight, updatePillOffset]);
+  }, [updateMessageLineHeight, updatePillOffset, updateChatListWidth]);
 
   const { combinedNodes } = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
@@ -5058,6 +5101,7 @@ export function WorkspaceClient({
                                 questionBranchNames={questionBranchesByNode[node.id] ?? []}
                                 isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                                 questionBranchIndex={openQuestionBranchIndex}
+                                questionBranchModalWidth={chatListWidth ? Math.round(chatListWidth * 0.7) : undefined}
                                 onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
                                 onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
@@ -5109,6 +5153,7 @@ export function WorkspaceClient({
                           questionBranchNames={questionBranchesByNode[node.id] ?? []}
                           isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                           questionBranchIndex={openQuestionBranchIndex}
+                          questionBranchModalWidth={chatListWidth ? Math.round(chatListWidth * 0.7) : undefined}
                           onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
                           onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
