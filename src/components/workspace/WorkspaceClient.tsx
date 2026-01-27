@@ -84,6 +84,15 @@ const getNodeThinkingText = (node: NodeRecord): string => {
 };
 
 const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
+const buildQuestionBranchName = (highlightText: string) => {
+  const normalized = highlightText
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .toLowerCase()
+    .slice(0, 50);
+  return normalized ? `q/${normalized}` : '';
+};
 
 const formatCharLimitMessage = (label: string, current: number, max: number) => {
   return `${label} is too long (${current} chars). Max ${max} characters.`;
@@ -1009,7 +1018,7 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
-        setNewBranchName('');
+        setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
         setNewBranchHighlight(selectionText);
         setNewBranchQuestion('');
