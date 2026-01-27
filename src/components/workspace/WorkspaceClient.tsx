@@ -5486,7 +5486,7 @@ export function WorkspaceClient({
               >
                 <div
                   ref={composerRef}
-                  className="flex items-center gap-2 border border-divider bg-white px-3 py-2 shadow-composer"
+                  className="flex items-stretch gap-2 border border-divider bg-white px-3 py-2 shadow-composer"
                   style={{
                     borderRadius: composerCornerRadius ? `${composerCornerRadius}px` : '9999px'
                   }}
@@ -5524,7 +5524,7 @@ export function WorkspaceClient({
                       )}
                     </div> */}
                   </div>
-                  <div className="relative flex-1 translate-y-[1px]">
+                  <div className="relative flex flex-1 items-center">
                     <textarea
 
                       ref={composerTextareaRef}
