@@ -582,7 +582,7 @@ describe('WorkspaceClient', () => {
     await waitFor(() => {
       const assistantMessage = screen.getByText('All tasks queued.');
       const bubble = assistantMessage.closest('article')?.querySelector('div');
-      expect(bubble?.className).toContain('max-w-[85%]');
+      expect(bubble?.className).toContain('w-full');
     });
   });
 
