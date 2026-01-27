@@ -341,6 +341,8 @@ const NodeBubble: FC<{
   isQuestionBranchesOpen?: boolean;
   onToggleQuestionBranches?: () => void;
   onQuoteReply?: (messageText: string) => void;
+  quoteSelectionText?: string;
+  onQuoteReply?: (messageText: string, selectionText?: string) => void;
 }> = ({
   node,
   muted = false,
@@ -358,6 +360,7 @@ const NodeBubble: FC<{
   questionBranchCount = 0,
   isQuestionBranchesOpen = false,
   onToggleQuestionBranches,
+  quoteSelectionText,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -371,6 +374,7 @@ const NodeBubble: FC<{
   const canCopy = node.type === 'message' && messageText.length > 0;
   const canQuoteReply = isAssistant && messageText.length > 0 && onQuoteReply;
   const hasQuestionBranches = questionBranchCount > 0 && onToggleQuestionBranches;
+  const quoteSelectionActive = Boolean(quoteSelectionText?.trim());
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
@@ -529,7 +533,7 @@ const NodeBubble: FC<{
         ) : null}
         {node.type === 'message' && messageText ? (
           isAssistant ? (
-            <div className="prose prose-sm prose-slate mt-2 max-w-none break-words">
+            <div className="prose prose-sm prose-slate mt-2 max-w-none break-words" data-message-content>
               <MarkdownWithCopy content={messageText} />
             </div>
           ) : (
@@ -730,9 +734,13 @@ const NodeBubble: FC<{
           {canQuoteReply ? (
             <button
               type="button"
-              onClick={() => onQuoteReply(messageText)}
+              onClick={() => onQuoteReply(messageText, quoteSelectionText)}
               disabled={branchActionDisabled}
-              className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 hover:bg-primary/10 hover:text-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              className={`rounded-full px-2 py-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                quoteSelectionActive
+                  ? 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                  : 'bg-slate-100 text-slate-600 hover:bg-primary/10 hover:text-primary'
+              }`}
               aria-label="Quote reply"
               title={branchActionDisabled ? 'Quote reply is disabled while streaming' : undefined}
             >
@@ -818,6 +826,8 @@ const ChatNodeRow: FC<{
   onQuestionBranchIndexChange?: (index: number) => void;
   projectId: string;
   onQuoteReply?: (messageText: string) => void;
+  quoteSelectionText?: string;
+  onQuoteReply?: (messageText: string, selectionText?: string) => void;
 }> = ({
   node,
   trunkName,
@@ -845,6 +855,7 @@ const ChatNodeRow: FC<{
   onToggleQuestionBranches,
   onQuestionBranchIndexChange,
   projectId,
+  quoteSelectionText,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -913,6 +924,7 @@ const ChatNodeRow: FC<{
             questionBranchCount={questionBranches.length}
             isQuestionBranchesOpen={isQuestionBranchesOpen}
             onToggleQuestionBranches={onToggleQuestionBranches}
+            quoteSelectionText={quoteSelectionText}
             onQuoteReply={onQuoteReply}
           />
           {isQuestionBranchesOpen && activeQuestionBranch ? (
@@ -1120,6 +1132,9 @@ export function WorkspaceClient({
     const anchorContainer = anchorEl.closest('[data-node-id]');
     const focusContainer = focusEl.closest('[data-node-id]');
     if (!anchorContainer || anchorContainer !== focusContainer) return null;
+    const anchorContent = anchorEl.closest('[data-message-content]');
+    const focusContent = focusEl.closest('[data-message-content]');
+    if (!anchorContent || anchorContent !== focusContent) return null;
     const nodeId = anchorContainer.getAttribute('data-node-id');
     if (!nodeId) return null;
     return { nodeId, text };
@@ -2223,8 +2238,10 @@ export function WorkspaceClient({
 
   const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
   const handleQuoteReply = useCallback(
-    (messageText: string) => {
-      const normalized = messageText.replace(/\r\n/g, '\n');
+    (messageText: string, selectionText?: string) => {
+      const trimmedSelection = selectionText?.trim() ?? '';
+      const sourceText = trimmedSelection || messageText;
+      const normalized = sourceText.replace(/\r\n/g, '\n');
       const quoted = normalized
         .split('\n')
         .map((line) => (line ? `> ${line}` : '>'))
@@ -2233,12 +2250,19 @@ export function WorkspaceClient({
       if (composerCollapsed) {
         expandComposer();
       }
+      if (typeof window !== 'undefined') {
+        window.getSelection()?.removeAllRanges();
+      }
       window.setTimeout(() => {
         const input = composerTextareaRef.current;
         if (!input) return;
         input.focus();
         const end = input.value.length;
         input.setSelectionRange(end, end);
+        const isBeyondView = input.scrollTop + input.clientHeight < input.scrollHeight;
+        if (isBeyondView) {
+          input.scrollTop = input.scrollHeight;
+        }
       }, 0);
     },
     [composerCollapsed, expandComposer]
@@ -5104,6 +5128,9 @@ export function WorkspaceClient({
                                 questionBranchModalWidth={chatListWidth ? Math.round(chatListWidth * 0.7) : undefined}
                                 onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
                                 onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
+                                quoteSelectionText={
+                                  activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
+                                }
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                                 branchActionDisabled={branchActionDisabled}
                                 onQuoteReply={handleQuoteReply}
@@ -5156,6 +5183,9 @@ export function WorkspaceClient({
                           questionBranchModalWidth={chatListWidth ? Math.round(chatListWidth * 0.7) : undefined}
                           onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
                           onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
+                          quoteSelectionText={
+                            activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
+                          }
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                           branchActionDisabled={branchActionDisabled}
                           onQuoteReply={handleQuoteReply}
