@@ -152,6 +152,7 @@ const QuestionBranchModal: FC<{
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const modalRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const positionKey = 'question-branch-preview-position';
   const questionNodeIndex = useMemo(() => {
     for (let i = messageNodes.length - 1; i >= 0; i -= 1) {
       if (messageNodes[i]?.role === 'user') {
@@ -179,6 +180,27 @@ const QuestionBranchModal: FC<{
       y: Math.min(maxY, Math.max(-maxY, nextY))
     };
   }, []);
+  const persistOffset = useCallback((value: { x: number; y: number }) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(positionKey, JSON.stringify(value));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = window.sessionStorage.getItem(positionKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { x?: number; y?: number } | null;
+      if (!parsed || typeof parsed.x !== 'number' || typeof parsed.y !== 'number') return;
+      setDragOffset(clampDragOffset(parsed.x, parsed.y));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [clampDragOffset]);
 
   const handleDragStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -207,13 +229,17 @@ const QuestionBranchModal: FC<{
     [clampDragOffset]
   );
 
-  const handleDragEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragStateRef.current) return;
-    dragStateRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }, []);
+  const handleDragEnd = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragStateRef.current) return;
+      dragStateRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      persistOffset(dragOffset);
+    },
+    [dragOffset, persistOffset]
+  );
 
   return (
     <div
