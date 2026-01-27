@@ -54,18 +54,20 @@ function capNodesForGraph(nodes: NodeRecord[], max: number): NodeRecord[] {
   return [nodes[0]!, ...nodes.slice(-(max - 1))];
 }
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   try {
     await requireUser();
     const store = getStoreConfig();
     await requireProjectAccess({ id: params.id });
+    const url = new URL(request.url);
+    const includeHidden = url.searchParams.get('includeHidden') === 'true';
 
     if (store.mode === 'pg') {
       const { rtListRefsShadowV2, rtGetHistoryShadowV2, rtGetStarredNodeIdsShadowV1 } = await import('@/src/store/pg/reads');
       const { rtGetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
 
       const branches = await rtListRefsShadowV2({ projectId: params.id });
-      const visibleBranches = branches.filter((branch) => !branch.isHidden);
+      const visibleBranches = includeHidden ? branches : branches.filter((branch) => !branch.isHidden);
       const refNameById = new Map(branches.map((branch) => [branch.id, branch.name]));
       const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
       const currentBranch = (await rtGetCurrentRefShadowV2({ projectId: params.id, defaultRefName: trunkName })).refName;
@@ -115,7 +117,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       throw notFound('Project not found');
     }
     const branches = await listBranches(project.id);
-    const visibleBranches = branches.filter((branch) => !branch.isHidden);
+    const visibleBranches = includeHidden ? branches : branches.filter((branch) => !branch.isHidden);
     const trunkName = branches.find((b) => b.isTrunk)?.name ?? INITIAL_BRANCH;
     const currentBranch = await getCurrentBranchName(project.id).catch(() => trunkName);
 
