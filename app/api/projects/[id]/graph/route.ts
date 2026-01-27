@@ -59,21 +59,28 @@ function capNodesForGraphWithFork(nodes: NodeRecord[], max: number, branchName: 
   if (nodes.length <= max) return nodes;
   const root = nodes[0];
   const forkNode = nodes.find((node) => node.createdOnBranch === branchName && node.parent);
-  const result: NodeRecord[] = [];
   const seen = new Set<string>();
-  const pushUnique = (node?: NodeRecord | null) => {
-    if (!node || seen.has(node.id)) return;
-    seen.add(node.id);
-    result.push(node);
+  const picks: number[] = [];
+  const pushIndex = (idx?: number | null) => {
+    if (idx == null || idx < 0 || idx >= nodes.length) return;
+    const id = nodes[idx]?.id;
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    picks.push(idx);
   };
-  pushUnique(root);
-  pushUnique(forkNode);
 
-  for (let i = nodes.length - 1; i >= 0 && result.length < max; i -= 1) {
-    pushUnique(nodes[i]);
+  pushIndex(0);
+  if (forkNode) {
+    const forkIndex = nodes.findIndex((node) => node.id === forkNode.id);
+    pushIndex(forkIndex);
   }
 
-  return result;
+  for (let i = nodes.length - 1; i >= 0 && picks.length < max; i -= 1) {
+    pushIndex(i);
+  }
+
+  picks.sort((a, b) => a - b);
+  return picks.map((idx) => nodes[idx]!).filter(Boolean);
 }
 
 export async function GET(_request: Request, { params }: RouteContext) {
