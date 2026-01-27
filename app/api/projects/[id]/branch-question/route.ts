@@ -56,7 +56,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Question branches require an assistant highlight and fromNodeId.');
     }
 
-    const shouldHide = !shouldSwitch;
+    const shouldHide = shouldSwitch === false;
     const createResult: BranchCreateResult = await (async () => {
       if (store.mode === 'pg') {
         return await withProjectLock(params.id, async () => {
