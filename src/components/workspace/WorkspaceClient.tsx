@@ -84,6 +84,15 @@ const getNodeThinkingText = (node: NodeRecord): string => {
 };
 
 const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
+const buildQuestionBranchName = (highlightText: string) => {
+  const normalized = highlightText
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .toLowerCase()
+    .slice(0, 50);
+  return normalized ? `q/${normalized}` : '';
+};
 
 const formatCharLimitMessage = (label: string, current: number, max: number) => {
   return `${label} is too long (${current} chars). Max ${max} characters.`;
@@ -1009,7 +1018,9 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
-        setNewBranchName('');
+        setNewBranchProvider(normalizeProviderForUi(branchProvider));
+        setNewBranchThinking(thinking);
+        setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
         setNewBranchHighlight(selectionText);
         setNewBranchQuestion('');
@@ -5881,7 +5892,7 @@ export function WorkspaceClient({
                     </div>
                   </div>
                 }
-                autoFocus
+                autoFocus={!(branchModalMode === 'question' && Boolean(newBranchHighlight.trim()))}
                 variant="plain"
               >
                 {branchModalMode === 'question' && Boolean(newBranchHighlight.trim()) ? (
@@ -5921,6 +5932,7 @@ export function WorkspaceClient({
                         className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
                         placeholder="What do you want to ask on this branch?"
                         disabled={isSwitching || isCreating}
+                        autoFocus={branchModalMode === 'question' && Boolean(newBranchHighlight.trim())}
                       />
                     </div>
                     <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
