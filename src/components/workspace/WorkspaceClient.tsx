@@ -340,7 +340,6 @@ const NodeBubble: FC<{
   questionBranchCount?: number;
   isQuestionBranchesOpen?: boolean;
   onToggleQuestionBranches?: () => void;
-  onQuoteReply?: (messageText: string) => void;
   quoteSelectionText?: string;
   onQuoteReply?: (messageText: string, selectionText?: string) => void;
 }> = ({
@@ -825,7 +824,6 @@ const ChatNodeRow: FC<{
   onToggleQuestionBranches?: () => void;
   onQuestionBranchIndexChange?: (index: number) => void;
   projectId: string;
-  onQuoteReply?: (messageText: string) => void;
   quoteSelectionText?: string;
   onQuoteReply?: (messageText: string, selectionText?: string) => void;
 }> = ({
