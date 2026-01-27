@@ -1018,6 +1018,8 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
+        setNewBranchProvider(normalizeProviderForUi(branchProvider));
+        setNewBranchThinking(thinking);
         setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
         setNewBranchHighlight(selectionText);
