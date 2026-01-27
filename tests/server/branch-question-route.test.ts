@@ -8,11 +8,13 @@ const mocks = vi.hoisted(() => ({
   rtSetCurrentRefShadowV2: vi.fn(),
   rtCreateRefFromNodeShadowV2: vi.fn(),
   rtCreateRefFromRefShadowV2: vi.fn(),
+  rtSetRefHiddenShadowV1: vi.fn(),
   rtGetNodeContentShadowV1: vi.fn(),
   rtListRefsShadowV2: vi.fn(),
   getProject: vi.fn(),
   listBranches: vi.fn(),
   createBranch: vi.fn(),
+  setBranchHidden: vi.fn(),
   switchBranch: vi.fn(),
   readNodesFromRef: vi.fn(),
   getCommitHashForNode: vi.fn(),
@@ -29,7 +31,8 @@ vi.mock('@/src/store/pg/prefs', () => ({
 
 vi.mock('@/src/store/pg/branches', () => ({
   rtCreateRefFromNodeShadowV2: mocks.rtCreateRefFromNodeShadowV2,
-  rtCreateRefFromRefShadowV2: mocks.rtCreateRefFromRefShadowV2
+  rtCreateRefFromRefShadowV2: mocks.rtCreateRefFromRefShadowV2,
+  rtSetRefHiddenShadowV1: mocks.rtSetRefHiddenShadowV1
 }));
 
 vi.mock('@/src/store/pg/nodes', () => ({
@@ -47,6 +50,7 @@ vi.mock('@git/projects', () => ({
 vi.mock('@git/branches', () => ({
   listBranches: mocks.listBranches,
   createBranch: mocks.createBranch,
+  setBranchHidden: mocks.setBranchHidden,
   switchBranch: mocks.switchBranch
 }));
 
