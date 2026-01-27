@@ -133,7 +133,7 @@ type InlineCommentSelection = {
   selectionText: string;
 };
 
-type InlineCommentMenuState = InlineCommentSelection & {
+type InlineCommentComposerState = InlineCommentSelection & {
   x: number;
   y: number;
 };
@@ -172,7 +172,7 @@ const applyInlineCommentsToDraft = (value: string, comments: InlineComment[]) =>
     if (!comment) {
       return match;
     }
-    return buildInlineCommentBlock(comment);
+    return `${buildInlineCommentBlock(comment)}\n`;
   });
 };
 
@@ -246,7 +246,7 @@ const applyInlineHighlight = (container: HTMLElement, highlight: InlineComment) 
   });
 };
 
-const getInlineSelection = (container: HTMLElement): InlineCommentSelection | null => {
+const getInlineSelectionAnchor = (container: HTMLElement): InlineCommentComposerState | null => {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return null;
   const range = selection.getRangeAt(0);
@@ -262,11 +262,15 @@ const getInlineSelection = (container: HTMLElement): InlineCommentSelection | nu
   const startOffset = startRange.toString().length;
   const endOffset = endRange.toString().length;
   if (startOffset === endOffset) return null;
+  const rect = range.getBoundingClientRect();
+  if (!rect || (rect.width === 0 && rect.height === 0)) return null;
   return {
     nodeId: container.dataset.nodeId ?? '',
     startOffset: Math.min(startOffset, endOffset),
     endOffset: Math.max(startOffset, endOffset),
-    selectionText
+    selectionText,
+    x: rect.left,
+    y: rect.bottom + 8
   };
 };
 
@@ -368,7 +372,7 @@ const NodeBubble: FC<{
   showOpenAiThinkingNote?: boolean;
   branchActionDisabled?: boolean;
   inlineComments?: InlineComment[];
-  onInlineCommentContextMenu?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
+  onInlineCommentSelection?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
   onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
@@ -385,7 +389,7 @@ const NodeBubble: FC<{
   showOpenAiThinkingNote = false,
   branchActionDisabled = false,
   inlineComments,
-  onInlineCommentContextMenu,
+  onInlineCommentSelection,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -591,7 +595,7 @@ const NodeBubble: FC<{
               <div
                 ref={assistantMessageRef}
                 data-node-id={node.id}
-                onContextMenu={(event) => onInlineCommentContextMenu?.(event, node, assistantMessageRef.current)}
+                onMouseUp={(event) => onInlineCommentSelection?.(event, node, assistantMessageRef.current)}
               >
                 <MarkdownWithCopy content={messageText} />
               </div>
@@ -874,7 +878,7 @@ const ChatNodeRow: FC<{
   showBranchSplit?: boolean;
   branchActionDisabled?: boolean;
   inlineComments?: InlineComment[];
-  onInlineCommentContextMenu?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
+  onInlineCommentSelection?: (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => void;
   onQuoteReply?: (messageText: string) => void;
 }> = ({
   node,
@@ -897,7 +901,7 @@ const ChatNodeRow: FC<{
   showBranchSplit,
   branchActionDisabled,
   inlineComments,
-  onInlineCommentContextMenu,
+  onInlineCommentSelection,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -942,7 +946,7 @@ const ChatNodeRow: FC<{
             showOpenAiThinkingNote={showOpenAiThinkingNote}
             branchActionDisabled={branchActionDisabled}
             inlineComments={inlineComments}
-            onInlineCommentContextMenu={onInlineCommentContextMenu}
+            onInlineCommentSelection={onInlineCommentSelection}
             onQuoteReply={onQuoteReply}
           />
           {showBranchSplit ? (
@@ -980,8 +984,7 @@ export function WorkspaceClient({
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [inlineComments, setInlineComments] = useState<InlineComment[]>([]);
-  const [inlineCommentMenu, setInlineCommentMenu] = useState<InlineCommentMenuState | null>(null);
-  const [inlineCommentModal, setInlineCommentModal] = useState<InlineCommentSelection | null>(null);
+  const [inlineCommentComposer, setInlineCommentComposer] = useState<InlineCommentComposerState | null>(null);
   const [inlineCommentDraft, setInlineCommentDraft] = useState('');
   const inlineCommentRemovalTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const inlineCommentIdRef = useRef(1);
@@ -1735,24 +1738,22 @@ export function WorkspaceClient({
     [draft]
   );
 
-  const handleInlineCommentContextMenu = useCallback(
-    (event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => {
+  const handleInlineCommentSelection = useCallback(
+    (_event: React.MouseEvent, node: RenderNode, container: HTMLDivElement | null) => {
       if (node.type !== 'message' || node.role !== 'assistant' || !container) return;
-      const selection = getInlineSelection(container);
+      const selection = getInlineSelectionAnchor(container);
       if (!selection) return;
-      event.preventDefault();
-      setInlineCommentMenu({
+      setInlineCommentComposer({
         ...selection,
-        nodeId: node.id,
-        x: event.clientX,
-        y: event.clientY
+        nodeId: node.id
       });
+      setInlineCommentDraft('');
     },
     []
   );
 
   const handleInlineCommentSubmit = useCallback(() => {
-    if (!inlineCommentModal) return;
+    if (!inlineCommentComposer) return;
     const response = inlineCommentDraft.trim();
     if (!response) return;
     const newId = inlineCommentIdRef.current++;
@@ -1760,10 +1761,10 @@ export function WorkspaceClient({
     const newComment: InlineComment = {
       id: createClientId(),
       marker,
-      nodeId: inlineCommentModal.nodeId,
-      startOffset: inlineCommentModal.startOffset,
-      endOffset: inlineCommentModal.endOffset,
-      selectionText: inlineCommentModal.selectionText,
+      nodeId: inlineCommentComposer.nodeId,
+      startOffset: inlineCommentComposer.startOffset,
+      endOffset: inlineCommentComposer.endOffset,
+      selectionText: inlineCommentComposer.selectionText,
       response,
       attached: true,
       createdAt: Date.now()
@@ -1771,20 +1772,20 @@ export function WorkspaceClient({
     setInlineComments((prev) => [...prev, newComment]);
     insertInlineCommentMarker(marker);
     setInlineCommentDraft('');
-    setInlineCommentModal(null);
+    setInlineCommentComposer(null);
     window.getSelection()?.removeAllRanges();
-  }, [inlineCommentDraft, inlineCommentModal, insertInlineCommentMarker]);
+  }, [inlineCommentDraft, inlineCommentComposer, insertInlineCommentMarker]);
 
   useEffect(() => {
-    if (!inlineCommentMenu) return;
-    const handleClose = () => setInlineCommentMenu(null);
+    if (!inlineCommentComposer) return;
+    const handleClose = () => setInlineCommentComposer(null);
     window.addEventListener('click', handleClose);
     window.addEventListener('scroll', handleClose, true);
     return () => {
       window.removeEventListener('click', handleClose);
       window.removeEventListener('scroll', handleClose, true);
     };
-  }, [inlineCommentMenu]);
+  }, [inlineCommentComposer]);
   const [assistantLifecycle, setAssistantLifecycle] = useState<AssistantLifecycle>('idle');
   const [streamMeta, setStreamMeta] = useState<StreamMeta | null>(null);
   const [streamCache, setStreamCache] = useState<{ preview: string; blocks: ThinkingContentBlock[] } | null>(null);
@@ -4609,8 +4610,8 @@ export function WorkspaceClient({
     setMergeSummary('');
     setMergeError(null);
   }, [isMerging]);
-  const closeInlineCommentModal = useCallback(() => {
-    setInlineCommentModal(null);
+  const closeInlineCommentComposer = useCallback(() => {
+    setInlineCommentComposer(null);
     setInlineCommentDraft('');
   }, []);
 
@@ -4641,11 +4642,6 @@ export function WorkspaceClient({
     () => buildModalBackdropHandler(closeCreateWorkspaceModal),
     [buildModalBackdropHandler, closeCreateWorkspaceModal]
   );
-  const handleInlineCommentBackdrop = useMemo(
-    () => buildModalBackdropHandler(closeInlineCommentModal),
-    [buildModalBackdropHandler, closeInlineCommentModal]
-  );
-
   return (
     <>
       {toasts.length > 0 ? (
@@ -4668,88 +4664,43 @@ export function WorkspaceClient({
           ))}
         </div>
       ) : null}
-      {inlineCommentMenu ? (
+      {inlineCommentComposer ? (
         <div
-          className="fixed z-50"
-          style={{ top: inlineCommentMenu.y, left: inlineCommentMenu.x }}
-          role="menu"
+          className="fixed z-50 w-[min(90vw,20rem)]"
+          style={{ top: inlineCommentComposer.y, left: inlineCommentComposer.x }}
           onMouseDown={(event) => {
             event.stopPropagation();
           }}
         >
-          <div className="rounded-xl border border-divider/80 bg-white p-1 shadow-lg">
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-primary/10"
-              onClick={() => {
-                setInlineCommentModal(inlineCommentMenu);
-                setInlineCommentMenu(null);
-                setInlineCommentDraft('');
-              }}
-              role="menuitem"
-            >
-              <BlueprintIcon icon="comment" className="h-3.5 w-3.5 text-slate-600" />
-              Respond
-            </button>
-          </div>
-        </div>
-      ) : null}
-      {inlineCommentModal ? (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4"
-          onMouseDown={handleInlineCommentBackdrop}
-          onTouchStart={handleInlineCommentBackdrop}
-        >
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="inline-comment-modal">
+          <div className="rounded-xl border border-divider/80 bg-white p-3 shadow-lg">
             <CommandEnterForm
               onSubmit={(event) => {
                 event.preventDefault();
                 handleInlineCommentSubmit();
               }}
               enableCommandEnter={inlineCommentDraft.trim().length > 0}
-              className="space-y-4"
+              className="space-y-3"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Respond to highlight</h3>
-                  <p className="text-sm text-muted">Your response will be inserted at the marker in the composer.</p>
-                </div>
+              <textarea
+                id="inline-comment-response"
+                value={inlineCommentDraft}
+                onChange={(event) => setInlineCommentDraft(event.target.value)}
+                rows={3}
+                className="w-full resize-y rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
+                placeholder="Respond to highlight"
+                required
+              />
+              <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={closeInlineCommentModal}
+                  onClick={closeInlineCommentComposer}
                   className="rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-primary/10"
-                >
-                  Close
-                </button>
-              </div>
-              <div className="rounded-xl border border-divider/70 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                {formatQuotedLines(inlineCommentModal.selectionText)}
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-800" htmlFor="inline-comment-response">
-                  Response
-                </label>
-                <textarea
-                  id="inline-comment-response"
-                  value={inlineCommentDraft}
-                  onChange={(event) => setInlineCommentDraft(event.target.value)}
-                  rows={4}
-                  className="w-full rounded-lg border border-divider/80 px-3 py-2 text-sm leading-relaxed shadow-sm focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                  placeholder="Write your response…"
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeInlineCommentModal}
-                  className="rounded-full border border-divider/80 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-primary/10"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                   disabled={!inlineCommentDraft.trim()}
                 >
                   Add response
@@ -5263,7 +5214,7 @@ export function WorkspaceClient({
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                                 branchActionDisabled={branchActionDisabled}
                                 inlineComments={inlineComments}
-                                onInlineCommentContextMenu={handleInlineCommentContextMenu}
+                                onInlineCommentSelection={handleInlineCommentSelection}
                                 onQuoteReply={handleQuoteReply}
                               />
                             ))}
@@ -5310,7 +5261,7 @@ export function WorkspaceClient({
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                           branchActionDisabled={branchActionDisabled}
                           inlineComments={inlineComments}
-                          onInlineCommentContextMenu={handleInlineCommentContextMenu}
+                          onInlineCommentSelection={handleInlineCommentSelection}
                           onQuoteReply={handleQuoteReply}
                         />
                       ))}
