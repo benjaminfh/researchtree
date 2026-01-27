@@ -46,7 +46,7 @@ const CodeBlock = ({ className, children }: CodeProps) => {
 
   return (
     <div className="group relative mt-4">
-      <pre className="overflow-x-auto rounded-xl bg-slate-900/90 p-4 text-sm leading-6 text-slate-50 shadow-sm">
+      <pre className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-100/80 p-4 text-sm leading-6 text-slate-900 shadow-sm">
         <code className={className}>{children}</code>
       </pre>
       <button
@@ -55,16 +55,16 @@ const CodeBlock = ({ className, children }: CodeProps) => {
           void handleCopy();
         }}
         aria-label={copied ? 'Code copied' : 'Copy code block'}
-        className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-slate-700/70 bg-slate-800/80 px-3 py-1 text-xs font-semibold text-slate-100 opacity-100 transition hover:bg-slate-700/90 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-slate-900"
+        className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 opacity-100 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-slate-100"
       >
         {copied ? (
           <>
-            <CheckIcon className="h-4 w-4 text-emerald-300" />
+            <CheckIcon className="h-4 w-4 text-emerald-600" />
             <span>Copied</span>
           </>
         ) : (
           <>
-            <Square2StackIcon className="h-4 w-4 text-slate-200" />
+            <Square2StackIcon className="h-4 w-4 text-slate-600" />
             <span>Copy</span>
           </>
         )}
