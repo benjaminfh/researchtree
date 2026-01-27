@@ -54,6 +54,7 @@ import { MarkdownWithCopy } from './MarkdownWithCopy';
 import { copyTextToClipboard } from './clipboard';
 import type { GraphViews } from '@/src/shared/graph';
 import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
+import { deriveForkParentNodeId } from '@/src/shared/graph/deriveForkParentNodeId';
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -83,6 +84,22 @@ const getNodeThinkingText = (node: NodeRecord): string => {
   return deriveThinkingFromBlocks(blocks);
 };
 
+const findFirstCreatedOnBranchNode = (nodes: NodeRecord[], branchName: string): NodeRecord | null => {
+  for (const node of nodes) {
+    if (node.createdOnBranch === branchName) {
+      return node;
+    }
+  }
+  return null;
+};
+
+const isQuestionBranchHistory = (nodes: NodeRecord[], branchName: string): boolean => {
+  const firstCreated = findFirstCreatedOnBranchNode(nodes, branchName);
+  if (!firstCreated || firstCreated.type !== 'message') return false;
+  const text = getNodeText(firstCreated);
+  return QUESTION_BRANCH_MARKER_REGEX.test(text);
+};
+
 const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
 
 const formatCharLimitMessage = (label: string, current: number, max: number) => {
@@ -103,6 +120,8 @@ const buildQuestionMessage = (question: string, highlight?: string) => {
   }
   return ['Highlighted passage:', `"""${trimmedHighlight}"""`, '', 'Question:', trimmedQuestion].join('\n');
 };
+
+const QUESTION_BRANCH_MARKER_REGEX = /highlighted passage:/i;
 
 const createClientId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -1294,23 +1313,45 @@ export function WorkspaceClient({
     (entries: QuestionBranchRef[]) => entries.map(resolveQuestionBranchName),
     [resolveQuestionBranchName]
   );
+  const missingQuestionBranchForkWarningRef = useRef<Set<string>>(new Set());
 
   const addQuestionBranchForNode = useCallback(
     (nodeId: string | null | undefined, branchName: string) => {
-    if (!nodeId) return;
-    const key = String(nodeId);
-    const refId = branchLookup.idByName.get(branchName) ?? null;
-    setQuestionBranchesByNode((prev) => {
-      const existing = prev[key] ?? [];
-      const alreadyTracked = refId
-        ? existing.some((entry) => entry.refId === refId)
-        : existing.some((entry) => entry.refName === branchName);
-      if (alreadyTracked) {
-        return prev;
+      if (!nodeId) return;
+      const key = String(nodeId);
+      const refId = branchLookup.idByName.get(branchName) ?? null;
+      setQuestionBranchesByNode((prev) => {
+        const existing = prev[key] ?? [];
+        const alreadyTracked = refId
+          ? existing.some((entry) => entry.refId === refId)
+          : existing.some((entry) => entry.refName === branchName);
+        if (alreadyTracked) {
+          return prev;
+        }
+        return { ...prev, [key]: [...existing, { refId, refName: branchName }] };
+      });
+    },
+    [branchLookup]
+  );
+
+  const rehydrateQuestionBranches = useCallback(
+    (histories: Record<string, NodeRecord[]>) => {
+      for (const [branchName, nodes] of Object.entries(histories)) {
+        if (!isQuestionBranchHistory(nodes, branchName)) continue;
+        const forkParentId = deriveForkParentNodeId(histories, branchName);
+        if (!forkParentId) {
+          const warned = missingQuestionBranchForkWarningRef.current;
+          if (!warned.has(branchName)) {
+            warned.add(branchName);
+            console.warn(`[workspace] question branch rehydrate missing fork parent for ${branchName}`);
+          }
+          continue;
+        }
+        addQuestionBranchForNode(forkParentId, branchName);
       }
-      return { ...prev, [key]: [...existing, { refId, refName: branchName }] };
-    });
-  }, [branchLookup]);
+    },
+    [addQuestionBranchForNode]
+  );
 
   useEffect(() => {
     setQuestionBranchesByNode((prev) => {
@@ -1724,6 +1765,25 @@ export function WorkspaceClient({
   const refreshCoreData = useCallback(() => {
     void Promise.allSettled([refreshHistory(), mutateArtefact()]);
   }, [refreshHistory, mutateArtefact]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadQuestionBranchGraph = async () => {
+      try {
+        const res = await fetch(`/api/projects/${project.id}/graph?includeHidden=true`, { signal: controller.signal });
+        if (!res.ok) {
+          throw new Error('Failed to load graph');
+        }
+        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
+        if (!data.branchHistories) return;
+        rehydrateQuestionBranches(data.branchHistories);
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        console.error('[workspace] question branch rehydrate failed', err);
+      }
+    };
+    void loadQuestionBranchGraph();
+    return () => controller.abort();
+  }, [project.id, rehydrateQuestionBranches]);
   const clearPendingAutosave = useCallback(() => {
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
