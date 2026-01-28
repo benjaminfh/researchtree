@@ -520,7 +520,7 @@ const NodeBubble: FC<{
     : isUser
       ? 'min-w-[14rem] max-w-[82%]'
       : isAssistant
-        ? 'w-full max-w-[85%] md:max-w-[calc(100%-14rem)]'
+        ? 'w-full'
         : 'max-w-[82%]';
   const base = `relative ${width} overflow-hidden rounded-2xl border px-4 py-3 transition`;
   const mergeChrome = isMerge ? 'border-emerald-200/80 pb-6 pr-10' : 'border-transparent';
@@ -1452,6 +1452,8 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
+        setNewBranchProvider(normalizeProviderForUi(branchProvider));
+        setNewBranchThinking(thinking);
         setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
         setNewBranchHighlight(selectionText);
@@ -6009,7 +6011,7 @@ export function WorkspaceClient({
               >
                 <div
                   ref={composerRef}
-                  className="flex items-center gap-2 border border-divider bg-white px-3 py-2 shadow-composer"
+                  className="flex items-stretch gap-2 border border-divider bg-white px-3 py-2 shadow-composer"
                   style={{
                     borderRadius: composerCornerRadius ? `${composerCornerRadius}px` : '9999px'
                   }}
@@ -6047,7 +6049,7 @@ export function WorkspaceClient({
                       )}
                     </div> */}
                   </div>
-                  <div className="relative flex-1">
+                  <div className="relative flex flex-1 items-center">
                     <textarea
 
                       ref={composerTextareaRef}

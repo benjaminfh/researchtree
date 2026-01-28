@@ -582,7 +582,7 @@ describe('WorkspaceClient', () => {
     await waitFor(() => {
       const assistantMessage = screen.getByText('All tasks queued.');
       const bubble = assistantMessage.closest('article')?.querySelector('div');
-      expect(bubble?.className).toContain('max-w-[85%]');
+      expect(bubble?.className).toContain('w-full');
     });
   });
 
@@ -1441,7 +1441,9 @@ describe('WorkspaceClient', () => {
     const modal = await screen.findByTestId('branch-modal');
     expect(modal).toBeInTheDocument();
 
-    await user.type(screen.getByTestId('branch-form-modal-input'), 'feature/question-branch');
+    const branchInput = screen.getByTestId('branch-form-modal-input');
+    await user.clear(branchInput);
+    await user.type(branchInput, 'feature/question-branch');
     await user.type(
       within(modal).getByPlaceholderText(/what do you want to ask on this branch/i),
       'What should we do next?'
