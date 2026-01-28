@@ -613,7 +613,7 @@ describe('WorkspaceClient', () => {
     const user = userEvent.setup();
     const branches: BranchSummary[] = [
       { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
-      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: true }
     ];
 
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -623,7 +623,7 @@ describe('WorkspaceClient', () => {
           JSON.stringify({
             branches,
             trunkName: 'main',
-            currentBranch: 'main',
+            currentBranch: 'feature/phase-2',
             branchHistories: {
               main: sampleNodes.slice(0, 2),
               'feature/phase-2': sampleNodes
@@ -639,10 +639,10 @@ describe('WorkspaceClient', () => {
       if (url.includes('/branches/') && url.includes('/visibility') && init?.method === 'PATCH') {
         return new Response(
           JSON.stringify({
-            branchName: 'main',
+            branchName: 'feature/phase-2',
             branches: [
               branches[0],
-              { ...branches[1], isHidden: true }
+              { ...branches[1], isHidden: false }
             ]
           }),
           { status: 200 }
@@ -659,7 +659,7 @@ describe('WorkspaceClient', () => {
 
     render(
       <WorkspaceClient
-        project={{ ...baseProject, branchName: 'main' }}
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
         initialBranches={branches}
         defaultProvider="openai"
         providerOptions={providerOptions}
@@ -671,17 +671,17 @@ describe('WorkspaceClient', () => {
     expect(branchRow).toBeTruthy();
     const menuButton = within(branchRow as HTMLElement).getByRole('button', { name: /branch options/i });
     await user.click(menuButton);
-    const toggle = screen.getByRole('button', { name: 'Hide branch' });
+    const toggle = screen.getByRole('button', { name: 'Show branch' });
     await user.click(toggle);
 
     const visibilityCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/visibility'));
     expect(visibilityCall).toBeTruthy();
     const [, init] = visibilityCall as [RequestInfo | URL, RequestInit];
-    expect(JSON.parse(init?.body as string)).toEqual({ isHidden: true });
+    expect(JSON.parse(init?.body as string)).toEqual({ isHidden: false });
 
     await user.click(menuButton);
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show branch' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Hide branch' })).toBeInTheDocument();
     });
     expect((branchRow as HTMLElement).textContent?.toLowerCase()).not.toContain('hidden');
   });
@@ -700,7 +700,7 @@ describe('WorkspaceClient', () => {
           JSON.stringify({
             branches,
             trunkName: 'main',
-            currentBranch: 'main',
+            currentBranch: 'feature/phase-2',
             branchHistories: {
               main: sampleNodes.slice(0, 2),
               'feature/phase-2': sampleNodes
@@ -735,7 +735,7 @@ describe('WorkspaceClient', () => {
 
     render(
       <WorkspaceClient
-        project={{ ...baseProject, branchName: 'main' }}
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
         initialBranches={branches}
         defaultProvider="openai"
         providerOptions={providerOptions}
@@ -774,7 +774,7 @@ describe('WorkspaceClient', () => {
           JSON.stringify({
             branches,
             trunkName: 'main',
-            currentBranch: 'main',
+            currentBranch: 'feature/phase-2',
             branchHistories: {
               main: sampleNodes.slice(0, 2),
               'feature/phase-2': sampleNodes
@@ -810,7 +810,7 @@ describe('WorkspaceClient', () => {
 
     render(
       <WorkspaceClient
-        project={{ ...baseProject, branchName: 'main' }}
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
         initialBranches={branches}
         defaultProvider="openai"
         providerOptions={providerOptions}
