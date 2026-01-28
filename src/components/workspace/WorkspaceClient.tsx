@@ -457,7 +457,7 @@ const NodeBubble: FC<{
   isQuestionBranchesOpen?: boolean;
   onToggleQuestionBranches?: () => void;
   quoteSelectionText?: string;
-  onQuoteReply?: (messageText: string, selectionText?: string) => void;
+  onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
   node,
   muted = false,
@@ -849,7 +849,7 @@ const NodeBubble: FC<{
           {canQuoteReply ? (
             <button
               type="button"
-              onClick={() => onQuoteReply(messageText, quoteSelectionText)}
+              onClick={() => onQuoteReply(node.id, messageText, quoteSelectionText)}
               disabled={branchActionDisabled}
               className={`rounded-full px-2 py-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
                 quoteSelectionActive
@@ -940,7 +940,7 @@ const ChatNodeRow: FC<{
   onQuestionBranchIndexChange?: (index: number) => void;
   projectId: string;
   quoteSelectionText?: string;
-  onQuoteReply?: (messageText: string, selectionText?: string) => void;
+  onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
   node,
   trunkName,
@@ -2428,8 +2428,9 @@ export function WorkspaceClient({
 
   const expandComposer = useCallback(() => toggleComposerCollapsed(false), [toggleComposerCollapsed]);
   const handleQuoteReply = useCallback(
-    (messageText: string, selectionText?: string) => {
-      const trimmedSelection = selectionText?.trim() ?? '';
+    (nodeId: string, messageText: string, selectionText?: string) => {
+      const scopedSelection = getSelectionForNode(nodeId);
+      const trimmedSelection = scopedSelection || selectionText?.trim() || '';
       const sourceText = trimmedSelection || messageText;
       const normalized = sourceText.replace(/\r\n/g, '\n');
       const quoted = normalized
@@ -2455,7 +2456,7 @@ export function WorkspaceClient({
         }
       }, 0);
     },
-    [composerCollapsed, expandComposer]
+    [composerCollapsed, expandComposer, getSelectionForNode]
   );
   const toggleAllWorkspacePanels = useCallback(() => {
     const railState = railStateRef.current;
