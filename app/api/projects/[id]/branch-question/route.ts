@@ -56,11 +56,12 @@ export async function POST(request: Request, { params }: RouteContext) {
       throw badRequest('Question branches require an assistant highlight and fromNodeId.');
     }
 
+    const shouldHide = shouldSwitch === false;
     const createResult: BranchCreateResult = await (async () => {
       if (store.mode === 'pg') {
         return await withProjectLock(params.id, async () => {
           const { rtGetCurrentRefShadowV2, rtSetCurrentRefShadowV2 } = await import('@/src/store/pg/prefs');
-          const { rtCreateRefFromNodeShadowV2 } = await import('@/src/store/pg/branches');
+          const { rtCreateRefFromNodeShadowV2, rtSetRefHiddenShadowV1 } = await import('@/src/store/pg/branches');
           const { rtGetNodeContentShadowV1 } = await import('@/src/store/pg/nodes');
           const { rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
 
@@ -114,8 +115,14 @@ export async function POST(request: Request, { params }: RouteContext) {
             previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
           });
 
-          const branches = await rtListRefsShadowV2({ projectId: params.id });
+          let branches = await rtListRefsShadowV2({ projectId: params.id });
           const newBranch = branches.find((branch) => branch.name === name);
+          if (shouldHide && newBranch?.id) {
+            await rtSetRefHiddenShadowV1({ projectId: params.id, refId: newBranch.id, isHidden: true });
+            branches = branches.map((branch) =>
+              branch.id === newBranch.id ? { ...branch, isHidden: true } : branch
+            );
+          }
           if (shouldSwitch && newBranch?.id) {
             await rtSetCurrentRefShadowV2({ projectId: params.id, refId: newBranch.id });
           }
@@ -130,7 +137,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       }
 
       const { getProject } = await import('@git/projects');
-      const { createBranch, listBranches, switchBranch } = await import('@git/branches');
+      const { createBranch, listBranches, setBranchHidden, switchBranch } = await import('@git/branches');
       const project = await getProject(params.id);
       if (!project) {
         throw notFound('Project not found');
@@ -174,6 +181,10 @@ export async function POST(request: Request, { params }: RouteContext) {
           model: resolvedConfig.model,
           previousResponseId: shouldCopyPreviousResponseId ? nodeResponseId : null
         });
+
+        if (shouldHide) {
+          await setBranchHidden(project.id, name, true);
+        }
 
         const branches = await listBranches(project.id);
         if (shouldSwitch) {

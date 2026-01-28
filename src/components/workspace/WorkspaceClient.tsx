@@ -54,6 +54,7 @@ import { MarkdownWithCopy } from './MarkdownWithCopy';
 import { copyTextToClipboard } from './clipboard';
 import type { GraphViews } from '@/src/shared/graph';
 import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
+import { deriveForkParentNodeId } from '@/src/shared/graph/deriveForkParentNodeId';
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -81,6 +82,22 @@ const getNodeThinkingText = (node: NodeRecord): string => {
   if (node.type !== 'message') return '';
   const blocks = getNodeBlocks(node);
   return deriveThinkingFromBlocks(blocks);
+};
+
+const findFirstCreatedOnBranchNode = (nodes: NodeRecord[], branchName: string): NodeRecord | null => {
+  for (const node of nodes) {
+    if (node.createdOnBranch === branchName) {
+      return node;
+    }
+  }
+  return null;
+};
+
+const isQuestionBranchHistory = (nodes: NodeRecord[], branchName: string): boolean => {
+  const firstCreated = findFirstCreatedOnBranchNode(nodes, branchName);
+  if (!firstCreated || firstCreated.type !== 'message') return false;
+  const text = getNodeText(firstCreated);
+  return QUESTION_BRANCH_MARKER_REGEX.test(text);
 };
 
 const normalizeMessageText = (value: string) => value.replace(/\r\n/g, '\n').trim();
@@ -113,11 +130,234 @@ const buildQuestionMessage = (question: string, highlight?: string) => {
   return ['Highlighted passage:', `"""${trimmedHighlight}"""`, '', 'Question:', trimmedQuestion].join('\n');
 };
 
+const QUESTION_BRANCH_MARKER_REGEX = /highlighted passage:/i;
+
 const createClientId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
   }
   return `id-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+};
+
+const MiniChatMessage: FC<{ node: MessageNode }> = ({ node }) => {
+  const messageText = getNodeText(node);
+  if (!messageText) return null;
+  const isUser = node.role === 'user';
+  const align = isUser ? 'items-end' : 'items-start';
+  const bubble = isUser
+    ? 'bg-slate-100 text-slate-900'
+    : 'border border-divider/70 bg-white text-slate-900';
+
+  return (
+    <div className={`flex ${align}`}>
+      <div className={`max-w-full rounded-xl px-3 py-2 text-sm ${bubble}`}>
+        {isUser ? (
+          <p className="whitespace-pre-line break-words text-sm leading-relaxed">{messageText}</p>
+        ) : (
+          <div className="prose prose-sm prose-slate max-w-none break-words">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageText}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const QuestionBranchModal: FC<{
+  projectId: string;
+  branchName: string;
+  index: number;
+  total: number;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+}> = ({ projectId, branchName, index, total, onClose, onPrevious, onNext }) => {
+  const { nodes, isLoading, error } = useProjectData(projectId, { ref: branchName });
+  const messageNodes = useMemo(
+    () => nodes.filter((node): node is MessageNode => node.type === 'message'),
+    [nodes]
+  );
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const positionKey = 'question-branch-preview-position';
+  const questionNodeIndex = useMemo(() => {
+    for (let i = messageNodes.length - 1; i >= 0; i -= 1) {
+      if (messageNodes[i]?.role === 'user') {
+        return i;
+      }
+    }
+    return -1;
+  }, [messageNodes]);
+  const questionNode = questionNodeIndex >= 0 ? messageNodes[questionNodeIndex] : null;
+  const questionText = questionNode ? getNodeText(questionNode) : '';
+  const answerNode =
+    questionNodeIndex >= 0
+      ? messageNodes.slice(questionNodeIndex + 1).find((node) => node.role === 'assistant') ?? null
+      : null;
+  const displayNodes = answerNode ? [answerNode] : [];
+  const canNavigate = total > 1;
+  const clampDragOffset = useCallback((nextX: number, nextY: number) => {
+    if (typeof window === 'undefined') return { x: nextX, y: nextY };
+    const modal = modalRef.current;
+    if (!modal) return { x: nextX, y: nextY };
+    const maxX = Math.max(0, (window.innerWidth - modal.offsetWidth) / 2 - 16);
+    const maxY = Math.max(0, (window.innerHeight - modal.offsetHeight) / 2 - 16);
+    return {
+      x: Math.min(maxX, Math.max(-maxX, nextX)),
+      y: Math.min(maxY, Math.max(-maxY, nextY))
+    };
+  }, []);
+  const persistOffset = useCallback((value: { x: number; y: number }) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(positionKey, JSON.stringify(value));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = window.sessionStorage.getItem(positionKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { x?: number; y?: number } | null;
+      if (!parsed || typeof parsed.x !== 'number' || typeof parsed.y !== 'number') return;
+      setDragOffset(clampDragOffset(parsed.x, parsed.y));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [clampDragOffset]);
+
+  const handleDragStart = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('button')) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      dragStateRef.current = {
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: dragOffset.x,
+        originY: dragOffset.y
+      };
+    },
+    [dragOffset]
+  );
+
+  const handleDragMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragStateRef.current) return;
+      const { startX, startY, originX, originY } = dragStateRef.current;
+      const nextX = originX + event.clientX - startX;
+      const nextY = originY + event.clientY - startY;
+      setDragOffset(clampDragOffset(nextX, nextY));
+    },
+    [clampDragOffset]
+  );
+
+  const handleDragEnd = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragStateRef.current) return;
+      dragStateRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      persistOffset(dragOffset);
+    },
+    [dragOffset, persistOffset]
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/40 px-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+      onTouchStart={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={modalRef}
+        className="w-full max-w-xl rounded-2xl border border-divider/70 bg-white shadow-2xl"
+        style={dragOffset.x || dragOffset.y ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : undefined}
+        data-question-branches-modal="true"
+        role="dialog"
+        aria-label="Question branch preview"
+      >
+        <div
+          className="flex cursor-move items-center justify-between gap-2 border-b border-divider/60 px-4 py-3 touch-none"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question branch</p>
+            <p className="truncate text-sm font-semibold text-slate-900">{branchName}</p>
+          </div>
+          <div className="flex items-center gap-1">
+            {canNavigate ? (
+              <div className="flex items-center gap-1 text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={onPrevious}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+                  aria-label="Previous question branch"
+                >
+                  <BlueprintIcon icon="chevron-left" className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-[40px] text-center">
+                  {index + 1} / {total}
+                </span>
+                <button
+                  type="button"
+                  onClick={onNext}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+                  aria-label="Next question branch"
+                >
+                  <BlueprintIcon icon="chevron-right" className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/70 text-slate-600 transition hover:bg-slate-50"
+              aria-label="Close question branch preview"
+            >
+              <BlueprintIcon icon="cross" className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="px-4 py-3">
+          {questionText ? (
+            <div className="rounded-xl border border-slate-200/70 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question</p>
+              <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed">{questionText}</p>
+            </div>
+          ) : null}
+          <div className="mt-3 max-h-64 space-y-3 overflow-y-auto">
+            {isLoading ? (
+              <p className="text-sm text-slate-500">Loading branch history…</p>
+            ) : error ? (
+              <p className="text-sm text-red-600">Failed to load branch history.</p>
+            ) : displayNodes.length === 0 ? (
+              <p className="text-sm text-slate-500">No responses yet.</p>
+            ) : (
+              displayNodes.map((node) => <MiniChatMessage key={node.id} node={node} />)
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 type DiffLine = {
@@ -159,6 +399,11 @@ type BranchListItem = BranchSummary & {
 };
 
 type StoreMode = 'pg' | 'git';
+
+type QuestionBranchRef = {
+  refId?: string | null;
+  refName: string;
+};
 
 type ProjectMember = {
   userId: string;
@@ -217,6 +462,9 @@ const NodeBubble: FC<{
   branchQuestionCandidate?: boolean;
   showOpenAiThinkingNote?: boolean;
   branchActionDisabled?: boolean;
+  questionBranchCount?: number;
+  isQuestionBranchesOpen?: boolean;
+  onToggleQuestionBranches?: () => void;
   quoteSelectionText?: string;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
@@ -233,6 +481,9 @@ const NodeBubble: FC<{
   branchQuestionCandidate = false,
   showOpenAiThinkingNote = false,
   branchActionDisabled = false,
+  questionBranchCount = 0,
+  isQuestionBranchesOpen = false,
+  onToggleQuestionBranches,
   quoteSelectionText,
   onQuoteReply
 }) => {
@@ -246,6 +497,7 @@ const NodeBubble: FC<{
   const thinkingText = getNodeThinkingText(node);
   const canCopy = node.type === 'message' && messageText.length > 0;
   const canQuoteReply = isAssistant && messageText.length > 0 && onQuoteReply;
+  const hasQuestionBranches = questionBranchCount > 0 && onToggleQuestionBranches;
   const quoteSelectionActive = Boolean(quoteSelectionText?.trim());
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -648,6 +900,21 @@ const NodeBubble: FC<{
               )}
             </button>
           ) : null}
+          {hasQuestionBranches ? (
+            <button
+              type="button"
+              onClick={onToggleQuestionBranches}
+              data-question-branches-button="true"
+              className={`rounded-full px-2 py-1 focus:outline-none transition ${
+                isQuestionBranchesOpen
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-slate-100 text-slate-600 hover:bg-primary/10 hover:text-primary'
+              }`}
+              aria-label="View question branches"
+            >
+              <BlueprintIcon icon="endnote" className="h-4 w-4" />
+            </button>
+          ) : null}
           {!isUser ? <span>{new Date(node.timestamp).toLocaleTimeString()}</span> : null}
         </div>
       </div>
@@ -675,6 +942,12 @@ const ChatNodeRow: FC<{
   branchQuestionCandidate?: boolean;
   showBranchSplit?: boolean;
   branchActionDisabled?: boolean;
+  questionBranchNames?: string[];
+  isQuestionBranchesOpen?: boolean;
+  questionBranchIndex?: number;
+  onToggleQuestionBranches?: () => void;
+  onQuestionBranchIndexChange?: (index: number) => void;
+  projectId: string;
   quoteSelectionText?: string;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
@@ -697,6 +970,12 @@ const ChatNodeRow: FC<{
   branchQuestionCandidate,
   showBranchSplit,
   branchActionDisabled,
+  questionBranchNames,
+  isQuestionBranchesOpen = false,
+  questionBranchIndex = 0,
+  onToggleQuestionBranches,
+  onQuestionBranchIndexChange,
+  projectId,
   quoteSelectionText,
   onQuoteReply
 }) => {
@@ -707,6 +986,12 @@ const ChatNodeRow: FC<{
   const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
   const showOpenAiThinkingNote = nodeProvider === 'openai';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
+  const questionBranches = questionBranchNames ?? [];
+  const activeQuestionBranch =
+    questionBranches.length > 0
+      ? questionBranches[Math.min(questionBranchIndex, questionBranches.length - 1)]
+      : null;
+  const rowRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <div
@@ -726,7 +1011,7 @@ const ChatNodeRow: FC<{
           isMerge ? 'flex justify-center' : isUser ? 'flex justify-end' : 'flex justify-start'
         }`}
       >
-        <div className="flex w-full flex-col">
+        <div ref={rowRef} className="relative flex w-full flex-col">
           <NodeBubble
             node={node}
             muted={muted}
@@ -741,9 +1026,29 @@ const ChatNodeRow: FC<{
             branchQuestionCandidate={branchQuestionCandidate}
             showOpenAiThinkingNote={showOpenAiThinkingNote}
             branchActionDisabled={branchActionDisabled}
+            questionBranchCount={questionBranches.length}
+            isQuestionBranchesOpen={isQuestionBranchesOpen}
+            onToggleQuestionBranches={onToggleQuestionBranches}
             quoteSelectionText={quoteSelectionText}
             onQuoteReply={onQuoteReply}
           />
+          {isQuestionBranchesOpen && activeQuestionBranch ? (
+            <QuestionBranchModal
+              projectId={projectId}
+              branchName={activeQuestionBranch}
+              index={questionBranchIndex}
+              total={questionBranches.length}
+              onClose={() => onToggleQuestionBranches?.()}
+              onPrevious={() =>
+                onQuestionBranchIndexChange?.(
+                  (questionBranchIndex - 1 + questionBranches.length) % questionBranches.length
+                )
+              }
+              onNext={() =>
+                onQuestionBranchIndexChange?.((questionBranchIndex + 1) % questionBranches.length)
+              }
+            />
+          ) : null}
           {showBranchSplit ? (
             <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
               <span className="flex-1 border-t border-dashed border-slate-200" />
@@ -839,6 +1144,9 @@ export function WorkspaceClient({
   const [newBranchQuestion, setNewBranchQuestion] = useState('');
   const [newBranchHighlight, setNewBranchHighlight] = useState('');
   const [switchToNewBranch, setSwitchToNewBranch] = useState(false);
+  const [questionBranchesByNode, setQuestionBranchesByNode] = useState<Record<string, QuestionBranchRef[]>>({});
+  const [openQuestionBranchNodeId, setOpenQuestionBranchNodeId] = useState<string | null>(null);
+  const [openQuestionBranchIndex, setOpenQuestionBranchIndex] = useState(0);
   const autosaveControllerRef = useRef<AbortController | null>(null);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveSavingTokenRef = useRef(0);
@@ -874,6 +1182,23 @@ export function WorkspaceClient({
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const [composerCornerRadius, setComposerCornerRadius] = useState<number | null>(null);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+  const branchLookup = useMemo(() => {
+    const nameById = new Map<string, string>();
+    const idByName = new Map<string, string>();
+    const identityByName = new Map<string, string>();
+    for (const branch of branches) {
+      identityByName.set(branch.name, branch.id ?? branch.name);
+      if (branch.id) {
+        nameById.set(branch.id, branch.name);
+        idByName.set(branch.name, branch.id);
+      }
+    }
+    return { nameById, idByName, identityByName };
+  }, [branches]);
+  const getBranchIdentity = useCallback(
+    (branch: BranchSummary) => branchLookup.identityByName.get(branch.name) ?? branch.name,
+    [branchLookup]
+  );
   const collapseInsights = useCallback(() => {
     savedChatPaneWidthRef.current = chatPaneWidth;
     setChatPaneWidth(null);
@@ -982,6 +1307,115 @@ export function WorkspaceClient({
     }
     return true;
   }, [isPgMode, leaseSessionId, leaseSessionReady, pushToast]);
+
+  const resolveQuestionBranchName = useCallback(
+    (entry: QuestionBranchRef) => {
+      if (entry.refId) {
+        return branchLookup.nameById.get(entry.refId) ?? entry.refName;
+      }
+      return entry.refName;
+    },
+    [branchLookup]
+  );
+
+  const resolveQuestionBranchNames = useCallback(
+    (entries: QuestionBranchRef[]) => entries.map(resolveQuestionBranchName),
+    [resolveQuestionBranchName]
+  );
+  const missingQuestionBranchForkWarningRef = useRef<Set<string>>(new Set());
+
+  const addQuestionBranchForNode = useCallback(
+    (nodeId: string | null | undefined, branchName: string) => {
+      if (!nodeId) return;
+      const key = String(nodeId);
+      const refId = branchLookup.idByName.get(branchName) ?? null;
+      setQuestionBranchesByNode((prev) => {
+        const existing = prev[key] ?? [];
+        const alreadyTracked = refId
+          ? existing.some((entry) => entry.refId === refId)
+          : existing.some((entry) => entry.refName === branchName);
+        if (alreadyTracked) {
+          return prev;
+        }
+        return { ...prev, [key]: [...existing, { refId, refName: branchName }] };
+      });
+    },
+    [branchLookup]
+  );
+
+  const rehydrateQuestionBranches = useCallback(
+    (histories: Record<string, NodeRecord[]>) => {
+      for (const [branchName, nodes] of Object.entries(histories)) {
+        if (!isQuestionBranchHistory(nodes, branchName)) continue;
+        const forkParentId = deriveForkParentNodeId(histories, branchName);
+        if (!forkParentId) {
+          const warned = missingQuestionBranchForkWarningRef.current;
+          if (!warned.has(branchName)) {
+            warned.add(branchName);
+            console.warn(`[workspace] question branch rehydrate missing fork parent for ${branchName}`);
+          }
+          continue;
+        }
+        addQuestionBranchForNode(forkParentId, branchName);
+      }
+    },
+    [addQuestionBranchForNode]
+  );
+
+  useEffect(() => {
+    setQuestionBranchesByNode((prev) => {
+      let changed = false;
+      const next: Record<string, QuestionBranchRef[]> = {};
+      for (const [nodeId, entries] of Object.entries(prev)) {
+        const updated = entries.map((entry) => {
+          if (entry.refId) return entry;
+          const resolvedId = branchLookup.idByName.get(entry.refName);
+          if (!resolvedId) return entry;
+          changed = true;
+          return { ...entry, refId: resolvedId };
+        });
+        next[nodeId] = updated;
+      }
+      return changed ? next : prev;
+    });
+  }, [branchLookup]);
+
+  const toggleQuestionBranchesForNode = useCallback((nodeId: string) => {
+    setOpenQuestionBranchIndex(0);
+    setOpenQuestionBranchNodeId((prev) => (prev === nodeId ? null : nodeId));
+  }, []);
+
+  useEffect(() => {
+    if (!openQuestionBranchNodeId) return;
+    const branches = questionBranchesByNode[openQuestionBranchNodeId] ?? [];
+    if (branches.length === 0) {
+      setOpenQuestionBranchNodeId(null);
+      setOpenQuestionBranchIndex(0);
+      return;
+    }
+    if (openQuestionBranchIndex > branches.length - 1) {
+      setOpenQuestionBranchIndex(0);
+    }
+  }, [openQuestionBranchIndex, openQuestionBranchNodeId, questionBranchesByNode]);
+
+  useEffect(() => {
+    if (!openQuestionBranchNodeId) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        target.closest('[data-question-branches-modal="true"]') ||
+        target.closest('[data-question-branches-button="true"]')
+      ) {
+        return;
+      }
+      setOpenQuestionBranchNodeId(null);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [openQuestionBranchNodeId]);
 
   useEffect(() => {
     return () => {
@@ -1342,6 +1776,25 @@ export function WorkspaceClient({
   const refreshCoreData = useCallback(() => {
     void Promise.allSettled([refreshHistory(), mutateArtefact()]);
   }, [refreshHistory, mutateArtefact]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadQuestionBranchGraph = async () => {
+      try {
+        const res = await fetch(`/api/projects/${project.id}/graph?includeHidden=true`, { signal: controller.signal });
+        if (!res.ok) {
+          throw new Error('Failed to load graph');
+        }
+        const data = (await res.json()) as { branchHistories?: Record<string, NodeRecord[]> };
+        if (!data.branchHistories) return;
+        rehydrateQuestionBranches(data.branchHistories);
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        console.error('[workspace] question branch rehydrate failed', err);
+      }
+    };
+    void loadQuestionBranchGraph();
+    return () => controller.abort();
+  }, [project.id, rehydrateQuestionBranches]);
   const clearPendingAutosave = useCallback(() => {
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
@@ -1863,6 +2316,7 @@ export function WorkspaceClient({
       ),
       onResponse: () => {
         responded = true;
+        addQuestionBranchForNode(fromNodeId, targetBranch);
         onResponse?.();
       },
       debugLabel: 'branch-question'
@@ -2879,6 +3333,7 @@ export function WorkspaceClient({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
+  const [chatListWidth, setChatListWidth] = useState<number | null>(null);
 
   const minMessageListPadding = useMemo(() => {
     if (!Number.isFinite(messageLineHeight ?? NaN) || (messageLineHeight ?? 0) <= 0) {
@@ -2917,6 +3372,15 @@ export function WorkspaceClient({
     setPillBottomOffset(offset);
   }, []);
 
+  const updateChatListWidth = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const container = messageListRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || rect.width <= 0) return;
+    setChatListWidth(rect.width);
+  }, []);
+
   useLayoutEffect(() => {
     updateMessageLineHeight();
   }, [updateMessageLineHeight]);
@@ -2924,6 +3388,10 @@ export function WorkspaceClient({
   useLayoutEffect(() => {
     updatePillOffset();
   }, [updatePillOffset]);
+
+  useLayoutEffect(() => {
+    updateChatListWidth();
+  }, [updateChatListWidth]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2935,6 +3403,7 @@ export function WorkspaceClient({
         ? new ResizeObserver(() => {
             updateMessageLineHeight();
             updatePillOffset();
+            updateChatListWidth();
           })
         : null;
     if (sample) {
@@ -2944,11 +3413,13 @@ export function WorkspaceClient({
       resizeObserver?.observe(pill);
     }
     window.addEventListener('resize', updatePillOffset);
+    window.addEventListener('resize', updateChatListWidth);
     return () => {
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updatePillOffset);
+      window.removeEventListener('resize', updateChatListWidth);
     };
-  }, [updateMessageLineHeight, updatePillOffset]);
+  }, [updateMessageLineHeight, updatePillOffset, updateChatListWidth]);
 
   const { combinedNodes } = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
@@ -4012,6 +4483,7 @@ export function WorkspaceClient({
             throw new Error(data?.error?.message ?? 'Failed to send question to new branch');
           }
           responded = true;
+          addQuestionBranchForNode(fromNodeId, targetBranch);
           onResponse?.();
           const reader = res.body.getReader();
           const { errorMessage } = await consumeNdjsonStream(reader, {
@@ -4033,6 +4505,7 @@ export function WorkspaceClient({
       })();
     },
     [
+      addQuestionBranchForNode,
       displayBranchName,
       ensureLeaseSessionReady,
       finishBackgroundTask,
@@ -4065,7 +4538,7 @@ export function WorkspaceClient({
     setRenameError(null);
     setBranchActionError(null);
     try {
-      const branchId = renameTarget.id ?? renameTarget.name;
+      const branchId = getBranchIdentity(renameTarget);
       const res = await fetch(`/api/projects/${project.id}/branches/${encodeURIComponent(branchId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -4095,7 +4568,7 @@ export function WorkspaceClient({
   };
 
   const togglePinnedBranch = async (branch: BranchSummary) => {
-    const branchId = branch.id ?? branch.name;
+    const branchId = getBranchIdentity(branch);
     if (pendingPinBranchIds.has(branchId)) return;
     setBranchActionError(null);
     setPendingPinBranchIds((prev) => new Set(prev).add(branchId));
@@ -4134,7 +4607,7 @@ export function WorkspaceClient({
   };
 
   const toggleBranchVisibility = async (branch: BranchSummary) => {
-    const branchId = branch.id ?? branch.name;
+    const branchId = getBranchIdentity(branch);
     if (pendingVisibilityBranchIds.has(branchId)) return;
     const previousGraphHistories = graphHistories;
     const previousGraphViews = graphViews;
@@ -4188,7 +4661,7 @@ export function WorkspaceClient({
 
   const ensureBranchVisible = async (branch: BranchSummary): Promise<boolean> => {
     if (!branch.isHidden) return true;
-    const branchId = branch.id ?? branch.name;
+    const branchId = getBranchIdentity(branch);
     if (pendingVisibilityBranchIds.has(branchId)) return false;
     const prevBranches = branches;
     setBranchActionError(null);
@@ -4384,7 +4857,7 @@ export function WorkspaceClient({
                   </div>
                   <div className="flex-1 space-y-1 overflow-y-auto pr-1">
                     {sortedBranches.map((branch) => {
-                      const branchId = branch.id ?? branch.name;
+                      const branchId = getBranchIdentity(branch);
                       const pinPending = pendingPinBranchIds.has(branchId);
                       const visibilityPending = pendingVisibilityBranchIds.has(branchId);
                       const isPending = pendingBranchNames.has(branch.name);
@@ -4820,6 +5293,7 @@ export function WorkspaceClient({
                               <ChatNodeRow
                                 key={getNodeRenderKey(node)}
                                 node={node}
+                                projectId={project.id}
                                   trunkName={trunkName}
                                   currentBranchName={branchName}
                                 defaultProvider={defaultProvider}
@@ -4850,6 +5324,11 @@ export function WorkspaceClient({
                                   activeBranchHighlight?.nodeId === node.id &&
                                   Boolean(activeBranchHighlight.text.trim())
                                 }
+                                questionBranchNames={resolveQuestionBranchNames(questionBranchesByNode[node.id] ?? [])}
+                                isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
+                                questionBranchIndex={openQuestionBranchIndex}
+                                onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
+                                onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                                 quoteSelectionText={
                                   activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
                                 }
@@ -4870,6 +5349,7 @@ export function WorkspaceClient({
                         <ChatNodeRow
                           key={getNodeRenderKey(node)}
                           node={node}
+                          projectId={project.id}
                           trunkName={trunkName}
                           currentBranchName={branchName}
                           defaultProvider={defaultProvider}
@@ -4898,6 +5378,11 @@ export function WorkspaceClient({
                             activeBranchHighlight?.nodeId === node.id &&
                             Boolean(activeBranchHighlight.text.trim())
                           }
+                          questionBranchNames={resolveQuestionBranchNames(questionBranchesByNode[node.id] ?? [])}
+                          isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
+                          questionBranchIndex={openQuestionBranchIndex}
+                          onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
+                          onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                           quoteSelectionText={
                             activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
                           }
