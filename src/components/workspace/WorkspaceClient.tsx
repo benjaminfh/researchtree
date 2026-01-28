@@ -23,6 +23,7 @@ import {
   type ThinkingContentBlock
 } from '@/src/shared/thinkingTraces';
 import ReactMarkdown from 'react-markdown';
+import { NodeHtmlMarkdown } from 'node-html-markdown';
 import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
 import type { FC } from 'react';
@@ -140,104 +141,7 @@ const normalizeMarkdownOutput = (value: string) =>
     .trim();
 
 const convertHtmlToMarkdown = (html: string): string => {
-  if (typeof DOMParser === 'undefined') {
-    throw new Error('DOMParser unavailable');
-  }
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const convertNode = (node: Node): string => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      return node.textContent ?? '';
-    }
-    if (!(node instanceof Element)) {
-      return '';
-    }
-    const tag = node.tagName.toLowerCase();
-    const children = Array.from(node.childNodes).map(convertNode).join('');
-
-    switch (tag) {
-      case 'h1':
-        return `# ${children.trim()}\n\n`;
-      case 'h2':
-        return `## ${children.trim()}\n\n`;
-      case 'h3':
-        return `### ${children.trim()}\n\n`;
-      case 'h4':
-        return `#### ${children.trim()}\n\n`;
-      case 'h5':
-        return `##### ${children.trim()}\n\n`;
-      case 'h6':
-        return `###### ${children.trim()}\n\n`;
-      case 'p':
-        return `${children.trim()}\n\n`;
-      case 'br':
-        return '\n';
-      case 'strong':
-      case 'b':
-        return `**${children}**`;
-      case 'em':
-      case 'i':
-        return `*${children}*`;
-      case 'code': {
-        const text = children.trim();
-        if (node.parentElement?.tagName.toLowerCase() === 'pre') {
-          return text;
-        }
-        return text ? `\`${text}\`` : '';
-      }
-      case 'pre': {
-        const text = children.replace(/\n$/, '');
-        return `\n\`\`\`\n${text}\n\`\`\`\n\n`;
-      }
-      case 'a': {
-        const href = node.getAttribute('href') ?? '';
-        const label = children.trim() || href;
-        return href ? `[${label}](${href})` : label;
-      }
-      case 'img': {
-        const src = node.getAttribute('src');
-        if (!src) return '';
-        const alt = node.getAttribute('alt') ?? '';
-        return `![${alt}](${src})`;
-      }
-      case 'blockquote': {
-        const text = children.trim().replace(/\n/g, '\n> ');
-        return text ? `> ${text}\n\n` : '';
-      }
-      case 'ul': {
-        const items = Array.from(node.children)
-          .filter((child) => child.tagName.toLowerCase() === 'li')
-          .map((child) => {
-            const content = convertNode(child).trim();
-            const lines = content.split('\n');
-            return [`- ${lines[0] ?? ''}`, ...lines.slice(1).map((line) => `  ${line}`)].join('\n');
-          });
-        return items.length > 0 ? `${items.join('\n')}\n\n` : '';
-      }
-      case 'ol': {
-        const items = Array.from(node.children)
-          .filter((child) => child.tagName.toLowerCase() === 'li')
-          .map((child, index) => {
-            const content = convertNode(child).trim();
-            const lines = content.split('\n');
-            const prefix = `${index + 1}. `;
-            return [prefix + (lines[0] ?? ''), ...lines.slice(1).map((line) => `   ${line}`)].join('\n');
-          });
-        return items.length > 0 ? `${items.join('\n')}\n\n` : '';
-      }
-      case 'li': {
-        return children.trim();
-      }
-      case 'div':
-      case 'section':
-      case 'article':
-        return `${children.trim()}\n\n`;
-      default:
-        return children;
-    }
-  };
-
-  const output = convertNode(doc.body);
+  const output = NodeHtmlMarkdown.translate(html);
   return normalizeMarkdownOutput(output);
 };
 
