@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 function isDesktopRuntime(): boolean {
   if (process.env.RT_DESKTOP !== '1') return false;

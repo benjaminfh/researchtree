@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 const DEFAULT_LOCAL_PG_DB = 'threds';
 export const LOCAL_PG_USER_ID = '00000000-0000-0000-0000-000000000001';

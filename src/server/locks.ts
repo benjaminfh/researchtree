@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 const projectLocks = new Map<string, Promise<void>>();
 const projectRefLocks = new Map<string, Promise<void>>();

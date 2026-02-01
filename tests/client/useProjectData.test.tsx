@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import React, { ReactNode } from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';

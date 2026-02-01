@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 export const features = {
   uiEditAnyMessage: process.env.NEXT_PUBLIC_RT_UI_EDIT_ANY_MESSAGE === 'true',

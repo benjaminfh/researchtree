@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { HomePageContent } from '@/src/components/home/HomePageContent';
 import { requireUser } from '@/src/server/auth';

@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 'use client';
 
@@ -5279,6 +5280,28 @@ export function WorkspaceClient({
                     <li>Branch to try edits without losing the {TRUNK_LABEL}.</li>
                     <li>Canvas edits are per-branch; merge intentionally carries a diff summary.</li>
                   </ul>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <a
+                      href="https://github.com/benjaminfh/researchtree"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="focus-ring inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
+                      aria-label="Open GitHub repository"
+                    >
+                      <BlueprintIcon icon="git-repo" className="h-4 w-4" />
+                      Repo
+                    </a>
+                    <a
+                      href="https://github.com/benjaminfh/researchtree/issues"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="focus-ring inline-flex items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-1 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-primary/10"
+                      aria-label="Open GitHub issues"
+                    >
+                      <BlueprintIcon icon="issue-new" className="h-4 w-4" />
+                      New issue
+                    </a>
+                  </div>
                 </RailPopover>
               </div>
               <AuthRailStatus railCollapsed={ctx.railCollapsed} onRequestExpandRail={ctx.toggleRail} />

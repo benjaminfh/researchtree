@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 const fs = require('node:fs');
 const path = require('node:path');

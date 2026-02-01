@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { handleRouteError, badRequest, notFound } from '@/src/server/http';
 import { renameBranchSchema } from '@/src/server/schemas';

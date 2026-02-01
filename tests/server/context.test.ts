@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { buildChatContext } from '@/src/server/context';
