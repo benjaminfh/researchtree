@@ -16,6 +16,8 @@ ResearchTree is a branchable workspace for LLM-powered resaearch: each workspace
 
 The UI is built for exploring multiple lines of thought without poluting context, while keeping a retraceable breadcrumb trail of every message, branch, and merge.
 
+![ResearchTree UI](threds-screenshot.png)
+
 ## Highlights
 
 - Branch-first chat + canvas with explicit merge summaries and diff previews.
