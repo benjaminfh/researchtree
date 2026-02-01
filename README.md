@@ -22,7 +22,7 @@ The UI is built for exploring multiple lines of thought without polluting contex
 
 - Tree-centric (git branches) data model for managing chat contexts and tracking your reasoning chains.
 - Curate your context and then use the various branching flows to (e.g.)
-    - Fire off a  question about an assistant reply in the background - can be scoped to the entire reply or a highlighted section only.
+    - Fire off a  question about an assistant reply in the background - scoped by highlighting a section.
     - Ask a question and then switch to the new branch immediately to continue on that side quest.
     - Edit an earlier (user) message and explore on a new branch.
     - If your side adventure proved useful, merge the result back into another context (branch).
