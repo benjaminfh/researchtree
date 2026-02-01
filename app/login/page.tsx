@@ -4,6 +4,7 @@
 import { LoginForm } from './LoginForm';
 import { APP_NAME } from '@/src/config/app';
 import BranchingTracesBackground from '@/src/components/login/BranchingTracesBackground';
+import { isGithubAuthEnabled } from '@/src/server/authFeatures';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +43,7 @@ export default function LoginPage({ searchParams }: { searchParams?: { redirectT
   const prefillEmail = sanitizePrefillEmail(searchParams?.email ?? null);
   const initialMode = sanitizeMode(searchParams?.mode ?? null);
   const waitlistEnforced = isWaitlistEnforced();
+  const githubAuthEnabled = isGithubAuthEnabled();
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(226,232,255,0.7),_rgba(248,250,252,0.95)_48%,_rgba(255,255,255,1)_100%)] px-6 py-12">
       <BranchingTracesBackground className="absolute inset-0" />
@@ -59,6 +61,7 @@ export default function LoginPage({ searchParams }: { searchParams?: { redirectT
             initialEmail={prefillEmail}
             initialMode={initialMode}
             waitlistEnforced={waitlistEnforced}
+            githubAuthEnabled={githubAuthEnabled}
           />
         </div>
       </div>

@@ -16,7 +16,7 @@ ResearchTree is a branchable workspace for LLM-powered research: each workspace 
 
 The UI is built for exploring multiple lines of thought without polluting context, while keeping a retraceable breadcrumb trail of every message, branch, and merge.
 
-![ResearchTree UI](threds-screenshot.png)
+![ResearchTree UI](public/assets/threds-screenshot.png)
 
 ## Highlights
 
@@ -26,6 +26,7 @@ The UI is built for exploring multiple lines of thought without polluting contex
     - Ask a question and then switch to the new branch immediately to continue on that side quest.
     - Edit an earlier (user) message and explore on a new branch.
     - If your side adventure proved useful, merge the result back into another context (branch).
+- Provider-agnostic context management uses native state and thinking management until model-break (change of model at branch point) and then best efforts blending after breaks.
 - Live graph views to explore the reasoning DAG and jump between nodes.
 - Per-branch model/provider settings with thinking content (where available).
 - Quote replies to allow quick line-by-line markup replies - scoped to the entire content or highlight.
@@ -57,8 +58,6 @@ The UI is built for exploring multiple lines of thought without polluting contex
   - Edit locks (pg mode): branches can be locked to a single editor session to prevent write conflicts.
 - Profile (`/profile`)
   - Store provider API keys for local use.
-- Waitlist Admin (`/admin/waitlist`)
-  - Review requests and approve emails when the invite gate is enabled.
 
 ## Quick Start
 
@@ -202,13 +201,6 @@ Desktop loads `.env.desktop` and then `.env.local` (excluding Supabase keys), so
 - `npm run test:ui` - Vitest UI
 - `npm run lint` - type-check and Supabase usage validation
 - `npm run local:pg:bootstrap` - run local Postgres migrations manually
-
-## Auth and Waitlist
-
-Invite-gated auth is controlled by `RT_WAITLIST_ENFORCE`.
-
-- When enabled, only allowlisted emails can sign up/sign in.
-- `/admin/waitlist` is restricted to users listed in `RT_ADMIN_USER_IDS`.
 
 ## Troubleshooting
 

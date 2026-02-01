@@ -5,7 +5,8 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
-import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
+import { isGithubAuthEnabled } from '@/src/server/authFeatures';
+import { checkEmailAllowedForAuth, isWaitlistEnforced } from '@/src/server/waitlist';
 import { getRequestOrigin } from '@/src/server/requestOrigin';
 
 type AuthActionState = { error: string | null; mode?: 'signIn' | 'signUp' | null };
@@ -67,6 +68,7 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
     return { error: policyError };
   }
 
+  let hasSession = false;
   try {
     const gate = await checkEmailAllowedForAuth(email);
     if (!gate.allowed) {
@@ -108,14 +110,58 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 
     // If email confirmations are disabled, a session may be returned immediately.
     if (data.session) {
-      redirect(redirectTo);
-      return { error: null };
+      hasSession = true;
     }
   } catch (err) {
     return { error: (err as Error)?.message ?? 'Sign-up failed.' };
   }
 
+  if (hasSession) {
+    redirect(redirectTo);
+    return { error: null };
+  }
+
   redirect(`/check-email?redirectTo=${encodeURIComponent(redirectTo)}&email=${encodeURIComponent(email)}`);
+  return { error: null };
+}
+
+export async function signInWithGithub(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const redirectTo = sanitizeRedirectTo(String(formData.get('redirectTo') ?? '').trim()) ?? '/';
+
+  let oauthUrl: string | null = null;
+  try {
+    if (!isGithubAuthEnabled()) {
+      return { error: 'GitHub sign-in is currently disabled.' };
+    }
+
+    // GitHub OAuth is not allowlist-gated; invite-only enforcement applies to email/password.
+    const origin = getRequestOrigin();
+    if (!origin) {
+      return { error: 'Unable to determine request origin for GitHub sign-in.' };
+    }
+
+    const supabase = createSupabaseServerActionClient();
+    const callbackUrl = `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`;
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: callbackUrl
+      }
+    });
+
+    if (error || !data?.url) {
+      return { error: error?.message ?? 'GitHub sign-in failed to start.' };
+    }
+    oauthUrl = data.url;
+  } catch (err) {
+    return { error: (err as Error)?.message ?? 'GitHub sign-in failed.' };
+  }
+
+  if (!oauthUrl) {
+    return { error: 'GitHub sign-in failed to start.' };
+  }
+
+  redirect(oauthUrl);
   return { error: null };
 }
 

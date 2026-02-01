@@ -7,7 +7,7 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function isWaitlistEnforced(): boolean {
+export function isWaitlistEnforced(): boolean {
   const raw = process.env.RT_WAITLIST_ENFORCE?.trim().toLowerCase();
   if (!raw) return false;
   return !['0', 'false', 'off', 'no'].includes(raw);

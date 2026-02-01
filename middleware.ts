@@ -64,6 +64,7 @@ function isExplicitLocalMode(): boolean {
 }
 
 function isPublicPath(pathname: string): boolean {
+  if (pathname.startsWith('/assets/')) return true;
   if (pathname === '/login') return true;
   if (pathname === '/check-email') return true;
   if (pathname === '/forgot-password') return true;
