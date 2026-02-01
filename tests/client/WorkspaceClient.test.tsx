@@ -83,7 +83,8 @@ const sampleNodes: NodeRecord[] = [
     role: 'user',
     content: 'How is progress going?',
     timestamp: 1700000000000,
-    parent: null
+    parent: null,
+    createdOnBranch: 'main'
   },
   {
     id: 'node-assistant',
@@ -91,7 +92,8 @@ const sampleNodes: NodeRecord[] = [
     role: 'assistant',
     content: 'All tasks queued.',
     timestamp: 1700000001000,
-    parent: 'node-user'
+    parent: 'node-user',
+    createdOnBranch: 'main'
   },
   {
     id: 'node-user-branch',
@@ -99,7 +101,8 @@ const sampleNodes: NodeRecord[] = [
     role: 'user',
     content: 'Branch-only follow-up.',
     timestamp: 1700000002000,
-    parent: 'node-assistant'
+    parent: 'node-assistant',
+    createdOnBranch: 'feature/phase-2'
   }
 ];
 
@@ -1405,7 +1408,7 @@ describe('WorkspaceClient', () => {
       expect(payload).toMatchObject({
         content: 'Updated content for the branch',
         branchName: 'feature/edit-branch',
-        fromRef: 'feature/phase-2',
+        fromRef: 'main',
         llmProvider: 'openai',
         llmModel: 'gpt-5.2',
         thinking: getDefaultThinkingSetting('openai', 'gpt-5.2'),
