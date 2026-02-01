@@ -26,6 +26,7 @@ The UI is built for exploring multiple lines of thought without polluting contex
     - Ask a question and then switch to the new branch immediately to continue on that side quest.
     - Edit an earlier (user) message and explore on a new branch.
     - If your side adventure proved useful, merge the result back into another context (branch).
+- Provider-agnostic context management uses native state and thinking management until model-break (change of model at branch point) and then best efforts blending after breaks.
 - Live graph views to explore the reasoning DAG and jump between nodes.
 - Per-branch model/provider settings with thinking content (where available).
 - Quote replies to allow quick line-by-line markup replies - scoped to the entire content or highlight.
