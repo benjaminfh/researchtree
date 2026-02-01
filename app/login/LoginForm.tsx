@@ -38,11 +38,13 @@ export function LoginForm({
   redirectTo,
   initialEmail,
   waitlistEnforced,
+  githubAuthEnabled = true,
   initialMode = 'signUp'
 }: {
   redirectTo: string;
   initialEmail?: string | null;
   waitlistEnforced: boolean;
+  githubAuthEnabled?: boolean;
   initialMode?: 'signUp' | 'signIn';
 }) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
@@ -84,25 +86,27 @@ export function LoginForm({
     <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold text-slate-900">{mode === 'signIn' ? 'Sign in' : 'Create an account'}</h1>
 
-      <form action={githubAction} className="mt-5">
-        <input type="hidden" name="redirectTo" value={redirectTo} />
-        <button
-          type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={waitlistEnforced}
-        >
-          <img
-            src="/assets/GitHub_Invertocat_Black.svg"
-            alt=""
-            aria-hidden="true"
-            className="h-4 w-4"
-          />
-          Continue with GitHub
-        </button>
-        {waitlistEnforced ? (
-          <p className="mt-2 text-xs text-slate-500">GitHub sign-in is disabled while invite-only access is enforced.</p>
-        ) : null}
-      </form>
+      {githubAuthEnabled ? (
+        <form action={githubAction} className="mt-5">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <button
+            type="submit"
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={waitlistEnforced}
+          >
+            <img
+              src="/assets/GitHub_Invertocat_Black.svg"
+              alt=""
+              aria-hidden="true"
+              className="h-4 w-4"
+            />
+            Continue with GitHub
+          </button>
+          {waitlistEnforced ? (
+            <p className="mt-2 text-xs text-slate-500">GitHub sign-in is disabled while invite-only access is enforced.</p>
+          ) : null}
+        </form>
+      ) : null}
 
       <div className="mt-5 flex items-center gap-3 text-xs uppercase tracking-wide text-slate-400">
         <span className="h-px flex-1 bg-slate-200" />

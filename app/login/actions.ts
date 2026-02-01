@@ -5,6 +5,7 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
+import { isGithubAuthEnabled } from '@/src/server/authFeatures';
 import { checkEmailAllowedForAuth, isWaitlistEnforced } from '@/src/server/waitlist';
 import { getRequestOrigin } from '@/src/server/requestOrigin';
 
@@ -129,6 +130,10 @@ export async function signInWithGithub(_prevState: AuthActionState, formData: Fo
 
   let oauthUrl: string | null = null;
   try {
+    if (!isGithubAuthEnabled()) {
+      return { error: 'GitHub sign-in is currently disabled.' };
+    }
+
     if (isWaitlistEnforced()) {
       return {
         error: 'Access is invite-only. Request access to be whitelisted before signing up or signing in.'
