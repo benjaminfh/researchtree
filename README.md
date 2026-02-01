@@ -12,15 +12,16 @@ SPDX-License-Identifier: MIT -->
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
-ResearchTree (aka Threds) is a branchable research workspace: each project is a versioned reasoning thread (chat + canvas) with explicit branch/merge semantics.
-The UI is built for exploring multiple lines of thought without losing context, while keeping an audit trail of every message, branch, and merge.
+ResearchTree is a branchable workspace for LLM-powered resaearch: each workspace is a versioned reasoning tree with explicit branch/merge semantics. The premise is that git trees are the right storage pattern for building and refining context while exploring ideas, side quests, background questions.
+
+The UI is built for exploring multiple lines of thought without poluting context, while keeping a retraceable breadcrumb trail of every message, branch, and merge.
 
 ## Highlights
 
 - Branch-first chat + canvas with explicit merge summaries and diff previews.
 - Graph view to explore the reasoning DAG and jump between nodes.
 - Per-branch model/provider settings with optional thinking traces.
-- Git or Postgres provenance backends (Supabase or local adapter).
+- Postgres (Supabase or local adapter) or git (local, deprecated) provenance backends.
 - Electron desktop shell for local workflows.
 
 ## Documentation
