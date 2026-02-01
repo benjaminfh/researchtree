@@ -23,6 +23,7 @@ import {
   type ThinkingContentBlock
 } from '@/src/shared/thinkingTraces';
 import ReactMarkdown from 'react-markdown';
+import { NodeHtmlMarkdown } from 'node-html-markdown';
 import remarkGfm from 'remark-gfm';
 import useSWR from 'swr';
 import type { FC } from 'react';
@@ -45,7 +46,6 @@ import {
   PaperClipIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
-  SearchIcon,
   SharedWorkspaceIcon,
   Square2StackIcon,
   XMarkIcon
@@ -131,6 +131,19 @@ const buildQuestionMessage = (question: string, highlight?: string) => {
 };
 
 const QUESTION_BRANCH_MARKER_REGEX = /highlighted passage:/i;
+const HTML_TAG_DETECTION_REGEX = /<([a-z][\s\S]*?)>/i;
+
+const normalizeMarkdownOutput = (value: string) =>
+  value
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+const convertHtmlToMarkdown = (html: string): string => {
+  const output = NodeHtmlMarkdown.translate(html);
+  return normalizeMarkdownOutput(output);
+};
 
 const createClientId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -2030,6 +2043,8 @@ export function WorkspaceClient({
   const [thinkingHydratedKey, setThinkingHydratedKey] = useState<string | null>(null);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
   const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
+  const [utilitiesMenuOpen, setUtilitiesMenuOpen] = useState(false);
+  const utilitiesMenuRef = useRef<HTMLDivElement | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const webSearchStorageKey = useMemo(
     () => `researchtree:websearch:${project.id}:${branchName}`,
@@ -2227,6 +2242,33 @@ export function WorkspaceClient({
     webSearchEnabled &&
     !openAIUseResponses &&
     (branchProvider === 'openai' || branchProvider === 'openai_responses');
+
+  const handleHtmlToMarkdown = useCallback(() => {
+    if (composerDisabled) return;
+    const htmlCandidate = draft.trim();
+    if (!htmlCandidate) {
+      pushToast('error', 'Composer is empty.');
+      setUtilitiesMenuOpen(false);
+      return;
+    }
+    if (!HTML_TAG_DETECTION_REGEX.test(htmlCandidate)) {
+      pushToast('error', 'No HTML detected to convert.');
+      setUtilitiesMenuOpen(false);
+      return;
+    }
+    try {
+      const converted = convertHtmlToMarkdown(htmlCandidate);
+      if (!converted.trim()) {
+        throw new Error('empty-conversion');
+      }
+      setDraft(converted);
+    } catch (error) {
+      console.error('Failed to convert HTML to markdown.', error);
+      pushToast('error', 'Unable to convert HTML to markdown.');
+    } finally {
+      setUtilitiesMenuOpen(false);
+    }
+  }, [composerDisabled, draft, pushToast]);
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -2715,6 +2757,34 @@ export function WorkspaceClient({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [thinkingMenuOpen]);
+
+  useEffect(() => {
+    if (!utilitiesMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const container = utilitiesMenuRef.current;
+      const target = event.target;
+      if (!container || !(target instanceof Node)) return;
+      if (!container.contains(target)) {
+        setUtilitiesMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setUtilitiesMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [utilitiesMenuOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -6017,24 +6087,67 @@ export function WorkspaceClient({
                   }}
                 >
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!webSearchAvailable || state.isStreaming) return;
-                        setWebSearchEnabled((prev) => !prev);
-                      }}
-                      className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 py-0 text-xs font-semibold leading-none transition focus:outline-none ${
-                        webSearchEnabled
-                          ? 'border-primary/30 bg-primary/10 text-primary'
-                          : 'border-divider/80 bg-white text-slate-700 hover:bg-primary/10'
-                      } ${!webSearchAvailable ? 'opacity-50' : ''}`}
-                      aria-label="Toggle web search"
-                      title="Web search"
-                      aria-pressed={webSearchEnabled}
-                      disabled={composerDisabled || !webSearchAvailable}
-                    >
-                      <SearchIcon className="h-4 w-4" />
-                    </button>
+                    <div ref={utilitiesMenuRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (composerDisabled) return;
+                          setUtilitiesMenuOpen((prev) => !prev);
+                        }}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-divider/80 bg-white text-xs font-semibold leading-none text-slate-700 transition hover:bg-primary/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Utilities"
+                        title="Utilities"
+                        aria-haspopup="menu"
+                        aria-expanded={utilitiesMenuOpen}
+                        disabled={composerDisabled}
+                      >
+                        <BlueprintIcon icon="plus" className="h-4 w-4" />
+                      </button>
+                      {utilitiesMenuOpen ? (
+                        <div
+                          role="menu"
+                          className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-divider bg-white p-1 shadow-lg"
+                        >
+                          <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            Utilities
+                          </div>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            title="HTML to markdown"
+                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={handleHtmlToMarkdown}
+                            disabled={composerDisabled}
+                          >
+                            <span className="flex items-center gap-2">
+                              <BlueprintIcon icon="code" className="h-3.5 w-3.5" />
+                              HTML to markdown
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitemcheckbox"
+                            aria-checked={webSearchEnabled}
+                            title="Web search"
+                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+                              webSearchEnabled ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
+                            } disabled:cursor-not-allowed disabled:opacity-60`}
+                            onClick={() => {
+                              if (!webSearchAvailable || state.isStreaming) return;
+                              setWebSearchEnabled((prev) => !prev);
+                              setUtilitiesMenuOpen(false);
+                            }}
+                            disabled={composerDisabled || !webSearchAvailable || state.isStreaming}
+                          >
+                            <span className="flex items-center gap-2">
+                              <BlueprintIcon icon="globe-network" className="h-3.5 w-3.5" />
+                              Web search
+                            </span>
+                            {webSearchEnabled ? <span aria-hidden="true">✓</span> : null}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                     {/* <div className="flex h-10 w-10 items-center justify-center">
                       {features.uiAttachments ? (
                         <button
