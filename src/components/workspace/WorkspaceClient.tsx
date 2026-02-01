@@ -481,6 +481,7 @@ const NodeBubble: FC<{
   onToggleQuestionBranches?: () => void;
   quoteSelectionText?: string;
   highlightMenuPoint?: { x: number; y: number } | null;
+  highlightMenuOffset?: number;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
   node,
@@ -501,6 +502,7 @@ const NodeBubble: FC<{
   onToggleQuestionBranches,
   quoteSelectionText,
   highlightMenuPoint,
+  highlightMenuOffset = 0,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -645,7 +647,7 @@ const NodeBubble: FC<{
             className="fixed z-50 flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 px-1 py-1 shadow-sm backdrop-blur"
             style={{
               left: highlightMenuPoint?.x ?? 0,
-              top: (highlightMenuPoint?.y ?? 0) - 5,
+              top: (highlightMenuPoint?.y ?? 0) - highlightMenuOffset,
               transform: 'translate(-50%, -100%)'
             }}
           >
@@ -671,7 +673,7 @@ const NodeBubble: FC<{
                 aria-label="Ask a question on a new branch from selection"
                 title={branchActionDisabled ? 'Branching is disabled while streaming' : undefined}
               >
-                <BlueprintIcon icon="git-new-branch" className="h-3.5 w-3.5" />
+                <QuestionMarkCircleIcon className="h-3.5 w-3.5" />
                 Ask a question
               </button>
             ) : null}
@@ -1008,6 +1010,7 @@ const ChatNodeRow: FC<{
   projectId: string;
   quoteSelectionText?: string;
   highlightMenuPoint?: { x: number; y: number } | null;
+  highlightMenuOffset?: number;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
   node,
@@ -1037,6 +1040,7 @@ const ChatNodeRow: FC<{
   projectId,
   quoteSelectionText,
   highlightMenuPoint,
+  highlightMenuOffset,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -1091,6 +1095,7 @@ const ChatNodeRow: FC<{
             onToggleQuestionBranches={onToggleQuestionBranches}
             quoteSelectionText={quoteSelectionText}
             highlightMenuPoint={highlightMenuPoint}
+            highlightMenuOffset={highlightMenuOffset}
             onQuoteReply={onQuoteReply}
           />
           {isQuestionBranchesOpen && activeQuestionBranch ? (
@@ -3466,6 +3471,7 @@ export function WorkspaceClient({
   }, [messageLineHeight]);
 
   const messageListPaddingBottom = minMessageListPadding + listPaddingExtra;
+  const highlightMenuOffset = messageLineHeight ?? 16;
   if (DEBUG_MESSAGE_SCROLL) {
     console.debug('[message-scroll] padding', {
       minMessageListPadding,
@@ -5514,6 +5520,7 @@ export function WorkspaceClient({
                                 highlightMenuPoint={
                                   activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.point ?? null : null
                                 }
+                                highlightMenuOffset={highlightMenuOffset}
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                                 branchActionDisabled={branchActionDisabled}
                                 onQuoteReply={handleQuoteReply}
@@ -5571,6 +5578,7 @@ export function WorkspaceClient({
                           highlightMenuPoint={
                             activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.point ?? null : null
                           }
+                          highlightMenuOffset={highlightMenuOffset}
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                           branchActionDisabled={branchActionDisabled}
                           onQuoteReply={handleQuoteReply}
