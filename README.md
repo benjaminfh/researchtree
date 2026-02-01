@@ -12,17 +12,24 @@ SPDX-License-Identifier: MIT -->
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
-ResearchTree is a branchable workspace for LLM-powered resaearch: each workspace is a versioned reasoning tree with explicit branch/merge semantics. The premise is that git trees are the right storage pattern for building and refining context while exploring ideas, side quests, background questions.
+ResearchTree is a branchable workspace for LLM-powered research: each workspace is a versioned reasoning tree with explicit branch/merge semantics. The premise is that git trees are the right storage pattern for building and refining context while exploring ideas, side quests, background questions.
 
-The UI is built for exploring multiple lines of thought without poluting context, while keeping a retraceable breadcrumb trail of every message, branch, and merge.
+The UI is built for exploring multiple lines of thought without polluting context, while keeping a retraceable breadcrumb trail of every message, branch, and merge.
 
 ![ResearchTree UI](threds-screenshot.png)
 
 ## Highlights
 
-- Branch-first chat + canvas with explicit merge summaries and diff previews.
-- Graph view to explore the reasoning DAG and jump between nodes.
-- Per-branch model/provider settings with optional thinking traces.
+- Tree-centric (git branches) data model for managing chat contexts and tracking your reasoning chains.
+- Curate your context and then use the various branching flows to (e.g.)
+    - Fire off a  question about an assistant reply in the background - scoped by highlighting a section.
+    - Ask a question and then switch to the new branch immediately to continue on that side quest.
+    - Edit an earlier (user) message and explore on a new branch.
+    - If your side adventure proved useful, merge the result back into another context (branch).
+- Live graph views to explore the reasoning DAG and jump between nodes.
+- Per-branch model/provider settings with thinking content (where available).
+- Quote replies to allow quick line-by-line markup replies - scoped to the entire content or highlight.
+- Securely share workspaces with other users by email.
 - Postgres (Supabase or local adapter) or git (local, deprecated) provenance backends.
 - Electron desktop shell for local workflows.
 
@@ -69,14 +76,6 @@ npm install
 
 `RT_STORE` is required. Choose one of the setups below and place it in `.env.local`.
 
-Git-backed mode (lightweight, file-based):
-```bash
-RT_STORE=git
-RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/data/projects
-LLM_DEFAULT_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-```
-
 Postgres mode (Supabase):
 ```bash
 RT_STORE=pg
@@ -97,6 +96,14 @@ RT_PG_ADAPTER=local
 LOCAL_PG_URL=postgresql://localhost:5432/youruser
 RT_PG_BOOTSTRAP=1
 RT_REF_LEASE_TTL_SECONDS=120
+LLM_DEFAULT_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+```
+
+Git-backed mode (lightweight, file-based, deprecated):
+```bash
+RT_STORE=git
+RESEARCHTREE_PROJECTS_ROOT=/absolute/path/to/data/projects
 LLM_DEFAULT_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```
