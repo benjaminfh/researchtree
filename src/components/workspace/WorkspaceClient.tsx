@@ -513,6 +513,10 @@ const NodeBubble: FC<{
   const canQuoteReply = isAssistant && messageText.length > 0 && onQuoteReply;
   const hasQuestionBranches = questionBranchCount > 0 && onToggleQuestionBranches;
   const quoteSelectionActive = Boolean(quoteSelectionText?.trim());
+  const showHighlightMenu =
+    isAssistant &&
+    quoteSelectionActive &&
+    (canQuoteReply || (onEdit && !isTransientNode));
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
@@ -632,6 +636,36 @@ const NodeBubble: FC<{
           <span className="pointer-events-none absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600">
             <BlueprintIcon icon="git-merge" className="h-3.5 w-3.5" aria-hidden />
           </span>
+        ) : null}
+        {showHighlightMenu ? (
+          <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 px-1 py-1 shadow-sm backdrop-blur">
+            {canQuoteReply ? (
+              <button
+                type="button"
+                onClick={() => onQuoteReply?.(node.id, messageText, quoteSelectionText)}
+                disabled={branchActionDisabled}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Quote reply from selection"
+                title={branchActionDisabled ? 'Quote reply is disabled while streaming' : undefined}
+              >
+                <BlueprintIcon icon="comment" className="h-3.5 w-3.5" />
+                Quote reply
+              </button>
+            ) : null}
+            {onEdit && !isTransientNode ? (
+              <button
+                type="button"
+                onClick={() => onEdit(node)}
+                disabled={branchActionDisabled}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Ask a question on a new branch from selection"
+                title={branchActionDisabled ? 'Branching is disabled while streaming' : undefined}
+              >
+                <BlueprintIcon icon="git-new-branch" className="h-3.5 w-3.5" />
+                Ask a question
+              </button>
+            ) : null}
+          </div>
         ) : null}
         {showThinkingBox ? (
           <div
