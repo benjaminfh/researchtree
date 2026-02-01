@@ -1,18 +1,33 @@
 <!-- Copyright (c) 2025 Benjamin F. Hall. All rights reserved. -->
 
-# ResearchTree Developer Guide
+<div align="center">
+
+# ResearchTree
+
+<strong>Branchable contexts for human-led research.</strong>
+
+![Docs](https://img.shields.io/badge/docs-pending-lightgrey)
+![Release](https://img.shields.io/badge/release-pending-lightgrey)
+[![License](https://img.shields.io/badge/license-SEE%20LICENSE-blue)](LICENSE)
+</div>
 
 ResearchTree (aka Threds) is a branchable research workspace: each project is a versioned reasoning thread (chat + canvas) with explicit branch/merge semantics.
 The UI is built for exploring multiple lines of thought without losing context, while keeping an audit trail of every message, branch, and merge.
 
-## Ref Identity Tenets
-Refs are mutable names pointing at commits; we rely on name-based refs by default to preserve git-like behavior.
-When the app needs a stable join (e.g., artefact or lease tracking), use immutable `ref.id`.
-Do not treat `ref.name` as an FK; resolve display labels from refs when needed.
+## Highlights
+
+- Branch-first chat + canvas with explicit merge summaries and diff previews.
+- Graph view to explore the reasoning DAG and jump between nodes.
+- Per-branch model/provider settings with optional thinking traces.
+- Git or Postgres provenance backends (Supabase or local adapter).
+- Electron desktop shell for local workflows.
+
+## Documentation
+
+- Docs site: pending.
+- Release notes: pending.
 
 ## Product Tour (UI-First)
-
-Start here to understand the app from the user's perspective.
 
 - Home (`/`)
   - Create a new workspace with a name + optional description.
@@ -34,61 +49,7 @@ Start here to understand the app from the user's perspective.
 - Waitlist Admin (`/admin/waitlist`)
   - Review requests and approve emails when the invite gate is enabled.
 
-## Conceptual Model
-
-A workspace is a project with a versioned trail of nodes plus a per-branch Canvas.
-
-- Nodes
-  - Message nodes: user/assistant/system messages with optional thinking blocks and raw model payload.
-  - State nodes: Canvas checkpoints.
-  - Merge nodes: record source branch, summary, source commits, and Canvas diffs.
-- Branches
-  - Every message is tagged with the branch it was created on.
-  - Branches carry their own provider/model/thinking defaults.
-- Canvas
-  - The markdown canvas is branch-local and never auto-merged.
-  - Merges compute a diff; you can pin the diff into context intentionally.
-
-## Storage Modes
-
-ResearchTree supports two provenance backends, selected via `RT_STORE`:
-
-- `git`
-  - Each project is a git repo under `RESEARCHTREE_PROJECTS_ROOT`.
-  - Files per project:
-    - `nodes.jsonl` for the append-only message/merge/state log.
-    - `artefact.md` for the Canvas.
-    - `project.json` and `README.md` for metadata.
-  - Git helpers live in `src/git` and are the canonical implementation for node + branch operations.
-- `pg`
-  - Uses Postgres for provenance, with Supabase PostgREST or a local adapter.
-  - Supabase RPCs live under `src/store/pg` with migrations in `supabase/migrations`.
-  - Collaboration features (members, invites, edit locks) are only available in pg mode.
-  - Local mode (`RT_PG_ADAPTER=local`) connects directly to Postgres and auto-bootstraps migrations on first call.
-
-## LLM Providers and Capabilities
-
-Supported providers are OpenAI (chat or responses), Gemini, Anthropic, and Mock.
-
-- Provider enablement and defaults are controlled via `LLM_ENABLE_*`, `LLM_DEFAULT_PROVIDER`, and model env vars.
-- `OPENAI_USE_RESPONSES` defaults to true when unset; set it to false to force Chat Completions.
-- Thinking modes are validated per provider/model based on shared capability metadata.
-- Web search uses OpenAI Responses tools when enabled; if Responses is disabled, it falls back to OpenAI search-preview models.
-- Optional server-side Canvas tool loop can be toggled with `RT_CANVAS_TOOLS`.
-
-## Repository Map
-
-- `app/` Next.js route handlers and pages.
-- `src/components/` UI components (workspace, graph, canvas, layout).
-- `src/hooks/` data streaming and workspace state hooks.
-- `src/git/` git-backed project store and node/branch helpers.
-- `src/store/pg/` Postgres/Supabase store adapters and RPC access.
-- `src/server/` auth, LLM streaming, request context, and utilities.
-- `desktop/` Electron shell that hosts the Next.js app.
-- `supabase/` database migrations for the Postgres store.
-- `tests/` Vitest suites for git, store, and UI logic.
-
-## Quick Start (Local Dev)
+## Quick Start
 
 Prerequisites:
 - Node.js 20+
@@ -146,7 +107,60 @@ Notes:
 npm run dev
 ```
 
-Then open http://localhost:3000.
+Then open:
+```text
+http://localhost:3000
+```
+
+## Architecture
+
+### Ref Identity Tenets
+
+Refs are mutable names pointing at commits; we rely on name-based refs by default to preserve git-like behavior.
+When the app needs a stable join (e.g., artefact or lease tracking), use immutable `ref.id`.
+Do not treat `ref.name` as an FK; resolve display labels from refs when needed.
+
+### Conceptual Model
+
+A workspace is a project with a versioned trail of nodes plus a per-branch Canvas.
+
+- Nodes
+  - Message nodes: user/assistant/system messages with optional thinking blocks and raw model payload.
+  - State nodes: Canvas checkpoints.
+  - Merge nodes: record source branch, summary, source commits, and Canvas diffs.
+- Branches
+  - Every message is tagged with the branch it was created on.
+  - Branches carry their own provider/model/thinking defaults.
+- Canvas
+  - The markdown canvas is branch-local and never auto-merged.
+  - Merges compute a diff; you can pin the diff into context intentionally.
+
+### Storage Modes
+
+ResearchTree supports two provenance backends, selected via `RT_STORE`:
+
+- `git`
+  - Each project is a git repo under `RESEARCHTREE_PROJECTS_ROOT`.
+  - Files per project:
+    - `nodes.jsonl` for the append-only message/merge/state log.
+    - `artefact.md` for the Canvas.
+    - `project.json` and `README.md` for metadata.
+  - Git helpers live in `src/git` and are the canonical implementation for node + branch operations.
+- `pg`
+  - Uses Postgres for provenance, with Supabase PostgREST or a local adapter.
+  - Supabase RPCs live under `src/store/pg` with migrations in `supabase/migrations`.
+  - Collaboration features (members, invites, edit locks) are only available in pg mode.
+  - Local mode (`RT_PG_ADAPTER=local`) connects directly to Postgres and auto-bootstraps migrations on first call.
+
+### LLM Providers and Capabilities
+
+Supported providers are OpenAI (chat or responses), Gemini, Anthropic, and Mock.
+
+- Provider enablement and defaults are controlled via `LLM_ENABLE_*`, `LLM_DEFAULT_PROVIDER`, and model env vars.
+- `OPENAI_USE_RESPONSES` defaults to true when unset; set it to false to force Chat Completions.
+- Thinking modes are validated per provider/model based on shared capability metadata.
+- Web search uses OpenAI Responses tools when enabled; if Responses is disabled, it falls back to OpenAI search-preview models.
+- Optional server-side Canvas tool loop can be toggled with `RT_CANVAS_TOOLS`.
 
 ## Desktop App (Electron)
 
@@ -157,6 +171,18 @@ The Electron shell boots a local Next.js server and opens a native window.
 - Build installers: `npm run desktop:make`
 
 Desktop loads `.env.desktop` and then `.env.local` (excluding Supabase keys), so local Postgres is the default path.
+
+## Repository Map
+
+- `app/` Next.js route handlers and pages.
+- `src/components/` UI components (workspace, graph, canvas, layout).
+- `src/hooks/` data streaming and workspace state hooks.
+- `src/git/` git-backed project store and node/branch helpers.
+- `src/store/pg/` Postgres/Supabase store adapters and RPC access.
+- `src/server/` auth, LLM streaming, request context, and utilities.
+- `desktop/` Electron shell that hosts the Next.js app.
+- `supabase/` database migrations for the Postgres store.
+- `tests/` Vitest suites for git, store, and UI logic.
 
 ## Tests and Scripts
 
@@ -178,3 +204,16 @@ Invite-gated auth is controlled by `RT_WAITLIST_ENFORCE`.
 - `RT_STORE must be set to "git" or "pg"` means the env var is missing or misspelled.
 - `RT_PG_ADAPTER=local cannot be used with Supabase env vars present` means you need to remove Supabase keys when using local mode.
 - Provider errors usually indicate missing API keys; update them in `/profile`.
+
+## Contributing
+
+- Start by reading `AGENTS.md` for repo conventions.
+- Open issues for bugs and feature requests; include clear repro steps and expected behavior.
+
+## License
+
+See `LICENSE`.
+
+## Security
+
+If you discover a security issue, please report it privately to the maintainers.
