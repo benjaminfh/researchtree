@@ -4941,6 +4941,21 @@ export function WorkspaceClient({
                       const branchLeaseHeldBySession = Boolean(branchLease && branchLease.holderSessionId === leaseSessionId);
                       const branchLeaseLocked = Boolean(branchLease && branchLease.holderSessionId !== leaseSessionId);
                       const branchMenuOpen = openBranchMenu === branch.name;
+                      const branchStatusIcon = branchLeaseLocked ? 'lock' : branch.isPinned ? 'pin' : 'cog';
+                      const branchStatusTone = branchLeaseLocked
+                        ? 'text-amber-600'
+                        : branch.isPinned
+                          ? 'text-red-600'
+                          : 'text-slate-500';
+                      const branchHasStatus = branchLeaseLocked || branch.isPinned;
+                      const branchStatusLabel = branchLeaseLocked
+                        ? 'Branch is locked'
+                        : branch.isPinned
+                          ? 'Branch is pinned'
+                          : null;
+                      const branchStatusId = branchStatusLabel
+                        ? `branch-status-${String(branchId).replace(/[^a-zA-Z0-9_-]/g, '-')}`
+                        : undefined;
                       let branchMenuAnchorRef = branchMenuRefs.current.get(branch.name);
                       if (!branchMenuAnchorRef) {
                         branchMenuAnchorRef = React.createRef<HTMLButtonElement>();
@@ -4963,7 +4978,7 @@ export function WorkspaceClient({
                             }
                           }}
                           aria-disabled={switchDisabled}
-                          className={`w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
+                          className={`group/branch w-full rounded-full px-3 py-2 text-left text-sm transition focus:outline-none ${
                             branchName === branch.name
                               ? 'bg-primary/15 text-primary shadow-sm'
                               : switchDisabled
@@ -4998,15 +5013,6 @@ export function WorkspaceClient({
                               ) : null}
                             </span>
                             <span className="relative inline-flex items-center gap-1" data-branch-menu data-branch-menu-name={branch.name}>
-                              {branch.isPinned ? (
-                                <span
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white text-red-600 shadow-sm"
-                                  aria-label="Pinned branch"
-                                  title="Pinned branch"
-                                >
-                                  <BlueprintIcon icon="pin" className="h-3.5 w-3.5" />
-                                </span>
-                              ) : null}
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -5014,11 +5020,34 @@ export function WorkspaceClient({
                                   setOpenBranchMenu((prev) => (prev === branch.name ? null : branch.name));
                                 }}
                                 ref={branchMenuAnchorRef}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white text-slate-500 shadow-sm transition hover:bg-primary/10 hover:text-slate-700"
+                                className={`group/button inline-flex h-7 w-7 items-center justify-center rounded-full border border-divider/80 bg-white shadow-sm transition hover:bg-primary/10 hover:text-slate-700 ${
+                                  branchHasStatus
+                                    ? `${branchStatusTone} hover:text-slate-700`
+                                    : 'text-slate-500 opacity-0 group-hover/branch:opacity-100 group-focus-within/branch:opacity-100'
+                                }`}
                                 aria-label={`Branch options for ${displayBranchName(branch.name)}`}
+                                aria-describedby={branchStatusId}
                                 aria-expanded={branchMenuOpen}
                               >
-                                <BlueprintIcon icon="cog" className="h-3.5 w-3.5" />
+                                <span className="relative h-3.5 w-3.5">
+                                  {branchHasStatus ? (
+                                    <BlueprintIcon
+                                      icon={branchStatusIcon}
+                                      className="absolute left-0 top-0 h-3.5 w-3.5 transition-opacity duration-150 group-hover/button:opacity-0"
+                                    />
+                                  ) : null}
+                                  <BlueprintIcon
+                                    icon="cog"
+                                    className={`absolute left-0 top-0 h-3.5 w-3.5 transition-opacity duration-150 ${
+                                      branchHasStatus ? 'opacity-0 group-hover/button:opacity-100' : 'opacity-100'
+                                    }`}
+                                  />
+                                </span>
+                                {branchStatusLabel ? (
+                                  <span id={branchStatusId} className="sr-only">
+                                    {branchStatusLabel}
+                                  </span>
+                                ) : null}
                               </button>
                               {branchMenuOpen && branchMenuAnchorRef ? (
                                 <div data-branch-menu className="absolute left-0 top-0 h-0 w-0">
