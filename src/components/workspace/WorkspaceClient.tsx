@@ -4878,6 +4878,14 @@ export function WorkspaceClient({
                           ? 'text-red-600'
                           : 'text-slate-500';
                       const branchHasStatus = branchLeaseLocked || branch.isPinned;
+                      const branchStatusLabel = branchLeaseLocked
+                        ? 'Branch is locked'
+                        : branch.isPinned
+                          ? 'Branch is pinned'
+                          : null;
+                      const branchStatusId = branchStatusLabel
+                        ? `branch-status-${String(branchId).replace(/[^a-zA-Z0-9_-]/g, '-')}`
+                        : undefined;
                       let branchMenuAnchorRef = branchMenuRefs.current.get(branch.name);
                       if (!branchMenuAnchorRef) {
                         branchMenuAnchorRef = React.createRef<HTMLButtonElement>();
@@ -4948,6 +4956,7 @@ export function WorkspaceClient({
                                     : 'text-slate-500 opacity-0 group-hover/branch:opacity-100 group-focus-within/branch:opacity-100'
                                 }`}
                                 aria-label={`Branch options for ${displayBranchName(branch.name)}`}
+                                aria-describedby={branchStatusId}
                                 aria-expanded={branchMenuOpen}
                               >
                                 <span className="relative h-3.5 w-3.5">
@@ -4964,6 +4973,11 @@ export function WorkspaceClient({
                                     }`}
                                   />
                                 </span>
+                                {branchStatusLabel ? (
+                                  <span id={branchStatusId} className="sr-only">
+                                    {branchStatusLabel}
+                                  </span>
+                                ) : null}
                               </button>
                               {branchMenuOpen && branchMenuAnchorRef ? (
                                 <div data-branch-menu className="absolute left-0 top-0 h-0 w-0">
