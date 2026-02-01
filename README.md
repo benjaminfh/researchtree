@@ -15,6 +15,8 @@ SPDX-License-Identifier: MIT -->
 ResearchTree (aka Threds) is a branchable research workspace: each project is a versioned reasoning thread (chat + canvas) with explicit branch/merge semantics.
 The UI is built for exploring multiple lines of thought without losing context, while keeping an audit trail of every message, branch, and merge.
 
+![ResearchTree UI](threds-screenshot.png)
+
 ## Highlights
 
 - Branch-first chat + canvas with explicit merge summaries and diff previews.
