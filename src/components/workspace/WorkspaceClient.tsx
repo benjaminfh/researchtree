@@ -2236,7 +2236,8 @@ export function WorkspaceClient({
         ? 'Editing locked. Editor access required.'
         : null;
   const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
-  const composerDisabled = state.isStreaming || isBranchWriteLocked || (isPgMode && !leaseSessionReady);
+  const composerInputDisabled = isBranchWriteLocked || (isPgMode && !leaseSessionReady);
+  const composerActionDisabled = composerInputDisabled || state.isStreaming;
   const canvasDisabled = isPgMode && (!leaseSessionReady || isBranchWriteLocked);
   const webSearchAvailable = branchProvider !== 'mock';
   const showOpenAISearchNote =
@@ -2245,7 +2246,7 @@ export function WorkspaceClient({
     (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
   const handleHtmlToMarkdown = useCallback(() => {
-    if (composerDisabled) return;
+    if (composerActionDisabled) return;
     const htmlCandidate = draft.trim();
     if (!htmlCandidate) {
       pushToast('error', 'Composer is empty.');
@@ -2269,7 +2270,7 @@ export function WorkspaceClient({
     } finally {
       setUtilitiesMenuOpen(false);
     }
-  }, [composerDisabled, draft, pushToast]);
+  }, [composerActionDisabled, draft, pushToast]);
 
   const sendDraft = async () => {
     if (!draft.trim() || state.isStreaming) return;
@@ -6143,7 +6144,7 @@ export function WorkspaceClient({
                       <button
                         type="button"
                         onClick={() => {
-                          if (composerDisabled) return;
+                          if (composerActionDisabled) return;
                           setUtilitiesMenuOpen((prev) => !prev);
                         }}
                         className="flex h-9 w-9 items-center justify-center rounded-full border border-divider/80 bg-white text-xs font-semibold leading-none text-slate-700 transition hover:bg-primary/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
@@ -6151,7 +6152,7 @@ export function WorkspaceClient({
                         title="Utilities"
                         aria-haspopup="menu"
                         aria-expanded={utilitiesMenuOpen}
-                        disabled={composerDisabled}
+                        disabled={composerActionDisabled}
                       >
                         <BlueprintIcon icon="plus" className="h-4 w-4" />
                       </button>
@@ -6169,7 +6170,7 @@ export function WorkspaceClient({
                             title="HTML to markdown"
                             className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={handleHtmlToMarkdown}
-                            disabled={composerDisabled}
+                            disabled={composerActionDisabled}
                           >
                             <span className="flex items-center gap-2">
                               <BlueprintIcon icon="code" className="h-3.5 w-3.5" />
@@ -6189,7 +6190,7 @@ export function WorkspaceClient({
                               setWebSearchEnabled((prev) => !prev);
                               setUtilitiesMenuOpen(false);
                             }}
-                            disabled={composerDisabled || !webSearchAvailable || state.isStreaming}
+                            disabled={composerActionDisabled || !webSearchAvailable}
                           >
                             <span className="flex items-center gap-2">
                               <BlueprintIcon icon="globe-network" className="h-3.5 w-3.5" />
@@ -6227,7 +6228,7 @@ export function WorkspaceClient({
                         minHeight: composerMinHeight ? `${composerMinHeight}px` : undefined,
                         maxHeight: composerMaxHeight ? `${composerMaxHeight}px` : undefined
                       }}
-                      disabled={composerDisabled}
+                      disabled={composerInputDisabled}
                       onKeyDown={(event) => {
                         if (event.key !== 'Enter') {
                           return;
@@ -6314,7 +6315,7 @@ export function WorkspaceClient({
                     ) : null}
                     <button
                       type="submit"
-                      disabled={composerDisabled || !draft.trim() || Boolean(thinkingUnsupportedError)}
+                      disabled={composerActionDisabled || !draft.trim() || Boolean(thinkingUnsupportedError)}
                       className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Send message"
                     >
