@@ -27,6 +27,7 @@ Issue creation process:
 - When using gh pr create -b, pass a real multi‑line string, not \n literals. The safest way is:
     - Use $'...' and real \n escapes (Bash/Zsh), or
     - Put the body in a temp file and use -F file.md.
+- PR descriptions should be neatly formatted markdown which clearly describe the changes being made in human readable english.
 
 ## E2E Testing with Playwright
 When embarking on Playwright configuration (design, testing, debugging), please consult PM_DOCS/PLAYWRIGHT_SOP.md before starting.
