@@ -119,6 +119,35 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
   return { error: null };
 }
 
+export async function signInWithGithub(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const redirectTo = sanitizeRedirectTo(String(formData.get('redirectTo') ?? '').trim()) ?? '/';
+
+  try {
+    const origin = getRequestOrigin();
+    if (!origin) {
+      return { error: 'Unable to determine request origin for GitHub sign-in.' };
+    }
+
+    const supabase = createSupabaseServerActionClient();
+    const callbackUrl = `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`;
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: callbackUrl
+      }
+    });
+
+    if (error || !data?.url) {
+      return { error: error?.message ?? 'GitHub sign-in failed to start.' };
+    }
+
+    redirect(data.url);
+    return { error: null };
+  } catch (err) {
+    return { error: (err as Error)?.message ?? 'GitHub sign-in failed.' };
+  }
+}
+
 export async function signOut(): Promise<void> {
   try {
     const supabase = createSupabaseServerActionClient();

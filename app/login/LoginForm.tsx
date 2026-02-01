@@ -6,7 +6,7 @@
 import React from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { signInWithPassword, signUpWithPassword } from './actions';
+import { signInWithGithub, signInWithPassword, signUpWithPassword } from './actions';
 import Link from 'next/link';
 import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
 import { BlueprintIcon } from '@/src/components/ui/BlueprintIcon';
@@ -47,6 +47,7 @@ export function LoginForm({
 }) {
   const [signInState, signInAction] = useFormState(signInWithPassword, initialState);
   const [signUpState, signUpAction] = useFormState(signUpWithPassword, initialState);
+  const [githubState, githubAction] = useFormState(signInWithGithub, initialState);
   const [mode, setMode] = useState<'signUp' | 'signIn'>(initialMode);
   const [emailValue, setEmailValue] = useState(initialEmail ?? '');
   const [showSignInPassword, setShowSignInPassword] = useState(false);
@@ -69,17 +70,40 @@ export function LoginForm({
   const activeError = useMemo(() => {
     const signInError = signInState?.error ?? null;
     const signUpError = signUpState?.error ?? null;
+    const githubError = githubState?.error ?? null;
+    if (githubError) return githubError;
     if (mode === 'signIn') {
       if (signInError) return signInError;
       if (signUpState?.mode === 'signIn' && signUpError) return signUpError;
       return null;
     }
     return signUpError;
-  }, [mode, signInState, signUpState]);
+  }, [mode, signInState, signUpState, githubState]);
 
   return (
     <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold text-slate-900">{mode === 'signIn' ? 'Sign in' : 'Create an account'}</h1>
+
+      <form action={githubAction} className="mt-5">
+        <input type="hidden" name="redirectTo" value={redirectTo} />
+        <button
+          type="submit"
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={waitlistEnforced}
+        >
+          <BlueprintIcon icon="git-repo" className="h-4 w-4" />
+          Continue with GitHub
+        </button>
+        {waitlistEnforced ? (
+          <p className="mt-2 text-xs text-slate-500">GitHub sign-in is disabled while invite-only access is enforced.</p>
+        ) : null}
+      </form>
+
+      <div className="mt-5 flex items-center gap-3 text-xs uppercase tracking-wide text-slate-400">
+        <span className="h-px flex-1 bg-slate-200" />
+        <span>Or use email</span>
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
 
       {mode === 'signIn' ? (
         <form onKeyDown={handleSignInCommandEnter} action={signInAction} className="mt-6 space-y-3">
