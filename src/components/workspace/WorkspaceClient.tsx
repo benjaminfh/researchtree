@@ -6140,7 +6140,7 @@ export function WorkspaceClient({
                             disabled={composerDisabled || !webSearchAvailable || state.isStreaming}
                           >
                             <span className="flex items-center gap-2">
-                              <BlueprintIcon icon="search" className="h-3.5 w-3.5" />
+                              <BlueprintIcon icon="globe-network" className="h-3.5 w-3.5" />
                               Web search
                             </span>
                             {webSearchEnabled ? <span aria-hidden="true">✓</span> : null}
