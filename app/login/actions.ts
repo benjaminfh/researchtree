@@ -134,12 +134,7 @@ export async function signInWithGithub(_prevState: AuthActionState, formData: Fo
       return { error: 'GitHub sign-in is currently disabled.' };
     }
 
-    if (isWaitlistEnforced()) {
-      return {
-        error: 'Access is invite-only. Request access to be whitelisted before signing up or signing in.'
-      };
-    }
-
+    // GitHub OAuth is not allowlist-gated; invite-only enforcement applies to email/password.
     const origin = getRequestOrigin();
     if (!origin) {
       return { error: 'Unable to determine request origin for GitHub sign-in.' };
