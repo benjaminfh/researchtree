@@ -12,9 +12,9 @@ SPDX-License-Identifier: MIT -->
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
-ResearchTree is a branchable workspace for LLM-powered resaearch: each workspace is a versioned reasoning tree with explicit branch/merge semantics. The premise is that git trees are the right storage pattern for building and refining context while exploring ideas, side quests, background questions.
+ResearchTree is a branchable workspace for LLM-powered research: each workspace is a versioned reasoning tree with explicit branch/merge semantics. The premise is that git trees are the right storage pattern for building and refining context while exploring ideas, side quests, background questions.
 
-The UI is built for exploring multiple lines of thought without poluting context, while keeping a retraceable breadcrumb trail of every message, branch, and merge.
+The UI is built for exploring multiple lines of thought without polluting context, while keeping a retraceable breadcrumb trail of every message, branch, and merge.
 
 ![ResearchTree UI](threds-screenshot.png)
 
