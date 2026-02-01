@@ -480,6 +480,7 @@ const NodeBubble: FC<{
   isQuestionBranchesOpen?: boolean;
   onToggleQuestionBranches?: () => void;
   quoteSelectionText?: string;
+  highlightMenuPoint?: { x: number; y: number } | null;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
   node,
@@ -499,6 +500,7 @@ const NodeBubble: FC<{
   isQuestionBranchesOpen = false,
   onToggleQuestionBranches,
   quoteSelectionText,
+  highlightMenuPoint,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -516,6 +518,7 @@ const NodeBubble: FC<{
   const showHighlightMenu =
     isAssistant &&
     quoteSelectionActive &&
+    !!highlightMenuPoint &&
     (canQuoteReply || (onEdit && !isTransientNode));
   const [copyFeedback, setCopyFeedback] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -638,7 +641,14 @@ const NodeBubble: FC<{
           </span>
         ) : null}
         {showHighlightMenu ? (
-          <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 px-1 py-1 shadow-sm backdrop-blur">
+          <div
+            className="fixed z-50 flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 px-1 py-1 shadow-sm backdrop-blur"
+            style={{
+              left: highlightMenuPoint?.x ?? 0,
+              top: (highlightMenuPoint?.y ?? 0) - 5,
+              transform: 'translate(-50%, -100%)'
+            }}
+          >
             {canQuoteReply ? (
               <button
                 type="button"
@@ -997,6 +1007,7 @@ const ChatNodeRow: FC<{
   onQuestionBranchIndexChange?: (index: number) => void;
   projectId: string;
   quoteSelectionText?: string;
+  highlightMenuPoint?: { x: number; y: number } | null;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 }> = ({
   node,
@@ -1025,6 +1036,7 @@ const ChatNodeRow: FC<{
   onQuestionBranchIndexChange,
   projectId,
   quoteSelectionText,
+  highlightMenuPoint,
   onQuoteReply
 }) => {
   const renderId = node.renderId ?? node.id;
@@ -1078,6 +1090,7 @@ const ChatNodeRow: FC<{
             isQuestionBranchesOpen={isQuestionBranchesOpen}
             onToggleQuestionBranches={onToggleQuestionBranches}
             quoteSelectionText={quoteSelectionText}
+            highlightMenuPoint={highlightMenuPoint}
             onQuoteReply={onQuoteReply}
           />
           {isQuestionBranchesOpen && activeQuestionBranch ? (
@@ -3438,7 +3451,11 @@ export function WorkspaceClient({
   const [listPaddingExtra, setListPaddingExtra] = useState(0);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hasOverflow, setHasOverflow] = useState(false);
-  const [activeBranchHighlight, setActiveBranchHighlight] = useState<{ nodeId: string; text: string } | null>(null);
+  const [activeBranchHighlight, setActiveBranchHighlight] = useState<{
+    nodeId: string;
+    text: string;
+    point?: { x: number; y: number };
+  } | null>(null);
   const [chatListWidth, setChatListWidth] = useState<number | null>(null);
 
   const minMessageListPadding = useMemo(() => {
@@ -3795,7 +3812,7 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const handleSelectionChange = () => {
+    const updateHighlightSelection = (pointOverride?: { x: number; y: number }) => {
       const selection = getSelectionContext();
       if (!selection) {
         setActiveBranchHighlight((prev) => (prev ? null : prev));
@@ -3807,18 +3824,23 @@ export function WorkspaceClient({
       }
       setActiveBranchHighlight((prev) => {
         if (prev?.nodeId === selection.nodeId && prev.text === selection.text) {
-          return prev;
+          return pointOverride ? { ...prev, point: pointOverride } : prev;
         }
-        return selection;
+        return { ...selection, point: pointOverride };
       });
     };
 
+    const handleSelectionChange = () => updateHighlightSelection();
+    const handleMouseUp = (event: MouseEvent) => {
+      updateHighlightSelection({ x: event.clientX, y: event.clientY });
+    };
+
     document.addEventListener('selectionchange', handleSelectionChange);
-    document.addEventListener('mouseup', handleSelectionChange);
+    document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('keyup', handleSelectionChange);
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
-      document.removeEventListener('mouseup', handleSelectionChange);
+      document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('keyup', handleSelectionChange);
     };
   }, [getSelectionContext, visibleNodeRoleMap]);
@@ -5489,6 +5511,9 @@ export function WorkspaceClient({
                                 quoteSelectionText={
                                   activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
                                 }
+                                highlightMenuPoint={
+                                  activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.point ?? null : null
+                                }
                                 showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                                 branchActionDisabled={branchActionDisabled}
                                 onQuoteReply={handleQuoteReply}
@@ -5542,6 +5567,9 @@ export function WorkspaceClient({
                           onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                           quoteSelectionText={
                             activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
+                          }
+                          highlightMenuPoint={
+                            activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.point ?? null : null
                           }
                           showBranchSplit={showNewBranchModal && branchSplitNodeId === node.id}
                           branchActionDisabled={branchActionDisabled}
