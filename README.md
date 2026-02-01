@@ -1,4 +1,5 @@
-<!-- Copyright (c) 2025 Benjamin F. Hall. All rights reserved. -->
+<!-- Copyright (c) 2025 Benjamin F. Hall
+SPDX-License-Identifier: MIT -->
 
 <div align="center">
 
@@ -8,7 +9,7 @@
 
 ![Docs](https://img.shields.io/badge/docs-pending-lightgrey)
 ![Release](https://img.shields.io/badge/release-pending-lightgrey)
-[![License](https://img.shields.io/badge/license-SEE%20LICENSE-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
 ResearchTree (aka Threds) is a branchable research workspace: each project is a versioned reasoning thread (chat + canvas) with explicit branch/merge semantics.

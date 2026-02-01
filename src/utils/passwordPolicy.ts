@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 export const PASSWORD_MIN_LENGTH = 10;
 const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/;

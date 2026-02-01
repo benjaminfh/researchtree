@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rtCreateProjectShadow, rtListProjectsShadowV1 } from '@/src/store/pg/projects';

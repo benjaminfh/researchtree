@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/projects/[id]/branch-question/route';

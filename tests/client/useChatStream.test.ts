@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';

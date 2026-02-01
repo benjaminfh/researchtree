@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 export function buildUnifiedDiff(oldText: string, newText: string, options?: { contextLines?: number }): string {
   if (oldText === newText) return '';

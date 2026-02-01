@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';

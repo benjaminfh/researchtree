@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',

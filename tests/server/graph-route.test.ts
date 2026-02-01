@@ -1,4 +1,5 @@
-// Copyright (c) 2025 Benjamin F. Hall. All rights reserved.
+// Copyright (c) 2025 Benjamin F. Hall
+// SPDX-License-Identifier: MIT
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GET } from '@/app/api/projects/[id]/graph/route';
