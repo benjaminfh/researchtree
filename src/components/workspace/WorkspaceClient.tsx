@@ -6094,7 +6094,7 @@ export function WorkspaceClient({
                           if (composerDisabled) return;
                           setUtilitiesMenuOpen((prev) => !prev);
                         }}
-                        className="inline-flex h-9 items-center gap-2 rounded-full border border-divider/80 bg-white px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-primary/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-divider/80 bg-white text-xs font-semibold leading-none text-slate-700 transition hover:bg-primary/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         aria-label="Utilities"
                         title="Utilities"
                         aria-haspopup="menu"
