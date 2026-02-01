@@ -916,9 +916,11 @@ describe('WorkspaceClient', () => {
     window.localStorage.setItem('researchtree:websearch:proj-1:feature/phase-2', 'true');
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
 
-    const toggle = await screen.findByRole('button', { name: 'Toggle web search' });
+    const utilitiesTrigger = await screen.findByRole('button', { name: 'Utilities' });
+    await user.click(utilitiesTrigger);
+    const toggle = await screen.findByRole('menuitemcheckbox', { name: 'Web search' });
     await waitFor(() => {
-      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(toggle).toHaveAttribute('aria-checked', 'true');
       expect(capturedChatOptions?.webSearch).toBe(true);
     });
 

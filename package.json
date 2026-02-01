@@ -27,6 +27,7 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.89.0",
     "next": "^14.2.15",
+    "node-html-markdown": "^2.0.0",
     "openai": "^4.75.1",
     "pg": "^8.16.3",
     "react": "^18.3.1",
