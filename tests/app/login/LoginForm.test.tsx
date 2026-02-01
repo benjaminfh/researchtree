@@ -7,6 +7,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { LoginForm } from '@/app/login/LoginForm';
 
 vi.mock('@/app/login/actions', () => ({
+  signInWithGithub: vi.fn(),
   signInWithPassword: vi.fn(),
   signUpWithPassword: vi.fn()
 }));
