@@ -2544,7 +2544,8 @@ export function WorkspaceClient({
         .split('\n')
         .map((line) => (line ? `> ${line}` : '>'))
         .join('\n');
-      setDraft((prev) => (prev ? `${prev}\n\n${quoted}` : quoted));
+      const quotedBlock = `${quoted}\n\n`;
+      setDraft((prev) => (prev ? `${prev}\n\n${quotedBlock}` : quotedBlock));
       if (composerCollapsed) {
         expandComposer();
       }
