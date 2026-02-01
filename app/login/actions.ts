@@ -5,7 +5,7 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerActionClient } from '@/src/server/supabase/server';
-import { checkEmailAllowedForAuth } from '@/src/server/waitlist';
+import { checkEmailAllowedForAuth, isWaitlistEnforced } from '@/src/server/waitlist';
 import { getRequestOrigin } from '@/src/server/requestOrigin';
 
 type AuthActionState = { error: string | null; mode?: 'signIn' | 'signUp' | null };
@@ -67,6 +67,7 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
     return { error: policyError };
   }
 
+  let hasSession = false;
   try {
     const gate = await checkEmailAllowedForAuth(email);
     if (!gate.allowed) {
@@ -108,11 +109,15 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 
     // If email confirmations are disabled, a session may be returned immediately.
     if (data.session) {
-      redirect(redirectTo);
-      return { error: null };
+      hasSession = true;
     }
   } catch (err) {
     return { error: (err as Error)?.message ?? 'Sign-up failed.' };
+  }
+
+  if (hasSession) {
+    redirect(redirectTo);
+    return { error: null };
   }
 
   redirect(`/check-email?redirectTo=${encodeURIComponent(redirectTo)}&email=${encodeURIComponent(email)}`);
@@ -122,7 +127,14 @@ export async function signUpWithPassword(_prevState: AuthActionState, formData: 
 export async function signInWithGithub(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const redirectTo = sanitizeRedirectTo(String(formData.get('redirectTo') ?? '').trim()) ?? '/';
 
+  let oauthUrl: string | null = null;
   try {
+    if (isWaitlistEnforced()) {
+      return {
+        error: 'Access is invite-only. Request access to be whitelisted before signing up or signing in.'
+      };
+    }
+
     const origin = getRequestOrigin();
     if (!origin) {
       return { error: 'Unable to determine request origin for GitHub sign-in.' };
@@ -140,12 +152,17 @@ export async function signInWithGithub(_prevState: AuthActionState, formData: Fo
     if (error || !data?.url) {
       return { error: error?.message ?? 'GitHub sign-in failed to start.' };
     }
-
-    redirect(data.url);
-    return { error: null };
+    oauthUrl = data.url;
   } catch (err) {
     return { error: (err as Error)?.message ?? 'GitHub sign-in failed.' };
   }
+
+  if (!oauthUrl) {
+    return { error: 'GitHub sign-in failed to start.' };
+  }
+
+  redirect(oauthUrl);
+  return { error: null };
 }
 
 export async function signOut(): Promise<void> {
