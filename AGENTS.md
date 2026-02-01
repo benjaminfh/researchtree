@@ -8,7 +8,7 @@
 - Never assume `ref.name` is an FK; resolve display labels from refs.
 
 ## Feature branches
-master and dev branches are protected. Create a feature branch to work using the format codex/{yyyyMMdd}/a-clear-descriptive-title
+master and dev branches are protected. Create a feature branch to work using the format codex/{yyyy-MM-dd}/a-clear-descriptive-title
 
 ## Product Management
 We plan and track progress in PM_DOCS/
