@@ -3,13 +3,17 @@
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { assertSupabaseConfigured } from './env';
+import { assertSupabaseConfigured, getSupabaseSecretKey } from './env';
+import { isCodexDev, isPreviewDeployment } from '@/src/server/deploymentEnv';
 
 export function createSupabaseServerClient() {
+  warnIfCodexSchemaMayDrift();
   const { url, anonKey } = assertSupabaseConfigured();
+  const previewSecretKey = isPreviewDeployment() ? getSupabaseSecretKey() : null;
+  const apiKey = previewSecretKey ?? anonKey;
   const cookieStore = cookies();
 
-  return createServerClient(url, anonKey, {
+  return createServerClient(url, apiKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -44,4 +48,14 @@ export function createSupabaseServerActionClient() {
       }
     }
   });
+}
+
+let codexSchemaWarningIssued = false;
+
+function warnIfCodexSchemaMayDrift() {
+  if (!isCodexDev() || codexSchemaWarningIssued) return;
+  codexSchemaWarningIssued = true;
+  console.warn(
+    '[codex] Using static Supabase credentials may cause schema drift versus feature branches. Apply migrations if preview errors appear.'
+  );
 }

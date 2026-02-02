@@ -4,6 +4,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getStoreConfig } from './src/server/storeConfig';
+import { isPreviewDeployment } from './src/server/deploymentEnv';
 
 // Fail fast if the deployment hasn't selected a provenance store.
 getStoreConfig();
@@ -199,6 +200,7 @@ function withSupabaseCookies(source: NextResponse, target: NextResponse): NextRe
 export async function middleware(request: NextRequest) {
   const maintenanceEnabled = isMaintenanceModeEnabled();
   const adminUserIds = maintenanceEnabled ? getAdminUserIds() : new Set<string>();
+  const shouldBypassAuth = isPreviewDeployment();
 
   const pathname = request.nextUrl.pathname;
   if (maintenanceEnabled && adminUserIds.size === 0) {
@@ -269,6 +271,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isPublicPath(pathname)) {
+    return response;
+  }
+
+  if (shouldBypassAuth) {
     return response;
   }
 

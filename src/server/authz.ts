@@ -5,6 +5,7 @@ import { forbidden } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { assertLocalPgModeConfig, isLocalPgMode } from '@/src/server/pgMode';
+import { isPreviewDeployment } from '@/src/server/deploymentEnv';
 
 export interface ProjectForAuthz {
   id: string;
@@ -15,6 +16,9 @@ export interface ProjectForAuthz {
 export async function requireProjectAccess(project: ProjectForAuthz): Promise<void> {
   if (isLocalPgMode()) {
     assertLocalPgModeConfig();
+    return;
+  }
+  if (isPreviewDeployment()) {
     return;
   }
   await requireUser();
@@ -33,6 +37,9 @@ export async function requireProjectOwner(project: ProjectForAuthz): Promise<voi
     assertLocalPgModeConfig();
     return;
   }
+  if (isPreviewDeployment()) {
+    return;
+  }
   const user = await requireUser();
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.from('projects').select('owner_user_id').eq('id', project.id).maybeSingle();
@@ -47,6 +54,9 @@ export async function requireProjectOwner(project: ProjectForAuthz): Promise<voi
 export async function requireProjectEditor(project: ProjectForAuthz): Promise<void> {
   if (isLocalPgMode()) {
     assertLocalPgModeConfig();
+    return;
+  }
+  if (isPreviewDeployment()) {
     return;
   }
   const user = await requireUser();
