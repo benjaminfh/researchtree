@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@blueprintjs/core": "^5.19.1",
-    "@blueprintjs/icons": "^5.23.0",
+    "@blueprintjs/icons": "^6.5.0",
     "@google/generative-ai": "^0.11.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.89.0",

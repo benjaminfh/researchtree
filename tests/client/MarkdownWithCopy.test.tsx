@@ -35,8 +35,8 @@ describe('MarkdownWithCopy', () => {
 
     await user.click(buttons[0]!);
     expect(copyTextToClipboardMock).toHaveBeenCalledWith("console.log('alpha');");
-    expect(buttons[0]).toHaveTextContent(/copied/i);
-    expect(buttons[1]).toHaveTextContent(/copy/i);
+    expect(buttons[0]).toHaveAccessibleName(/code copied/i);
+    expect(buttons[1]).toHaveAccessibleName(/copy code block/i);
 
     await user.click(buttons[1]!);
     expect(copyTextToClipboardMock).toHaveBeenCalledWith('const beta = 2;');

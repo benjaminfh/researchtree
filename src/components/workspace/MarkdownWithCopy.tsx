@@ -5,8 +5,8 @@ import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
-import { CheckIcon, Square2StackIcon } from './HeroIcons';
 import { copyTextToClipboard } from './clipboard';
+import { BlueprintIcon } from '../ui/BlueprintIcon';
 
 type MarkdownWithCopyProps = {
   content: string;
@@ -36,6 +36,7 @@ const InlineCode = ({ className, children }: CodeProps) => {
 
 const CodeBlock = ({ className, children }: CodeProps) => {
   const [copied, setCopied] = useState(false);
+  const [isWrapped, setIsWrapped] = useState(false);
 
   const text = String(children ?? '').replace(/\n$/, '');
 
@@ -47,29 +48,54 @@ const CodeBlock = ({ className, children }: CodeProps) => {
 
   return (
     <div className="group relative mt-4">
-      <pre className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-100/80 p-4 text-sm leading-6 text-slate-900 shadow-sm">
-        <code className={className}>{children}</code>
-      </pre>
-      <button
-        type="button"
-        onClick={() => {
-          void handleCopy();
-        }}
-        aria-label={copied ? 'Code copied' : 'Copy code block'}
-        className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 opacity-100 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-slate-100"
+      <pre
+        className={[
+          'rounded-xl border border-slate-200 bg-slate-100/80 p-4 text-sm leading-6 text-slate-900 shadow-sm',
+          isWrapped ? 'overflow-x-hidden' : 'overflow-x-auto',
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
-        {copied ? (
-          <>
-            <CheckIcon className="h-4 w-4 text-emerald-600" />
-            <span>Copied</span>
-          </>
-        ) : (
-          <>
-            <Square2StackIcon className="h-4 w-4 text-slate-600" />
-            <span>Copy</span>
-          </>
-        )}
-      </button>
+        <code
+          className={[
+            className,
+            isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {children}
+        </code>
+      </pre>
+      <div className="absolute right-3 top-3 inline-flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            void handleCopy();
+          }}
+          aria-label={copied ? 'Code copied' : 'Copy code block'}
+          className="inline-flex items-center rounded-full bg-white px-2 py-1 text-xs font-semibold opacity-100 shadow-sm transition hover:bg-primary/10 focus:outline-none"
+        >
+          <BlueprintIcon
+            icon={copied ? 'tick' : 'duplicate'}
+            className={copied ? 'h-3.5 w-3.5 text-emerald-600' : 'h-3.5 w-3.5 text-slate-600'}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setIsWrapped((prev) => !prev);
+          }}
+          aria-label={isWrapped ? 'Disable line wrap' : 'Enable line wrap'}
+          aria-pressed={isWrapped}
+          className="inline-flex items-center rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-600 opacity-100 shadow-sm transition hover:bg-primary/10 hover:text-primary focus:outline-none"
+        >
+          <BlueprintIcon
+            icon="wrap-lines"
+            className={isWrapped ? 'h-3.5 w-3.5 text-slate-800' : 'h-3.5 w-3.5 text-slate-600'}
+          />
+        </button>
+      </div>
     </div>
   );
 };

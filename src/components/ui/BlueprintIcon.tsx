@@ -4,7 +4,7 @@
 'use client';
 
 import React from 'react';
-import { getIconPaths, IconSize } from '@blueprintjs/icons';
+import { getIconPaths, IconNames, IconSize } from '@blueprintjs/icons';
 
 export function BlueprintIcon({
   icon,
@@ -15,7 +15,8 @@ export function BlueprintIcon({
   className?: string;
   title?: string;
 }) {
-  const paths = getIconPaths(icon as never, IconSize.STANDARD);
+  const resolvedIcon = (IconNames as Record<string, string>)[icon] ?? icon;
+  const paths = getIconPaths(resolvedIcon as never, IconSize.STANDARD);
   if (!paths) return null;
 
   return (
@@ -29,7 +30,7 @@ export function BlueprintIcon({
     >
       {title ? <title>{title}</title> : null}
       {paths.map((d: string, idx: number) => (
-        <path key={`${icon}-${idx}`} d={d} />
+        <path key={`${resolvedIcon}-${idx}`} d={d} />
       ))}
     </svg>
   );
