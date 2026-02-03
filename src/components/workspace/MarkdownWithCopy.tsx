@@ -74,7 +74,7 @@ const CodeBlock = ({ className, children }: CodeProps) => {
             void handleCopy();
           }}
           aria-label={copied ? 'Code copied' : 'Copy code block'}
-          className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold opacity-100 transition hover:bg-primary/10 focus:outline-none"
+          className="inline-flex items-center rounded-full bg-white px-2 py-1 text-xs font-semibold opacity-100 shadow-sm transition hover:bg-primary/10 focus:outline-none"
         >
           <BlueprintIcon
             icon={copied ? 'tick' : 'duplicate'}
@@ -88,10 +88,10 @@ const CodeBlock = ({ className, children }: CodeProps) => {
           }}
           aria-label={isWrapped ? 'Disable line wrap' : 'Enable line wrap'}
           aria-pressed={isWrapped}
-          className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 opacity-100 transition hover:bg-primary/10 hover:text-primary focus:outline-none"
+          className="inline-flex items-center rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-600 opacity-100 shadow-sm transition hover:bg-primary/10 hover:text-primary focus:outline-none"
         >
           <BlueprintIcon
-            icon="wrap-lines"
+            icon="paragraph"
             className={isWrapped ? 'h-3.5 w-3.5 text-slate-800' : 'h-3.5 w-3.5 text-slate-600'}
           />
         </button>
