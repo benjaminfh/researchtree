@@ -74,7 +74,7 @@ const CodeBlock = ({ className, children }: CodeProps) => {
             void handleCopy();
           }}
           aria-label={copied ? 'Code copied' : 'Copy code block'}
-          className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 p-2 text-xs font-semibold text-slate-700 opacity-100 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-slate-100"
+          className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 p-2 text-xs font-semibold text-slate-700 opacity-100 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100"
         >
           <BlueprintIcon
             icon={copied ? 'tick' : 'duplicate'}
@@ -88,10 +88,10 @@ const CodeBlock = ({ className, children }: CodeProps) => {
           }}
           aria-label={isWrapped ? 'Disable line wrap' : 'Enable line wrap'}
           aria-pressed={isWrapped}
-          className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 p-2 text-xs font-semibold text-slate-700 opacity-100 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-slate-100"
+          className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 p-2 text-xs font-semibold text-slate-700 opacity-100 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100"
         >
           <BlueprintIcon
-            icon="align-justify"
+            icon="wrap-lines"
             className={isWrapped ? 'h-4 w-4 text-slate-800' : 'h-4 w-4 text-slate-600'}
           />
         </button>
