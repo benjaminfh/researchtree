@@ -5,11 +5,11 @@ import type { User } from '@supabase/supabase-js';
 import { unauthorized } from '@/src/server/http';
 import { createSupabaseServerClient } from '@/src/server/supabase/server';
 import { assertLocalPgModeConfig, isLocalPgMode } from '@/src/server/pgMode';
-import { LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';
+import { LOCAL_PG_USER_EMAIL, LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';
 
 const LOCAL_USER: User = {
   id: LOCAL_PG_USER_ID,
-  email: 'local@device',
+  email: LOCAL_PG_USER_EMAIL,
   app_metadata: {},
   user_metadata: {},
   aud: 'local',

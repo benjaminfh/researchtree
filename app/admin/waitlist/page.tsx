@@ -9,6 +9,7 @@ import { AdminSubmitButton } from './AdminSubmitButton';
 import { CommandEnterForm } from '@/src/components/forms/CommandEnterForm';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export default async function AdminWaitlistPage() {
   await requireAdminUser();
