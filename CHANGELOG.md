@@ -9,7 +9,12 @@ All notable user-facing changes are documented here.
 - Collaboration support in Postgres mode (members, invites, edit locks).
 - Multi-backend provenance: Postgres (Supabase/local) with legacy git mode.
 - Electron desktop shell for local workflows.
-- Recent updates: ref label resolution after renames, ref-id FK columns in PG nodes/RPCs, and collaboration lease/invite polish.
+- Recent updates:
+  - GitHub OAuth sign-in (feature-gated via `RT_GITHUB_AUTH`) and login UI refresh.
+  - Markdown code block wrap toggle plus icon-only copy control.
+  - Contextual highlight menu for assistant selections.
+  - Desktop env example and local PG user email alignment.
+  - Ref label resolution after renames and ref-id FK columns in PG nodes/RPCs.
 
 ## Pre-release change log
 
