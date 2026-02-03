@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT -->
 <strong>Branchable contexts for human-led research.</strong>
 
 ![Docs](https://img.shields.io/badge/docs-pending-lightgrey)
-![Release](https://img.shields.io/badge/release-pending-lightgrey)
+![Release](https://img.shields.io/badge/release-v0.1.0-brightgreen)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
