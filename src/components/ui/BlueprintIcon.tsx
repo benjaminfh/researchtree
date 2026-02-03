@@ -16,10 +16,7 @@ export function BlueprintIcon({
   title?: string;
 }) {
   const resolvedIcon = (IconNames as Record<string, string>)[icon] ?? icon;
-  let paths = getIconPaths(resolvedIcon as never, IconSize.STANDARD);
-  if (!paths && (icon === 'wrap-lines' || icon === 'WrapLines')) {
-    paths = getIconPaths('align-justify' as never, IconSize.STANDARD);
-  }
+  const paths = getIconPaths(resolvedIcon as never, IconSize.STANDARD);
   if (!paths) return null;
 
   return (
