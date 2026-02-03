@@ -91,7 +91,7 @@ const CodeBlock = ({ className, children }: CodeProps) => {
           className="inline-flex items-center rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-600 opacity-100 shadow-sm transition hover:bg-primary/10 hover:text-primary focus:outline-none"
         >
           <BlueprintIcon
-            icon="paragraph"
+            icon="WrapLines"
             className={isWrapped ? 'h-3.5 w-3.5 text-slate-800' : 'h-3.5 w-3.5 text-slate-600'}
           />
         </button>
