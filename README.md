@@ -182,6 +182,14 @@ The Electron shell boots a local Next.js server and opens a native window.
 
 Desktop loads `.env.desktop` and then `.env.local` (excluding Supabase keys), so local Postgres is the default path.
 
+### Desktop env setup
+
+- Use `env.desktop.example` as the starting point (copy to `.env.desktop`).
+- Desktop loads `.env.desktop` first, then `.env.local` (Supabase keys are skipped at runtime).
+- `LOCAL_PG_URL` is stored in the desktop config file at `~/Library/Application Support/<APP_NAME>/config.json`
+  (if missing, the app prompts or uses a default on first run).
+- For packaging with local PG, avoid Supabase settings in the build environment or override them explicitly.
+
 ## Repository Map
 
 - `app/` Next.js route handlers and pages.

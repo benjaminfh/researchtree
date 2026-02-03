@@ -5,7 +5,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
-import { getLocalPgConnectionStrings, LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';
+import { getLocalPgConnectionStrings, LOCAL_PG_USER_EMAIL, LOCAL_PG_USER_ID } from '@/src/server/localPgConfig';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,7 +69,7 @@ async function ensureLocalSchemas(pool: Pool): Promise<void> {
     on conflict (id) do update
       set email = excluded.email
   `,
-    [LOCAL_PG_USER_ID, 'local@example.com']
+    [LOCAL_PG_USER_ID, LOCAL_PG_USER_EMAIL]
   );
   await pool.query(
     `
@@ -89,7 +89,7 @@ async function ensureLocalSchemas(pool: Pool): Promise<void> {
     language sql
     stable
     as $$
-      select jsonb_build_object('email', 'local@example.com')
+      select jsonb_build_object('email', '${LOCAL_PG_USER_EMAIL}')
     $$;
   `
   );
