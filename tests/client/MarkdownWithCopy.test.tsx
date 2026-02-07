@@ -41,4 +41,24 @@ describe('MarkdownWithCopy', () => {
     await user.click(buttons[1]!);
     expect(copyTextToClipboardMock).toHaveBeenCalledWith('const beta = 2;');
   });
+
+  it('wraps markdown tables in a horizontal overflow container', () => {
+    render(
+      <div className="prose prose-sm prose-slate">
+        <MarkdownWithCopy
+          content={`| Name | Notes |
+| --- | --- |
+| alpha | this is a fairly long value that should stay inside chat |
+| beta | another long value |
+`}
+        />
+      </div>
+    );
+
+    const table = screen.getByRole('table');
+    const scrollContainer = table.parentElement;
+    expect(scrollContainer).not.toBeNull();
+    expect(scrollContainer).toHaveClass('max-w-full', 'overflow-x-auto');
+    expect(table).toHaveClass('w-max', 'min-w-full');
+  });
 });
