@@ -1976,6 +1976,7 @@ export function WorkspaceClient({
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
   const questionDraftRef = useRef<string | null>(null);
+  const retryDraftRef = useRef<string | null>(null);
   const [assistantLifecycle, setAssistantLifecycle] = useState<AssistantLifecycle>('idle');
   const [streamMeta, setStreamMeta] = useState<StreamMeta | null>(null);
   const [streamCache, setStreamCache] = useState<{ preview: string; blocks: ThinkingContentBlock[] } | null>(null);
@@ -2338,6 +2339,7 @@ export function WorkspaceClient({
         pushToast('error', 'Editing locked. Editor access required.');
         return false;
       }
+      retryDraftRef.current = null;
       const clientRequestId = beginTurn({
         content: draft,
         branch: branchName,
@@ -2376,6 +2378,15 @@ export function WorkspaceClient({
   const handleToggleComposerWebSearch = useCallback(() => {
     setWebSearchEnabled((prev) => !prev);
   }, []);
+
+  const handleRetryFailedMessage = useCallback(async () => {
+    const retryDraft = retryDraftRef.current;
+    if (!retryDraft) {
+      await refreshHistory();
+      return;
+    }
+    await sendComposerDraft(retryDraft);
+  }, [refreshHistory, sendComposerDraft]);
 
   const handleComposerDraftLengthValidChange = useCallback(
     (isValid: boolean) => {
@@ -2640,6 +2651,7 @@ export function WorkspaceClient({
     turnUserRenderIdRef.current = null;
     turnAssistantRenderIdRef.current = null;
     if (!hasReceivedAssistantChunkRef.current && optimisticDraft) {
+      retryDraftRef.current = optimisticDraft;
       setComposerInitialDraft({ id: createClientId(), value: optimisticDraft, mode: 'restore' });
     }
     hasReceivedAssistantChunkRef.current = false;
@@ -5461,7 +5473,7 @@ export function WorkspaceClient({
                         {state.error ? (
                           <button
                             type="button"
-                            onClick={() => void refreshHistory()}
+                            onClick={() => void handleRetryFailedMessage()}
                             className="shrink-0 rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
                           >
                             Retry

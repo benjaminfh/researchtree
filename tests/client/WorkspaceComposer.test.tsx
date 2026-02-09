@@ -103,6 +103,46 @@ describe('WorkspaceComposer', () => {
     });
   });
 
+
+  it('recomputes composer padding when reopening from collapsed with existing draft', async () => {
+    const onHeightChange = vi.fn();
+    const { rerender } = render(
+      <WorkspaceComposer
+        {...baseProps}
+        initialDraft={{ id: 'seed', value: 'draft text', mode: 'restore' }}
+        onHeightChange={onHeightChange}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onHeightChange).toHaveBeenCalled();
+    });
+
+    rerender(
+      <WorkspaceComposer
+        {...baseProps}
+        collapsed
+        initialDraft={{ id: 'seed', value: 'draft text', mode: 'restore' }}
+        onHeightChange={onHeightChange}
+      />
+    );
+
+    onHeightChange.mockClear();
+
+    rerender(
+      <WorkspaceComposer
+        {...baseProps}
+        collapsed={false}
+        initialDraft={{ id: 'seed', value: 'draft text', mode: 'restore' }}
+        onHeightChange={onHeightChange}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onHeightChange).toHaveBeenCalled();
+    });
+  });
+
   it('does not clear newer draft text typed while send is in flight', async () => {
     const user = userEvent.setup();
     let resolveSend: ((value: boolean) => void) | null = null;

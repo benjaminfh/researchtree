@@ -178,10 +178,11 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
   }, [updateHeights]);
 
   useLayoutEffect(() => {
+    if (collapsed) return;
     resizeComposer();
     updateCornerRadius();
     updatePadding();
-  }, [draft, resizeComposer, updateCornerRadius, updatePadding]);
+  }, [collapsed, draft, resizeComposer, updateCornerRadius, updatePadding]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -194,6 +195,11 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [resizeComposer, updateCornerRadius, updateHeights, updatePadding]);
+
+  useEffect(() => {
+    if (!collapsed) return;
+    lastHeightRef.current = null;
+  }, [collapsed]);
 
   useEffect(() => {
     if (!thinkingMenuOpen) return;

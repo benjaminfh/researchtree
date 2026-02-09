@@ -339,6 +339,38 @@ describe('WorkspaceClient', () => {
   });
 
 
+
+  it('retries failed message send from the error banner', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await user.type(composer, 'Retry this send');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Retry this send', clientRequestId: expect.any(String) })
+      );
+    });
+
+    chatState = { ...chatState, error: 'Network issue' };
+    rerender(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Retry this send', clientRequestId: expect.any(String) })
+      );
+      expect(sendMessageMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('restores the optimistic draft when send fails before assistant chunks arrive', async () => {
     const user = userEvent.setup();
 
