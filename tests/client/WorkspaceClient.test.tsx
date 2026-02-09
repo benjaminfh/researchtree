@@ -318,6 +318,36 @@ describe('WorkspaceClient', () => {
     });
   });
 
+
+  it('restores the optimistic draft when send fails before assistant chunks arrive', async () => {
+    const user = userEvent.setup();
+
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await user.type(composer, 'Recover this prompt');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('');
+    });
+
+    chatState = { ...chatState, error: 'stream failed' };
+    rerender(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('Recover this prompt');
+    });
+  });
+
   it('displays streaming previews when onChunk emits tokens', async () => {
     mockUseProjectData.mockReturnValueOnce({
       nodes: [],

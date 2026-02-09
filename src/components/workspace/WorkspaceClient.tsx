@@ -405,6 +405,12 @@ type ToastMessage = {
   message: string;
 };
 
+type ComposerInitialDraft = {
+  id: string;
+  value: string;
+  mode: 'append' | 'restore';
+};
+
 type BranchListItem = BranchSummary & {
   isGhost?: boolean;
 };
@@ -1966,7 +1972,7 @@ export function WorkspaceClient({
     scheduleAutosave
   ]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
-  const [composerInitialDraft, setComposerInitialDraft] = useState<string | null>(null);
+  const [composerInitialDraft, setComposerInitialDraft] = useState<ComposerInitialDraft | null>(null);
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
   const questionDraftRef = useRef<string | null>(null);
@@ -2544,7 +2550,7 @@ export function WorkspaceClient({
         .map((line) => (line ? `> ${line}` : '>'))
         .join('\n');
       const quotedBlock = `${quoted}\n\n`;
-      setComposerInitialDraft((prev) => (prev ? `${prev}\n\n${quotedBlock}` : quotedBlock));
+      setComposerInitialDraft({ id: createClientId(), value: quotedBlock, mode: 'append' });
       if (composerCollapsed) {
         expandComposer();
       }
@@ -2601,6 +2607,7 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
+    const optimisticDraft = optimisticDraftRef.current;
     optimisticDraftRef.current = null;
     questionDraftRef.current = null;
     void Promise.all([refreshHistory(), mutateArtefact()]).catch(() => {});
@@ -2611,6 +2618,9 @@ export function WorkspaceClient({
     setStreamMeta(null);
     turnUserRenderIdRef.current = null;
     turnAssistantRenderIdRef.current = null;
+    if (!hasReceivedAssistantChunkRef.current && optimisticDraft) {
+      setComposerInitialDraft({ id: createClientId(), value: optimisticDraft, mode: 'restore' });
+    }
     hasReceivedAssistantChunkRef.current = false;
     if (assistantPendingTimerRef.current) {
       clearTimeout(assistantPendingTimerRef.current);

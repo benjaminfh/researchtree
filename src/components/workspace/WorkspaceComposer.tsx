@@ -14,7 +14,7 @@ type WorkspaceComposerProps = {
   collapsed: boolean;
   railCollapsed: boolean;
   draftStorageKey: string;
-  initialDraft: string | null;
+  initialDraft: { id: string; value: string; mode: 'append' | 'restore' } | null;
   inputDisabled: boolean;
   actionDisabled: boolean;
   isStreaming: boolean;
@@ -140,10 +140,19 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
       setDraft(savedDraft);
       return;
     }
-    if (initialDraft) {
-      setDraft(initialDraft);
-    }
-  }, [draftStorageKey, initialDraft]);
+    setDraft('');
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!initialDraft) return;
+    setDraft((prev) => {
+      if (initialDraft.mode === 'restore') {
+        if (prev.trim().length > 0) return prev;
+        return initialDraft.value;
+      }
+      return prev.trim().length > 0 ? `${prev}\n\n${initialDraft.value}` : initialDraft.value;
+    });
+  }, [initialDraft]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
