@@ -133,6 +133,9 @@ const buildQuestionMessage = (question: string, highlight?: string) => {
 
 const QUESTION_BRANCH_MARKER_REGEX = /highlighted passage:/i;
 const HTML_TAG_DETECTION_REGEX = /<([a-z][\s\S]*?)>/i;
+const VIRTUAL_ROW_ESTIMATE_PX = 180;
+const VIRTUAL_ROW_OVERSCAN = 6;
+const VIRTUALIZATION_MIN_ROWS = 80;
 
 const normalizeMarkdownOutput = (value: string) =>
   value
@@ -982,7 +985,7 @@ const NodeBubble: FC<{
   );
 };
 
-const ChatNodeRow: FC<{
+type ChatNodeRowProps = {
   node: RenderNode;
   trunkName: string;
   currentBranchName: string;
@@ -1012,7 +1015,9 @@ const ChatNodeRow: FC<{
   highlightMenuPoint?: { x: number; y: number } | null;
   highlightMenuOffset?: number;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
-}> = ({
+};
+
+const ChatNodeRowComponent: FC<ChatNodeRowProps> = ({
   node,
   trunkName,
   currentBranchName,
@@ -1127,6 +1132,35 @@ const ChatNodeRow: FC<{
     </div>
   );
 };
+
+const ChatNodeRow = React.memo(ChatNodeRowComponent, (prev, next) => {
+  return (
+    prev.node === next.node &&
+    prev.trunkName === next.trunkName &&
+    prev.currentBranchName === next.currentBranchName &&
+    prev.defaultProvider === next.defaultProvider &&
+    prev.providerByBranch === next.providerByBranch &&
+    prev.branchColors === next.branchColors &&
+    prev.muted === next.muted &&
+    prev.subtitle === next.subtitle &&
+    prev.messageInsetClassName === next.messageInsetClassName &&
+    prev.isStarred === next.isStarred &&
+    prev.isStarPending === next.isStarPending &&
+    prev.isCanvasDiffTagged === next.isCanvasDiffTagged &&
+    prev.highlighted === next.highlighted &&
+    prev.branchQuestionCandidate === next.branchQuestionCandidate &&
+    prev.showBranchSplit === next.showBranchSplit &&
+    prev.branchActionDisabled === next.branchActionDisabled &&
+    prev.questionBranchNames === next.questionBranchNames &&
+    prev.isQuestionBranchesOpen === next.isQuestionBranchesOpen &&
+    prev.questionBranchIndex === next.questionBranchIndex &&
+    prev.projectId === next.projectId &&
+    prev.quoteSelectionText === next.quoteSelectionText &&
+    prev.highlightMenuPoint?.x === next.highlightMenuPoint?.x &&
+    prev.highlightMenuPoint?.y === next.highlightMenuPoint?.y &&
+    prev.highlightMenuOffset === next.highlightMenuOffset
+  );
+});
 
 const withLeaseSessionId = <T extends Record<string, unknown>>(payload: T, leaseSessionId?: string | null): T | (T & { leaseSessionId: string }) => {
   if (!leaseSessionId) {
@@ -3463,6 +3497,7 @@ export function WorkspaceClient({
     point?: { x: number; y: number };
   } | null>(null);
   const [chatListWidth, setChatListWidth] = useState<number | null>(null);
+  const [virtualViewport, setVirtualViewport] = useState({ height: 0, scrollTop: 0 });
 
   const minMessageListPadding = useMemo(() => {
     if (!Number.isFinite(messageLineHeight ?? NaN) || (messageLineHeight ?? 0) <= 0) {
@@ -3860,6 +3895,13 @@ export function WorkspaceClient({
   }, [visibleNodes.length, streamPreview.length, streamBlocks.length, listPaddingExtra, messageLineHeight, isLoading, updateScrollState]);
 
   const handleMessageListScroll = () => {
+    const container = messageListRef.current;
+    if (container) {
+      setVirtualViewport((prev) => {
+        if (prev.height === container.clientHeight && prev.scrollTop === container.scrollTop) return prev;
+        return { height: container.clientHeight, scrollTop: container.scrollTop };
+      });
+    }
     if (suppressPinScrollRef.current) {
       suppressPinScrollRef.current = false;
       updateScrollState();
@@ -3886,6 +3928,12 @@ export function WorkspaceClient({
   const handleUserScrollIntent = () => {
     userScrollIntentRef.current = true;
   };
+
+  useEffect(() => {
+    const container = messageListRef.current;
+    if (!container) return;
+    setVirtualViewport({ height: container.clientHeight, scrollTop: container.scrollTop });
+  }, [visibleNodes.length]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -4123,6 +4171,36 @@ export function WorkspaceClient({
       branchNodes: visibleNodes.slice(sharedCount)
     };
   }, [visibleNodes, sharedCount]);
+
+  const { sharedNodesForRender, branchNodesForRender, virtualTopSpacer, virtualBottomSpacer } = useMemo(() => {
+    const totalRows = sharedNodes.length + branchNodes.length;
+    if (totalRows < VIRTUALIZATION_MIN_ROWS || virtualViewport.height <= 0) {
+      return {
+        sharedNodesForRender: sharedNodes,
+        branchNodesForRender: branchNodes,
+        virtualTopSpacer: 0,
+        virtualBottomSpacer: 0
+      };
+    }
+
+    const start = Math.max(0, Math.floor(virtualViewport.scrollTop / VIRTUAL_ROW_ESTIMATE_PX) - VIRTUAL_ROW_OVERSCAN);
+    const end = Math.min(
+      totalRows,
+      Math.ceil((virtualViewport.scrollTop + virtualViewport.height) / VIRTUAL_ROW_ESTIMATE_PX) + VIRTUAL_ROW_OVERSCAN
+    );
+
+    const sharedStart = Math.min(sharedNodes.length, start);
+    const sharedEnd = Math.min(sharedNodes.length, end);
+    const branchStart = Math.max(0, start - sharedNodes.length);
+    const branchEnd = Math.max(0, Math.min(branchNodes.length, end - sharedNodes.length));
+
+    return {
+      sharedNodesForRender: sharedNodes.slice(sharedStart, sharedEnd),
+      branchNodesForRender: branchNodes.slice(branchStart, branchEnd),
+      virtualTopSpacer: start * VIRTUAL_ROW_ESTIMATE_PX,
+      virtualBottomSpacer: Math.max(0, (totalRows - end) * VIRTUAL_ROW_ESTIMATE_PX)
+    };
+  }, [branchNodes, sharedNodes, virtualViewport]);
 
   const getNodeRenderKey = useCallback((node: RenderNode) => node.renderId ?? node.id, []);
 
@@ -5471,11 +5549,12 @@ export function WorkspaceClient({
                     <p className="text-sm text-muted">No nodes yet. Start with a system prompt or question.</p>
                   ) : (
                     <div className="flex flex-col">
+                      {virtualTopSpacer > 0 ? <div aria-hidden="true" style={{ height: `${virtualTopSpacer}px` }} /> : null}
                       {!hideShared && sharedNodes.length > 0 ? (
                         <div className="relative">
                           <div className="pointer-events-none absolute left-[14px] right-0 top-0 h-full rounded-2xl bg-slate-50" />
                           <div className="relative flex flex-col">
-                              {sharedNodes.map((node) => (
+                              {sharedNodesForRender.map((node) => (
                               <ChatNodeRow
                                 key={getNodeRenderKey(node)}
                                 node={node}
@@ -5531,11 +5610,11 @@ export function WorkspaceClient({
                         </div>
                       ) : null}
 
-                      {!hideShared && sharedNodes.length > 0 && branchNodes.length > 0 ? (
+                      {!hideShared && sharedNodesForRender.length > 0 && branchNodesForRender.length > 0 ? (
                         <div className="py-1" />
                       ) : null}
 
-                      {branchNodes.map((node) => (
+                      {branchNodesForRender.map((node) => (
                         <ChatNodeRow
                           key={getNodeRenderKey(node)}
                           node={node}
@@ -5585,6 +5664,7 @@ export function WorkspaceClient({
                           onQuoteReply={handleQuoteReply}
                         />
                       ))}
+                      {virtualBottomSpacer > 0 ? <div aria-hidden="true" style={{ height: `${virtualBottomSpacer}px` }} /> : null}
                     </div>
                   )}
                 </div>
