@@ -2283,6 +2283,15 @@ export function WorkspaceClient({
     !openAIUseResponses &&
     (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
+  const latestNonStateNodeId = useMemo(() => {
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      const node = nodes[index];
+      if (!node || node.type === 'state') continue;
+      return String(node.id);
+    }
+    return null;
+  }, [nodes]);
+
   const convertHtmlToMarkdownDraft = useCallback(
     (draft: string) => {
       if (composerActionDisabled) return null;
@@ -2333,7 +2342,7 @@ export function WorkspaceClient({
         content: draft,
         branch: branchName,
         createdOnBranch: branchName,
-        parent: nodes.length > 0 ? String(nodes[nodes.length - 1]!.id) : null,
+        parent: latestNonStateNodeId,
         optimisticDraft: draft,
         questionDraft: null,
         requiresUserMatch: true
@@ -2349,7 +2358,8 @@ export function WorkspaceClient({
       pushToast,
       sendMessage,
       state.isStreaming,
-      thinkingUnsupportedError
+      thinkingUnsupportedError,
+      latestNonStateNodeId
     ]
   );
 
@@ -3061,6 +3071,7 @@ export function WorkspaceClient({
       }
       if (composerCollapsed) {
         event.preventDefault();
+        setComposerInitialDraft({ id: createClientId(), value: event.key, mode: 'append' });
         expandComposer();
       }
     };

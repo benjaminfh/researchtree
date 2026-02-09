@@ -303,6 +303,25 @@ describe('WorkspaceClient', () => {
     });
   });
 
+
+  it('preserves first keystroke when typing to expand a collapsed composer', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    await user.keyboard('{Meta>}k{/Meta}');
+    expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer collapsed');
+
+    fireEvent.keyDown(window, { key: 'x' });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer expanded');
+      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('x');
+    });
+  });
+
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
