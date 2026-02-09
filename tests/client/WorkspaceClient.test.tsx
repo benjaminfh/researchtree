@@ -314,14 +314,59 @@ describe('WorkspaceClient', () => {
     await user.keyboard('{Meta>}k{/Meta}');
     expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer collapsed');
 
-    fireEvent.keyDown(window, { key: 'x' });
+    await user.keyboard('xy');
 
     await waitFor(() => {
       expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer expanded');
-      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('x');
+      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('xy');
     });
   });
 
+
+
+  it('focuses composer after quote reply insertion', async () => {
+    const user = userEvent.setup();
+    const branchNodes: NodeRecord[] = [
+      {
+        id: 'branch-user',
+        type: 'message',
+        role: 'user',
+        content: 'Question on branch',
+        timestamp: 1700000000000,
+        parent: null,
+        createdOnBranch: 'feature/phase-2'
+      },
+      {
+        id: 'branch-assistant',
+        type: 'message',
+        role: 'assistant',
+        content: 'Branch assistant answer',
+        timestamp: 1700000000100,
+        parent: 'branch-user',
+        createdOnBranch: 'feature/phase-2'
+      }
+    ];
+
+    mockUseProjectData.mockReturnValue({
+      nodes: branchNodes,
+      artefact: '## Artefact state',
+      artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+      isLoading: false,
+      error: undefined,
+      mutateHistory: mutateHistoryMock,
+      mutateArtefact: mutateArtefactMock
+    } as ReturnType<typeof useProjectData>);
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await user.click(screen.getByRole('button', { name: 'Quote reply' }));
+
+    await waitFor(() => {
+      const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+      expect(composer).toHaveFocus();
+      expect(composer.value).toContain('> Branch assistant answer');
+    });
+  });
 
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();

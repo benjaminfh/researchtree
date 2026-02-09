@@ -1973,6 +1973,7 @@ export function WorkspaceClient({
   ]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
   const [composerInitialDraft, setComposerInitialDraft] = useState<ComposerInitialDraft | null>(null);
+  const [composerFocusRequestId, setComposerFocusRequestId] = useState<string | null>(null);
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
   const questionDraftRef = useRef<string | null>(null);
@@ -2583,6 +2584,7 @@ export function WorkspaceClient({
         .join('\n');
       const quotedBlock = `${quoted}\n\n`;
       setComposerInitialDraft({ id: createClientId(), value: quotedBlock, mode: 'append' });
+      setComposerFocusRequestId(createClientId());
       if (composerCollapsed) {
         expandComposer();
       }
@@ -3095,6 +3097,7 @@ export function WorkspaceClient({
       if (composerCollapsed) {
         event.preventDefault();
         setComposerInitialDraft({ id: createClientId(), value: event.key, mode: 'append' });
+        setComposerFocusRequestId(createClientId());
         expandComposer();
       }
     };
@@ -6076,6 +6079,7 @@ export function WorkspaceClient({
             onConvertHtmlToMarkdown={convertHtmlToMarkdownDraft}
             onDraftPresenceChange={setComposerHasDraft}
             onDraftLengthValidChange={handleComposerDraftLengthValidChange}
+            onFocusRequestId={composerFocusRequestId}
             onHeightChange={setComposerPadding}
           />
             </div>

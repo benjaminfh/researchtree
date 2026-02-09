@@ -34,6 +34,7 @@ type WorkspaceComposerProps = {
   onConvertHtmlToMarkdown: (draft: string) => string | null;
   onDraftPresenceChange: (hasDraft: boolean) => void;
   onDraftLengthValidChange: (isValid: boolean) => void;
+  onFocusRequestId: string | null;
   onHeightChange: (height: number) => void;
 };
 
@@ -63,6 +64,7 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
   onConvertHtmlToMarkdown,
   onDraftPresenceChange,
   onDraftLengthValidChange,
+  onFocusRequestId,
   onHeightChange
 }: WorkspaceComposerProps) {
   const [draft, setDraft] = useState('');
@@ -200,6 +202,21 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
     if (!collapsed) return;
     lastHeightRef.current = null;
   }, [collapsed]);
+
+
+  useEffect(() => {
+    if (collapsed || !onFocusRequestId) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    window.setTimeout(() => {
+      const input = textareaRef.current;
+      if (!input) return;
+      input.focus();
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+      input.scrollTop = input.scrollHeight;
+    }, 0);
+  }, [collapsed, onFocusRequestId]);
 
   useEffect(() => {
     if (!thinkingMenuOpen) return;

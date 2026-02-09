@@ -29,6 +29,7 @@ const baseProps = {
   onConvertHtmlToMarkdown: vi.fn(() => null),
   onDraftPresenceChange: vi.fn(),
   onDraftLengthValidChange: vi.fn(),
+  onFocusRequestId: null,
   onHeightChange: vi.fn()
 };
 
