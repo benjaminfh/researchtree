@@ -186,7 +186,7 @@ const getWorkspacePerfDebugState = (): WorkspacePerfDebugState | null => {
 const flushWorkspacePerfDebugBurst = (state: WorkspacePerfDebugState) => {
   if (!state.keypressToPaintMs.length) return;
   const sorted = [...state.keypressToPaintMs].sort((a, b) => a - b);
-  const p95Index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+  const p95Index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
   const p95 = sorted[p95Index] ?? 0;
   const avg = state.keypressToPaintMs.reduce((acc, value) => acc + value, 0) / state.keypressToPaintMs.length;
   console.info('[perf-debug] burst', {
