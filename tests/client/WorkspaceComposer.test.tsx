@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkspaceComposer } from '@/src/components/workspace/WorkspaceComposer';
+import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 
 const baseProps = {
   collapsed: false,
@@ -27,6 +28,7 @@ const baseProps = {
   onToggleWebSearch: vi.fn(),
   onConvertHtmlToMarkdown: vi.fn(() => null),
   onDraftPresenceChange: vi.fn(),
+  onDraftLengthValidChange: vi.fn(),
   onHeightChange: vi.fn()
 };
 
@@ -76,6 +78,28 @@ describe('WorkspaceComposer', () => {
 
     await waitFor(() => {
       expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('Current unsaved text');
+    });
+  });
+
+
+  it('emits draft length validity changes as user edits', async () => {
+    const user = userEvent.setup();
+    const onDraftLengthValidChange = vi.fn();
+
+    render(<WorkspaceComposer {...baseProps} onDraftLengthValidChange={onDraftLengthValidChange} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    fireEvent.change(composer, { target: { value: 'x'.repeat(CHAT_LIMITS.messageMaxChars + 1) } });
+
+    await waitFor(() => {
+      expect(onDraftLengthValidChange).toHaveBeenCalledWith(false);
+    });
+
+    await user.clear(composer);
+    await user.type(composer, 'ok');
+
+    await waitFor(() => {
+      expect(onDraftLengthValidChange).toHaveBeenCalledWith(true);
     });
   });
 

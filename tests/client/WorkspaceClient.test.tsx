@@ -322,6 +322,7 @@ describe('WorkspaceClient', () => {
     });
   });
 
+
   it('sends the draft when the user presses ⌘+Enter', async () => {
     const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);

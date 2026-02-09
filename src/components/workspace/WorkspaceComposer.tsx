@@ -33,6 +33,7 @@ type WorkspaceComposerProps = {
   onToggleWebSearch: () => void;
   onConvertHtmlToMarkdown: (draft: string) => string | null;
   onDraftPresenceChange: (hasDraft: boolean) => void;
+  onDraftLengthValidChange: (isValid: boolean) => void;
   onHeightChange: (height: number) => void;
 };
 
@@ -61,6 +62,7 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
   onToggleWebSearch,
   onConvertHtmlToMarkdown,
   onDraftPresenceChange,
+  onDraftLengthValidChange,
   onHeightChange
 }: WorkspaceComposerProps) {
   const [draft, setDraft] = useState('');
@@ -124,9 +126,6 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
   const submitDraft = useCallback(async () => {
     const message = draft;
     if (!message.trim() || sendDisabled) return;
-    if (message.length > CHAT_LIMITS.messageMaxChars) {
-      return;
-    }
     setDraft('');
     const sent = await onSend(message);
     if (!sent) {
@@ -168,6 +167,11 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
       onDraftPresenceChange(hasDraft);
     }
   }, [draft, draftStorageKey, onDraftPresenceChange]);
+
+
+  useEffect(() => {
+    onDraftLengthValidChange(draft.length <= CHAT_LIMITS.messageMaxChars);
+  }, [draft.length, onDraftLengthValidChange]);
 
   useLayoutEffect(() => {
     updateHeights();

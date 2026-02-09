@@ -2377,6 +2377,17 @@ export function WorkspaceClient({
     setWebSearchEnabled((prev) => !prev);
   }, []);
 
+  const handleComposerDraftLengthValidChange = useCallback(
+    (isValid: boolean) => {
+      if (!isValid) return;
+      setComposerError((prev) => {
+        if (!prev || !prev.startsWith('Message is too long')) return prev;
+        return null;
+      });
+    },
+    []
+  );
+
   const sendQuestionWithStream = async ({
     targetBranch,
     question,
@@ -6052,6 +6063,7 @@ export function WorkspaceClient({
             onToggleWebSearch={handleToggleComposerWebSearch}
             onConvertHtmlToMarkdown={convertHtmlToMarkdownDraft}
             onDraftPresenceChange={setComposerHasDraft}
+            onDraftLengthValidChange={handleComposerDraftLengthValidChange}
             onHeightChange={setComposerPadding}
           />
             </div>
