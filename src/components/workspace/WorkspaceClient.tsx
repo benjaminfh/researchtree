@@ -244,6 +244,7 @@ const recordKeypressToPaint = (startedAt: number) => {
     state.flushRequested = false;
   }
   state.lastKeyAt = now;
+  state.flushRequested = false;
   if (state.flushTimer) {
     clearTimeout(state.flushTimer);
   }
