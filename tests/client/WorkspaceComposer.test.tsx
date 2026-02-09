@@ -78,4 +78,49 @@ describe('WorkspaceComposer', () => {
       expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('Current unsaved text');
     });
   });
+
+  it('does not clear newer draft text typed while send is in flight', async () => {
+    const user = userEvent.setup();
+    let resolveSend: ((value: boolean) => void) | null = null;
+    const onSend = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSend = resolve;
+        })
+    );
+
+    render(<WorkspaceComposer {...baseProps} onSend={onSend} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'First prompt');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith('First prompt');
+      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('');
+    });
+
+    await user.type(screen.getByPlaceholderText('Ask anything'), 'Follow-up draft');
+    resolveSend?.(true);
+
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('Follow-up draft');
+    });
+  });
+
+  it('restores original message if send fails and user has not typed a new draft', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn(async () => false);
+
+    render(<WorkspaceComposer {...baseProps} onSend={onSend} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Retry me');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith('Retry me');
+      expect((screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement).value).toBe('Retry me');
+    });
+  });
 });

@@ -127,9 +127,10 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
     if (message.length > CHAT_LIMITS.messageMaxChars) {
       return;
     }
+    setDraft('');
     const sent = await onSend(message);
-    if (sent) {
-      setDraft('');
+    if (!sent) {
+      setDraft((prev) => (prev.trim().length === 0 ? message : prev));
     }
   }, [draft, onSend, sendDisabled]);
 
