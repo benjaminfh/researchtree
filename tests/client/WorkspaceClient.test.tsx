@@ -6,7 +6,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BranchSummary, ProjectMetadata, NodeRecord } from '@git/types';
-import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
+import { findLatestNonStateNodeId, WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { useProjectData } from '@/src/hooks/useProjectData';
 import { useChatStream } from '@/src/hooks/useChatStream';
 import { getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
@@ -190,6 +190,22 @@ describe('WorkspaceClient', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+
+  it('finds latest non-state node id for parent selection', () => {
+    expect(
+      findLatestNonStateNodeId([
+        { id: 'm1', type: 'message', role: 'user', content: 'a', timestamp: 1, parent: null },
+        { id: 's1', type: 'state', key: 'k', value: 'v', timestamp: 2, parent: 'm1' }
+      ] as unknown as NodeRecord[])
+    ).toBe('m1');
+
+    expect(
+      findLatestNonStateNodeId([
+        { id: 's1', type: 'state', key: 'k', value: 'v', timestamp: 1, parent: null }
+      ] as unknown as NodeRecord[])
+    ).toBeNull();
   });
 
   it('renders metadata, nodes, and artefact content', async () => {

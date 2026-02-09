@@ -82,6 +82,15 @@ const getNodeThinkingText = (node: NodeRecord): string => {
   return deriveThinkingFromBlocks(blocks);
 };
 
+export const findLatestNonStateNodeId = (nodes: NodeRecord[]): string | null => {
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const node = nodes[index];
+    if (!node || node.type === 'state') continue;
+    return String(node.id);
+  }
+  return null;
+};
+
 const findFirstCreatedOnBranchNode = (nodes: NodeRecord[], branchName: string): NodeRecord | null => {
   for (const node of nodes) {
     if (node.createdOnBranch === branchName) {
@@ -2285,14 +2294,7 @@ export function WorkspaceClient({
     !openAIUseResponses &&
     (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
-  const latestNonStateNodeId = useMemo(() => {
-    for (let index = nodes.length - 1; index >= 0; index -= 1) {
-      const node = nodes[index];
-      if (!node || node.type === 'state') continue;
-      return String(node.id);
-    }
-    return null;
-  }, [nodes]);
+  const latestNonStateNodeId = useMemo(() => findLatestNonStateNodeId(nodes), [nodes]);
 
   const convertHtmlToMarkdownDraft = useCallback(
     (draft: string) => {
