@@ -22,6 +22,8 @@ type CodeProps = {
   children?: React.ReactNode;
 };
 
+type TableProps = React.ComponentPropsWithoutRef<'table'>;
+
 const InlineCode = ({ className, children }: CodeProps) => {
   const mergedClassName = [
     'rounded-md bg-slate-100 px-1.5 py-0.5 text-[0.85em] font-semibold text-slate-700',
@@ -110,11 +112,22 @@ const PreBlock = ({ children }: PreProps) => {
   return <CodeBlock className={className}>{codeChildren}</CodeBlock>;
 };
 
+const MarkdownTable = ({ className, children, ...props }: TableProps) => {
+  return (
+    <div className="my-4 max-w-full overflow-x-auto">
+      <table {...props} className={['w-max min-w-full', className].filter(Boolean).join(' ')}>
+        {children}
+      </table>
+    </div>
+  );
+};
+
 export const MarkdownWithCopy = ({ content, className }: MarkdownWithCopyProps) => {
   const components = useMemo<Components>(
     () => ({
       code: (props) => <InlineCode {...props} />,
-      pre: (props) => <PreBlock {...props} />
+      pre: (props) => <PreBlock {...props} />,
+      table: (props) => <MarkdownTable {...props} />
     }),
     []
   );
