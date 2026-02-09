@@ -153,6 +153,133 @@ const createClientId = (): string => {
   return `id-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 };
 
+const PERF_DEBUG_ENABLED = process.env.NEXT_PUBLIC_PERF_DEBUG === '1';
+const PERF_BURST_IDLE_MS = 250;
+
+type WorkspacePerfDebugState = {
+  burstId: number;
+  lastKeyAt: number;
+  workspaceClientRenders: number;
+  chatNodeRowRenders: number;
+  nodeBubbleRenders: number;
+  keypressToPaintMs: number[];
+  flushTimer: ReturnType<typeof setTimeout> | null;
+};
+
+const createWorkspacePerfDebugState = (): WorkspacePerfDebugState => ({
+  burstId: 0,
+  lastKeyAt: 0,
+  workspaceClientRenders: 0,
+  chatNodeRowRenders: 0,
+  nodeBubbleRenders: 0,
+  keypressToPaintMs: [],
+  flushTimer: null
+});
+
+const getWorkspacePerfDebugState = (): WorkspacePerfDebugState | null => {
+  if (!PERF_DEBUG_ENABLED || typeof window === 'undefined') return null;
+  const perfWindow = window as Window & { __workspacePerfDebug?: WorkspacePerfDebugState };
+  if (!perfWindow.__workspacePerfDebug) {
+    perfWindow.__workspacePerfDebug = createWorkspacePerfDebugState();
+  }
+  return perfWindow.__workspacePerfDebug;
+};
+
+const flushWorkspacePerfDebugBurst = (state: WorkspacePerfDebugState) => {
+  if (!state.keypressToPaintMs.length) return;
+  const sorted = [...state.keypressToPaintMs].sort((a, b) => a - b);
+  const p95Index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+  const p95 = sorted[p95Index] ?? 0;
+  const avg = state.keypressToPaintMs.reduce((acc, value) => acc + value, 0) / state.keypressToPaintMs.length;
+  console.info('[perf-debug] burst', {
+    burstId: state.burstId,
+    keypresses: state.keypressToPaintMs.length,
+    workspaceClientRenders: state.workspaceClientRenders,
+    chatNodeRowRenders: state.chatNodeRowRenders,
+    nodeBubbleRenders: state.nodeBubbleRenders,
+    avgKeypressToPaintMs: Number(avg.toFixed(2)),
+    p95KeypressToPaintMs: Number(p95.toFixed(2))
+  });
+  state.keypressToPaintMs = [];
+  state.workspaceClientRenders = 0;
+  state.chatNodeRowRenders = 0;
+  state.nodeBubbleRenders = 0;
+};
+
+const recordWorkspacePerfRender = () => {
+  const state = getWorkspacePerfDebugState();
+  if (!state || !state.lastKeyAt) return;
+  state.workspaceClientRenders += 1;
+};
+
+const recordChatNodeRowRender = () => {
+  const state = getWorkspacePerfDebugState();
+  if (!state || !state.lastKeyAt) return;
+  state.chatNodeRowRenders += 1;
+};
+
+const recordNodeBubbleRender = () => {
+  const state = getWorkspacePerfDebugState();
+  if (!state || !state.lastKeyAt) return;
+  state.nodeBubbleRenders += 1;
+};
+
+const recordKeypressToPaint = (startedAt: number) => {
+  const state = getWorkspacePerfDebugState();
+  if (!state) return;
+  const now = performance.now();
+  const isNewBurst = state.lastKeyAt === 0 || now - state.lastKeyAt > PERF_BURST_IDLE_MS;
+  if (isNewBurst) {
+    state.burstId += 1;
+    state.workspaceClientRenders = 0;
+    state.chatNodeRowRenders = 0;
+    state.nodeBubbleRenders = 0;
+    state.keypressToPaintMs = [];
+  }
+  state.lastKeyAt = now;
+  if (state.flushTimer) {
+    clearTimeout(state.flushTimer);
+  }
+  requestAnimationFrame(() => {
+    state.keypressToPaintMs.push(performance.now() - startedAt);
+  });
+  state.flushTimer = setTimeout(() => {
+    flushWorkspacePerfDebugBurst(state);
+    state.lastKeyAt = 0;
+    state.flushTimer = null;
+  }, PERF_BURST_IDLE_MS);
+};
+
+const parsePerfFixtureCount = (value: string | null): number | null => {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed !== 1000 && parsed !== 5000 && parsed !== 10000) return null;
+  return parsed;
+};
+
+const createPerfFixtureNodes = (count: number, branchName: string): NodeRecord[] => {
+  const out: NodeRecord[] = [];
+  let parent: string | null = null;
+  for (let index = 0; index < count; index += 1) {
+    const isUser = index % 2 === 0;
+    const id = `perf-node-${String(index + 1).padStart(5, '0')}`;
+    out.push({
+      id,
+      type: 'message',
+      role: isUser ? 'user' : 'assistant',
+      content: isUser
+        ? `Perf fixture user message ${index + 1}`
+        : `Perf fixture assistant response ${index + 1}`,
+      timestamp: 1_700_000_000_000 + index,
+      parent,
+      createdOnBranch: branchName
+    });
+    parent = id;
+  }
+  return out;
+};
+
 const MiniChatMessage: FC<{ node: MessageNode }> = ({ node }) => {
   const messageText = getNodeText(node);
   if (!messageText) return null;
@@ -505,6 +632,7 @@ const NodeBubble: FC<{
   highlightMenuOffset = 0,
   onQuoteReply
 }) => {
+  recordNodeBubbleRender();
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
@@ -1043,6 +1171,7 @@ const ChatNodeRow: FC<{
   highlightMenuOffset,
   onQuoteReply
 }) => {
+  recordChatNodeRowRender();
   const renderId = node.renderId ?? node.id;
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
@@ -1143,6 +1272,7 @@ export function WorkspaceClient({
   openAIUseResponses,
   storeMode
 }: WorkspaceClientProps) {
+  recordWorkspacePerfRender();
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
   const isPgMode = storeMode === 'pg';
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
@@ -1241,6 +1371,7 @@ export function WorkspaceClient({
   const savedChatPaneWidthRef = useRef<number | null>(null);
   const [graphHistories, setGraphHistories] = useState<Record<string, NodeRecord[]> | null>(null);
   const [graphViews, setGraphViews] = useState<GraphViews | null>(null);
+  const [perfFixtureNodeCount, setPerfFixtureNodeCount] = useState<number | null>(null);
   const [graphHistoryError, setGraphHistoryError] = useState<string | null>(null);
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
@@ -1248,6 +1379,15 @@ export function WorkspaceClient({
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const [composerCornerRadius, setComposerCornerRadius] = useState<number | null>(null);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
+
+  useEffect(() => {
+    if (!PERF_DEBUG_ENABLED || typeof window === 'undefined') {
+      setPerfFixtureNodeCount(null);
+      return;
+    }
+    const searchParams = new URLSearchParams(window.location.search);
+    setPerfFixtureNodeCount(parsePerfFixtureCount(searchParams.get('perfFixtureNodes')));
+  }, []);
   const branchLookup = useMemo(() => {
     const nameById = new Map<string, string>();
     const idByName = new Map<string, string>();
@@ -3551,6 +3691,12 @@ export function WorkspaceClient({
     };
   }, [updateMessageLineHeight, updatePillOffset, updateChatListWidth]);
 
+  const perfFixtureNodes = useMemo(() => {
+    if (!perfFixtureNodeCount) return null;
+    return createPerfFixtureNodes(perfFixtureNodeCount, branchName);
+  }, [perfFixtureNodeCount, branchName]);
+  const renderHistoryNodes = perfFixtureNodes ?? nodes;
+
   const { combinedNodes } = useMemo(() => {
     const optimisticMessage = optimisticUserNode?.type === 'message' ? optimisticUserNode : null;
     const optimisticBranch = optimisticMessage?.createdOnBranch ?? null;
@@ -3565,7 +3711,7 @@ export function WorkspaceClient({
     let persistedUserMatch: MessageNode | null = null;
     const optimisticRequestId = optimisticMessage?.clientRequestId ?? null;
     if (allowOptimistic && optimisticRequestId) {
-      const reversedIndex = [...nodes].reverse().findIndex((node) => {
+      const reversedIndex = [...renderHistoryNodes].reverse().findIndex((node) => {
         if (node.type !== 'message') return false;
         if (node.role !== 'user') return false;
         if (node.clientRequestId !== optimisticRequestId) return false;
@@ -3573,8 +3719,8 @@ export function WorkspaceClient({
         return createdOn === (optimisticBranch ?? branchName);
       });
       if (reversedIndex >= 0) {
-        const index = nodes.length - 1 - reversedIndex;
-        const persisted = nodes[index] ?? null;
+        const index = renderHistoryNodes.length - 1 - reversedIndex;
+        const persisted = renderHistoryNodes[index] ?? null;
         if (persisted && persisted.type === 'message' && persisted.role === 'user') {
           persistedUserMatch = persisted;
           if (turnUserRenderIdRef.current) {
@@ -3586,15 +3732,15 @@ export function WorkspaceClient({
 
     let persistedAssistantMatch: MessageNode | null = null;
     if (streamMeta && streamMeta.branch === branchName && optimisticRequestId) {
-      const reversedIndex = [...nodes].reverse().findIndex((node) => {
+      const reversedIndex = [...renderHistoryNodes].reverse().findIndex((node) => {
         if (node.type !== 'message' || node.role !== 'assistant') return false;
         if (node.clientRequestId !== optimisticRequestId) return false;
         const nodeBranch = node.createdOnBranch ?? branchName;
         return nodeBranch === streamMeta.branch;
       });
       if (reversedIndex >= 0) {
-        const index = nodes.length - 1 - reversedIndex;
-        const persisted = nodes[index] ?? null;
+        const index = renderHistoryNodes.length - 1 - reversedIndex;
+        const persisted = renderHistoryNodes[index] ?? null;
         if (persisted && persisted.type === 'message' && persisted.role === 'assistant') {
           persistedAssistantMatch = persisted;
           if (turnAssistantRenderIdRef.current) {
@@ -3604,7 +3750,7 @@ export function WorkspaceClient({
       }
     }
 
-    const baseNodes: RenderNode[] = nodes.map((node) => {
+    const baseNodes: RenderNode[] = renderHistoryNodes.map((node) => {
       const mapped = renderIdByNodeId.get(node.id) ?? node.id;
       const renderId = usedRenderIds.has(mapped) ? node.id : mapped;
       usedRenderIds.add(renderId);
@@ -3663,7 +3809,7 @@ export function WorkspaceClient({
 
     return { combinedNodes: out };
   }, [
-    nodes,
+    renderHistoryNodes,
     optimisticUserNode,
     assistantLifecycle,
     hasStreamingPayload,
@@ -3765,7 +3911,9 @@ export function WorkspaceClient({
       if (!prev) return prev;
       const MAX_PER_BRANCH = 500;
       const nextNodes =
-        nodes.length <= MAX_PER_BRANCH ? nodes : [nodes[0]!, ...nodes.slice(-(MAX_PER_BRANCH - 1))];
+        renderHistoryNodes.length <= MAX_PER_BRANCH
+          ? renderHistoryNodes
+          : [renderHistoryNodes[0]!, ...renderHistoryNodes.slice(-(MAX_PER_BRANCH - 1))];
       const current = prev[branchName];
       // Avoid wiping the cached graph when history briefly revalidates to an empty snapshot.
       if (nextNodes.length === 0 && current?.length) {
@@ -3786,7 +3934,7 @@ export function WorkspaceClient({
       setGraphViews(buildGraphViewsFromHistories(nextHistories));
       return nextHistories;
     });
-  }, [isGraphVisible, branchName, nodes, buildGraphViewsFromHistories]);
+  }, [isGraphVisible, branchName, renderHistoryNodes, buildGraphViewsFromHistories]);
   useEffect(() => {
     if (!isGraphVisible) return;
     if (!graphHistories) return;
@@ -3815,7 +3963,10 @@ export function WorkspaceClient({
     },
     [visibleNodes, graphHistories, branchName]
   );
-  const persistedNodes = useMemo(() => nodes.filter((node) => node.type !== 'state'), [nodes]);
+  const persistedNodes = useMemo(
+    () => renderHistoryNodes.filter((node) => node.type !== 'state'),
+    [renderHistoryNodes]
+  );
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -6291,7 +6442,12 @@ export function WorkspaceClient({
 
                       ref={composerTextareaRef}
                       value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
+                      onChange={(event) => {
+                        if (PERF_DEBUG_ENABLED && typeof performance !== 'undefined') {
+                          recordKeypressToPaint(performance.now());
+                        }
+                        setDraft(event.target.value);
+                      }}
                       placeholder="Ask anything"
                       rows={CHAT_COMPOSER_DEFAULT_LINES}
                       className="flex-1 w-full resize-none overflow-y-auto rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
