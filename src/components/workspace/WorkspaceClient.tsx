@@ -1858,11 +1858,15 @@ export function WorkspaceClient({
     [ensureLeaseSessionReady, leaseSessionId, mutateLeases, project.id, pushToast]
   );
   const [pendingStarIds, setPendingStarIds] = useState<Set<string>>(new Set());
+  const stableStarredNodeIdsRef = useRef(stableStarredNodeIds);
+  const starredSetRef = useRef(starredSet);
+  stableStarredNodeIdsRef.current = stableStarredNodeIds;
+  starredSetRef.current = starredSet;
 
   const toggleStar = useCallback(async (nodeId: string) => {
     setPendingStarIds((prev) => new Set(prev).add(nodeId));
-    const prev = stableStarredNodeIds;
-    const next = starredSet.has(nodeId) ? prev.filter((id) => id !== nodeId) : [...prev, nodeId];
+    const prev = stableStarredNodeIdsRef.current;
+    const next = starredSetRef.current.has(nodeId) ? prev.filter((id) => id !== nodeId) : [...prev, nodeId];
     const optimistic = [...new Set(next)].sort();
     await mutateStars({ starredNodeIds: optimistic }, false);
     try {
@@ -1888,7 +1892,7 @@ export function WorkspaceClient({
         return nextSet;
       });
     }
-  }, [mutateStars, project.id, stableStarredNodeIds, starredSet]);
+  }, [mutateStars, project.id]);
 
   const openEditModalRef = useRef(openEditModal);
   useEffect(() => {
