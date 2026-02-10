@@ -4134,7 +4134,7 @@ export function WorkspaceClient({
     return ids;
   }, [visibleNodes]);
 
-  const tagCanvasDiffToContext = async (mergeNodeId: string, targetBranch: string) => {
+  const tagCanvasDiffToContext = useCallback(async (mergeNodeId: string, targetBranch: string) => {
     if (!ensureLeaseSessionReady()) {
       throw new Error('Editing session is still initializing.');
     }
@@ -4154,7 +4154,7 @@ export function WorkspaceClient({
       throw new Error(data?.error?.message ?? 'Failed to add diff to context');
     }
     return (await res.json().catch(() => null)) as { pinnedNode?: NodeRecord; alreadyPinned?: boolean } | null;
-  };
+  }, [ensureLeaseSessionReady, getLeaseForBranchName, isPgMode, leaseSessionId, project.id]);
 
   const tagCanvasDiffToCurrentBranch = useCallback(async (mergeNodeId: string) => {
     await tagCanvasDiffToContext(mergeNodeId, branchName);
