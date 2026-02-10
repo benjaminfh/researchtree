@@ -318,6 +318,366 @@ describe('WorkspaceClient', () => {
     });
   });
 
+  it('clears the composer immediately after submit even if the send promise is pending', async () => {
+    const user = userEvent.setup();
+    sendMessageMock = vi.fn(() => new Promise(() => {}));
+    mockUseChatStream.mockImplementation((options) => {
+      capturedChatOptions = options;
+      return {
+        sendMessage: sendMessageMock,
+        sendStreamRequest: sendStreamRequestMock,
+        interrupt: interruptMock,
+        state: chatState
+      };
+    });
+
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Pending send');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    expect((composer as HTMLTextAreaElement).value).toBe('');
+    expect(sendMessageMock).toHaveBeenCalled();
+  });
+
+  it('restores the draft if the send fails before assistant output', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Restore me');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    expect((composer as HTMLTextAreaElement).value).toBe('');
+
+    chatState.error = 'Network issue';
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Network issue')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).value).toBe('Restore me');
+    });
+  });
+
+  it('retries the failed draft and clears the composer', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Retry this');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    chatState.error = 'Network issue';
+    rerender(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).value).toBe('Retry this');
+    });
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry' });
+    await user.click(retryButton);
+
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Retry this', clientRequestId: expect.any(String) })
+    );
+    expect((composer as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('clears the length error after the draft is reduced below the limit', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    const tooLong = 'x'.repeat(120001);
+    fireEvent.change(composer, { target: { value: tooLong } });
+    fireEvent.keyDown(composer, { key: 'Enter', metaKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Message is too long/)).toBeInTheDocument();
+    });
+
+    await user.clear(composer);
+    await user.type(composer, 'Short enough');
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Message is too long/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('appends quote replies to an existing draft and focuses the composer', async () => {
+    window.sessionStorage.setItem('researchtree:draft:proj-1', 'Existing draft');
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+
+    const quoteButton = screen.getByRole('button', { name: 'Quote reply' });
+    await user.click(quoteButton);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await waitFor(() => {
+      expect(document.activeElement).toBe(composer);
+    });
+    expect(composer.value).toBe('Existing draft\n\n> All tasks queued.\n\n');
+  });
+
+  it('preserves typing when expanding the collapsed composer', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer collapsed');
+    });
+
+    fireEvent.keyDown(window, { key: 'a' });
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await waitFor(() => {
+      expect(composer.value).toBe('a');
+    });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(composer);
+    });
+
+    await user.keyboard('b');
+    expect(composer.value).toBe('ab');
+  });
+
+  it('hydrates the composer draft from session storage', async () => {
+    window.sessionStorage.setItem('researchtree:draft:proj-1', 'Saved draft');
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await waitFor(() => {
+      expect(composer.value).toBe('Saved draft');
+    });
+  });
+
+  it('removes the session storage draft when cleared', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await user.type(composer, 'Temp draft');
+
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem('researchtree:draft:proj-1')).toBe('Temp draft');
+    });
+
+    await user.clear(composer);
+
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem('researchtree:draft:proj-1')).toBeNull();
+    });
+  });
+
+  it('converts HTML to markdown from the utilities menu', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await user.type(composer, '<p>Hello</p>');
+
+    const utilitiesButton = screen.getByRole('button', { name: 'Utilities' });
+    await user.click(utilitiesButton);
+    await user.click(screen.getByRole('menuitem', { name: 'HTML to markdown' }));
+
+    expect(composer.value).toBe('Hello');
+  });
+
+  it('shows a toast when HTML conversion has no tags to convert', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await user.type(composer, 'Just text');
+
+    const utilitiesButton = screen.getByRole('button', { name: 'Utilities' });
+    await user.click(utilitiesButton);
+    await user.click(screen.getByRole('menuitem', { name: 'HTML to markdown' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No HTML detected to convert.')).toBeInTheDocument();
+    });
+    expect(composer.value).toBe('Just text');
+  });
+
+  it('disables web search toggle for mock providers', async () => {
+    const user = userEvent.setup();
+    const mockBranches: BranchSummary[] = [
+      { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
+      { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false, provider: 'mock', model: 'mock' }
+    ];
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
+        initialBranches={mockBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    const utilitiesButton = screen.getByRole('button', { name: 'Utilities' });
+    await user.click(utilitiesButton);
+    const toggle = screen.getByRole('menuitemcheckbox', { name: 'Web search' });
+    expect(toggle).toBeDisabled();
+  });
+
+  it('toggles the composer with ⌘+K', async () => {
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer collapsed');
+    });
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer expanded');
+    });
+  });
+
+  it('disables the send button when draft is empty or streaming', async () => {
+    const { rerender } = render(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+
+    chatState.isStreaming = true;
+    rerender(
+      <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
+    );
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+
+  it('appends quote reply while collapsed and expands the composer', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer collapsed');
+    });
+
+    const [quoteButton] = screen.getAllByRole('button', { name: 'Quote reply' });
+    await user.click(quoteButton);
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer expanded');
+    });
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    expect(composer.value).toContain('> All tasks queued.');
+  });
+
+  it('sets the caret to the end after quote reply', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    const [quoteButton] = screen.getAllByRole('button', { name: 'Quote reply' });
+    await user.click(quoteButton);
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(composer);
+    });
+    expect(composer.selectionStart).toBe(composer.value.length);
+    expect(composer.selectionEnd).toBe(composer.value.length);
+  });
+
+  it('updates composer padding when collapsing and expanding', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const container = screen.getByTestId('workspace-scroll-container');
+    const getPaddingValue = () => Number.parseFloat(container.style.paddingBottom || '0');
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await user.type(composer, 'Existing draft');
+    const initialPadding = getPaddingValue();
+    expect(initialPadding).toBeGreaterThan(0);
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer collapsed');
+    });
+
+    await waitFor(() => {
+      expect(getPaddingValue()).toBe(12);
+    });
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-collapsed-state')).toHaveTextContent('Composer expanded');
+    });
+
+    await waitFor(() => {
+      expect(getPaddingValue()).toBe(initialPadding);
+    });
+  });
+
+  it('prefers composer errors over stream errors in the banner', async () => {
+    chatState.error = 'Stream issue';
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'x'.repeat(120001) } });
+    fireEvent.keyDown(composer, { key: 'Enter', metaKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Message is too long/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Stream issue')).not.toBeInTheDocument();
+  });
+
+  it('does not render state nodes in the chat list', async () => {
+    const nodesWithState: NodeRecord[] = [
+      ...sampleNodes,
+      {
+        id: 'state-1',
+        type: 'state',
+        artefactSnapshot: 'Snapshot',
+        timestamp: 1700000003000,
+        parent: 'node-user-branch',
+        createdOnBranch: 'feature/phase-2'
+      }
+    ];
+
+    mockUseProjectData.mockReturnValue({
+      nodes: nodesWithState,
+      artefact: '## Artefact state',
+      artefactMeta: { artefact: '## Artefact state', lastUpdatedAt: null },
+      isLoading: false,
+      error: undefined,
+      mutateHistory: mutateHistoryMock,
+      mutateArtefact: mutateArtefactMock
+    } as ReturnType<typeof useProjectData>);
+
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'feature/phase-2' }}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    const list = screen.getByTestId('chat-message-list');
+    expect(list.querySelector('[data-node-id="state-1"]')).toBeNull();
+  });
+
   it('displays streaming previews when onChunk emits tokens', async () => {
     mockUseProjectData.mockReturnValueOnce({
       nodes: [],
@@ -342,6 +702,148 @@ describe('WorkspaceClient', () => {
     });
 
     expect(screen.getByText('partial response')).toBeInTheDocument();
+  });
+
+  it('renders an optimistic user message immediately on send', async () => {
+    const user = userEvent.setup();
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Optimistic now');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    const optimisticRow = screen.getByTestId('chat-message-list').querySelector('[data-node-id="optimistic-user"]');
+    expect(optimisticRow).toBeTruthy();
+    expect(screen.getByText('Optimistic now')).toBeInTheDocument();
+  });
+
+  it('shows a stream error banner when the chat request fails', async () => {
+    const user = userEvent.setup();
+    sendMessageMock = vi.fn(async () => {
+      chatState.error = 'Chat failure';
+    });
+    mockUseChatStream.mockImplementation((options) => {
+      capturedChatOptions = options;
+      return {
+        sendMessage: sendMessageMock,
+        sendStreamRequest: sendStreamRequestMock,
+        interrupt: interruptMock,
+        state: chatState
+      };
+    });
+
+    const { rerender } = render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Force error');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    rerender(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Chat failure')).toBeInTheDocument();
+    });
+  });
+  it('rehydrates question branches from graph payloads', async () => {
+    mockUseProjectData.mockReturnValue({
+      nodes: [
+        {
+          id: 'parent-assistant',
+          type: 'message',
+          role: 'assistant',
+          content: 'Answer',
+          timestamp: 1,
+          parent: null,
+          createdOnBranch: 'main'
+        }
+      ],
+      artefact: '',
+      artefactMeta: null,
+      isLoading: false,
+      error: undefined,
+      mutateHistory: mutateHistoryMock,
+      mutateArtefact: mutateArtefactMock
+    } as ReturnType<typeof useProjectData>);
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes('/graph?includeHidden=true')) {
+        return new Response(
+          JSON.stringify({
+            branchHistories: {
+              main: [
+                {
+                  id: 'parent-assistant',
+                  type: 'message',
+                  role: 'assistant',
+                  content: 'Answer',
+                  timestamp: 1,
+                  parent: null,
+                  createdOnBranch: 'main'
+                }
+              ],
+              'q/why': [
+                {
+                  id: 'question-user',
+                  type: 'message',
+                  role: 'user',
+                  content: 'Highlighted passage:\n"""Example"""\n\nQuestion:\nWhy?',
+                  timestamp: 2,
+                  parent: 'parent-assistant',
+                  createdOnBranch: 'q/why'
+                }
+              ]
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    render(
+      <WorkspaceClient
+        project={{ ...baseProject, branchName: 'main' }}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/graph?includeHidden=true'))).toBe(true);
+    });
+
+    const row = screen.getByText('Answer').closest('[data-node-id]');
+    expect(row).toBeTruthy();
+    const button = within(row as HTMLElement).getByRole('button', { name: 'View question branches' });
+    await userEvent.setup().click(button);
+    expect(await screen.findByText('q/why')).toBeInTheDocument();
   });
 
   it('refreshes history and artefact when the stream completes', async () => {

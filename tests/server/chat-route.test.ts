@@ -159,6 +159,15 @@ describe('/api/projects/[id]/chat', () => {
     expect(appended[1]).toMatchObject({ role: 'assistant', content: 'foobar', interrupted: false });
   });
 
+  it('rejects messages when the requested provider mismatches the branch config', async () => {
+    mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
+
+    const response = await POST(createRequest({ message: 'Hi there', llmProvider: 'gemini' }), { params: { id: 'project-1' } });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as any;
+    expect(payload?.error?.message).toMatch(/locked to OpenAI/i);
+  });
+
   it('uses Postgres for user+assistant nodes when RT_STORE=pg', async () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetCanvasHashesShadowV2
