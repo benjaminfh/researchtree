@@ -66,6 +66,37 @@ describe('/api/projects/[id]/history', () => {
     expect(data.nodes[1].id).toBe('3');
   });
 
+  it('filters hidden and merge-ack nodes', async () => {
+    const nodes = [
+      { id: 'h1', type: 'message', role: 'user', content: 'Hidden', uiHidden: true, timestamp: 1, parent: null },
+      {
+        id: 'merge-ack-user',
+        type: 'message',
+        role: 'user',
+        content:
+          'Merged from feature/x\n\nMerge summary:\nSummary\n\nMerged payload:\nPayload\n\nCanvas diff:\nDiff\n\nTask: acknowledge merged content by replying "Merge received" but take no other action.',
+        timestamp: 2,
+        parent: null
+      },
+      {
+        id: 'merge-ack-assistant',
+        type: 'message',
+        role: 'assistant',
+        content: 'Merge received',
+        timestamp: 3,
+        parent: 'merge-ack-user'
+      },
+      { id: 'v1', type: 'message', role: 'user', content: 'Visible', timestamp: 4, parent: null }
+    ];
+    mocks.getProject.mockResolvedValue({ id: 'project-1' });
+    mocks.readNodesFromRef.mockResolvedValue(nodes);
+
+    const res = await GET(new Request(baseUrl), { params: { id: 'project-1' } });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.nodes.map((node: any) => node.id)).toEqual(['v1']);
+  });
+
   it('returns 404 when project missing', async () => {
     mocks.getProject.mockResolvedValue(null);
     const res = await GET(new Request(baseUrl), { params: { id: 'missing' } });

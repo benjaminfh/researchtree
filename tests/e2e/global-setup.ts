@@ -58,7 +58,7 @@ export default async function globalSetup(config: FullConfig) {
   }
   await signInButton.waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByRole('textbox', { name: 'Password' }).fill(password);
   await signInButton.click();
 
   const baseUrlPattern = new RegExp(`^${escapeRegex(baseURL)}/?$`);
