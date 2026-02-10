@@ -978,7 +978,7 @@ const NodeBubble: FC<{
   );
 };
 
-const ChatNodeRow: FC<{
+type ChatNodeRowProps = {
   node: RenderNode;
   trunkName: string;
   currentBranchName: string;
@@ -990,8 +990,8 @@ const ChatNodeRow: FC<{
   messageInsetClassName?: string;
   isStarred?: boolean;
   isStarPending?: boolean;
-  onToggleStar?: () => void;
-  onEdit?: (node: MessageNode) => void;
+  onToggleStar?: (nodeId: string) => void;
+  onEditNode?: (node: MessageNode, quoteSelectionText: string) => void;
   isCanvasDiffTagged?: boolean;
   onTagCanvasDiff?: (mergeNodeId: string) => Promise<void>;
   highlighted?: boolean;
@@ -1001,14 +1001,74 @@ const ChatNodeRow: FC<{
   questionBranchNames?: string[];
   isQuestionBranchesOpen?: boolean;
   questionBranchIndex?: number;
-  onToggleQuestionBranches?: () => void;
+  onToggleQuestionBranches?: (nodeId: string) => void;
   onQuestionBranchIndexChange?: (index: number) => void;
   projectId: string;
   quoteSelectionText?: string;
   highlightMenuPoint?: { x: number; y: number } | null;
   highlightMenuOffset?: number;
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
-}> = ({
+};
+
+const shouldTrackChatRowRenders = () =>
+  process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_DEBUG_CHAT_ROW_RENDERS === '1';
+
+const chatNodeRowPropsEqual = (prev: ChatNodeRowProps, next: ChatNodeRowProps): boolean => {
+  const prevNode = prev.node;
+  const nextNode = next.node;
+  const sameNodeVisualState =
+    prevNode.id === nextNode.id &&
+    prevNode.renderId === nextNode.renderId &&
+    prevNode.clientState === nextNode.clientState &&
+    prevNode.type === nextNode.type &&
+    prevNode.timestamp === nextNode.timestamp &&
+    getNodeText(prevNode) === getNodeText(nextNode) &&
+    getNodeThinkingText(prevNode) === getNodeThinkingText(nextNode) &&
+    (prevNode.type !== 'message' || nextNode.type !== 'message' || prevNode.role === nextNode.role) &&
+    (prevNode.type !== 'merge' || nextNode.type !== 'merge' || (
+      prevNode.mergedAssistantContent === nextNode.mergedAssistantContent &&
+      prevNode.canvasDiff === nextNode.canvasDiff
+    ));
+
+  const sameQuestionBranchList =
+    prev.questionBranchNames?.length === next.questionBranchNames?.length &&
+    (prev.questionBranchNames ?? []).every((name, index) => name === (next.questionBranchNames ?? [])[index]);
+
+  return (
+    sameNodeVisualState &&
+    prev.trunkName === next.trunkName &&
+    prev.currentBranchName === next.currentBranchName &&
+    prev.defaultProvider === next.defaultProvider &&
+    prev.providerByBranch === next.providerByBranch &&
+    prev.branchColors === next.branchColors &&
+    prev.muted === next.muted &&
+    prev.subtitle === next.subtitle &&
+    prev.messageInsetClassName === next.messageInsetClassName &&
+    prev.isStarred === next.isStarred &&
+    prev.isStarPending === next.isStarPending &&
+    prev.isCanvasDiffTagged === next.isCanvasDiffTagged &&
+    prev.highlighted === next.highlighted &&
+    prev.branchQuestionCandidate === next.branchQuestionCandidate &&
+    prev.showBranchSplit === next.showBranchSplit &&
+    prev.branchActionDisabled === next.branchActionDisabled &&
+    sameQuestionBranchList &&
+    prev.isQuestionBranchesOpen === next.isQuestionBranchesOpen &&
+    prev.questionBranchIndex === next.questionBranchIndex &&
+    prev.projectId === next.projectId &&
+    prev.quoteSelectionText === next.quoteSelectionText &&
+    prev.highlightMenuOffset === next.highlightMenuOffset &&
+    prev.highlightMenuPoint?.x === next.highlightMenuPoint?.x &&
+    prev.highlightMenuPoint?.y === next.highlightMenuPoint?.y &&
+    prev.onToggleStar === next.onToggleStar &&
+    prev.onEditNode === next.onEditNode &&
+    prev.onTagCanvasDiff === next.onTagCanvasDiff &&
+    prev.onToggleQuestionBranches === next.onToggleQuestionBranches &&
+    prev.onQuestionBranchIndexChange === next.onQuestionBranchIndexChange &&
+    prev.onQuoteReply === next.onQuoteReply
+  );
+};
+
+const ChatNodeRowBase: FC<ChatNodeRowProps> = ({
   node,
   trunkName,
   currentBranchName,
@@ -1021,7 +1081,7 @@ const ChatNodeRow: FC<{
   isStarred,
   isStarPending,
   onToggleStar,
-  onEdit,
+  onEditNode,
   isCanvasDiffTagged,
   onTagCanvasDiff,
   highlighted,
@@ -1052,6 +1112,27 @@ const ChatNodeRow: FC<{
       ? questionBranches[Math.min(questionBranchIndex, questionBranches.length - 1)]
       : null;
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const trackRenders = shouldTrackChatRowRenders();
+  if (trackRenders && typeof window !== 'undefined') {
+    const debugWindow = window as Window & {
+      __chatNodeRowRenderCounts?: Record<string, number>;
+    };
+    const renderCounts = (debugWindow.__chatNodeRowRenderCounts ??= {});
+    renderCounts[renderId] = (renderCounts[renderId] ?? 0) + 1;
+  }
+
+  const handleToggleStar = useCallback(() => {
+    onToggleStar?.(node.id);
+  }, [node.id, onToggleStar]);
+
+  const handleEditNode = useCallback(() => {
+    if (node.type !== 'message') return;
+    onEditNode?.(node, quoteSelectionText ?? '');
+  }, [node, onEditNode, quoteSelectionText]);
+
+  const handleToggleQuestionBranches = useCallback(() => {
+    onToggleQuestionBranches?.(node.id);
+  }, [node.id, onToggleQuestionBranches]);
 
   return (
     <div
@@ -1078,8 +1159,8 @@ const ChatNodeRow: FC<{
             subtitle={subtitle}
             isStarred={isStarred}
             isStarPending={isStarPending}
-            onToggleStar={onToggleStar}
-            onEdit={onEdit}
+            onToggleStar={onToggleStar ? handleToggleStar : undefined}
+            onEdit={onEditNode ? handleEditNode : undefined}
             isCanvasDiffTagged={isCanvasDiffTagged}
             onTagCanvasDiff={onTagCanvasDiff}
             highlighted={!!highlighted}
@@ -1088,7 +1169,7 @@ const ChatNodeRow: FC<{
             branchActionDisabled={branchActionDisabled}
             questionBranchCount={questionBranches.length}
             isQuestionBranchesOpen={isQuestionBranchesOpen}
-            onToggleQuestionBranches={onToggleQuestionBranches}
+            onToggleQuestionBranches={onToggleQuestionBranches ? handleToggleQuestionBranches : undefined}
             quoteSelectionText={quoteSelectionText}
             highlightMenuPoint={highlightMenuPoint}
             highlightMenuOffset={highlightMenuOffset}
@@ -1100,7 +1181,7 @@ const ChatNodeRow: FC<{
               branchName={activeQuestionBranch}
               index={questionBranchIndex}
               total={questionBranches.length}
-              onClose={() => onToggleQuestionBranches?.()}
+              onClose={handleToggleQuestionBranches}
               onPrevious={() =>
                 onQuestionBranchIndexChange?.(
                   (questionBranchIndex - 1 + questionBranches.length) % questionBranches.length
@@ -1123,6 +1204,8 @@ const ChatNodeRow: FC<{
     </div>
   );
 };
+
+const ChatNodeRow = React.memo(ChatNodeRowBase, chatNodeRowPropsEqual);
 
 const withLeaseSessionId = <T extends Record<string, unknown>>(payload: T, leaseSessionId?: string | null): T | (T & { leaseSessionId: string }) => {
   if (!leaseSessionId) {
@@ -1812,6 +1895,16 @@ export function WorkspaceClient({
       });
     }
   };
+
+  const toggleStarRef = useRef(toggleStar);
+  useEffect(() => {
+    toggleStarRef.current = toggleStar;
+  }, [toggleStar]);
+
+  const openEditModalRef = useRef(openEditModal);
+  useEffect(() => {
+    openEditModalRef.current = openEditModal;
+  }, [openEditModal]);
 
   const { nodes, artefact, artefactMeta, isLoading, error, mutateHistory, mutateArtefact } = useProjectData(project.id, {
     ref: branchName
@@ -4068,10 +4161,18 @@ export function WorkspaceClient({
     return (await res.json().catch(() => null)) as { pinnedNode?: NodeRecord; alreadyPinned?: boolean } | null;
   };
 
-  const tagCanvasDiffToCurrentBranch = async (mergeNodeId: string) => {
+  const tagCanvasDiffToCurrentBranch = useCallback(async (mergeNodeId: string) => {
     await tagCanvasDiffToContext(mergeNodeId, branchName);
     await refreshHistory();
-  };
+  }, [branchName, refreshHistory, tagCanvasDiffToContext]);
+
+  const handleToggleStarForNode = useCallback((nodeId: string) => {
+    void toggleStarRef.current(nodeId);
+  }, []);
+
+  const handleEditNode = useCallback((node: MessageNode, quoteSelectionText: string) => {
+    openEditModalRef.current(node, quoteSelectionText);
+  }, []);
 
   const switchBranch = async (name: string) => {
     if (name === branchName) return;
@@ -5260,15 +5361,11 @@ export function WorkspaceClient({
                                 subtitle={node.createdOnBranch ? `from ${node.createdOnBranch}` : undefined}
                                 isStarred={starredSet.has(node.id)}
                                 isStarPending={pendingStarIds.has(node.id)}
-                                onToggleStar={() => void toggleStar(node.id)}
-                                onEdit={
+                                onToggleStar={handleToggleStarForNode}
+                                onEditNode={
                                   node.type === 'message' &&
                                   (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage)
-                                    ? (n) =>
-                                        openEditModal(
-                                          n,
-                                          activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
-                                        )
+                                    ? handleEditNode
                                     : undefined
                                 }
                                 isCanvasDiffTagged={undefined}
@@ -5283,7 +5380,7 @@ export function WorkspaceClient({
                                 questionBranchNames={resolveQuestionBranchNames(questionBranchesByNode[node.id] ?? [])}
                                 isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                                 questionBranchIndex={openQuestionBranchIndex}
-                                onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
+                                onToggleQuestionBranches={toggleQuestionBranchesForNode}
                                 onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                                 quoteSelectionText={
                                   activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
@@ -5318,15 +5415,11 @@ export function WorkspaceClient({
                           messageInsetClassName="pr-3"
                           isStarred={starredSet.has(node.id)}
                           isStarPending={pendingStarIds.has(node.id)}
-                          onToggleStar={() => void toggleStar(node.id)}
-                          onEdit={
+                          onToggleStar={handleToggleStarForNode}
+                          onEditNode={
                             node.type === 'message' &&
                             (node.role === 'user' || node.role === 'assistant' || features.uiEditAnyMessage)
-                              ? (n) =>
-                                  openEditModal(
-                                    n,
-                                    activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''
-                                  )
+                              ? handleEditNode
                               : undefined
                           }
                           isCanvasDiffTagged={node.type === 'merge' ? taggedCanvasDiffMergeIds.has(node.id) : undefined}
@@ -5341,7 +5434,7 @@ export function WorkspaceClient({
                           questionBranchNames={resolveQuestionBranchNames(questionBranchesByNode[node.id] ?? [])}
                           isQuestionBranchesOpen={openQuestionBranchNodeId === node.id}
                           questionBranchIndex={openQuestionBranchIndex}
-                          onToggleQuestionBranches={() => toggleQuestionBranchesForNode(node.id)}
+                          onToggleQuestionBranches={toggleQuestionBranchesForNode}
                           onQuestionBranchIndexChange={setOpenQuestionBranchIndex}
                           quoteSelectionText={
                             activeBranchHighlight?.nodeId === node.id ? activeBranchHighlight.text : ''

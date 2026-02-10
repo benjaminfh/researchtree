@@ -122,7 +122,14 @@ const MarkdownTable = ({ className, children, ...props }: TableProps) => {
   );
 };
 
-export const MarkdownWithCopy = ({ content, className }: MarkdownWithCopyProps) => {
+const MarkdownWithCopyBase = ({ content, className }: MarkdownWithCopyProps) => {
+  if (process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_DEBUG_CHAT_ROW_RENDERS === '1' && typeof window !== 'undefined') {
+    const debugWindow = window as Window & { __markdownWithCopyRenderCounts?: Record<string, number> };
+    const renderCounts = (debugWindow.__markdownWithCopyRenderCounts ??= {});
+    const key = content.slice(0, 80);
+    renderCounts[key] = (renderCounts[key] ?? 0) + 1;
+  }
+
   const components = useMemo<Components>(
     () => ({
       code: (props) => <InlineCode {...props} />,
@@ -138,3 +145,7 @@ export const MarkdownWithCopy = ({ content, className }: MarkdownWithCopyProps) 
     </ReactMarkdown>
   );
 };
+
+export const MarkdownWithCopy = React.memo(MarkdownWithCopyBase, (prev, next) =>
+  prev.content === next.content && prev.className === next.className
+);
