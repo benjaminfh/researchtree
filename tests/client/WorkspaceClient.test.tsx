@@ -364,7 +364,7 @@ describe('WorkspaceClient', () => {
     });
   });
 
-  it('retries the failed draft and clears the composer', async () => {
+  it('restores the failed draft without rendering a retry action', async () => {
     const user = userEvent.setup();
     const { rerender } = render(
       <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
@@ -380,14 +380,7 @@ describe('WorkspaceClient', () => {
     await waitFor(() => {
       expect((composer as HTMLTextAreaElement).value).toBe('Retry this');
     });
-
-    const retryButton = await screen.findByRole('button', { name: 'Retry' });
-    await user.click(retryButton);
-
-    expect(sendMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Retry this', clientRequestId: expect.any(String) })
-    );
-    expect((composer as HTMLTextAreaElement).value).toBe('');
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   it('clears the length error after the draft is reduced below the limit', async () => {
@@ -410,6 +403,27 @@ describe('WorkspaceClient', () => {
       expect(screen.queryByText(/Message is too long/)).not.toBeInTheDocument();
     });
   });
+  it('submits on cmd+enter and keeps shift+enter as newline', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
+
+    const composer = screen.getByPlaceholderText('Ask anything') as HTMLTextAreaElement;
+    await user.type(composer, 'First line');
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+    await user.type(composer, 'Second line');
+
+    expect(composer.value).toBe('First line\nSecond line');
+    expect(sendMessageMock).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(composer, { key: 'Enter', metaKey: true });
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'First line\nSecond line', clientRequestId: expect.any(String) })
+      );
+    });
+  });
+
 
   it('appends quote replies to an existing draft and focuses the composer', async () => {
     window.sessionStorage.setItem('researchtree:draft:proj-1', 'Existing draft');
