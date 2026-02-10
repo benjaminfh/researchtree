@@ -1010,8 +1010,6 @@ type ChatNodeRowProps = {
   onQuoteReply?: (nodeId: string, messageText: string, selectionText?: string) => void;
 };
 
-const shouldTrackChatRowRenders = () =>
-  process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_DEBUG_CHAT_ROW_RENDERS === '1';
 
 const chatNodeRowPropsEqual = (prev: ChatNodeRowProps, next: ChatNodeRowProps): boolean => {
   const prevNode = prev.node;
@@ -1022,13 +1020,17 @@ const chatNodeRowPropsEqual = (prev: ChatNodeRowProps, next: ChatNodeRowProps): 
     prevNode.clientState === nextNode.clientState &&
     prevNode.type === nextNode.type &&
     prevNode.timestamp === nextNode.timestamp &&
-    getNodeText(prevNode) === getNodeText(nextNode) &&
-    getNodeThinkingText(prevNode) === getNodeThinkingText(nextNode) &&
-    (prevNode.type !== 'message' || nextNode.type !== 'message' || prevNode.role === nextNode.role) &&
-    (prevNode.type !== 'merge' || nextNode.type !== 'merge' || (
-      prevNode.mergedAssistantContent === nextNode.mergedAssistantContent &&
-      prevNode.canvasDiff === nextNode.canvasDiff
-    ));
+    (prevNode.type !== 'message' ||
+      (nextNode.type === 'message' &&
+        prevNode.role === nextNode.role &&
+        prevNode.content === nextNode.content &&
+        prevNode.contentBlocks === nextNode.contentBlocks &&
+        prevNode.thinking === nextNode.thinking &&
+        prevNode.interrupted === nextNode.interrupted)) &&
+    (prevNode.type !== 'merge' ||
+      (nextNode.type === 'merge' &&
+        prevNode.mergedAssistantContent === nextNode.mergedAssistantContent &&
+        prevNode.canvasDiff === nextNode.canvasDiff));
 
   const sameQuestionBranchList =
     prev.questionBranchNames?.length === next.questionBranchNames?.length &&
@@ -1112,14 +1114,6 @@ const ChatNodeRowBase: FC<ChatNodeRowProps> = ({
       ? questionBranches[Math.min(questionBranchIndex, questionBranches.length - 1)]
       : null;
   const rowRef = useRef<HTMLDivElement | null>(null);
-  const trackRenders = shouldTrackChatRowRenders();
-  if (trackRenders && typeof window !== 'undefined') {
-    const debugWindow = window as Window & {
-      __chatNodeRowRenderCounts?: Record<string, number>;
-    };
-    const renderCounts = (debugWindow.__chatNodeRowRenderCounts ??= {});
-    renderCounts[renderId] = (renderCounts[renderId] ?? 0) + 1;
-  }
 
   const handleToggleStar = useCallback(() => {
     onToggleStar?.(node.id);
@@ -1865,7 +1859,7 @@ export function WorkspaceClient({
   );
   const [pendingStarIds, setPendingStarIds] = useState<Set<string>>(new Set());
 
-  const toggleStar = async (nodeId: string) => {
+  const toggleStar = useCallback(async (nodeId: string) => {
     setPendingStarIds((prev) => new Set(prev).add(nodeId));
     const prev = stableStarredNodeIds;
     const next = starredSet.has(nodeId) ? prev.filter((id) => id !== nodeId) : [...prev, nodeId];
@@ -1894,12 +1888,7 @@ export function WorkspaceClient({
         return nextSet;
       });
     }
-  };
-
-  const toggleStarRef = useRef(toggleStar);
-  useEffect(() => {
-    toggleStarRef.current = toggleStar;
-  }, [toggleStar]);
+  }, [mutateStars, project.id, stableStarredNodeIds, starredSet]);
 
   const openEditModalRef = useRef(openEditModal);
   useEffect(() => {
@@ -4167,8 +4156,8 @@ export function WorkspaceClient({
   }, [branchName, refreshHistory, tagCanvasDiffToContext]);
 
   const handleToggleStarForNode = useCallback((nodeId: string) => {
-    void toggleStarRef.current(nodeId);
-  }, []);
+    void toggleStar(nodeId);
+  }, [toggleStar]);
 
   const handleEditNode = useCallback((node: MessageNode, quoteSelectionText: string) => {
     openEditModalRef.current(node, quoteSelectionText);

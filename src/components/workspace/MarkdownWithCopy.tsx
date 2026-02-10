@@ -123,13 +123,6 @@ const MarkdownTable = ({ className, children, ...props }: TableProps) => {
 };
 
 const MarkdownWithCopyBase = ({ content, className }: MarkdownWithCopyProps) => {
-  if (process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_DEBUG_CHAT_ROW_RENDERS === '1' && typeof window !== 'undefined') {
-    const debugWindow = window as Window & { __markdownWithCopyRenderCounts?: Record<string, number> };
-    const renderCounts = (debugWindow.__markdownWithCopyRenderCounts ??= {});
-    const key = content.slice(0, 80);
-    renderCounts[key] = (renderCounts[key] ?? 0) + 1;
-  }
-
   const components = useMemo<Components>(
     () => ({
       code: (props) => <InlineCode {...props} />,
