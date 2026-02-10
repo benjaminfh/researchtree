@@ -1029,6 +1029,8 @@ const chatNodeRowPropsEqual = (prev: ChatNodeRowProps, next: ChatNodeRowProps): 
         prevNode.interrupted === nextNode.interrupted)) &&
     (prevNode.type !== 'merge' ||
       (nextNode.type === 'merge' &&
+        prevNode.mergeFrom === nextNode.mergeFrom &&
+        prevNode.mergeSummary === nextNode.mergeSummary &&
         prevNode.mergedAssistantContent === nextNode.mergedAssistantContent &&
         prevNode.canvasDiff === nextNode.canvasDiff));
 
