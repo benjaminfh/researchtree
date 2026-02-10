@@ -122,7 +122,7 @@ const MarkdownTable = ({ className, children, ...props }: TableProps) => {
   );
 };
 
-export const MarkdownWithCopy = ({ content, className }: MarkdownWithCopyProps) => {
+const MarkdownWithCopyBase = ({ content, className }: MarkdownWithCopyProps) => {
   const components = useMemo<Components>(
     () => ({
       code: (props) => <InlineCode {...props} />,
@@ -138,3 +138,7 @@ export const MarkdownWithCopy = ({ content, className }: MarkdownWithCopyProps) 
     </ReactMarkdown>
   );
 };
+
+export const MarkdownWithCopy = React.memo(MarkdownWithCopyBase, (prev, next) =>
+  prev.content === next.content && prev.className === next.className
+);
