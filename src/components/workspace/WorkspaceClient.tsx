@@ -5,7 +5,6 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { FormEvent } from 'react';
 import type { ProjectMetadata, NodeRecord, BranchSummary, MessageNode } from '@git/types';
 import type { LLMProvider } from '@/src/server/llm';
 import { useProjectData } from '@/src/hooks/useProjectData';
@@ -15,7 +14,7 @@ import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 import { THINKING_SETTINGS, THINKING_SETTING_LABELS, type ThinkingSetting } from '@/src/shared/thinking';
 import { getAllowedThinkingSettings, getDefaultModelForProviderFromCapabilities, getDefaultThinkingSetting } from '@/src/shared/llmCapabilities';
 import { features } from '@/src/config/features';
-import { CHAT_COMPOSER_DEFAULT_LINES, storageKey, TRUNK_LABEL, USER_MESSAGE_MAX_LINES } from '@/src/config/app';
+import { storageKey, TRUNK_LABEL, USER_MESSAGE_MAX_LINES } from '@/src/config/app';
 import { CHAT_LIMITS } from '@/src/shared/chatLimits';
 import {
   deriveTextFromBlocks,
@@ -39,17 +38,15 @@ import { AuthRailStatus } from '@/src/components/auth/AuthRailStatus';
 import { RailPopover } from '@/src/components/layout/RailPopover';
 import { NewBranchFormCard } from '@/src/components/workspace/NewBranchFormCard';
 import { CommandEnterForm } from '@/src/components/forms/CommandEnterForm';
+import { WorkspaceComposer, type WorkspaceComposerHandle } from './WorkspaceComposer';
 import {
-  ArrowUpIcon,
   CheckIcon,
   HomeIcon,
   ConsoleIcon,
-  PaperClipIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
   SharedWorkspaceIcon,
-  Square2StackIcon,
-  XMarkIcon
+  Square2StackIcon
 } from './HeroIcons';
 import { MarkdownWithCopy } from './MarkdownWithCopy';
 import { copyTextToClipboard } from './clipboard';
@@ -388,7 +385,6 @@ type StreamMeta = {
   requiresUserMatch: boolean;
 };
 
-const CHAT_COMPOSER_MAX_LINES = 9;
 const MESSAGE_LIST_BASE_PADDING = 24;
 const DEBUG_ASSISTANT_LIFECYCLE = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
 const DEBUG_MESSAGE_SCROLL = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
@@ -1148,7 +1144,7 @@ export function WorkspaceClient({
   const [branchName, setBranchName] = useState(project.branchName ?? 'main');
   const [branches, setBranches] = useState(initialBranches);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
-  const [composerError, setComposerError] = useState<string | null>(null);
+  const [chatComposerError, setChatComposerError] = useState<string | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -1245,8 +1241,8 @@ export function WorkspaceClient({
   const [graphHistoryLoading, setGraphHistoryLoading] = useState(false);
   const [graphMode, setGraphMode] = useState<'nodes' | 'collapsed' | 'starred'>('collapsed');
   const [composerPadding, setComposerPadding] = useState(128);
+  const composerExpandedPaddingRef = useRef(128);
   const [composerCollapsed, setComposerCollapsed] = useState(false);
-  const [composerCornerRadius, setComposerCornerRadius] = useState<number | null>(null);
   const isGraphVisible = !insightCollapsed && insightTab === 'graph';
   const branchLookup = useMemo(() => {
     const nameById = new Map<string, string>();
@@ -1280,13 +1276,7 @@ export function WorkspaceClient({
   const INSIGHT_COLLAPSED_WIDTH = 56;
   const SPLIT_GAP = 12;
   const COLLAPSED_COMPOSER_PADDING = 12;
-  const composerRef = useRef<HTMLDivElement | null>(null);
-
-  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const composerBasePaddingRef = useRef<number>(composerPadding);
-  const composerCornerRadiusRef = useRef<number | null>(null);
-  const [composerMinHeight, setComposerMinHeight] = useState<number | null>(null);
-  const [composerMaxHeight, setComposerMaxHeight] = useState<number | null>(null);
+  const composerHandleRef = useRef<WorkspaceComposerHandle | null>(null);
 
   const getSelectionForNode = useCallback((nodeId: string): string => {
     if (typeof window === 'undefined') return '';
@@ -1976,16 +1966,9 @@ export function WorkspaceClient({
     scheduleAutosave
   ]);
   const draftStorageKey = `researchtree:draft:${project.id}`;
-  const [draft, setDraft] = useState('');
   const [optimisticUserNode, setOptimisticUserNode] = useState<NodeRecord | null>(null);
   const optimisticDraftRef = useRef<string | null>(null);
   const questionDraftRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!composerError) return;
-    if (draft.length <= CHAT_LIMITS.messageMaxChars) {
-      setComposerError(null);
-    }
-  }, [composerError, draft]);
   const [assistantLifecycle, setAssistantLifecycle] = useState<AssistantLifecycle>('idle');
   const [streamMeta, setStreamMeta] = useState<StreamMeta | null>(null);
   const [streamCache, setStreamCache] = useState<{ preview: string; blocks: ThinkingContentBlock[] } | null>(null);
@@ -2094,10 +2077,6 @@ export function WorkspaceClient({
     [project.id, branchName]
   );
   const [thinkingHydratedKey, setThinkingHydratedKey] = useState<string | null>(null);
-  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
-  const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
-  const [utilitiesMenuOpen, setUtilitiesMenuOpen] = useState(false);
-  const utilitiesMenuRef = useRef<HTMLDivElement | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const webSearchStorageKey = useMemo(
     () => `researchtree:websearch:${project.id}:${branchName}`,
@@ -2287,7 +2266,7 @@ export function WorkspaceClient({
       : isBranchWriteLocked
         ? 'Editing locked. Editor access required.'
         : null;
-  const chatErrorMessage = composerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
+  const chatErrorMessage = chatComposerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
   const composerInputDisabled = isBranchWriteLocked || (isPgMode && !leaseSessionReady);
   const composerActionDisabled = composerInputDisabled || state.isStreaming;
   const canvasDisabled = isPgMode && (!leaseSessionReady || isBranchWriteLocked);
@@ -2297,67 +2276,43 @@ export function WorkspaceClient({
     !openAIUseResponses &&
     (branchProvider === 'openai' || branchProvider === 'openai_responses');
 
-  const handleHtmlToMarkdown = useCallback(() => {
-    if (composerActionDisabled) return;
-    const htmlCandidate = draft.trim();
-    if (!htmlCandidate) {
-      pushToast('error', 'Composer is empty.');
-      setUtilitiesMenuOpen(false);
-      return;
-    }
-    if (!HTML_TAG_DETECTION_REGEX.test(htmlCandidate)) {
-      pushToast('error', 'No HTML detected to convert.');
-      setUtilitiesMenuOpen(false);
-      return;
-    }
-    try {
-      const converted = convertHtmlToMarkdown(htmlCandidate);
-      if (!converted.trim()) {
-        throw new Error('empty-conversion');
-      }
-      setDraft(converted);
-    } catch (error) {
-      console.error('Failed to convert HTML to markdown.', error);
-      pushToast('error', 'Unable to convert HTML to markdown.');
-    } finally {
-      setUtilitiesMenuOpen(false);
-    }
-  }, [composerActionDisabled, draft, pushToast]);
-
-  const sendDraft = async () => {
-    if (!draft.trim() || state.isStreaming) return;
-    const draftLength = draft.length;
-    if (draftLength > CHAT_LIMITS.messageMaxChars) {
-      setComposerError(formatCharLimitMessage('Message', draftLength, CHAT_LIMITS.messageMaxChars));
-      return;
-    }
-    setComposerError(null);
+  const sendDraft = useCallback(async (draft: string): Promise<boolean> => {
+    if (!draft.trim() || state.isStreaming) return false;
+    setChatComposerError(null);
     if (thinkingUnsupportedError) {
-      setThinkingMenuOpen(true);
-      return;
+      return false;
     }
     if (!ensureLeaseSessionReady()) {
-      return;
+      return false;
     }
     if (isBranchWriteLocked) {
       pushToast('error', 'Editing locked. Editor access required.');
-      return;
+      return false;
     }
-    const sent = draft;
-    setDraft('');
     const clientRequestId = beginTurn({
-      content: sent,
+      content: draft,
       branch: branchName,
       createdOnBranch: branchName,
-      parent: visibleNodes.length > 0 ? String(visibleNodes[visibleNodes.length - 1]!.id) : null,
-      optimisticDraft: sent,
+      parent: nodes.length > 0 ? String(nodes[nodes.length - 1]!.id) : null,
+      optimisticDraft: draft,
       questionDraft: null,
       requiresUserMatch: true
     });
-    await sendMessage({ message: sent, clientRequestId });
-  };
+    await sendMessage({ message: draft, clientRequestId });
+    return true;
+  }, [
+    state.isStreaming,
+    thinkingUnsupportedError,
+    ensureLeaseSessionReady,
+    isBranchWriteLocked,
+    pushToast,
+    branchName,
+    nodes,
+    sendMessage
+  ]);
 
   const sendQuestionWithStream = async ({
+
     targetBranch,
     question,
     highlight,
@@ -2491,10 +2446,7 @@ export function WorkspaceClient({
     }
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await sendDraft();
-  };
+
 
   const finalAssistantPresent = useMemo(() => {
     const requestId =
@@ -2539,30 +2491,15 @@ export function WorkspaceClient({
       const scopedSelection = getSelectionForNode(nodeId);
       const trimmedSelection = scopedSelection || selectionText?.trim() || '';
       const sourceText = trimmedSelection || messageText;
-      const normalized = sourceText.replace(/\r\n/g, '\n');
-      const quoted = normalized
-        .split('\n')
-        .map((line) => (line ? `> ${line}` : '>'))
-        .join('\n');
-      const quotedBlock = `${quoted}\n\n`;
-      setDraft((prev) => (prev ? `${prev}\n\n${quotedBlock}` : quotedBlock));
       if (composerCollapsed) {
         expandComposer();
+        window.setTimeout(() => composerHandleRef.current?.appendQuotedText(sourceText), 0);
+      } else {
+        composerHandleRef.current?.appendQuotedText(sourceText);
       }
       if (typeof window !== 'undefined') {
         window.getSelection()?.removeAllRanges();
       }
-      window.setTimeout(() => {
-        const input = composerTextareaRef.current;
-        if (!input) return;
-        input.focus();
-        const end = input.value.length;
-        input.setSelectionRange(end, end);
-        const isBeyondView = input.scrollTop + input.clientHeight < input.scrollHeight;
-        if (isBeyondView) {
-          input.scrollTop = input.scrollHeight;
-        }
-      }, 0);
     },
     [composerCollapsed, expandComposer, getSelectionForNode]
   );
@@ -2610,66 +2547,6 @@ export function WorkspaceClient({
     toggleComposerCollapsed
   ]);
 
-  const updateComposerMetrics = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const textarea = composerTextareaRef.current;
-    if (!textarea) return;
-    const styles = window.getComputedStyle(textarea);
-    const lineHeight = Number.parseFloat(styles.lineHeight || '');
-    const paddingTop = Number.parseFloat(styles.paddingTop || '0');
-    const paddingBottom = Number.parseFloat(styles.paddingBottom || '0');
-    if (!Number.isFinite(lineHeight)) return;
-    setComposerMinHeight(lineHeight * CHAT_COMPOSER_DEFAULT_LINES + paddingTop + paddingBottom);
-    setComposerMaxHeight(lineHeight * CHAT_COMPOSER_MAX_LINES + paddingTop + paddingBottom);
-  }, []);
-
-  const resizeComposer = useCallback(() => {
-    const textarea = composerTextareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    const scrollHeight = textarea.scrollHeight;
-    const minHeight = composerMinHeight ?? scrollHeight;
-    const maxHeight = composerMaxHeight ?? scrollHeight;
-    const nextHeight = Math.min(maxHeight, Math.max(minHeight, scrollHeight));
-    textarea.style.height = `${nextHeight}px`;
-  }, [composerMaxHeight, composerMinHeight]);
-
-  const updateComposerCornerRadius = useCallback(() => {
-    const composer = composerRef.current;
-    const textarea = composerTextareaRef.current;
-    if (!composer || !textarea) return;
-    const minHeight = composerMinHeight;
-    if (!minHeight) return;
-    const composerHeight = composer.getBoundingClientRect().height;
-    const textareaHeight = textarea.getBoundingClientRect().height;
-    const delta = Math.max(0, composerHeight - textareaHeight);
-    const baseHeight = minHeight + delta;
-    const nextRadius = Math.ceil(baseHeight / 2);
-    if (composerCornerRadiusRef.current === nextRadius) return;
-    composerCornerRadiusRef.current = nextRadius;
-    setComposerCornerRadius(nextRadius);
-  }, [composerMinHeight]);
-
-  const updateBaseComposerPadding = useCallback(() => {
-    const composer = composerRef.current;
-    if (!composer) return;
-    const next = Math.max(116, Math.ceil(composer.offsetHeight + 24));
-    composerBasePaddingRef.current = next;
-    setComposerPadding(next);
-  }, []);
-
-  useLayoutEffect(() => {
-    updateComposerMetrics();
-  }, [updateComposerMetrics]);
-
-  useLayoutEffect(() => {
-    resizeComposer();
-  }, [draft, resizeComposer]);
-
-  useLayoutEffect(() => {
-    updateComposerCornerRadius();
-  }, [draft, updateComposerCornerRadius]);
-
   useEffect(() => {
     if (!state.error || (!optimisticDraftRef.current && !questionDraftRef.current)) return;
     const sent = optimisticDraftRef.current;
@@ -2685,7 +2562,7 @@ export function WorkspaceClient({
     turnAssistantRenderIdRef.current = null;
     if (!hasReceivedAssistantChunkRef.current) {
       if (sent) {
-        setDraft(sent);
+        composerHandleRef.current?.setDraftAndFocus(sent);
       }
     }
     hasReceivedAssistantChunkRef.current = false;
@@ -2728,14 +2605,6 @@ export function WorkspaceClient({
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const savedDraft = window.sessionStorage.getItem(draftStorageKey);
-    if (savedDraft) {
-      setDraft(savedDraft);
-    }
-  }, [draftStorageKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2784,62 +2653,6 @@ export function WorkspaceClient({
     if (allowed.includes(editThinking)) return;
     setEditThinking(getDefaultThinkingSetting(editProvider, editModel));
   }, [showEditModal, editProvider, editThinking, providerOptions]);
-
-  useEffect(() => {
-    if (!thinkingMenuOpen) return;
-
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const container = thinkingMenuRef.current;
-      const target = event.target;
-      if (!container || !(target instanceof Node)) return;
-      if (!container.contains(target)) {
-        setThinkingMenuOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setThinkingMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [thinkingMenuOpen]);
-
-  useEffect(() => {
-    if (!utilitiesMenuOpen) return;
-
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const container = utilitiesMenuRef.current;
-      const target = event.target;
-      if (!container || !(target instanceof Node)) return;
-      if (!container.contains(target)) {
-        setUtilitiesMenuOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setUtilitiesMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [utilitiesMenuOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2911,15 +2724,6 @@ export function WorkspaceClient({
       window.removeEventListener('touchend', stop);
     };
   }, [CHAT_WIDTH_KEY, chatPaneWidth, insightCollapsed]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!draft) {
-      window.sessionStorage.removeItem(draftStorageKey);
-    } else {
-      window.sessionStorage.setItem(draftStorageKey, draft);
-    }
-  }, [draft, draftStorageKey]);
 
   useEffect(() => {
     if (newBranchName.trim()) return;
@@ -3055,6 +2859,14 @@ export function WorkspaceClient({
   }, [historyEpoch, refreshInsights]);
 
   useEffect(() => {
+    if (composerCollapsed) {
+      setComposerPadding(COLLAPSED_COMPOSER_PADDING);
+      return;
+    }
+    setComposerPadding(composerExpandedPaddingRef.current);
+  }, [COLLAPSED_COMPOSER_PADDING, composerCollapsed]);
+
+  useEffect(() => {
     if (insightCollapsed || insightTab !== 'graph') return;
     if (graphHistories && lastGraphRequestKeyRef.current === graphRequestKey && !graphHistoryError) {
       return;
@@ -3063,44 +2875,6 @@ export function WorkspaceClient({
     void loadGraphHistories({ signal: controller.signal });
     return () => controller.abort();
   }, [insightCollapsed, insightTab, graphRequestKey, graphHistories, graphHistoryError, loadGraphHistories]);
-
-  useEffect(() => {
-    if (composerCollapsed) {
-      setComposerPadding(COLLAPSED_COMPOSER_PADDING);
-      return;
-    }
-    const composer = composerRef.current;
-    if (!composer || typeof ResizeObserver === 'undefined') {
-      updateBaseComposerPadding();
-      return;
-    }
-    const updatePadding = () => {
-      if (!draft.trim()) {
-        updateBaseComposerPadding();
-        return;
-      }
-      setComposerPadding(composerBasePaddingRef.current);
-    };
-    updatePadding();
-    const observer = new ResizeObserver(updatePadding);
-    observer.observe(composer);
-    return () => observer.disconnect();
-  }, [composerCollapsed, COLLAPSED_COMPOSER_PADDING, draft, updateBaseComposerPadding]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleResize = () => {
-      updateComposerMetrics();
-      resizeComposer();
-      updateComposerCornerRadius();
-      if (!draft.trim()) {
-        updateBaseComposerPadding();
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [draft, resizeComposer, updateBaseComposerPadding, updateComposerMetrics, updateComposerCornerRadius]);
-
 
   useEffect(() => {
     if (insightTab !== 'graph') {
@@ -3230,15 +3004,10 @@ export function WorkspaceClient({
       event.preventDefault();
       if (composerCollapsed) {
         expandComposer();
+        window.setTimeout(() => composerHandleRef.current?.appendTextAndFocus(event.key), 0);
+        return;
       }
-      setDraft((prev) => `${prev}${event.key}`);
-      window.setTimeout(() => {
-        const input = composerTextareaRef.current;
-        if (!input) return;
-        input.focus();
-        const end = input.value.length;
-        input.setSelectionRange(end, end);
-      }, 0);
+      composerHandleRef.current?.appendTextAndFocus(event.key);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -5613,15 +5382,6 @@ export function WorkspaceClient({
                     {chatErrorMessage ? (
                       <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full border border-red-200 bg-red-50 px-4 text-sm text-red-700">
                         <span className="min-w-0 flex-1 truncate">{chatErrorMessage}</span>
-                        {state.error ? (
-                          <button
-                            type="button"
-                            onClick={() => void sendDraft()}
-                            className="shrink-0 rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
-                          >
-                            Retry
-                          </button>
-                        ) : null}
                       </div>
                     ) : (
                       <div className="flex-1" />
@@ -6196,211 +5956,34 @@ export function WorkspaceClient({
         </div>
 
           {!composerCollapsed ? (
-            <form
-              onSubmit={handleSubmit}
-              className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
-            >
-              <div
-                className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
-                style={{ paddingLeft: ctx.railCollapsed ? '72px' : '320px' }}
-              >
-                <div
-                  ref={composerRef}
-                  className="flex items-stretch gap-2 border border-divider bg-white px-3 py-2 shadow-composer"
-                  style={{
-                    borderRadius: composerCornerRadius ? `${composerCornerRadius}px` : '9999px'
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <div ref={utilitiesMenuRef} className="relative">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (composerActionDisabled) return;
-                          setUtilitiesMenuOpen((prev) => !prev);
-                        }}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-divider/80 bg-white text-xs font-semibold leading-none text-slate-700 transition hover:bg-primary/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Utilities"
-                        title="Utilities"
-                        aria-haspopup="menu"
-                        aria-expanded={utilitiesMenuOpen}
-                        disabled={composerActionDisabled}
-                      >
-                        <BlueprintIcon icon="plus" className="h-4 w-4" />
-                      </button>
-                      {utilitiesMenuOpen ? (
-                        <div
-                          role="menu"
-                          className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-divider bg-white p-1 shadow-lg"
-                        >
-                          <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                            Utilities
-                          </div>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            title="HTML to markdown"
-                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-                            onClick={handleHtmlToMarkdown}
-                            disabled={composerActionDisabled}
-                          >
-                            <span className="flex items-center gap-2">
-                              <BlueprintIcon icon="code" className="h-3.5 w-3.5" />
-                              HTML to markdown
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitemcheckbox"
-                            aria-checked={webSearchEnabled}
-                            title="Web search"
-                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                              webSearchEnabled ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
-                            } disabled:cursor-not-allowed disabled:opacity-60`}
-                            onClick={() => {
-                              if (!webSearchAvailable || state.isStreaming) return;
-                              setWebSearchEnabled((prev) => !prev);
-                              setUtilitiesMenuOpen(false);
-                            }}
-                            disabled={composerActionDisabled || !webSearchAvailable}
-                          >
-                            <span className="flex items-center gap-2">
-                              <BlueprintIcon icon="globe-network" className="h-3.5 w-3.5" />
-                              Web search
-                            </span>
-                            {webSearchEnabled ? <span aria-hidden="true">✓</span> : null}
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    {/* <div className="flex h-10 w-10 items-center justify-center">
-                      {features.uiAttachments ? (
-                        <button
-                          type="button"
-                          className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-primary/10 focus:outline-none"
-                          aria-label="Add attachment"
-                        >
-                          <PaperClipIcon className="h-5 w-5" />
-                        </button>
-                      ) : (
-                        <span aria-hidden="true" />
-                      )}
-                    </div> */}
-                  </div>
-                  <div className="relative flex flex-1 items-center">
-                    <textarea
-
-                      ref={composerTextareaRef}
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      placeholder="Ask anything"
-                      rows={CHAT_COMPOSER_DEFAULT_LINES}
-                      className="flex-1 w-full resize-none overflow-y-auto rounded-lg border border-slate-200/80 bg-white/70 px-3 pb-6 pt-1.5 text-base leading-relaxed placeholder:text-muted focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                      style={{
-                        minHeight: composerMinHeight ? `${composerMinHeight}px` : undefined,
-                        maxHeight: composerMaxHeight ? `${composerMaxHeight}px` : undefined
-                      }}
-                      disabled={composerInputDisabled}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'Enter') {
-                          return;
-                        }
-                        if (event.metaKey) {
-                          event.preventDefault();
-                          void sendDraft();
-                          return;
-                        }
-                        if (event.shiftKey || event.altKey) {
-                          return;
-                        }
-                      }}
-                    />
-                    <div className="pointer-events-none absolute inset-x-3 bottom-1 flex items-center text-[11px] text-slate-400">
-                      <span className="flex-1 text-left">
-                        {showOpenAISearchNote ? 'Search uses gpt-4o-mini-search-preview.' : ''}
-                      </span>
-                      <span className={`flex-[2] whitespace-nowrap text-center ${draft.length > 0 ? 'opacity-10' : ''}`}>
-                        ⌘ + Enter to send · Shift + Enter adds a newline.
-                      </span>
-                      <span className={`flex-1 text-right ${state.isStreaming ? 'animate-pulse text-primary' : ''}`}>
-                        {state.isStreaming ? 'Streaming…' : ''}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div ref={thinkingMenuRef} className="relative hidden sm:block">
-                      <button
-                        type="button"
-                        onClick={() => setThinkingMenuOpen((prev) => !prev)}
-                        className="inline-flex h-9 items-center gap-1 rounded-full bg-slate-100 px-3 py-0 text-xs font-semibold leading-none text-slate-700 transition hover:bg-slate-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Thinking mode"
-                        title="Thinking level"
-                        aria-haspopup="menu"
-                        aria-expanded={thinkingMenuOpen}
-                        disabled={state.isStreaming}
-                      >
-                        {THINKING_SETTING_LABELS[thinking]} ▾
-                      </button>
-                      {thinkingMenuOpen ? (
-                        <div
-                          role="menu"
-                          className="absolute bottom-full right-0 z-50 mb-2 w-26 rounded-xl border border-divider bg-white p-1 shadow-lg"
-                        >
-                          <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                            Thinking level
-                          </div>
-	                        {allowedThinking.map((setting) => {
-	                          const active = thinking === setting;
-	                          return (
-	                            <button
-	                              key={setting}
-	                              type="button"
-	                              role="menuitemradio"
-	                              aria-checked={active}
-	                              disabled={state.isStreaming}
-	                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-	                                active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-primary/10'
-	                              }`}
-	                              onClick={() => {
-	                                if (state.isStreaming) return;
-	                                setThinking(setting);
-	                                setThinkingMenuOpen(false);
-	                              }}
-	                            >
-	                              <span>{THINKING_SETTING_LABELS[setting]}</span>
-	                              {active ? <span aria-hidden="true">✓</span> : null}
-	                            </button>
-	                          );
-	                        })}
-                        </div>
-                      ) : null}
-                    </div>
-                    {state.isStreaming ? (
-                      <button
-                        type="button"
-                        onClick={interrupt}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 focus:outline-none"
-                        aria-label="Stop streaming"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    ) : null}
-                    <button
-                      type="submit"
-                      disabled={composerActionDisabled || !draft.trim() || Boolean(thinkingUnsupportedError)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label="Send message"
-                    >
-                      {isSending ? (
-                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
-                      ) : (
-                        <ArrowUpIcon className="h-5 w-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </form>
+            <WorkspaceComposer
+              ref={composerHandleRef}
+              railCollapsed={ctx.railCollapsed}
+              draftStorageKey={draftStorageKey}
+              isInputDisabled={composerInputDisabled}
+              isActionDisabled={composerActionDisabled}
+              isStreaming={state.isStreaming}
+              isSending={isSending}
+              thinkingUnsupportedError={thinkingUnsupportedError}
+              webSearchAvailable={webSearchAvailable}
+              webSearchEnabled={webSearchEnabled}
+              showOpenAISearchNote={showOpenAISearchNote}
+              thinking={thinking}
+              allowedThinking={allowedThinking}
+              onSubmitDraft={sendDraft}
+              onInterrupt={interrupt}
+              onThinkingChange={setThinking}
+              onWebSearchToggle={() => setWebSearchEnabled((prev) => !prev)}
+              onComposerErrorChange={setChatComposerError}
+              onComposerPaddingChange={(value) => {
+                composerExpandedPaddingRef.current = value;
+                if (!composerCollapsed) {
+                  setComposerPadding(value);
+                }
+              }}
+              pushToast={pushToast}
+              convertHtmlToMarkdown={convertHtmlToMarkdown}
+            />
           ) : null}
             </div>
           );
