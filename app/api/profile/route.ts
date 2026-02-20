@@ -84,10 +84,11 @@ export async function PUT(request: Request) {
     }
 
     if (parsed.data.systemPrompt !== undefined || parsed.data.systemPromptMode !== undefined) {
-      const { rtSetUserSystemPromptV1 } = await import('@/src/store/pg/userSystemPrompt');
+      const { rtGetUserSystemPromptV1, rtSetUserSystemPromptV1 } = await import('@/src/store/pg/userSystemPrompt');
+      const current = await rtGetUserSystemPromptV1();
       await rtSetUserSystemPromptV1({
-        mode: parsed.data.systemPromptMode ?? 'append',
-        prompt: normalizeSecret(parsed.data.systemPrompt)
+        mode: parsed.data.systemPromptMode ?? current.mode,
+        prompt: parsed.data.systemPrompt !== undefined ? normalizeSecret(parsed.data.systemPrompt) : current.prompt
       });
     }
 
