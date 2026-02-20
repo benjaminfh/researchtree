@@ -12,6 +12,7 @@ import {
 import { getStoreConfig } from './storeConfig';
 import { buildContextBlocksFromRaw } from '@/src/server/llmContentBlocks';
 import { getBranchConfigMap, resolveBranchConfig, type BranchConfig } from '@/src/server/branchConfig';
+import { buildDefaultSystemPrompt } from '@/src/server/systemPrompt';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -63,6 +64,19 @@ function getMergeUserRole(): Exclude<ChatMessage['role'], 'system'> {
   if (!raw) return 'assistant';
   if (raw === 'user' || raw === 'assistant') return raw;
   throw new Error('MERGE_USER must be set to "user" or "assistant"');
+}
+
+async function getProjectSystemPrompt(projectId: string, defaultPrompt: string): Promise<string> {
+  const store = getStoreConfig();
+  if (store.mode === 'pg') {
+    const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
+    const project = await rtGetProjectShadowV1({ projectId });
+    return project?.systemPrompt?.trim() ? project.systemPrompt : defaultPrompt;
+  }
+
+  const { getProject } = await import('@git/projects');
+  const project = await getProject(projectId);
+  return project?.systemPrompt?.trim() ? project.systemPrompt : defaultPrompt;
 }
 
 interface ContextOptions {
@@ -122,7 +136,8 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
     branchConfigMap[refName] = currentConfig;
   }
   const useCanonicalByIndex = buildCanonicalMask(trimmed, branchConfigMap, currentConfig);
-  const systemPrompt = buildSystemPrompt({ canvasToolsEnabled });
+  const defaultPrompt = buildDefaultSystemPrompt(canvasToolsEnabled);
+  const systemPrompt = await getProjectSystemPrompt(projectId, defaultPrompt);
   const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
   const mergeUserRole = getMergeUserRole();
 
@@ -159,7 +174,6 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
         content: payload
       });
     } else if (node.type === 'merge') {
-      // Merge nodes are UI-only; merge payloads are carried by synthetic user messages.
       continue;
     }
   }
@@ -168,33 +182,6 @@ export async function buildChatContext(projectId: string, options?: ContextOptio
     systemPrompt,
     messages
   };
-}
-
-function buildSystemPrompt({ canvasToolsEnabled }: { canvasToolsEnabled: boolean }): string {
-  const base = [
-    'You are an insightful, encouraging assistant who combines meticulous clarity with genuine enthusiasm and gentle humor.',
-    'Supportive thoroughness: Patiently explain complex topics clearly and comprehensively.',
-    'Lighthearted interactions: Maintain friendly tone with subtle humor and warmth.',
-    'Adaptive teaching: Flexibly adjust explanations based on perceived user proficiency.',
-    'Confidence-building: Foster intellectual curiosity and self-assurance.',
-    'Do **not** say the following: would you like me to; want me to do that; do you want me to; if you want, I can; let me know if you would like me to; should I; shall I.',
-    'Ask at most one necessary clarifying question at the start, not the end.',
-    'If the next step is obvious, do it. Example of bad: I can write playful examples. would you like me to? Example of good: Here are three playful examples:..'
-  ];
-
-  const canvasSection = canvasToolsEnabled
-    ? [
-        'Canvas tools are available: canvas_grep, canvas_read_lines, canvas_read_all, canvas_apply_patch.',
-        'Canvas tools require: locate -> inspect -> edit. Never retype target text from memory.',
-        'Line indices are 1-based. Patches must be unified diff format and apply cleanly.'
-      ]
-    : [
-        'Canvas tools may not be available in this conversation. If tools are absent, respond using provided context without referencing tool-only actions.'
-      ];
-
-  const sharedCanvasState = ['Some user messages are hidden canvas updates; treat them as authoritative canvas changes.'];
-
-  return [...base, ...canvasSection, ...sharedCanvasState].join('\n');
 }
 
 function estimateTokens(content: MessageContent): number {

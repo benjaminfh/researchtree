@@ -11,6 +11,7 @@ export interface PgProjectSummary {
   updatedAt: string;
   ownerUserId?: string;
   ownerEmail?: string;
+  systemPrompt?: string;
 }
 
 export async function rtCreateProjectShadow(input: {
@@ -19,6 +20,7 @@ export async function rtCreateProjectShadow(input: {
   description?: string;
   provider?: string | null;
   model?: string | null;
+  systemPrompt?: string | null;
 }): Promise<{ projectId: string }> {
   const { rpc } = getPgStoreAdapter();
   const { data, error } = await rpc('rt_create_project', {
@@ -26,7 +28,8 @@ export async function rtCreateProjectShadow(input: {
     p_description: input.description ?? null,
     p_project_id: input.projectId ?? null,
     p_provider: input.provider ?? null,
-    p_model: input.model ?? null
+    p_model: input.model ?? null,
+    p_system_prompt: input.systemPrompt ?? null
   });
   if (error) {
     throw new Error(error.message);
@@ -48,7 +51,8 @@ export async function rtListProjectsShadowV1(): Promise<PgProjectSummary[]> {
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at ?? row.created_at).toISOString(),
     ownerUserId: row.owner_user_id ? String(row.owner_user_id) : undefined,
-    ownerEmail: row.owner_email ?? undefined
+    ownerEmail: row.owner_email ?? undefined,
+    systemPrompt: row.system_prompt ? String(row.system_prompt) : undefined
   }));
 }
 
@@ -67,7 +71,8 @@ export async function rtGetProjectShadowV1(input: { projectId: string }): Promis
     name: String(row.name),
     description: row.description ?? undefined,
     createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at ?? row.created_at).toISOString()
+    updatedAt: new Date(row.updated_at ?? row.created_at).toISOString(),
+    systemPrompt: row.system_prompt ? String(row.system_prompt) : undefined
   };
 }
 

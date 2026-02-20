@@ -14,6 +14,8 @@ const updateKeysSchema = z
     openaiToken: z.string().max(500).optional().nullable(),
     geminiToken: z.string().max(500).optional().nullable(),
     anthropicToken: z.string().max(500).optional().nullable(),
+    systemPrompt: z.string().max(20000).optional().nullable(),
+    systemPromptMode: z.enum(['append', 'replace']).optional(),
     // Back-compat (UI used "Key" previously).
     openaiKey: z.string().max(500).optional().nullable(),
     geminiKey: z.string().max(500).optional().nullable(),
@@ -46,6 +48,10 @@ export async function GET() {
         gemini: { configured: status.hasGemini },
         anthropic: { configured: status.hasAnthropic }
       },
+      systemPrompt: {
+        mode: status.systemPromptMode,
+        prompt: status.systemPrompt
+      },
       updatedAt: status.updatedAt
     });
   } catch (error) {
@@ -75,6 +81,14 @@ export async function PUT(request: Request) {
     }
     if (parsed.data.anthropicToken !== undefined || parsed.data.anthropicKey !== undefined) {
       await rtSetUserLlmKeyV1({ provider: 'anthropic', secret: normalizeSecret(anthropicToken) });
+    }
+
+    if (parsed.data.systemPrompt !== undefined || parsed.data.systemPromptMode !== undefined) {
+      const { rtSetUserSystemPromptV1 } = await import('@/src/store/pg/userSystemPrompt');
+      await rtSetUserSystemPromptV1({
+        mode: parsed.data.systemPromptMode ?? 'append',
+        prompt: normalizeSecret(parsed.data.systemPrompt)
+      });
     }
 
     return Response.json({ ok: true });

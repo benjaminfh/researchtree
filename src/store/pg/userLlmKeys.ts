@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import type { LLMProvider } from '@/src/server/llm';
+import type { UserSystemPromptMode } from '@/src/server/systemPrompt';
 import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
 type KeyedProvider = Exclude<LLMProvider, 'mock'>;
@@ -36,6 +37,8 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
   hasOpenAI: boolean;
   hasGemini: boolean;
   hasAnthropic: boolean;
+  systemPrompt: string | null;
+  systemPromptMode: UserSystemPromptMode;
   updatedAt: string | null;
 }> {
   const { rpc } = getPgStoreAdapter();
@@ -46,13 +49,22 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) {
-    return { hasOpenAI: false, hasGemini: false, hasAnthropic: false, updatedAt: null };
+    return {
+      hasOpenAI: false,
+      hasGemini: false,
+      hasAnthropic: false,
+      systemPrompt: null,
+      systemPromptMode: 'append',
+      updatedAt: null
+    };
   }
 
   return {
     hasOpenAI: Boolean((row as any).has_openai),
     hasGemini: Boolean((row as any).has_gemini),
     hasAnthropic: Boolean((row as any).has_anthropic),
+    systemPrompt: (row as any).system_prompt ? String((row as any).system_prompt) : null,
+    systemPromptMode: (row as any).system_prompt_mode === 'replace' ? 'replace' : 'append',
     updatedAt: (row as any).updated_at ? String((row as any).updated_at) : null
   };
 }

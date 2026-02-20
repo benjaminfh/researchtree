@@ -26,7 +26,8 @@ import { setBranchConfig } from './branchConfig';
 export async function initProject(
   name: string,
   description?: string,
-  provider?: LLMProvider
+  provider?: LLMProvider,
+  systemPrompt?: string
 ): Promise<ProjectMetadata> {
   if (!name) {
     throw new Error('Project name is required');
@@ -53,7 +54,8 @@ export async function initProject(
     id,
     name,
     description,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    systemPrompt: systemPrompt?.trim() ? systemPrompt : undefined
   };
 
   const nodesPath = getProjectFilePath(id, 'nodes');
