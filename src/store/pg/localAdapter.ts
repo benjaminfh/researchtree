@@ -97,7 +97,7 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
     ],
     returnType: 'set'
   },
-  rt_create_project: { params: ['p_name', 'p_description', 'p_project_id', 'p_provider', 'p_model'], returnType: 'scalar' },
+  rt_create_project: { params: ['p_name', 'p_description', 'p_project_id', 'p_provider', 'p_model', 'p_system_prompt'], returnType: 'scalar' },
   rt_get_current_ref_v2: { params: ['p_project_id', 'p_default_ref_name'], returnType: 'set' },
   rt_set_current_ref_v2: { params: ['p_project_id', 'p_ref_id', 'p_lock_timeout_ms'], returnType: 'void' },
   rt_get_ref_previous_response_id_v2: { params: ['p_project_id', 'p_ref_id'], returnType: 'scalar' },
@@ -131,7 +131,9 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
   rt_toggle_star_v1: { params: ['p_project_id', 'p_node_id'], returnType: 'scalar' },
   rt_get_user_llm_key_status_v1: { params: [], returnType: 'set' },
   rt_set_user_llm_key_v1: { params: ['p_provider', 'p_secret'], returnType: 'void' },
-  rt_get_user_llm_key_server_v1: { params: ['p_user_id', 'p_provider'], returnType: 'scalar' }
+  rt_get_user_llm_key_server_v1: { params: ['p_user_id', 'p_provider'], returnType: 'scalar' },
+  rt_get_user_system_prompt_v1: { params: [], returnType: 'set' },
+  rt_set_user_system_prompt_v1: { params: ['p_mode', 'p_prompt'], returnType: 'void' }
 };
 
 const JSONB_PARAMS = new Set(['p_content_json', 'p_state_node_json', 'p_merge_node_json', 'p_raw_response']);

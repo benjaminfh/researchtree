@@ -6,6 +6,14 @@ import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { getDefaultModelForProvider, resolveLLMProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';
+import { buildDefaultSystemPrompt, resolveSystemPrompt } from '@/src/server/systemPrompt';
+
+async function getCurrentEffectiveSystemPrompt(storeMode: 'pg' | 'git'): Promise<string> {
+  const defaultPrompt = buildDefaultSystemPrompt(storeMode === 'pg' && process.env.RT_CANVAS_TOOLS === 'true');
+  const { rtGetUserSystemPromptV1 } = await import('@/src/store/pg/userSystemPrompt');
+  const settings = await rtGetUserSystemPromptV1();
+  return resolveSystemPrompt({ defaultPrompt, settings });
+}
 
 export async function GET() {
   try {
@@ -56,6 +64,7 @@ export async function POST(request: Request) {
     const requestedProvider = resolveOpenAIProviderSelection(parsed.data.provider ?? null);
     const defaultProvider = resolveLLMProvider(requestedProvider);
     const defaultModel = getDefaultModelForProvider(defaultProvider);
+    const systemPrompt = await getCurrentEffectiveSystemPrompt(store.mode);
 
     if (store.mode === 'pg') {
       const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
@@ -63,7 +72,8 @@ export async function POST(request: Request) {
         name: parsed.data.name,
         description: parsed.data.description,
         provider: defaultProvider,
-        model: defaultModel
+        model: defaultModel,
+        systemPrompt
       });
       const { rtGetProjectShadowV1 } = await import('@/src/store/pg/projects');
       const data = await rtGetProjectShadowV1({ projectId: created.projectId });
@@ -82,7 +92,7 @@ export async function POST(request: Request) {
     }
 
     const { initProject, deleteProject } = await import('@git/projects');
-    const project = await initProject(parsed.data.name, parsed.data.description, defaultProvider);
+    const project = await initProject(parsed.data.name, parsed.data.description, defaultProvider, systemPrompt);
 
     try {
       const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
@@ -91,7 +101,8 @@ export async function POST(request: Request) {
         name: project.name,
         description: project.description,
         provider: defaultProvider,
-        model: defaultModel
+        model: defaultModel,
+        systemPrompt
       });
     } catch (error) {
       await deleteProject(project.id).catch(() => undefined);

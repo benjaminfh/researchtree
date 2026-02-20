@@ -114,6 +114,22 @@ describe('Project operations', () => {
     }
   });
 
+
+  it('listProjects omits system prompt snapshots from summaries', async () => {
+    setProjectsRoot(TEST_ROOT);
+    const name = generateTestProjectName();
+    const project = await initProject(name, 'with prompt', undefined, 'secret system prompt');
+    createdProjects.push(project.id);
+
+    const summaries = await listProjects();
+    const summary = summaries.find((item) => item.id === project.id);
+    expect(summary).toBeTruthy();
+    expect(summary?.systemPrompt).toBeUndefined();
+
+    const full = await getProject(project.id);
+    expect(full?.systemPrompt).toBe('secret system prompt');
+  });
+
   it('getProject returns metadata for existing project', async () => {
     const project = await createProject('meta');
     const metadata = await getProject(project.id);
