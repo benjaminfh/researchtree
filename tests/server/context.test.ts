@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     readNodesFromRef: vi.fn(),
     rtGetHistoryShadowV2: vi.fn(),
     rtListRefsShadowV2: vi.fn(),
+    rtGetProjectShadowV1: vi.fn(),
     getProjectPath: vi.fn(),
     pathExists: vi.fn(),
     readJsonFile: vi.fn()
@@ -40,6 +41,10 @@ vi.mock('@/src/store/pg/reads', () => ({
   rtListRefsShadowV2: mocks.rtListRefsShadowV2
 }));
 
+vi.mock('@/src/store/pg/projects', () => ({
+  rtGetProjectShadowV1: mocks.rtGetProjectShadowV1
+}));
+
 describe('buildChatContext', () => {
   beforeEach(() => {
     mocks.getNodes.mockReset();
@@ -48,6 +53,7 @@ describe('buildChatContext', () => {
     mocks.readNodesFromRef.mockReset();
     mocks.rtGetHistoryShadowV2.mockReset();
     mocks.rtListRefsShadowV2.mockReset();
+    mocks.rtGetProjectShadowV1.mockReset();
     mocks.getProjectPath.mockReset();
     mocks.pathExists.mockReset();
     mocks.readJsonFile.mockReset();
@@ -56,6 +62,7 @@ describe('buildChatContext', () => {
     mocks.getProjectPath.mockReturnValue('/tmp/project-1');
     mocks.pathExists.mockResolvedValue(false);
     mocks.rtListRefsShadowV2.mockResolvedValue([{ id: 'ref-main', name: 'main', provider: 'openai', model: 'gpt-5.2' }]);
+    mocks.rtGetProjectShadowV1.mockResolvedValue(null);
   });
 
   it('includes recent messages and uses a fixed system prompt', async () => {

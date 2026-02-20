@@ -449,7 +449,8 @@ describe('pg store RPC wrappers', () => {
       p_description: null,
       p_project_id: null,
       p_provider: null,
-      p_model: null
+      p_model: null,
+      p_system_prompt: null
     });
     expect(result).toEqual({ projectId: 'proj-1' });
   });
@@ -642,6 +643,8 @@ describe('pg store RPC wrappers', () => {
       hasOpenAI: true,
       hasGemini: false,
       hasAnthropic: true,
+      systemPrompt: null,
+      systemPromptMode: 'append',
       updatedAt: 't1'
     });
 

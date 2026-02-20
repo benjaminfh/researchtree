@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   rtListProjectsShadowV1: vi.fn(),
   rtGetProjectShadowV1: vi.fn(),
   rtListProjectMemberIdsShadowV1: vi.fn(),
-  rtAcceptProjectInvitesShadowV1: vi.fn()
+  rtAcceptProjectInvitesShadowV1: vi.fn(),
+  rtGetUserSystemPromptV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -30,6 +31,10 @@ vi.mock('@/src/store/pg/projects', () => ({
 vi.mock('@/src/store/pg/members', () => ({
   rtListProjectMemberIdsShadowV1: mocks.rtListProjectMemberIdsShadowV1,
   rtAcceptProjectInvitesShadowV1: mocks.rtAcceptProjectInvitesShadowV1
+}));
+
+vi.mock('@/src/store/pg/userSystemPrompt', () => ({
+  rtGetUserSystemPromptV1: mocks.rtGetUserSystemPromptV1
 }));
 
 const baseUrl = 'http://localhost/api/projects';
@@ -52,10 +57,12 @@ describe('/api/projects route', () => {
     mocks.rtGetProjectShadowV1.mockReset();
     mocks.rtListProjectMemberIdsShadowV1.mockReset();
     mocks.rtAcceptProjectInvitesShadowV1.mockReset();
+    mocks.rtGetUserSystemPromptV1.mockReset();
     process.env.RT_STORE = 'git';
     mocks.rtListProjectMemberIdsShadowV1.mockResolvedValue(['1']);
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: '1' });
     mocks.rtAcceptProjectInvitesShadowV1.mockResolvedValue([]);
+    mocks.rtGetUserSystemPromptV1.mockResolvedValue({ mode: 'append', prompt: null });
   });
 
   it('returns project list on GET', async () => {
@@ -150,7 +157,8 @@ describe('/api/projects route', () => {
       name: 'PG',
       description: 'd',
       provider: 'openai_responses',
-      model: 'gpt-5.2'
+      model: 'gpt-5.2',
+      systemPrompt: expect.any(String)
     });
   });
 });

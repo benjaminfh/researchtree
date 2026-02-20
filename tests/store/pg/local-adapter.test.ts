@@ -24,11 +24,12 @@ describe('local pg adapter', () => {
       p_description: null,
       p_project_id: null,
       p_provider: null,
-      p_model: null
+      p_model: null,
+      p_system_prompt: null
     });
     expect(returnType).toBe('scalar');
-    expect(sql).toBe('select rt_create_project($1, $2, $3, $4, $5) as result;');
-    expect(values).toEqual(['Test', null, null, null, null]);
+    expect(sql).toBe('select rt_create_project($1, $2, $3, $4, $5, $6) as result;');
+    expect(values).toEqual(['Test', null, null, null, null, null]);
   });
 
   it('omits trailing optional params when not provided', () => {
@@ -60,7 +61,8 @@ describe('local pg adapter', () => {
       p_description: null,
       p_project_id: null,
       p_provider: null,
-      p_model: null
+      p_model: null,
+      p_system_prompt: null
     });
     const set = await adapter.rpc('rt_list_refs_v2', { p_project_id: 'p1' });
     const voidResult = await adapter.rpc('rt_set_current_ref_v2', {
