@@ -95,7 +95,8 @@ export async function listProjects(): Promise<ProjectMetadata[]> {
       continue;
     }
     const branchName = await getCurrentBranchName(metadata.id).catch(() => undefined);
-    projects.push({ ...metadata, branchName });
+    const { systemPrompt: _systemPrompt, ...summary } = metadata;
+    projects.push({ ...summary, branchName });
   }
   return projects;
 }

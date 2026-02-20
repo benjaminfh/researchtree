@@ -114,7 +114,6 @@ export function ProfilePageClient({ email }: { email: string | null }) {
         throw new Error(msg || 'Failed to save');
       }
 
-      await loadProfile();
       setOpenaiKey('');
       setGeminiKey('');
       setAnthropicKey('');
@@ -122,6 +121,12 @@ export function ProfilePageClient({ email }: { email: string | null }) {
       setClearGemini(false);
       setClearAnthropic(false);
       setNotice('Tokens saved.');
+
+      try {
+        await loadProfile();
+      } catch {
+        setNotice('Tokens saved. Refresh to load the latest profile state.');
+      }
     } catch (err) {
       setError((err as Error)?.message ?? 'Failed to save');
     } finally {
@@ -146,8 +151,13 @@ export function ProfilePageClient({ email }: { email: string | null }) {
         const msg = await res.text().catch(() => '');
         throw new Error(msg || 'Failed to save system prompt');
       }
-      await loadProfile();
       setNotice('System prompt settings saved.');
+
+      try {
+        await loadProfile();
+      } catch {
+        setNotice('System prompt settings saved. Refresh to load the latest profile state.');
+      }
     } catch (err) {
       setError((err as Error)?.message ?? 'Failed to save system prompt');
     } finally {
