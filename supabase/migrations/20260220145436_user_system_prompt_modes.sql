@@ -14,6 +14,8 @@ alter table public.user_llm_keys
 alter table public.projects
   add column if not exists system_prompt text;
 
+drop function if exists public.rt_get_user_llm_key_status_v1();
+
 create or replace function public.rt_get_user_llm_key_status_v1()
 returns table(has_openai boolean, has_gemini boolean, has_anthropic boolean, system_prompt text, system_prompt_mode text, updated_at timestamptz)
 language plpgsql
@@ -41,6 +43,9 @@ begin
   where k.user_id = auth.uid();
 end;
 $$;
+
+revoke all on function public.rt_get_user_llm_key_status_v1() from public;
+grant execute on function public.rt_get_user_llm_key_status_v1() to authenticated;
 
 create or replace function public.rt_get_user_system_prompt_v1()
 returns table(mode text, prompt text)
