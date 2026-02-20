@@ -8,8 +8,8 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { getDefaultModelForProvider, resolveLLMProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';
 import { buildDefaultSystemPrompt, resolveSystemPrompt } from '@/src/server/systemPrompt';
 
-async function getCurrentEffectiveSystemPrompt(): Promise<string> {
-  const defaultPrompt = buildDefaultSystemPrompt(process.env.RT_CANVAS_TOOLS === 'true');
+async function getCurrentEffectiveSystemPrompt(storeMode: 'pg' | 'git'): Promise<string> {
+  const defaultPrompt = buildDefaultSystemPrompt(storeMode === 'pg' && process.env.RT_CANVAS_TOOLS === 'true');
   const { rtGetUserSystemPromptV1 } = await import('@/src/store/pg/userSystemPrompt');
   const settings = await rtGetUserSystemPromptV1();
   return resolveSystemPrompt({ defaultPrompt, settings });
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     const requestedProvider = resolveOpenAIProviderSelection(parsed.data.provider ?? null);
     const defaultProvider = resolveLLMProvider(requestedProvider);
     const defaultModel = getDefaultModelForProvider(defaultProvider);
-    const systemPrompt = await getCurrentEffectiveSystemPrompt();
+    const systemPrompt = await getCurrentEffectiveSystemPrompt(store.mode);
 
     if (store.mode === 'pg') {
       const { rtCreateProjectShadow } = await import('@/src/store/pg/projects');
