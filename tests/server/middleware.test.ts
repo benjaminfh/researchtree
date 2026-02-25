@@ -42,6 +42,20 @@ describe('middleware auth redirects', () => {
     mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
     const res = await middleware(new NextRequest('http://localhost/login?redirectTo=/projects/p1'));
     expect(res?.headers.get('location')).toBe('http://localhost/projects/p1');
+    expect(res?.headers.get('x-frame-options')).toBe('DENY');
+    expect(res?.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+  });
+
+  it('applies clickjacking headers on auth pages', async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: null } });
+
+    const forgotPasswordRes = await middleware(new NextRequest('http://localhost/forgot-password'));
+    expect(forgotPasswordRes?.headers.get('x-frame-options')).toBe('DENY');
+    expect(forgotPasswordRes?.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+
+    const checkEmailRes = await middleware(new NextRequest('http://localhost/check-email'));
+    expect(checkEmailRes?.headers.get('x-frame-options')).toBe('DENY');
+    expect(checkEmailRes?.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
   });
 
   it('returns 500 when Supabase env is incomplete', async () => {
