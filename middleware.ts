@@ -74,6 +74,25 @@ function isPublicPath(pathname: string): boolean {
   return false;
 }
 
+function shouldApplyClickjackingProtection(pathname: string): boolean {
+  if (pathname === '/login') return true;
+  if (pathname === '/check-email') return true;
+  if (pathname === '/forgot-password') return true;
+  if (pathname === '/reset-password') return true;
+  if (pathname.startsWith('/auth/')) return true;
+  return false;
+}
+
+function withClickjackingHeaders(pathname: string, response: NextResponse): NextResponse {
+  if (!shouldApplyClickjackingProtection(pathname)) {
+    return response;
+  }
+
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
+  return response;
+}
+
 function sanitizeRedirectTo(input: string | null): string | null {
   if (!input) return null;
   if (!input.startsWith('/')) return null;
@@ -202,7 +221,7 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   if (maintenanceEnabled && adminUserIds.size === 0) {
-    return buildMaintenanceResponse(request);
+    return withClickjackingHeaders(pathname, buildMaintenanceResponse(request));
   }
 
   if (!maintenanceEnabled && pathname.startsWith('/api')) {
@@ -212,20 +231,20 @@ export async function middleware(request: NextRequest) {
   const anySupabaseEnv = hasAnySupabaseEnv();
   if (isExplicitLocalMode() && !anySupabaseEnv) {
     if (maintenanceEnabled) {
-      return buildMaintenanceResponse(request);
+      return withClickjackingHeaders(pathname, buildMaintenanceResponse(request));
     }
-    return NextResponse.next();
+    return withClickjackingHeaders(pathname, NextResponse.next());
   }
 
   const supabaseEnv = getSupabaseEnv();
   if (!supabaseEnv) {
     if (maintenanceEnabled) {
-      return buildMaintenanceResponse(request);
+      return withClickjackingHeaders(pathname, buildMaintenanceResponse(request));
     }
     if (anySupabaseEnv) {
-      return new NextResponse('Supabase env is incomplete', { status: 500 });
+      return withClickjackingHeaders(pathname, new NextResponse('Supabase env is incomplete', { status: 500 }));
     }
-    return NextResponse.next();
+    return withClickjackingHeaders(pathname, NextResponse.next());
   }
 
   let response = NextResponse.next({
@@ -253,7 +272,7 @@ export async function middleware(request: NextRequest) {
   if (maintenanceEnabled) {
     const userId = user?.id ?? null;
     if (!userId || !adminUserIds.has(userId)) {
-      return buildMaintenanceResponse(request);
+      return withClickjackingHeaders(pathname, buildMaintenanceResponse(request));
     }
   }
 
@@ -265,11 +284,11 @@ export async function middleware(request: NextRequest) {
     const redirectTo = sanitizeRedirectTo(request.nextUrl.searchParams.get('redirectTo')) ?? '/';
     const redirectUrl = new URL(redirectTo, request.url);
     response = withSupabaseCookies(response, NextResponse.redirect(redirectUrl));
-    return response;
+    return withClickjackingHeaders(pathname, response);
   }
 
   if (isPublicPath(pathname)) {
-    return response;
+    return withClickjackingHeaders(pathname, response);
   }
 
   if (!user) {
@@ -281,7 +300,7 @@ export async function middleware(request: NextRequest) {
     response = withSupabaseCookies(response, NextResponse.redirect(redirectUrl));
   }
 
-  return response;
+  return withClickjackingHeaders(pathname, response);
 }
 
 export const config = {
