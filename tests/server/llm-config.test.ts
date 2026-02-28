@@ -52,4 +52,16 @@ describe('llmConfig', () => {
     process.env.LLM_ALLOWED_MODELS_OPENAI = 'gpt-5.1,gpt-5.2';
     expect(getProviderEnvConfig('openai')).toMatchObject({ defaultModel: 'gpt-5.1' });
   });
+
+
+  it('accepts gemini-3.1-pro-preview when present in Gemini allowlist', () => {
+    process.env.GEMINI_MODEL = 'gemini-3.1-pro-preview';
+    process.env.LLM_ALLOWED_MODELS_GEMINI = 'gemini-3.1-pro-preview,gemini-2.5-pro';
+    expect(getProviderEnvConfig('gemini')).toMatchObject({ defaultModel: 'gemini-3.1-pro-preview' });
+  });
+
+  it('surfaces a capabilities-first error when allowlist contains an unknown model', () => {
+    process.env.LLM_ALLOWED_MODELS_GEMINI = 'gemini-9-foo';
+    expect(() => getProviderEnvConfig('gemini')).toThrow(/src\/shared\/llmCapabilities\.ts/);
+  });
 });
