@@ -12,7 +12,7 @@ export interface ProviderEndpointConfig {
   models: string[];
 }
 
-export const LLM_ENDPOINTS: Record<LLMProvider, ProviderEndpointConfig> = {
+export const LLM_PROVIDER_CAPABILITIES: Record<LLMProvider, ProviderEndpointConfig> = {
   openai: {
     defaultModel: 'gpt-5.2',
     models: ['gpt-5.2', 'gpt-5.1', 'gpt-4o-mini-search-preview', 'gpt-4o-search-preview']
@@ -22,8 +22,8 @@ export const LLM_ENDPOINTS: Record<LLMProvider, ProviderEndpointConfig> = {
     models: ['gpt-5.2', 'gpt-5.1']
   },
   gemini: {
-    defaultModel: 'gemini-3-pro-preview',
-    models: ['gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']
+    defaultModel: 'gemini-3.1-pro-preview',
+    models: ['gemini-3.1-pro-preview', 'gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']
   },
   anthropic: {
     defaultModel: 'claude-sonnet-4-5',
@@ -35,14 +35,17 @@ export const LLM_ENDPOINTS: Record<LLMProvider, ProviderEndpointConfig> = {
   }
 };
 
+// Backwards-compatible alias; prefer LLM_PROVIDER_CAPABILITIES for new usage.
+export const LLM_ENDPOINTS = LLM_PROVIDER_CAPABILITIES;
+
 export function getDefaultModelForProviderFromCapabilities(provider: LLMProvider): string {
-  return LLM_ENDPOINTS[provider].defaultModel;
+  return LLM_PROVIDER_CAPABILITIES[provider].defaultModel;
 }
 
 export function isSupportedModelForProvider(provider: LLMProvider, modelName: string): boolean {
   const normalized = modelName.trim();
   if (!normalized) return false;
-  return LLM_ENDPOINTS[provider].models.includes(normalized);
+  return LLM_PROVIDER_CAPABILITIES[provider].models.includes(normalized);
 }
 
 export interface ThinkingValidationResult {

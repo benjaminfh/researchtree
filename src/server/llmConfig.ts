@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import type { LLMProvider } from '@/src/shared/llmProvider';
-import { LLM_ENDPOINTS } from '@/src/shared/llmCapabilities';
+import { LLM_PROVIDER_CAPABILITIES } from '@/src/shared/llmCapabilities';
 
 export interface ProviderEnvConfig {
   enabled: boolean;
@@ -11,6 +11,12 @@ export interface ProviderEnvConfig {
 }
 
 export type DeployEnv = 'dev' | 'prod';
+
+const PROVIDER_CAPABILITIES_PATH = 'src/shared/llmCapabilities.ts';
+
+function buildAllowlistSubsetError(envVarName: string, supportedModels: string[]): string {
+  return `${envVarName} must be a subset of code-defined provider capabilities in ${PROVIDER_CAPABILITIES_PATH} (${supportedModels.join(', ')})`;
+}
 
 export function getDeployEnv(): DeployEnv {
   const raw = (process.env.DEPLOY_ENV ?? 'dev').trim().toLowerCase();
@@ -85,58 +91,58 @@ export function getDefaultProvider(): LLMProvider {
 export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
   if (provider === 'openai' || provider === 'openai_responses') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_OPENAI, true);
-    const supportedModels = LLM_ENDPOINTS[provider].models;
+    const supportedModels = LLM_PROVIDER_CAPABILITIES[provider].models;
     const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_OPENAI);
     if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
       throw new Error(
-        `LLM_ALLOWED_MODELS_OPENAI must be a subset of supported models (${supportedModels.join(', ')})`
+        buildAllowlistSubsetError('LLM_ALLOWED_MODELS_OPENAI', supportedModels)
       );
     }
     const allowedModels = allowedFromEnv ?? supportedModels;
-    const fallbackModel = LLM_ENDPOINTS[provider].defaultModel;
+    const fallbackModel = LLM_PROVIDER_CAPABILITIES[provider].defaultModel;
     const envModel = (process.env.OPENAI_MODEL ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {
-      throw new Error(`OPENAI_MODEL must be one of LLM_ALLOWED_MODELS_OPENAI (${allowedModels?.join(', ') ?? ''})`);
+      throw new Error(`OPENAI_MODEL must be one of the allowed OpenAI models (${allowedModels?.join(', ') ?? ''})`);
     }
     return { enabled, allowedModels, defaultModel };
   }
 
   if (provider === 'gemini') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_GEMINI, true);
-    const supportedModels = LLM_ENDPOINTS.gemini.models;
+    const supportedModels = LLM_PROVIDER_CAPABILITIES.gemini.models;
     const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_GEMINI);
     if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
       throw new Error(
-        `LLM_ALLOWED_MODELS_GEMINI must be a subset of supported models (${supportedModels.join(', ')})`
+        buildAllowlistSubsetError('LLM_ALLOWED_MODELS_GEMINI', supportedModels)
       );
     }
     const allowedModels = allowedFromEnv ?? supportedModels;
-    const fallbackModel = LLM_ENDPOINTS.gemini.defaultModel;
+    const fallbackModel = LLM_PROVIDER_CAPABILITIES.gemini.defaultModel;
     const envModel = (process.env.GEMINI_MODEL ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {
-      throw new Error(`GEMINI_MODEL must be one of LLM_ALLOWED_MODELS_GEMINI (${allowedModels?.join(', ') ?? ''})`);
+      throw new Error(`GEMINI_MODEL must be one of the allowed Gemini models (${allowedModels?.join(', ') ?? ''})`);
     }
     return { enabled, allowedModels, defaultModel };
   }
 
   if (provider === 'anthropic') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_ANTHROPIC, false);
-    const supportedModels = LLM_ENDPOINTS.anthropic.models;
+    const supportedModels = LLM_PROVIDER_CAPABILITIES.anthropic.models;
     const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_ANTHROPIC);
     if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
       throw new Error(
-        `LLM_ALLOWED_MODELS_ANTHROPIC must be a subset of supported models (${supportedModels.join(', ')})`
+        buildAllowlistSubsetError('LLM_ALLOWED_MODELS_ANTHROPIC', supportedModels)
       );
     }
     const allowedModels = allowedFromEnv ?? supportedModels;
-    const fallbackModel = LLM_ENDPOINTS.anthropic.defaultModel;
+    const fallbackModel = LLM_PROVIDER_CAPABILITIES.anthropic.defaultModel;
     const envModel = (process.env.ANTHROPIC_MODEL ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {
       throw new Error(
-        `ANTHROPIC_MODEL must be one of LLM_ALLOWED_MODELS_ANTHROPIC (${allowedModels?.join(', ') ?? ''})`
+        `ANTHROPIC_MODEL must be one of the allowed Anthropic models (${allowedModels?.join(', ') ?? ''})`
       );
     }
     return { enabled, allowedModels, defaultModel };
