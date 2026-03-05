@@ -11,6 +11,8 @@ export interface ChatStreamState {
   error: string | null;
 }
 
+const MISSING_PROVIDER_ERROR = 'Branch provider is unavailable. Wait for branch config to load and try again.';
+
 export interface ChatStreamChunk {
   type: 'text' | 'thinking' | 'thinking_signature' | 'error';
   content?: string;
@@ -192,11 +194,12 @@ export function useChatStream({
         return;
       }
       if (streamDebugEnabled) {
+        const resolvedProvider = normalized.llmProvider ?? provider ?? null;
         streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
         console.debug('[stream][start]', {
           projectId,
           ref: normalized.ref ?? ref,
-          provider: normalized.llmProvider ?? provider,
+          provider: resolvedProvider,
           thinking: normalized.thinking ?? thinking,
           webSearch: normalized.webSearch ?? webSearch,
           messageLength: (normalized.message ?? '').length,
@@ -204,12 +207,17 @@ export function useChatStream({
           highlightLength: (normalized.highlight ?? '').length
         });
       }
+      const resolvedProvider = normalized.llmProvider ?? provider;
+      if (!resolvedProvider) {
+        setState({ isStreaming: false, error: MISSING_PROVIDER_ERROR });
+        return;
+      }
       const basePayload: Record<string, unknown> = {
         message: normalized.message,
         question: normalized.question,
         highlight: normalized.highlight,
         intent: normalized.intent,
-        llmProvider: normalized.llmProvider ?? provider,
+        llmProvider: resolvedProvider,
         ref: normalized.ref ?? ref,
         thinking: normalized.thinking ?? thinking,
         webSearch: normalized.webSearch ?? webSearch,
@@ -222,7 +230,7 @@ export function useChatStream({
         body: requestBody
       });
     },
-    [projectId, provider, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
+    [projectId, ref, thinking, webSearch, sendStreamRequest, streamDebugEnabled, leaseSessionId]
   );
 
   const interrupt = useCallback(async () => {
