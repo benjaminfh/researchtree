@@ -11,8 +11,6 @@ export interface ChatStreamState {
   error: string | null;
 }
 
-const MISSING_PROVIDER_ERROR = 'Branch provider is unavailable. Wait for branch config to load and try again.';
-
 export interface ChatStreamChunk {
   type: 'text' | 'thinking' | 'thinking_signature' | 'error';
   content?: string;
@@ -208,16 +206,12 @@ export function useChatStream({
         });
       }
       const resolvedProvider = normalized.llmProvider ?? provider;
-      if (!resolvedProvider) {
-        setState({ isStreaming: false, error: MISSING_PROVIDER_ERROR });
-        return;
-      }
       const basePayload: Record<string, unknown> = {
         message: normalized.message,
         question: normalized.question,
         highlight: normalized.highlight,
         intent: normalized.intent,
-        llmProvider: resolvedProvider,
+        ...(resolvedProvider ? { llmProvider: resolvedProvider } : {}),
         ref: normalized.ref ?? ref,
         thinking: normalized.thinking ?? thinking,
         webSearch: normalized.webSearch ?? webSearch,

@@ -2149,7 +2149,7 @@ export function WorkspaceClient({
     () => activeBranch?.provider ?? defaultProvider,
     [activeBranch?.provider, defaultProvider]
   );
-  const activeBranchProvider = activeBranch?.provider ?? null;
+  const chatProvider = activeBranch?.provider ?? defaultProvider;
   const branchModel = useMemo(() => {
     const option = providerOptions.find((entry) => entry.id === branchProvider);
     return activeBranch?.model ?? option?.defaultModel ?? getDefaultModelForProviderFromCapabilities(branchProvider);
@@ -2194,7 +2194,7 @@ export function WorkspaceClient({
   const { sendMessage, sendStreamRequest, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
-    provider: activeBranchProvider ?? undefined,
+    provider: chatProvider,
     thinking,
     webSearch: webSearchEnabled,
     leaseSessionId,
@@ -2356,10 +2356,6 @@ export function WorkspaceClient({
   const sendDraft = useCallback(async (draft: string): Promise<boolean> => {
     if (!draft.trim() || state.isStreaming) return false;
     setChatComposerError(null);
-    if (!activeBranchProvider) {
-      setChatComposerError('Branch provider is unavailable. Wait for branch config to load and try again.');
-      return false;
-    }
     if (thinkingUnsupportedError) {
       return false;
     }
@@ -2379,10 +2375,10 @@ export function WorkspaceClient({
       questionDraft: null,
       requiresUserMatch: true
     });
-    await sendMessage({ message: draft, clientRequestId, llmProvider: activeBranchProvider });
+    await sendMessage({ message: draft, clientRequestId, llmProvider: chatProvider });
     return true;
   }, [
-    activeBranchProvider,
+    chatProvider,
     state.isStreaming,
     thinkingUnsupportedError,
     ensureLeaseSessionReady,
