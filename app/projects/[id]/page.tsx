@@ -6,7 +6,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { APP_NAME } from '@/src/config/app';
-import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
+import { resolveLLMProvider, resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
@@ -138,6 +138,15 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
           .catch(() => null)
       : null;
 
+  const resolvedWorkspaceDefaultProvider = (() => {
+    const providerFromProfile = resolveOpenAIProviderSelection(userDefaultProvider ?? undefined);
+    const enabledProviders = new Set(getEnabledProviders());
+    if (enabledProviders.has(providerFromProfile)) {
+      return providerFromProfile;
+    }
+    return resolveLLMProvider();
+  })();
+
   const providerOptions = getEnabledProviders().map((id) => ({
     id,
     label: labelForProvider(id),
@@ -149,7 +158,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       <WorkspaceClient
         project={project}
         initialBranches={branches}
-        defaultProvider={resolveOpenAIProviderSelection(userDefaultProvider ?? undefined)}
+        defaultProvider={resolvedWorkspaceDefaultProvider}
         providerOptions={providerOptions}
         openAIUseResponses={getOpenAIUseResponses()}
         storeMode={storeMode}
