@@ -439,7 +439,6 @@ interface WorkspaceClientProps {
   initialBranches: BranchSummary[];
   defaultProvider: LLMProvider;
   providerOptions: ProviderOption[];
-  openAIUseResponses: boolean;
   storeMode: StoreMode;
 }
 
@@ -1211,7 +1210,6 @@ export function WorkspaceClient({
   initialBranches,
   defaultProvider,
   providerOptions,
-  openAIUseResponses,
   storeMode
 }: WorkspaceClientProps) {
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
@@ -2353,10 +2351,7 @@ export function WorkspaceClient({
   const composerActionDisabled = composerInputDisabled || state.isStreaming;
   const canvasDisabled = isPgMode && (!leaseSessionReady || isBranchWriteLocked);
   const webSearchAvailable = branchProvider !== 'mock';
-  const showOpenAISearchNote =
-    webSearchEnabled &&
-    !openAIUseResponses &&
-    (branchProvider === 'openai' || branchProvider === 'openai_responses');
+  const showOpenAISearchNote = webSearchEnabled && branchProvider === 'openai';
 
   const sendDraft = useCallback(async (draft: string): Promise<boolean> => {
     if (!draft.trim() || state.isStreaming) return false;

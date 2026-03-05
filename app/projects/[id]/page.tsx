@@ -147,7 +147,6 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
         initialBranches={branches}
         defaultProvider={defaultProvider}
         providerOptions={providerOptions}
-        openAIUseResponses={defaultProvider === 'openai_responses'}
         storeMode={storeMode}
       />
     </main>
