@@ -5,11 +5,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET, PUT } from '@/app/api/profile/route';
 
 const mocks = vi.hoisted(() => ({
+  rtGetUserDefaultProviderV1: vi.fn(),
   rtGetUserLlmKeyStatusV1: vi.fn(),
   rtSetUserLlmKeyV1: vi.fn()
 }));
 
 vi.mock('@/src/store/pg/userLlmKeys', () => ({
+  rtGetUserDefaultProviderV1: mocks.rtGetUserDefaultProviderV1,
   rtGetUserLlmKeyStatusV1: mocks.rtGetUserLlmKeyStatusV1,
   rtSetUserLlmKeyV1: mocks.rtSetUserLlmKeyV1
 }));
@@ -30,6 +32,7 @@ describe('/api/profile', () => {
   });
 
   it('GET returns user email and key status', async () => {
+    mocks.rtGetUserDefaultProviderV1.mockResolvedValue('openai');
     mocks.rtGetUserLlmKeyStatusV1.mockResolvedValue({
       hasOpenAI: true,
       hasGemini: false,

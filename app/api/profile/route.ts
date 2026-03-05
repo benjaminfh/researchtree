@@ -34,8 +34,9 @@ export async function GET() {
   try {
     const user = await requireUser();
     const store = getStoreConfig();
-    const { rtGetUserLlmKeyStatusV1 } = await import('@/src/store/pg/userLlmKeys');
+    const { rtGetUserDefaultProviderV1, rtGetUserLlmKeyStatusV1 } = await import('@/src/store/pg/userLlmKeys');
     const status = await rtGetUserLlmKeyStatusV1();
+    const defaultProvider = await rtGetUserDefaultProviderV1();
 
     if (store.mode === 'pg' && user.email) {
       const { rtAcceptProjectInvitesShadowV1 } = await import('@/src/store/pg/members');
@@ -53,7 +54,7 @@ export async function GET() {
         mode: status.systemPromptMode,
         prompt: status.systemPrompt
       },
-      defaultProvider: status.defaultProvider,
+      defaultProvider,
       updatedAt: status.updatedAt
     });
   } catch (error) {

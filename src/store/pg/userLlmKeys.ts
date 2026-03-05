@@ -39,7 +39,6 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
   hasAnthropic: boolean;
   systemPrompt: string | null;
   systemPromptMode: UserSystemPromptMode;
-  defaultProvider: LLMProvider | null;
   updatedAt: string | null;
 }> {
   const { rpc } = getPgStoreAdapter();
@@ -56,7 +55,6 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
       hasAnthropic: false,
       systemPrompt: null,
       systemPromptMode: 'append',
-      defaultProvider: null,
       updatedAt: null
     };
   }
@@ -67,7 +65,6 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
     hasAnthropic: Boolean((row as any).has_anthropic),
     systemPrompt: (row as any).system_prompt ? String((row as any).system_prompt) : null,
     systemPromptMode: (row as any).system_prompt_mode === 'replace' ? 'replace' : 'append',
-    defaultProvider: (row as any).default_provider ? (String((row as any).default_provider) as LLMProvider) : null,
     updatedAt: (row as any).updated_at ? String((row as any).updated_at) : null
   };
 }
