@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { resolveLLMProvider } from '@/src/server/llm';
+import { resolveLLMProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';
 
 const originalEnv = { ...process.env };
 
@@ -25,5 +25,9 @@ describe('resolveLLMProvider', () => {
     process.env.LLM_DEFAULT_PROVIDER = 'openai';
     expect(resolveLLMProvider('mock' as any)).toBe('openai');
   });
-});
 
+  it('does not rewrite explicit openai to openai_responses', () => {
+    process.env.OPENAI_USE_RESPONSES = 'true';
+    expect(resolveOpenAIProviderSelection('openai')).toBe('openai');
+  });
+});

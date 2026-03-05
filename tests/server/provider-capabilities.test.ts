@@ -28,7 +28,9 @@ describe('provider capabilities', () => {
     __resetProviderCapabilitiesCache();
     delete process.env.OPENAI_API_KEY;
     delete process.env.GEMINI_API_KEY;
-    process.env.OPENAI_MODEL = 'gpt-5.2';
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
+    process.env.OPENAI_CHATCOMPLETIONS_MODEL = 'gpt-5.2';
     process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
   });
 

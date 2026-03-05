@@ -12,12 +12,16 @@ describe('llmConfig', () => {
     delete process.env.LLM_ENABLE_OPENAI;
     delete process.env.LLM_ENABLE_GEMINI;
     delete process.env.LLM_ENABLE_ANTHROPIC;
-    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI_CHATCOMPLETIONS;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI_RESPONSES;
     delete process.env.LLM_ALLOWED_MODELS_GEMINI;
     delete process.env.LLM_ALLOWED_MODELS_ANTHROPIC;
-    delete process.env.OPENAI_MODEL;
+    delete process.env.OPENAI_CHATCOMPLETIONS_MODEL;
+    delete process.env.OPENAI_RESPONSES_MODEL;
     delete process.env.GEMINI_MODEL;
     delete process.env.ANTHROPIC_MODEL;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
   });
 
   afterEach(() => {
@@ -42,15 +46,32 @@ describe('llmConfig', () => {
     expect(getEnabledProviders()).toEqual(['openai', 'openai_responses', 'gemini']);
   });
 
-  it('validates OPENAI_MODEL against allowlist when provided', () => {
-    process.env.OPENAI_MODEL = 'gpt-5.2';
-    process.env.LLM_ALLOWED_MODELS_OPENAI = 'gpt-5.1';
-    expect(() => getProviderEnvConfig('openai')).toThrow(/OPENAI_MODEL must be one of/i);
+  it('validates OPENAI_CHATCOMPLETIONS_MODEL against allowlist when provided', () => {
+    process.env.OPENAI_CHATCOMPLETIONS_MODEL = 'gpt-5.2';
+    process.env.LLM_ALLOWED_MODELS_OPENAI_CHATCOMPLETIONS = 'gpt-5.1';
+    expect(() => getProviderEnvConfig('openai')).toThrow(/OPENAI_CHATCOMPLETIONS_MODEL must be one of/i);
   });
 
   it('uses first allowed model when model env is unset', () => {
-    process.env.LLM_ALLOWED_MODELS_OPENAI = 'gpt-5.1,gpt-5.2';
+    process.env.LLM_ALLOWED_MODELS_OPENAI_CHATCOMPLETIONS = 'gpt-5.1,gpt-5.2';
     expect(getProviderEnvConfig('openai')).toMatchObject({ defaultModel: 'gpt-5.1' });
+  });
+
+  it('uses dedicated responses env vars for openai_responses', () => {
+    process.env.LLM_ALLOWED_MODELS_OPENAI_RESPONSES = 'gpt-5.1,gpt-5.2';
+    process.env.OPENAI_RESPONSES_MODEL = 'gpt-5.1';
+    expect(getProviderEnvConfig('openai_responses')).toMatchObject({ defaultModel: 'gpt-5.1' });
+  });
+
+  it('validates OPENAI_RESPONSES_MODEL against responses allowlist', () => {
+    process.env.LLM_ALLOWED_MODELS_OPENAI_RESPONSES = 'gpt-5.1';
+    process.env.OPENAI_RESPONSES_MODEL = 'gpt-5.2';
+    expect(() => getProviderEnvConfig('openai_responses')).toThrow(/OPENAI_RESPONSES_MODEL must be one of/i);
+  });
+
+  it('throws when legacy OpenAI env vars are configured', () => {
+    process.env.OPENAI_MODEL = 'gpt-5.2';
+    expect(() => getEnabledProviders()).toThrow(/Legacy OpenAI env vars are no longer supported/i);
   });
 
 

@@ -20,7 +20,7 @@ import {
   getAnthropicMaxOutputTokens
 } from '@/src/shared/llmCapabilities';
 import type { LLMProvider } from '@/src/shared/llmProvider';
-import { getDefaultProvider, getEnabledProviders, getOpenAIUseResponses, getProviderEnvConfig } from '@/src/server/llmConfig';
+import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
 import { flattenMessageContent, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { extractGeminiTextData, extractGeminiThoughtData, getGeminiDelta } from '@/src/server/geminiThought';
 import {
@@ -173,10 +173,10 @@ export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
 }
 
 export function resolveOpenAIProviderSelection(requested?: LLMProvider | null): LLMProvider {
-  if (!requested || requested === 'openai') {
-    return getOpenAIUseResponses() ? 'openai_responses' : 'openai';
+  if (requested) {
+    return resolveLLMProvider(requested);
   }
-  return requested;
+  return resolveLLMProvider();
 }
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {

@@ -13,6 +13,7 @@ export interface ProviderEnvConfig {
 export type DeployEnv = 'dev' | 'prod';
 
 const PROVIDER_CAPABILITIES_PATH = 'src/shared/llmCapabilities.ts';
+const LEGACY_OPENAI_ENV_VARS = ['OPENAI_MODEL', 'LLM_ALLOWED_MODELS_OPENAI'] as const;
 
 function buildAllowlistSubsetError(envVarName: string, supportedModels: string[]): string {
   return `${envVarName} must be a subset of code-defined provider capabilities in ${PROVIDER_CAPABILITIES_PATH} (${supportedModels.join(', ')})`;
@@ -48,7 +49,21 @@ function isAllowedModel(allowedModels: string[] | null, model: string): boolean 
   return allowedModels.includes(model);
 }
 
+function assertNoLegacyOpenAIEnvVars(): void {
+  const configuredLegacy = LEGACY_OPENAI_ENV_VARS.filter((name) => {
+    const value = process.env[name];
+    return typeof value === 'string' && value.trim().length > 0;
+  });
+  if (configuredLegacy.length === 0) return;
+  throw new Error(
+    `Legacy OpenAI env vars are no longer supported: ${configuredLegacy.join(
+      ', '
+    )}. Use OPENAI_CHATCOMPLETIONS_MODEL and LLM_ALLOWED_MODELS_OPENAI_CHATCOMPLETIONS instead.`
+  );
+}
+
 export function getEnabledProviders(): LLMProvider[] {
+  assertNoLegacyOpenAIEnvVars();
   const enabled: LLMProvider[] = [];
   const openAIEnabled = parseBooleanEnv(process.env.LLM_ENABLE_OPENAI, true);
   if (openAIEnabled) {
@@ -66,6 +81,7 @@ export function getEnabledProviders(): LLMProvider[] {
 }
 
 export function getDefaultProvider(): LLMProvider {
+  assertNoLegacyOpenAIEnvVars();
   const enabled = new Set(getEnabledProviders());
   const raw = (process.env.LLM_DEFAULT_PROVIDER ?? '').trim().toLowerCase();
   const candidate = (
@@ -89,21 +105,28 @@ export function getDefaultProvider(): LLMProvider {
 }
 
 export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
+  assertNoLegacyOpenAIEnvVars();
   if (provider === 'openai' || provider === 'openai_responses') {
     const enabled = parseBooleanEnv(process.env.LLM_ENABLE_OPENAI, true);
     const supportedModels = LLM_PROVIDER_CAPABILITIES[provider].models;
-    const allowedFromEnv = parseCsvEnv(process.env.LLM_ALLOWED_MODELS_OPENAI);
+    const allowlistEnvName =
+      provider === 'openai'
+        ? 'LLM_ALLOWED_MODELS_OPENAI_CHATCOMPLETIONS'
+        : 'LLM_ALLOWED_MODELS_OPENAI_RESPONSES';
+    const modelEnvName =
+      provider === 'openai' ? 'OPENAI_CHATCOMPLETIONS_MODEL' : 'OPENAI_RESPONSES_MODEL';
+    const allowedFromEnv = parseCsvEnv(process.env[allowlistEnvName]);
     if (allowedFromEnv && allowedFromEnv.some((model) => !supportedModels.includes(model))) {
       throw new Error(
-        buildAllowlistSubsetError('LLM_ALLOWED_MODELS_OPENAI', supportedModels)
+        buildAllowlistSubsetError(allowlistEnvName, supportedModels)
       );
     }
     const allowedModels = allowedFromEnv ?? supportedModels;
     const fallbackModel = LLM_PROVIDER_CAPABILITIES[provider].defaultModel;
-    const envModel = (process.env.OPENAI_MODEL ?? '').trim();
+    const envModel = (process.env[modelEnvName] ?? '').trim();
     const defaultModel = envModel || allowedModels?.[0] || fallbackModel;
     if (!isAllowedModel(allowedModels, defaultModel)) {
-      throw new Error(`OPENAI_MODEL must be one of the allowed OpenAI models (${allowedModels?.join(', ') ?? ''})`);
+      throw new Error(`${modelEnvName} must be one of the allowed ${provider} models (${allowedModels?.join(', ') ?? ''})`);
     }
     return { enabled, allowedModels, defaultModel };
   }
@@ -152,5 +175,6 @@ export function getProviderEnvConfig(provider: LLMProvider): ProviderEnvConfig {
 }
 
 export function getOpenAIUseResponses(): boolean {
+  assertNoLegacyOpenAIEnvVars();
   return parseBooleanEnv(process.env.OPENAI_USE_RESPONSES, true);
 }
