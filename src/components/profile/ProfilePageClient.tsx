@@ -199,8 +199,8 @@ export function ProfilePageClient({ email }: { email: string | null }) {
     }
   };
 
-  const profileDefaultProvider = profile?.defaultProvider === 'openai_responses' ? 'openai' : (profile?.defaultProvider ?? 'openai');
-  const canSaveDefaultProvider = Boolean(profile) && defaultProvider !== profileDefaultProvider;
+  const savedDefaultProvider = profile?.defaultProvider === 'openai_responses' ? 'openai' : (profile?.defaultProvider ?? null);
+  const canSaveDefaultProvider = Boolean(profile) && defaultProvider !== savedDefaultProvider;
 
   const changePassword = async () => {
     setChangingPassword(true);
