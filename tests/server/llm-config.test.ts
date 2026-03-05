@@ -9,9 +9,7 @@ const originalEnv = { ...process.env };
 describe('llmConfig', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
-    delete process.env.LLM_ENABLE_OPENAI;
-    delete process.env.LLM_ENABLE_GEMINI;
-    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.LLM_ENABLED_PROVIDERS;
     delete process.env.LLM_ALLOWED_MODELS_OPENAI_CHATCOMPLETIONS;
     delete process.env.LLM_ALLOWED_MODELS_OPENAI_RESPONSES;
     delete process.env.LLM_ALLOWED_MODELS_GEMINI;
@@ -22,28 +20,36 @@ describe('llmConfig', () => {
     delete process.env.ANTHROPIC_MODEL;
     delete process.env.OPENAI_MODEL;
     delete process.env.LLM_ALLOWED_MODELS_OPENAI;
+    delete process.env.LLM_ENABLE_OPENAI;
+    delete process.env.LLM_ENABLE_GEMINI;
+    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.OPENAI_USE_RESPONSES;
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
   });
 
-  it('defaults to openai+gemini enabled, anthropic disabled', () => {
+  it('defaults to openai_responses+gemini enabled, anthropic disabled', () => {
     expect(getDeployEnv()).toBe('dev');
-    expect(getEnabledProviders()).toEqual(['openai', 'openai_responses', 'gemini', 'mock']);
+    expect(getEnabledProviders()).toEqual(['openai_responses', 'gemini', 'mock']);
   });
 
-  it('respects provider enable toggles', () => {
-    process.env.LLM_ENABLE_OPENAI = 'false';
-    process.env.LLM_ENABLE_GEMINI = '0';
-    process.env.LLM_ENABLE_ANTHROPIC = 'true';
+  it('respects explicit provider allowlist', () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'anthropic,mock';
     expect(getEnabledProviders()).toEqual(['anthropic', 'mock']);
   });
 
   it('removes mock provider in prod', () => {
     process.env.DEPLOY_ENV = 'prod';
     expect(getDeployEnv()).toBe('prod');
-    expect(getEnabledProviders()).toEqual(['openai', 'openai_responses', 'gemini']);
+    expect(getEnabledProviders()).toEqual(['openai_responses', 'gemini']);
+  });
+
+  it('throws when prod allowlist includes mock', () => {
+    process.env.DEPLOY_ENV = 'prod';
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,mock';
+    expect(() => getEnabledProviders()).toThrow(/cannot include mock in prod/i);
   });
 
   it('validates OPENAI_CHATCOMPLETIONS_MODEL against allowlist when provided', () => {
@@ -72,6 +78,11 @@ describe('llmConfig', () => {
   it('throws when legacy OpenAI env vars are configured', () => {
     process.env.OPENAI_MODEL = 'gpt-5.2';
     expect(() => getEnabledProviders()).toThrow(/Legacy OpenAI env vars are no longer supported/i);
+  });
+
+  it('throws when legacy provider toggles are configured', () => {
+    process.env.OPENAI_USE_RESPONSES = 'true';
+    expect(() => getEnabledProviders()).toThrow(/Legacy provider toggle env vars are no longer supported/i);
   });
 
 

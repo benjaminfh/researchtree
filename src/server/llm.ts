@@ -21,6 +21,7 @@ import {
 } from '@/src/shared/llmCapabilities';
 import type { LLMProvider } from '@/src/shared/llmProvider';
 import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
+import { badRequest } from '@/src/server/http';
 import { flattenMessageContent, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { extractGeminiTextData, extractGeminiThoughtData, getGeminiDelta } from '@/src/server/geminiThought';
 import {
@@ -166,8 +167,18 @@ function getGeminiUserFacingError(error: unknown): string | null {
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
-    const enabled = new Set(getEnabledProviders());
-    return enabled.has(requested) ? requested : getDefaultProvider();
+    const enabledProviders = getEnabledProviders();
+    const enabled = new Set(enabledProviders);
+    if (!enabled.has(requested)) {
+      throw badRequest(
+        `Provider "${requested}" is not available. Select one of: ${enabledProviders.join(', ')}.`,
+        {
+          requestedProvider: requested,
+          enabledProviders
+        }
+      );
+    }
+    return requested;
   }
   return getDefaultProvider();
 }

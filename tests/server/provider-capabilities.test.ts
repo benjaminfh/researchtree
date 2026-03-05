@@ -30,12 +30,14 @@ describe('provider capabilities', () => {
     delete process.env.GEMINI_API_KEY;
     delete process.env.OPENAI_MODEL;
     delete process.env.LLM_ALLOWED_MODELS_OPENAI;
+    delete process.env.LLM_ENABLED_PROVIDERS;
     process.env.OPENAI_CHATCOMPLETIONS_MODEL = 'gpt-5.2';
     process.env.OPENAI_RESPONSES_MODEL = 'gpt-5.1';
     process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
   });
 
   it('uses OpenAI metadata when API key present', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai,openai_responses,gemini,mock';
     process.env.OPENAI_API_KEY = 'key';
     retrieve.mockResolvedValue({ context_length: 32000 });
 
@@ -46,6 +48,7 @@ describe('provider capabilities', () => {
   });
 
   it('falls back to default when OpenAI metadata unavailable', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai,openai_responses,gemini,mock';
     const limit = await getProviderTokenLimit('openai', 'gpt-test');
     expect(limit).toBe(64000); // 128k * 0.5
   });
@@ -66,6 +69,7 @@ describe('provider capabilities', () => {
   });
 
   it('warms OpenAI chat/responses with independent provider models', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai,openai_responses,gemini,mock';
     process.env.OPENAI_API_KEY = 'key';
     retrieve.mockImplementation(async (model: string) => {
       if (model === 'gpt-5.2') return { context_length: 32000 };

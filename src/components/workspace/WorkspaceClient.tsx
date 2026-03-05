@@ -62,10 +62,6 @@ const fetchJson = async <T,>(url: string): Promise<T> => {
   return res.json();
 };
 
-const normalizeProviderForUi = (provider: LLMProvider): LLMProvider => {
-  return provider === 'openai_responses' ? 'openai' : provider;
-};
-
 const getNodeBlocks = (node: NodeRecord): ThinkingContentBlock[] => {
   return getContentBlocksWithLegacyFallback(node);
 };
@@ -1107,8 +1103,8 @@ const ChatNodeRowBase: FC<ChatNodeRowProps> = ({
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
   const nodeBranch = node.createdOnBranch ?? currentBranchName;
-  const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
-  const showOpenAiThinkingNote = nodeProvider === 'openai';
+  const nodeProvider = providerByBranch[nodeBranch] ?? defaultProvider;
+  const showOpenAiThinkingNote = nodeProvider === 'openai' || nodeProvider === 'openai_responses';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
   const questionBranches = questionBranchNames ?? [];
   const activeQuestionBranch =
@@ -1254,7 +1250,7 @@ export function WorkspaceClient({
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [switchToEditBranch, setSwitchToEditBranch] = useState(true);
-  const [editProvider, setEditProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
+  const [editProvider, setEditProvider] = useState<LLMProvider>(defaultProvider);
   const [editThinking, setEditThinking] = useState<ThinkingSetting>('medium');
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -1280,7 +1276,7 @@ export function WorkspaceClient({
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
-  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
+  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(defaultProvider);
   const [newBranchThinking, setNewBranchThinking] = useState<ThinkingSetting>('medium');
   const [newBranchQuestion, setNewBranchQuestion] = useState('');
   const [newBranchHighlight, setNewBranchHighlight] = useState('');
@@ -1587,7 +1583,7 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
-        setNewBranchProvider(normalizeProviderForUi(branchProvider));
+        setNewBranchProvider(branchProvider);
         setNewBranchThinking(thinking);
         setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
@@ -1621,7 +1617,7 @@ export function WorkspaceClient({
     setEditDraft(node.content);
     setEditBranchName('');
     setEditError(null);
-    setEditProvider(normalizeProviderForUi(branchProvider));
+    setEditProvider(branchProvider);
     setEditThinking(thinking);
     setSwitchToEditBranch(true);
     setShowEditModal(true);
@@ -2325,11 +2321,8 @@ export function WorkspaceClient({
     () => providerOptions.find((option) => option.id === branchProvider),
     [branchProvider, providerOptions]
   );
-  const selectableProviderOptions = useMemo(
-    () => providerOptions.filter((option) => option.id !== 'openai_responses'),
-    [providerOptions]
-  );
-  const branchProviderLabel = activeProvider?.label ?? (branchProvider === 'openai_responses' ? 'OpenAI' : branchProvider);
+  const selectableProviderOptions = useMemo(() => providerOptions, [providerOptions]);
+  const branchProviderLabel = activeProvider?.label ?? branchProvider;
   const providerByBranch = useMemo(() => {
     return branches.reduce<Record<string, LLMProvider>>((acc, branch) => {
       if (branch.provider) {
@@ -2815,7 +2808,7 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (newBranchName.trim()) return;
-    setNewBranchProvider(normalizeProviderForUi(branchProvider));
+    setNewBranchProvider(branchProvider);
     setNewBranchThinking(thinking);
   }, [branchProvider, thinking, newBranchName]);
 
