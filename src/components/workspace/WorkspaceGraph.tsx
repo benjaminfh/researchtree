@@ -980,6 +980,8 @@ export interface EdgeLayoutSegment {
   targetLane: number;
 }
 
+const CROSSING_COMPARISON_BUDGET = 20_000;
+
 function laneAtRow(segment: EdgeLayoutSegment, row: number): number {
   if (segment.sourceRow === segment.targetRow) return segment.sourceLane;
   const t = (row - segment.sourceRow) / (segment.targetRow - segment.sourceRow);
@@ -987,9 +989,20 @@ function laneAtRow(segment: EdgeLayoutSegment, row: number): number {
 }
 
 export function countCrossings(segments: EdgeLayoutSegment[]): number {
+  const bounded = countCrossingsBounded(segments);
+  return bounded ?? 0;
+}
+
+export function countCrossingsBounded(
+  segments: EdgeLayoutSegment[],
+  maxComparisons = CROSSING_COMPARISON_BUDGET
+): number | null {
   let crossings = 0;
+  let comparisons = 0;
   for (let i = 0; i < segments.length; i++) {
     for (let j = i + 1; j < segments.length; j++) {
+      comparisons += 1;
+      if (comparisons > maxComparisons) return null;
       const a = segments[i];
       const b = segments[j];
       const aStart = Math.min(a.sourceRow, a.targetRow);
@@ -1275,7 +1288,9 @@ export function layoutGraph(
     })
     .filter((segment): segment is EdgeLayoutSegment => segment !== null);
 
-  if (countCrossings(simpleSegments) < countCrossings(edgeSegments)) {
+  const simpleCrossings = countCrossingsBounded(simpleSegments);
+  const computedCrossings = countCrossingsBounded(edgeSegments);
+  if (typeof simpleCrossings === 'number' && typeof computedCrossings === 'number' && simpleCrossings < computedCrossings) {
     return simple;
   }
 

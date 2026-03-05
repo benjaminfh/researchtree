@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeLabelTranslateX,
   computeRowRightMostLanes,
+  countCrossingsBounded,
   countCrossings,
   type EdgeLayoutSegment
 } from '@/src/components/workspace/WorkspaceGraph';
@@ -55,6 +56,16 @@ describe('workspace graph layout helpers', () => {
       { sourceRow: 4, targetRow: 6, sourceLane: 5, targetLane: 7 }
     ];
     expect(countCrossings(segments)).toBe(0);
+  });
+
+  it('returns null when crossing comparisons exceed the configured budget', () => {
+    const segments: EdgeLayoutSegment[] = [
+      { sourceRow: 0, targetRow: 3, sourceLane: 0, targetLane: 1 },
+      { sourceRow: 0, targetRow: 3, sourceLane: 1, targetLane: 0 },
+      { sourceRow: 0, targetRow: 3, sourceLane: 2, targetLane: 3 },
+      { sourceRow: 0, targetRow: 3, sourceLane: 3, targetLane: 2 }
+    ];
+    expect(countCrossingsBounded(segments, 2)).toBeNull();
   });
 
   it('computes right-most row occupancy from node lanes and traversing edges', () => {
