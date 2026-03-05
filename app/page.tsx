@@ -33,12 +33,19 @@ export default async function HomePage() {
     if (store.mode !== 'pg') return fallback;
     return fallback;
   })();
+  const enabledProviderIds = new Set(providerOptions.map((provider) => provider.id));
 
   if (store.mode === 'pg') {
     const currentUser = await requireUser();
     const { rtGetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
     const userDefaultProvider = await rtGetUserDefaultProviderV1().catch(() => null);
-    const resolvedDefaultProvider = normalizeProviderForUi(userDefaultProvider ?? resolveLLMProvider());
+    const resolvedDefaultProvider = (() => {
+      const candidateProvider = normalizeProviderForUi(userDefaultProvider ?? resolveLLMProvider());
+      if (enabledProviderIds.has(candidateProvider)) {
+        return candidateProvider;
+      }
+      return defaultProvider;
+    })();
     const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
     const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const rows = await rtListProjectsShadowV1();
