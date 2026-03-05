@@ -131,6 +131,13 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
     return 'Mock';
   };
 
+  const userDefaultProvider =
+    storeMode === 'pg'
+      ? await import('@/src/store/pg/userLlmKeys')
+          .then(({ rtGetUserDefaultProviderV1 }) => rtGetUserDefaultProviderV1())
+          .catch(() => null)
+      : null;
+
   const providerOptions = getEnabledProviders().map((id) => ({
     id,
     label: labelForProvider(id),
@@ -142,7 +149,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
       <WorkspaceClient
         project={project}
         initialBranches={branches}
-        defaultProvider={resolveOpenAIProviderSelection()}
+        defaultProvider={resolveOpenAIProviderSelection(userDefaultProvider ?? undefined)}
         providerOptions={providerOptions}
         openAIUseResponses={getOpenAIUseResponses()}
         storeMode={storeMode}

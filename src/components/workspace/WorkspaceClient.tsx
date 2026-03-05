@@ -1587,7 +1587,7 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
-        setNewBranchProvider(normalizeProviderForUi(branchProvider));
+        setNewBranchProvider(normalizeProviderForUi(defaultProvider));
         setNewBranchThinking(thinking);
         setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
@@ -2815,9 +2815,9 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (newBranchName.trim()) return;
-    setNewBranchProvider(normalizeProviderForUi(branchProvider));
+    setNewBranchProvider(normalizeProviderForUi(defaultProvider));
     setNewBranchThinking(thinking);
-  }, [branchProvider, thinking, newBranchName]);
+  }, [defaultProvider, thinking, newBranchName]);
 
   useEffect(() => {
     setArtefactDraft(artefact);

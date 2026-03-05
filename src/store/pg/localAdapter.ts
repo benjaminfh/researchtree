@@ -132,6 +132,8 @@ const RPC_CONFIG: Record<string, { params: string[]; returnType: RpcReturnType }
   rt_get_user_llm_key_status_v1: { params: [], returnType: 'set' },
   rt_set_user_llm_key_v1: { params: ['p_provider', 'p_secret'], returnType: 'void' },
   rt_get_user_llm_key_server_v1: { params: ['p_user_id', 'p_provider'], returnType: 'scalar' },
+  rt_get_user_default_provider_v1: { params: [], returnType: 'set' },
+  rt_set_user_default_provider_v1: { params: ['p_provider'], returnType: 'void' },
   rt_get_user_system_prompt_v1: { params: [], returnType: 'set' },
   rt_set_user_system_prompt_v1: { params: ['p_mode', 'p_prompt'], returnType: 'void' }
 };

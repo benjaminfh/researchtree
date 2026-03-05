@@ -15,7 +15,7 @@ export default async function ProfilePage() {
         <div className="mx-auto max-w-2xl space-y-6">
           <header className="space-y-2">
             <h1 className="text-2xl font-semibold text-slate-900">Profile</h1>
-            <p className="text-sm text-muted">Manage your tokens and account settings.</p>
+            <p className="text-sm text-muted">Manage your provider defaults, tokens, and account settings.</p>
           </header>
           <ProfilePageClient email={user.email ?? null} />
         </div>

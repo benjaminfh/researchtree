@@ -61,7 +61,9 @@ export async function POST(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const requestedProvider = resolveOpenAIProviderSelection(parsed.data.provider ?? null);
+    const { rtGetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
+    const userDefaultProvider = parsed.data.provider ? null : await rtGetUserDefaultProviderV1().catch(() => null);
+    const requestedProvider = resolveOpenAIProviderSelection(parsed.data.provider ?? userDefaultProvider ?? null);
     const defaultProvider = resolveLLMProvider(requestedProvider);
     const defaultModel = getDefaultModelForProvider(defaultProvider);
     const systemPrompt = await getCurrentEffectiveSystemPrompt(store.mode);

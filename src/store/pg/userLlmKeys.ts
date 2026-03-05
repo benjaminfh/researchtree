@@ -39,6 +39,7 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
   hasAnthropic: boolean;
   systemPrompt: string | null;
   systemPromptMode: UserSystemPromptMode;
+  defaultProvider: LLMProvider | null;
   updatedAt: string | null;
 }> {
   const { rpc } = getPgStoreAdapter();
@@ -55,6 +56,7 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
       hasAnthropic: false,
       systemPrompt: null,
       systemPromptMode: 'append',
+      defaultProvider: null,
       updatedAt: null
     };
   }
@@ -65,6 +67,7 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
     hasAnthropic: Boolean((row as any).has_anthropic),
     systemPrompt: (row as any).system_prompt ? String((row as any).system_prompt) : null,
     systemPromptMode: (row as any).system_prompt_mode === 'replace' ? 'replace' : 'append',
+    defaultProvider: (row as any).default_provider ? (String((row as any).default_provider) as LLMProvider) : null,
     updatedAt: (row as any).updated_at ? String((row as any).updated_at) : null
   };
 }
@@ -93,4 +96,24 @@ export async function rtGetUserLlmKeyServerV1(input: { userId: string; provider:
   }
   if (data == null) return null;
   return String(data);
+}
+
+export async function rtGetUserDefaultProviderV1(): Promise<LLMProvider | null> {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_user_default_provider_v1');
+  if (error) {
+    throw new Error(formatRpcError(error));
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row?.default_provider ? (String(row.default_provider) as LLMProvider) : null;
+}
+
+export async function rtSetUserDefaultProviderV1(input: { provider: LLMProvider | null }): Promise<void> {
+  const { rpc } = getPgStoreAdapter();
+  const { error } = await rpc('rt_set_user_default_provider_v1', {
+    p_provider: input.provider
+  });
+  if (error) {
+    throw new Error(formatRpcError(error));
+  }
 }

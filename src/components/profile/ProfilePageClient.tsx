@@ -4,6 +4,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useCommandEnterSubmit } from '@/src/hooks/useCommandEnterSubmit';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 
 type ProfileResponse = {
   user: { id: string; email: string | null };
@@ -13,12 +15,14 @@ type ProfileResponse = {
     anthropic: { configured: boolean };
   };
   systemPrompt: { mode: 'append' | 'replace'; prompt: string | null };
+  defaultProvider: LLMProvider | null;
   updatedAt: string | null;
 };
 
 const mask = '••••••••••••••••';
 
 export function ProfilePageClient({ email }: { email: string | null }) {
+  const handleCommandEnter = useCommandEnterSubmit();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,6 +48,8 @@ export function ProfilePageClient({ email }: { email: string | null }) {
   const [clearAnthropic, setClearAnthropic] = useState(false);
   const [systemPromptMode, setSystemPromptMode] = useState<'append' | 'replace'>('append');
   const [systemPromptText, setSystemPromptText] = useState('');
+  const [defaultProvider, setDefaultProvider] = useState<LLMProvider>('openai');
+  const [savingDefaultProvider, setSavingDefaultProvider] = useState(false);
   const showTokenLoading = loading && !profile;
 
   const placeholders = useMemo(() => {
@@ -61,6 +67,7 @@ export function ProfilePageClient({ email }: { email: string | null }) {
     setProfile(body);
     setSystemPromptMode(body.systemPrompt?.mode ?? 'append');
     setSystemPromptText(body.systemPrompt?.prompt ?? '');
+    setDefaultProvider(body.defaultProvider === 'openai_responses' ? 'openai' : (body.defaultProvider ?? 'openai'));
   };
 
   useEffect(() => {
@@ -164,6 +171,36 @@ export function ProfilePageClient({ email }: { email: string | null }) {
       setSavingSystemPrompt(false);
     }
   };
+
+  const saveDefaultProvider = async () => {
+    setSavingDefaultProvider(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultProvider })
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || 'Failed to save default provider');
+      }
+      setNotice('Default provider saved. New workspaces and branches will use this by default.');
+      try {
+        await loadProfile();
+      } catch {
+        setNotice('Default provider saved. Refresh to load the latest profile state.');
+      }
+    } catch (err) {
+      setError((err as Error)?.message ?? 'Failed to save default provider');
+    } finally {
+      setSavingDefaultProvider(false);
+    }
+  };
+
+  const profileDefaultProvider = profile?.defaultProvider === 'openai_responses' ? 'openai' : (profile?.defaultProvider ?? 'openai');
+  const canSaveDefaultProvider = Boolean(profile) && defaultProvider !== profileDefaultProvider;
 
   const changePassword = async () => {
     setChangingPassword(true);
@@ -281,6 +318,44 @@ export function ProfilePageClient({ email }: { email: string | null }) {
               {saving ? 'Saving…' : 'Save tokens'}
             </button>
           </div>
+        </div>
+
+        <div className="space-y-3 border-t border-divider/70 pt-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Default Provider</div>
+          <p className="text-xs text-muted">This controls defaults for new workspaces and new branches.</p>
+          <form
+            onKeyDown={handleCommandEnter}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!canSaveDefaultProvider || loading || savingDefaultProvider) return;
+              void saveDefaultProvider();
+            }}
+            className="space-y-3"
+          >
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-slate-900">Provider</span>
+              <select
+                value={defaultProvider}
+                onChange={(event) => setDefaultProvider(event.target.value as LLMProvider)}
+                disabled={loading || savingDefaultProvider}
+                className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm disabled:opacity-60"
+              >
+                <option value="openai">OpenAI</option>
+                <option value="gemini">Gemini</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="mock">Mock</option>
+              </select>
+            </label>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="submit"
+                disabled={loading || savingDefaultProvider || !canSaveDefaultProvider}
+                className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
+              >
+                {savingDefaultProvider ? 'Saving…' : 'Save default provider'}
+              </button>
+            </div>
+          </form>
         </div>
 
         <div className="space-y-3 border-t border-divider/70 pt-5">

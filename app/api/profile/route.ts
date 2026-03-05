@@ -14,6 +14,7 @@ const updateKeysSchema = z
     openaiToken: z.string().max(500).optional().nullable(),
     geminiToken: z.string().max(500).optional().nullable(),
     anthropicToken: z.string().max(500).optional().nullable(),
+    defaultProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional().nullable(),
     systemPrompt: z.string().max(20000).optional().nullable(),
     systemPromptMode: z.enum(['append', 'replace']).optional(),
     // Back-compat (UI used "Key" previously).
@@ -52,6 +53,7 @@ export async function GET() {
         mode: status.systemPromptMode,
         prompt: status.systemPrompt
       },
+      defaultProvider: status.defaultProvider,
       updatedAt: status.updatedAt
     });
   } catch (error) {
@@ -90,6 +92,11 @@ export async function PUT(request: Request) {
         mode: parsed.data.systemPromptMode ?? current.mode,
         prompt: parsed.data.systemPrompt !== undefined ? normalizeSecret(parsed.data.systemPrompt) : current.prompt
       });
+    }
+
+    if (parsed.data.defaultProvider !== undefined) {
+      const { rtSetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
+      await rtSetUserDefaultProviderV1({ provider: parsed.data.defaultProvider ?? null });
     }
 
     return Response.json({ ok: true });

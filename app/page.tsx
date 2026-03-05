@@ -28,10 +28,17 @@ export default async function HomePage() {
     }
     return Array.from(entries.values());
   })();
-  const defaultProvider = normalizeProviderForUi(resolveLLMProvider());
+  const defaultProvider = (() => {
+    const fallback = normalizeProviderForUi(resolveLLMProvider());
+    if (store.mode !== 'pg') return fallback;
+    return fallback;
+  })();
 
   if (store.mode === 'pg') {
     const currentUser = await requireUser();
+    const { rtGetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
+    const userDefaultProvider = await rtGetUserDefaultProviderV1().catch(() => null);
+    const resolvedDefaultProvider = normalizeProviderForUi(userDefaultProvider ?? resolveLLMProvider());
     const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
     const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
     const rows = await rtListProjectsShadowV1();
@@ -82,7 +89,7 @@ export default async function HomePage() {
         <HomePageContent
           projects={projectsWithCounts}
           providerOptions={providerOptions}
-          defaultProvider={defaultProvider}
+          defaultProvider={resolvedDefaultProvider}
         />
       </main>
     );
