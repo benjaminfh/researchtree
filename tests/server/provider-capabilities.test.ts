@@ -31,6 +31,7 @@ describe('provider capabilities', () => {
     delete process.env.OPENAI_MODEL;
     delete process.env.LLM_ALLOWED_MODELS_OPENAI;
     process.env.OPENAI_CHATCOMPLETIONS_MODEL = 'gpt-5.2';
+    process.env.OPENAI_RESPONSES_MODEL = 'gpt-5.1';
     process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
   });
 
@@ -62,5 +63,24 @@ describe('provider capabilities', () => {
   it('falls back to default when Gemini metadata missing', async () => {
     const limit = await getProviderTokenLimit('gemini', 'gemini-test');
     expect(limit).toBe(100000); // 200k * 0.5
+  });
+
+  it('warms OpenAI chat/responses with independent provider models', async () => {
+    process.env.OPENAI_API_KEY = 'key';
+    retrieve.mockImplementation(async (model: string) => {
+      if (model === 'gpt-5.2') return { context_length: 32000 };
+      if (model === 'gpt-5.1') return { context_length: 64000 };
+      return { context_length: 32000 };
+    });
+
+    const [chatLimit, responsesLimit] = await Promise.all([
+      getProviderTokenLimit('openai'),
+      getProviderTokenLimit('openai_responses')
+    ]);
+
+    expect(retrieve).toHaveBeenCalledWith('gpt-5.2');
+    expect(retrieve).toHaveBeenCalledWith('gpt-5.1');
+    expect(chatLimit).toBe(16000);
+    expect(responsesLimit).toBe(32000);
   });
 });

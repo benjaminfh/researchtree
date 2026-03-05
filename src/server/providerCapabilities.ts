@@ -22,6 +22,10 @@ let cachedOpenAIClient: OpenAI | null = null;
 let cachedGeminiClient: GoogleGenerativeAI | null = null;
 let warmupPromise: Promise<void> | null = null;
 
+function toSafeLimit(limit: number): number {
+  return Math.max(Math.floor(limit * SAFETY_RATIO), MIN_LIMIT);
+}
+
 export async function getProviderTokenLimit(provider?: LLMProvider, modelOverride?: string): Promise<number> {
   await warmProviderCapabilities();
   const resolved = resolveLLMProvider(provider);
@@ -45,7 +49,7 @@ export async function getProviderTokenLimit(provider?: LLMProvider, modelOverrid
     }
   }
 
-  const safeLimit = Math.max(Math.floor(limit * SAFETY_RATIO), MIN_LIMIT);
+  const safeLimit = toSafeLimit(limit);
   cache.set(cacheKey, safeLimit);
   return safeLimit;
 }
@@ -131,13 +135,17 @@ export function warmProviderCapabilities(): Promise<void> {
     if (process.env.OPENAI_API_KEY) {
       tasks.push(
         (async () => {
-          const limit = await fetchOpenAIContextLimit(getDefaultModelForProvider('openai'));
-          if (limit) {
-            cache.set(`openai:${getDefaultModelForProvider('openai')}`, Math.max(Math.floor(limit * SAFETY_RATIO), MIN_LIMIT));
-            cache.set(
-              `openai_responses:${getDefaultModelForProvider('openai_responses')}`,
-              Math.max(Math.floor(limit * SAFETY_RATIO), MIN_LIMIT)
-            );
+          const openAIChatModel = getDefaultModelForProvider('openai');
+          const openAIResponsesModel = getDefaultModelForProvider('openai_responses');
+          const [chatLimit, responsesLimit] = await Promise.all([
+            fetchOpenAIContextLimit(openAIChatModel),
+            fetchOpenAIContextLimit(openAIResponsesModel)
+          ]);
+          if (chatLimit) {
+            cache.set(`openai:${openAIChatModel}`, toSafeLimit(chatLimit));
+          }
+          if (responsesLimit) {
+            cache.set(`openai_responses:${openAIResponsesModel}`, toSafeLimit(responsesLimit));
           }
         })()
       );
@@ -148,7 +156,7 @@ export function warmProviderCapabilities(): Promise<void> {
         (async () => {
           const limit = await fetchGeminiContextLimit(getDefaultModelForProvider('gemini'));
           if (limit) {
-            cache.set(`gemini:${getDefaultModelForProvider('gemini')}`, Math.max(Math.floor(limit * SAFETY_RATIO), MIN_LIMIT));
+            cache.set(`gemini:${getDefaultModelForProvider('gemini')}`, toSafeLimit(limit));
           }
         })()
       );
