@@ -990,7 +990,8 @@ export function countCrossings(segments: EdgeLayoutSegment[]): number {
       const aEnd = Math.max(a.sourceRow, a.targetRow);
       const bStart = Math.min(b.sourceRow, b.targetRow);
       const bEnd = Math.max(b.sourceRow, b.targetRow);
-      const spansOverlap = aStart <= bEnd && bStart <= aEnd;
+      // Edges that only touch at an endpoint row share a node but do not cross geometrically.
+      const spansOverlap = aStart < bEnd && bStart < aEnd;
       if (!spansOverlap) continue;
 
       const sourceDiff = a.sourceLane - b.sourceLane;

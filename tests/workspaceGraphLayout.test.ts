@@ -23,6 +23,15 @@ describe('workspace graph layout helpers', () => {
     expect(countCrossings(segments)).toBe(0);
   });
 
+
+  it('does not count edges that only share an endpoint row', () => {
+    const segments: EdgeLayoutSegment[] = [
+      { sourceRow: 0, targetRow: 2, sourceLane: 0, targetLane: 2 },
+      { sourceRow: 2, targetRow: 4, sourceLane: 2, targetLane: 0 }
+    ];
+    expect(countCrossings(segments)).toBe(0);
+  });
+
   it('does not count lane inversions for disjoint row spans', () => {
     const segments: EdgeLayoutSegment[] = [
       { sourceRow: 0, targetRow: 1, sourceLane: 0, targetLane: 2 },
