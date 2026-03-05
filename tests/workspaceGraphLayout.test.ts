@@ -40,6 +40,23 @@ describe('workspace graph layout helpers', () => {
     expect(countCrossings(segments)).toBe(0);
   });
 
+
+  it('counts crossing using lane order within the shared row span', () => {
+    const segments: EdgeLayoutSegment[] = [
+      { sourceRow: 0, targetRow: 6, sourceLane: 0, targetLane: 6 },
+      { sourceRow: 2, targetRow: 4, sourceLane: 5, targetLane: 1 }
+    ];
+    expect(countCrossings(segments)).toBe(1);
+  });
+
+  it('ignores distant endpoint inversion when overlap ordering does not flip', () => {
+    const segments: EdgeLayoutSegment[] = [
+      { sourceRow: 0, targetRow: 10, sourceLane: 0, targetLane: 10 },
+      { sourceRow: 4, targetRow: 6, sourceLane: 5, targetLane: 7 }
+    ];
+    expect(countCrossings(segments)).toBe(0);
+  });
+
   it('computes right-most row occupancy from node lanes and traversing edges', () => {
     const rows = 4;
     const nodeLanes = [0, 1, 0, 2];

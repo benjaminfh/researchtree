@@ -980,6 +980,12 @@ export interface EdgeLayoutSegment {
   targetLane: number;
 }
 
+function laneAtRow(segment: EdgeLayoutSegment, row: number): number {
+  if (segment.sourceRow === segment.targetRow) return segment.sourceLane;
+  const t = (row - segment.sourceRow) / (segment.targetRow - segment.sourceRow);
+  return segment.sourceLane + t * (segment.targetLane - segment.sourceLane);
+}
+
 export function countCrossings(segments: EdgeLayoutSegment[]): number {
   let crossings = 0;
   for (let i = 0; i < segments.length; i++) {
@@ -991,13 +997,14 @@ export function countCrossings(segments: EdgeLayoutSegment[]): number {
       const bStart = Math.min(b.sourceRow, b.targetRow);
       const bEnd = Math.max(b.sourceRow, b.targetRow);
       // Edges that only touch at an endpoint row share a node but do not cross geometrically.
-      const spansOverlap = aStart < bEnd && bStart < aEnd;
-      if (!spansOverlap) continue;
+      const overlapStart = Math.max(aStart, bStart);
+      const overlapEnd = Math.min(aEnd, bEnd);
+      if (overlapStart >= overlapEnd) continue;
 
-      const sourceDiff = a.sourceLane - b.sourceLane;
-      const targetDiff = a.targetLane - b.targetLane;
-      if (sourceDiff === 0 || targetDiff === 0) continue;
-      if (sourceDiff * targetDiff < 0) crossings += 1;
+      const startDiff = laneAtRow(a, overlapStart) - laneAtRow(b, overlapStart);
+      const endDiff = laneAtRow(a, overlapEnd) - laneAtRow(b, overlapEnd);
+      if (startDiff === 0 || endDiff === 0) continue;
+      if (startDiff * endDiff < 0) crossings += 1;
     }
   }
   return crossings;
