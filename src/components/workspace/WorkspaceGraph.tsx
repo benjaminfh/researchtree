@@ -69,6 +69,7 @@ const BOTTOM_VIEWPORT_PADDING = 120;
 const CENTER_VIEWPORT_THRESHOLD = 0.75;
 const LABEL_BASE_OFFSET = 24; // icon (16) + gap (8)
 const LABEL_ROW_GAP = 20; // gap after the right-most line when the node isn't on it
+const GRAPH_X_OFFSET = -20;
 const EDGE_ANGULAR_BEND = 0.32;
 const EDGE_CURVE_BEND = 0.7;
 const EDGE_STYLE = features.graphEdgeStyle;
@@ -970,6 +971,50 @@ interface LayoutOptions {
   maxIterations?: number;
 }
 
+type LabelAlignmentMode = 'hug' | 'left-aligned';
+
+export interface EdgeLayoutSegment {
+  sourceRow: number;
+  targetRow: number;
+  sourceLane: number;
+  targetLane: number;
+}
+
+export function countCrossings(segments: EdgeLayoutSegment[]): number {
+  let crossings = 0;
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const a = segments[i];
+      const b = segments[j];
+      const sourceDiff = a.sourceLane - b.sourceLane;
+      const targetDiff = a.targetLane - b.targetLane;
+      if (sourceDiff === 0 || targetDiff === 0) continue;
+      if (sourceDiff * targetDiff < 0) crossings += 1;
+    }
+  }
+  return crossings;
+}
+
+export function computeRowRightMostLanes(totalRows: number, nodeLanes: number[], edgeSegments: EdgeLayoutSegment[]): number[] {
+  const rightMost = nodeLanes.slice(0, totalRows);
+  for (let row = rightMost.length; row < totalRows; row++) {
+    rightMost[row] = 0;
+  }
+  for (const edge of edgeSegments) {
+    const start = Math.max(0, Math.min(edge.sourceRow, edge.targetRow));
+    const end = Math.min(totalRows - 1, Math.max(edge.sourceRow, edge.targetRow));
+    const maxLane = Math.max(edge.sourceLane, edge.targetLane);
+    for (let row = start; row <= end; row++) {
+      rightMost[row] = Math.max(rightMost[row] ?? 0, maxLane);
+    }
+  }
+  return rightMost;
+}
+
+export function computeLabelTranslateX(lane: number, anchorLane: number) {
+  return Math.max(0, (anchorLane - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET);
+}
+
 function buildSimpleLayout(
   graphNodes: GraphNode[],
   branchName: string,
@@ -991,13 +1036,35 @@ function buildSimpleLayout(
   const idToIndex = new Map(graphNodes.map((node, idx) => [node.id, idx]));
 
   const lanes = graphNodes.map((node) => laneFor(node.laneBranchId));
-  const maxLane = lanes.reduce((max, lane) => Math.max(max, lane), 0);
+
+  const edgeSegments: EdgeLayoutSegment[] = [];
+  graphNodes.forEach((node) => {
+    const targetIndex = idToIndex.get(node.id);
+    if (typeof targetIndex !== 'number') return;
+    const targetLane = laneFor(node.laneBranchId);
+    node.parents.forEach((parentId) => {
+      const parentIndex = idToIndex.get(parentId);
+      if (typeof parentIndex !== 'number') return;
+      const parentLane = laneFor(graphNodes[parentIndex].laneBranchId);
+      edgeSegments.push({
+        sourceRow: parentIndex,
+        targetRow: targetIndex,
+        sourceLane: parentLane,
+        targetLane
+      });
+    });
+  });
+
+  const rowRightMostLanes = computeRowRightMostLanes(graphNodes.length, lanes, edgeSegments);
+  const globalRightMostLane = rowRightMostLanes.reduce((max, lane) => Math.max(max, lane), 0);
+  const alignmentMode: LabelAlignmentMode = features.graphLabelAlignment;
 
   const nodes: Node<DotNodeData>[] = graphNodes.map((node, index) => {
     const lane = lanes[index];
-    const x = lane * laneSpacing;
+    const x = lane * laneSpacing + GRAPH_X_OFFSET;
     const y = index * rowSpacing;
     const color = getBranchColor(node.originBranchId, trunkName, branchColors);
+    const anchorLane = alignmentMode === 'left-aligned' ? globalRightMostLane : rowRightMostLanes[index] ?? lane;
     return {
       id: node.id,
       type: 'dot',
@@ -1008,10 +1075,7 @@ function buildSimpleLayout(
         originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
-        labelTranslateX: Math.max(
-          0,
-          lane === maxLane ? 0 : (maxLane - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET
-        )
+        labelTranslateX: computeLabelTranslateX(lane, anchorLane)
       },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top
@@ -1100,16 +1164,41 @@ export function layoutGraph(
 
   const vertices = layout.getVertices();
   const totalRows = vertices.length;
+  const alignmentMode: LabelAlignmentMode = features.graphLabelAlignment;
+
+  const lanesByOldRow: number[] = graphNodesOldestFirst.map((_, oldIndex) => {
+    const newIndex = totalRows - 1 - oldIndex;
+    return vertices[newIndex].getLane();
+  });
+
+  const edgeSegments: EdgeLayoutSegment[] = [];
+  graphNodesOldestFirst.forEach((node) => {
+    const childOld = idToOldIndex.get(node.id);
+    if (typeof childOld !== 'number') return;
+    const childLane = lanesByOldRow[childOld];
+    node.parents.forEach((parentId) => {
+      const parentOld = idToOldIndex.get(parentId);
+      if (typeof parentOld !== 'number') return;
+      const parentLane = lanesByOldRow[parentOld];
+      edgeSegments.push({
+        sourceRow: parentOld,
+        targetRow: childOld,
+        sourceLane: parentLane,
+        targetLane: childLane
+      });
+    });
+  });
+
+  const rowRightMostLanes = computeRowRightMostLanes(totalRows, lanesByOldRow, edgeSegments);
+  const globalRightMostLane = rowRightMostLanes.reduce((max, lane) => Math.max(max, lane), 0);
 
   const flowNodes: Node<DotNodeData>[] = graphNodesOldestFirst.map((node, oldIndex) => {
     const newIndex = totalRows - 1 - oldIndex;
-    const lane = vertices[newIndex].getLane();
-    const rightMostAtRow = vertices[newIndex].getMaxReservedX();
-    const x = lane * laneSpacing - 20;
+    const lane = lanesByOldRow[oldIndex];
+    const x = lane * laneSpacing + GRAPH_X_OFFSET;
     const y = oldIndex * rowSpacing;
     const color = getBranchColor(node.originBranchId, trunkName, branchColors);
-    const labelTranslateX =
-      lane === rightMostAtRow ? 0 : (rightMostAtRow - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET;
+    const anchorLane = alignmentMode === 'left-aligned' ? globalRightMostLane : rowRightMostLanes[oldIndex] ?? lane;
     return {
       id: node.id,
       type: 'dot',
@@ -1120,7 +1209,7 @@ export function layoutGraph(
         originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
-        labelTranslateX: Math.max(0, labelTranslateX)
+        labelTranslateX: computeLabelTranslateX(lane, anchorLane)
       },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top
@@ -1154,6 +1243,26 @@ export function layoutGraph(
       });
     });
   });
+
+  const simpleSegments: EdgeLayoutSegment[] = simple.edges
+    .map((edge) => {
+      const sourceOld = idToOldIndex.get(edge.source);
+      const targetOld = idToOldIndex.get(edge.target);
+      const sourceNode = simple.nodes.find((node) => node.id === edge.source);
+      const targetNode = simple.nodes.find((node) => node.id === edge.target);
+      if (typeof sourceOld !== 'number' || typeof targetOld !== 'number' || !sourceNode || !targetNode) return null;
+      return {
+        sourceRow: sourceOld,
+        targetRow: targetOld,
+        sourceLane: Math.round((sourceNode.position.x - GRAPH_X_OFFSET) / laneSpacing),
+        targetLane: Math.round((targetNode.position.x - GRAPH_X_OFFSET) / laneSpacing)
+      } satisfies EdgeLayoutSegment;
+    })
+    .filter((segment): segment is EdgeLayoutSegment => segment !== null);
+
+  if (countCrossings(simpleSegments) < countCrossings(edgeSegments)) {
+    return simple;
+  }
 
   return { nodes: flowNodes, edges: flowEdges, usedFallback: false };
 }
