@@ -27,9 +27,9 @@ security definer
 set search_path = public
 as $$
   select
-    (k.openai_key_id is not null) as has_openai,
-    (k.gemini_key_id is not null) as has_gemini,
-    (k.anthropic_key_id is not null) as has_anthropic,
+    (k.openai_secret_id is not null) as has_openai,
+    (k.gemini_secret_id is not null) as has_gemini,
+    (k.anthropic_secret_id is not null) as has_anthropic,
     k.system_prompt,
     coalesce(nullif(btrim(k.system_prompt_mode), ''), 'append') as system_prompt_mode,
     nullif(btrim(k.default_provider), '') as default_provider,
