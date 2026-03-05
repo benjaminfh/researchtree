@@ -5,6 +5,8 @@ import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { z } from 'zod';
 import { getStoreConfig } from '@/src/server/storeConfig';
+import { getEnabledProviders } from '@/src/server/llmConfig';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,6 +32,10 @@ function normalizeSecret(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeProviderForUi(provider: LLMProvider): LLMProvider {
+  return provider === 'openai_responses' ? 'openai' : provider;
+}
+
 export async function GET() {
   try {
     const user = await requireUser();
@@ -37,6 +43,9 @@ export async function GET() {
     const { rtGetUserDefaultProviderV1, rtGetUserLlmKeyStatusV1 } = await import('@/src/store/pg/userLlmKeys');
     const status = await rtGetUserLlmKeyStatusV1();
     const defaultProvider = await rtGetUserDefaultProviderV1();
+    const enabledDefaultProviders = Array.from(
+      new Set(getEnabledProviders().map((provider) => normalizeProviderForUi(provider)))
+    );
 
     if (store.mode === 'pg' && user.email) {
       const { rtAcceptProjectInvitesShadowV1 } = await import('@/src/store/pg/members');
@@ -55,6 +64,7 @@ export async function GET() {
         prompt: status.systemPrompt
       },
       defaultProvider,
+      enabledDefaultProviders,
       updatedAt: status.updatedAt
     });
   } catch (error) {
@@ -96,6 +106,10 @@ export async function PUT(request: Request) {
     }
 
     if (parsed.data.defaultProvider !== undefined) {
+      const enabledProviders = new Set(getEnabledProviders().map((provider) => normalizeProviderForUi(provider)));
+      if (parsed.data.defaultProvider && !enabledProviders.has(parsed.data.defaultProvider)) {
+        throw badRequest('Default provider is not enabled in this environment.');
+      }
       const { rtSetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
       await rtSetUserDefaultProviderV1({ provider: parsed.data.defaultProvider ?? null });
     }

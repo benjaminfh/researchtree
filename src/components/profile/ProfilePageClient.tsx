@@ -16,6 +16,7 @@ type ProfileResponse = {
   };
   systemPrompt: { mode: 'append' | 'replace'; prompt: string | null };
   defaultProvider: LLMProvider | null;
+  enabledDefaultProviders?: LLMProvider[];
   updatedAt: string | null;
 };
 
@@ -51,6 +52,11 @@ export function ProfilePageClient({ email }: { email: string | null }) {
   const [defaultProvider, setDefaultProvider] = useState<LLMProvider>('openai');
   const [savingDefaultProvider, setSavingDefaultProvider] = useState(false);
   const showTokenLoading = loading && !profile;
+  const defaultProviderOptions = useMemo(() => {
+    const enabled = profile?.enabledDefaultProviders;
+    if (enabled && enabled.length > 0) return enabled;
+    return ['openai', 'gemini', 'anthropic', 'mock'] as LLMProvider[];
+  }, [profile]);
 
   const placeholders = useMemo(() => {
     return {
@@ -95,6 +101,12 @@ export function ProfilePageClient({ email }: { email: string | null }) {
     const ua = window.navigator?.userAgent ?? '';
     setIsDesktopEnv(ua.includes('Electron') || 'desktopApi' in window);
   }, []);
+
+
+  useEffect(() => {
+    if (defaultProviderOptions.includes(defaultProvider)) return;
+    setDefaultProvider(defaultProviderOptions[0] ?? 'openai');
+  }, [defaultProvider, defaultProviderOptions]);
 
   const saveTokens = async () => {
     setSaving(true);
@@ -340,10 +352,17 @@ export function ProfilePageClient({ email }: { email: string | null }) {
                 disabled={loading || savingDefaultProvider}
                 className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm disabled:opacity-60"
               >
-                <option value="openai">OpenAI</option>
-                <option value="gemini">Gemini</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="mock">Mock</option>
+                {defaultProviderOptions.map((provider) => (
+                  <option key={provider} value={provider}>
+                    {provider === 'openai' || provider === 'openai_responses'
+                      ? 'OpenAI'
+                      : provider === 'gemini'
+                        ? 'Gemini'
+                        : provider === 'anthropic'
+                          ? 'Anthropic'
+                          : 'Mock'}
+                  </option>
+                ))}
               </select>
             </label>
             <div className="flex items-center justify-end gap-2">

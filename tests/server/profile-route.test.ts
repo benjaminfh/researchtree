@@ -2,19 +2,27 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GET, PUT } from '@/app/api/profile/route';
 
 const mocks = vi.hoisted(() => ({
+  getEnabledProviders: vi.fn(),
   rtGetUserDefaultProviderV1: vi.fn(),
   rtGetUserLlmKeyStatusV1: vi.fn(),
-  rtSetUserLlmKeyV1: vi.fn()
+  rtSetUserLlmKeyV1: vi.fn(),
+  rtSetUserDefaultProviderV1: vi.fn()
+}));
+
+vi.mock('@/src/server/llmConfig', () => ({
+  getEnabledProviders: mocks.getEnabledProviders
 }));
 
 vi.mock('@/src/store/pg/userLlmKeys', () => ({
   rtGetUserDefaultProviderV1: mocks.rtGetUserDefaultProviderV1,
   rtGetUserLlmKeyStatusV1: mocks.rtGetUserLlmKeyStatusV1,
-  rtSetUserLlmKeyV1: mocks.rtSetUserLlmKeyV1
+  rtSetUserLlmKeyV1: mocks.rtSetUserLlmKeyV1,
+  rtSetUserDefaultProviderV1: mocks.rtSetUserDefaultProviderV1
 }));
+
+import { GET, PUT } from '@/app/api/profile/route';
 
 const baseUrl = 'http://localhost/api/profile';
 
@@ -29,6 +37,7 @@ function createPutRequest(body: unknown) {
 describe('/api/profile', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    mocks.getEnabledProviders.mockReturnValue(['openai', 'gemini']);
   });
 
   it('GET returns user email and key status', async () => {
@@ -49,6 +58,7 @@ describe('/api/profile', () => {
       gemini: { configured: false },
       anthropic: { configured: true }
     });
+    expect(body.enabledDefaultProviders).toEqual(['openai', 'gemini']);
   });
 
   it('PUT updates only provided keys and normalizes whitespace', async () => {
@@ -65,5 +75,11 @@ describe('/api/profile', () => {
   it('PUT rejects unknown fields', async () => {
     const res = await PUT(createPutRequest({ openaiToken: 'x', extra: 'nope' }));
     expect(res.status).toBe(400);
+  });
+
+  it('PUT rejects disabled default provider values', async () => {
+    const res = await PUT(createPutRequest({ defaultProvider: 'mock' }));
+    expect(res.status).toBe(400);
+    expect(mocks.rtSetUserDefaultProviderV1).not.toHaveBeenCalled();
   });
 });
