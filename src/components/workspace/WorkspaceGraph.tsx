@@ -986,6 +986,13 @@ export function countCrossings(segments: EdgeLayoutSegment[]): number {
     for (let j = i + 1; j < segments.length; j++) {
       const a = segments[i];
       const b = segments[j];
+      const aStart = Math.min(a.sourceRow, a.targetRow);
+      const aEnd = Math.max(a.sourceRow, a.targetRow);
+      const bStart = Math.min(b.sourceRow, b.targetRow);
+      const bEnd = Math.max(b.sourceRow, b.targetRow);
+      const spansOverlap = aStart <= bEnd && bStart <= aEnd;
+      if (!spansOverlap) continue;
+
       const sourceDiff = a.sourceLane - b.sourceLane;
       const targetDiff = a.targetLane - b.targetLane;
       if (sourceDiff === 0 || targetDiff === 0) continue;

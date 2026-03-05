@@ -7,10 +7,10 @@ import {
 } from '@/src/components/workspace/WorkspaceGraph';
 
 describe('workspace graph layout helpers', () => {
-  it('counts pairwise edge crossings when lane ordering flips', () => {
+  it('counts pairwise edge crossings when lane ordering flips over overlapping row spans', () => {
     const segments: EdgeLayoutSegment[] = [
-      { sourceRow: 0, targetRow: 2, sourceLane: 0, targetLane: 2 },
-      { sourceRow: 0, targetRow: 2, sourceLane: 2, targetLane: 0 }
+      { sourceRow: 0, targetRow: 4, sourceLane: 0, targetLane: 2 },
+      { sourceRow: 1, targetRow: 3, sourceLane: 2, targetLane: 0 }
     ];
     expect(countCrossings(segments)).toBe(1);
   });
@@ -19,6 +19,14 @@ describe('workspace graph layout helpers', () => {
     const segments: EdgeLayoutSegment[] = [
       { sourceRow: 0, targetRow: 2, sourceLane: 0, targetLane: 1 },
       { sourceRow: 0, targetRow: 2, sourceLane: 2, targetLane: 3 }
+    ];
+    expect(countCrossings(segments)).toBe(0);
+  });
+
+  it('does not count lane inversions for disjoint row spans', () => {
+    const segments: EdgeLayoutSegment[] = [
+      { sourceRow: 0, targetRow: 1, sourceLane: 0, targetLane: 2 },
+      { sourceRow: 3, targetRow: 4, sourceLane: 2, targetLane: 0 }
     ];
     expect(countCrossings(segments)).toBe(0);
   });
