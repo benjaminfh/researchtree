@@ -18,20 +18,18 @@ export interface ChatStreamChunk {
   append?: boolean;
 }
 
-export type ChatSendPayload =
-  | string
-  | {
-      message?: string;
-      question?: string;
-      highlight?: string;
-      intent?: string;
-      ref?: string;
-      llmProvider?: LLMProvider;
-      thinking?: ThinkingSetting;
-      webSearch?: boolean;
-      leaseSessionId?: string;
-      clientRequestId?: string;
-    };
+export interface ChatSendPayload {
+  message?: string;
+  question?: string;
+  highlight?: string;
+  intent?: string;
+  ref?: string;
+  llmProvider: LLMProvider;
+  thinking?: ThinkingSetting;
+  webSearch?: boolean;
+  leaseSessionId?: string;
+  clientRequestId?: string;
+}
 
 export interface StreamRequestOptions {
   url: string;
@@ -43,7 +41,6 @@ export interface StreamRequestOptions {
 interface UseChatStreamOptions {
   projectId: string;
   ref?: string;
-  provider?: LLMProvider;
   thinking?: ThinkingSetting;
   webSearch?: boolean;
   leaseSessionId?: string | null;
@@ -54,7 +51,6 @@ interface UseChatStreamOptions {
 export function useChatStream({
   projectId,
   ref,
-  provider,
   thinking,
   webSearch,
   leaseSessionId,
@@ -182,22 +178,22 @@ export function useChatStream({
 
   const sendMessage = useCallback(
     async (input: ChatSendPayload) => {
-      const normalized =
-        typeof input === 'string'
-          ? { message: input }
-          : input ?? { message: '' };
+      const normalized = input;
       const userMessage = normalized.message ?? '';
       const userQuestion = normalized.question ?? '';
       if (!(userMessage.trim() || userQuestion.trim())) {
         return;
       }
+      if (!normalized.llmProvider) {
+        setState({ isStreaming: false, error: 'Provider is required to send chat.' });
+        return;
+      }
       if (streamDebugEnabled) {
-        const resolvedProvider = normalized.llmProvider ?? provider ?? null;
         streamDebugStateRef.current = { seq: 0, totalChars: 0, lastType: '', lastContent: '' };
         console.debug('[stream][start]', {
           projectId,
           ref: normalized.ref ?? ref,
-          provider: resolvedProvider,
+          provider: normalized.llmProvider,
           thinking: normalized.thinking ?? thinking,
           webSearch: normalized.webSearch ?? webSearch,
           messageLength: (normalized.message ?? '').length,
@@ -205,13 +201,12 @@ export function useChatStream({
           highlightLength: (normalized.highlight ?? '').length
         });
       }
-      const resolvedProvider = normalized.llmProvider ?? provider;
       const basePayload: Record<string, unknown> = {
         message: normalized.message,
         question: normalized.question,
         highlight: normalized.highlight,
         intent: normalized.intent,
-        ...(resolvedProvider ? { llmProvider: resolvedProvider } : {}),
+        llmProvider: normalized.llmProvider,
         ref: normalized.ref ?? ref,
         thinking: normalized.thinking ?? thinking,
         webSearch: normalized.webSearch ?? webSearch,

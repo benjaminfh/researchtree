@@ -1087,7 +1087,8 @@ describe('WorkspaceClient', () => {
     });
   });
 
-  it('uses the branch provider for chat streaming', async () => {
+  it('uses the branch provider when sending chat messages', async () => {
+    const user = userEvent.setup();
     const branches: BranchSummary[] = [
       { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, provider: 'openai', model: 'gpt-5.2' },
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
@@ -1101,8 +1102,14 @@ describe('WorkspaceClient', () => {
         openAIUseResponses={false}
       />
     );
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Use branch provider');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
     await waitFor(() => {
-      expect(capturedChatOptions?.provider).toBe('gemini');
+      expect(sendMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Use branch provider', llmProvider: 'gemini' })
+      );
     });
   });
 

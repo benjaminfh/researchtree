@@ -2194,7 +2194,6 @@ export function WorkspaceClient({
   const { sendMessage, sendStreamRequest, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
-    provider: activeBranchProvider ?? undefined,
     thinking,
     webSearch: webSearchEnabled,
     leaseSessionId,
