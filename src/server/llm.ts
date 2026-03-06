@@ -20,7 +20,8 @@ import {
   getAnthropicMaxOutputTokens
 } from '@/src/shared/llmCapabilities';
 import type { LLMProvider } from '@/src/shared/llmProvider';
-import { getDefaultProvider, getEnabledProviders, getOpenAIUseResponses, getProviderEnvConfig } from '@/src/server/llmConfig';
+import { getDefaultProvider, getEnabledProviders, getProviderEnvConfig } from '@/src/server/llmConfig';
+import { badRequest } from '@/src/server/http';
 import { flattenMessageContent, type ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { extractGeminiTextData, extractGeminiThoughtData, getGeminiDelta } from '@/src/server/geminiThought';
 import {
@@ -166,17 +167,27 @@ function getGeminiUserFacingError(error: unknown): string | null {
 
 export function resolveLLMProvider(requested?: LLMProvider): LLMProvider {
   if (requested) {
-    const enabled = new Set(getEnabledProviders());
-    return enabled.has(requested) ? requested : getDefaultProvider();
+    const enabledProviders = getEnabledProviders();
+    const enabled = new Set(enabledProviders);
+    if (!enabled.has(requested)) {
+      throw badRequest(
+        `Provider "${requested}" is not available. Select one of: ${enabledProviders.join(', ')}.`,
+        {
+          requestedProvider: requested,
+          enabledProviders
+        }
+      );
+    }
+    return requested;
   }
   return getDefaultProvider();
 }
 
 export function resolveOpenAIProviderSelection(requested?: LLMProvider | null): LLMProvider {
-  if (!requested || requested === 'openai') {
-    return getOpenAIUseResponses() ? 'openai_responses' : 'openai';
+  if (requested) {
+    return resolveLLMProvider(requested);
   }
-  return requested;
+  return resolveLLMProvider();
 }
 
 export function getDefaultModelForProvider(provider: LLMProvider): string {
@@ -338,7 +349,10 @@ async function* streamFromOpenAI(
 
 export function buildOpenAIResponsesInput(messages: ChatMessage[], options?: { previousResponseId?: string | null }): {
   instructions?: string;
-  input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }>;
+  input: Array<
+    | { role: 'user'; content: Array<{ type: 'input_text'; text: string }> }
+    | { role: 'assistant'; content: Array<{ type: 'output_text'; text: string }> }
+  >;
 } {
   const instructions = messages
     .filter((message) => message.role === 'system')
@@ -347,17 +361,27 @@ export function buildOpenAIResponsesInput(messages: ChatMessage[], options?: { p
     .trim();
 
   const shouldReplayHistory = !options?.previousResponseId;
-  const input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }> = [];
+  const input: Array<
+    | { role: 'user'; content: Array<{ type: 'input_text'; text: string }> }
+    | { role: 'assistant'; content: Array<{ type: 'output_text'; text: string }> }
+  > = [];
 
   if (shouldReplayHistory) {
     for (const message of messages) {
       if (message.role !== 'user' && message.role !== 'assistant') continue;
       const text = flattenMessageContent(message.content).trim();
       if (!text) continue;
-      input.push({
-        role: message.role,
-        content: [{ type: 'input_text', text }]
-      });
+      if (message.role === 'assistant') {
+        input.push({
+          role: 'assistant',
+          content: [{ type: 'output_text', text }]
+        });
+      } else {
+        input.push({
+          role: 'user',
+          content: [{ type: 'input_text', text }]
+        });
+      }
     }
   } else {
     for (let i = messages.length - 1; i >= 0; i -= 1) {

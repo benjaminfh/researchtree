@@ -62,10 +62,6 @@ const fetchJson = async <T,>(url: string): Promise<T> => {
   return res.json();
 };
 
-const normalizeProviderForUi = (provider: LLMProvider): LLMProvider => {
-  return provider === 'openai_responses' ? 'openai' : provider;
-};
-
 const getNodeBlocks = (node: NodeRecord): ThinkingContentBlock[] => {
   return getContentBlocksWithLegacyFallback(node);
 };
@@ -443,7 +439,6 @@ interface WorkspaceClientProps {
   initialBranches: BranchSummary[];
   defaultProvider: LLMProvider;
   providerOptions: ProviderOption[];
-  openAIUseResponses: boolean;
   storeMode: StoreMode;
 }
 
@@ -1107,8 +1102,8 @@ const ChatNodeRowBase: FC<ChatNodeRowProps> = ({
   const isUser = node.type === 'message' && node.role === 'user';
   const isMerge = node.type === 'merge';
   const nodeBranch = node.createdOnBranch ?? currentBranchName;
-  const nodeProvider = normalizeProviderForUi(providerByBranch[nodeBranch] ?? defaultProvider);
-  const showOpenAiThinkingNote = nodeProvider === 'openai';
+  const nodeProvider = providerByBranch[nodeBranch] ?? defaultProvider;
+  const showOpenAiThinkingNote = nodeProvider === 'openai' || nodeProvider === 'openai_responses';
   const stripeColor = getBranchColor(node.createdOnBranch ?? trunkName, trunkName, branchColors);
   const questionBranches = questionBranchNames ?? [];
   const activeQuestionBranch =
@@ -1215,7 +1210,6 @@ export function WorkspaceClient({
   initialBranches,
   defaultProvider,
   providerOptions,
-  openAIUseResponses,
   storeMode
 }: WorkspaceClientProps) {
   const CHAT_WIDTH_KEY = storageKey(`chat-width:${project.id}`);
@@ -1254,7 +1248,7 @@ export function WorkspaceClient({
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [switchToEditBranch, setSwitchToEditBranch] = useState(true);
-  const [editProvider, setEditProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
+  const [editProvider, setEditProvider] = useState<LLMProvider>(defaultProvider);
   const [editThinking, setEditThinking] = useState<ThinkingSetting>('medium');
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -1280,7 +1274,14 @@ export function WorkspaceClient({
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
-  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(normalizeProviderForUi(defaultProvider));
+  const isSelectableProvider = (provider: LLMProvider | null | undefined) =>
+    Boolean(provider && providerOptions.some((option) => option.id === provider));
+  const fallbackSelectableProvider = (
+    isSelectableProvider(defaultProvider) ? defaultProvider : providerOptions[0]?.id ?? defaultProvider
+  ) as LLMProvider;
+  const resolveSelectableProvider = (provider: LLMProvider | null | undefined): LLMProvider =>
+    isSelectableProvider(provider) ? (provider as LLMProvider) : fallbackSelectableProvider;
+  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(fallbackSelectableProvider);
   const [newBranchThinking, setNewBranchThinking] = useState<ThinkingSetting>('medium');
   const [newBranchQuestion, setNewBranchQuestion] = useState('');
   const [newBranchHighlight, setNewBranchHighlight] = useState('');
@@ -1587,7 +1588,7 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
-        setNewBranchProvider(normalizeProviderForUi(branchProvider));
+        setNewBranchProvider(resolveSelectableProvider(branchProvider));
         setNewBranchThinking(thinking);
         setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
@@ -1606,6 +1607,8 @@ export function WorkspaceClient({
       setShowNewBranchModal(false);
       resetBranchQuestionState();
       setBranchActionError(null);
+      setNewBranchProvider(resolveSelectableProvider(branchProvider));
+      setNewBranchThinking(thinking);
       setNewBranchName('');
       setBranchSplitNodeId(node.id);
       setBranchModalMode('standard');
@@ -1621,7 +1624,7 @@ export function WorkspaceClient({
     setEditDraft(node.content);
     setEditBranchName('');
     setEditError(null);
-    setEditProvider(normalizeProviderForUi(branchProvider));
+    setEditProvider(resolveSelectableProvider(branchProvider));
     setEditThinking(thinking);
     setSwitchToEditBranch(true);
     setShowEditModal(true);
@@ -2155,6 +2158,7 @@ export function WorkspaceClient({
     () => activeBranch?.provider ?? defaultProvider,
     [activeBranch?.provider, defaultProvider]
   );
+  const activeBranchProvider = activeBranch?.provider ?? null;
   const branchModel = useMemo(() => {
     const option = providerOptions.find((entry) => entry.id === branchProvider);
     return activeBranch?.model ?? option?.defaultModel ?? getDefaultModelForProviderFromCapabilities(branchProvider);
@@ -2199,7 +2203,6 @@ export function WorkspaceClient({
   const { sendMessage, sendStreamRequest, interrupt, state } = useChatStream({
     projectId: project.id,
     ref: branchName,
-    provider: branchProvider,
     thinking,
     webSearch: webSearchEnabled,
     leaseSessionId,
@@ -2325,11 +2328,8 @@ export function WorkspaceClient({
     () => providerOptions.find((option) => option.id === branchProvider),
     [branchProvider, providerOptions]
   );
-  const selectableProviderOptions = useMemo(
-    () => providerOptions.filter((option) => option.id !== 'openai_responses'),
-    [providerOptions]
-  );
-  const branchProviderLabel = activeProvider?.label ?? (branchProvider === 'openai_responses' ? 'OpenAI' : branchProvider);
+  const selectableProviderOptions = useMemo(() => providerOptions, [providerOptions]);
+  const branchProviderLabel = activeProvider?.label ?? branchProvider;
   const providerByBranch = useMemo(() => {
     return branches.reduce<Record<string, LLMProvider>>((acc, branch) => {
       if (branch.provider) {
@@ -2354,19 +2354,24 @@ export function WorkspaceClient({
       : isBranchWriteLocked
         ? 'Editing locked. Editor access required.'
         : null;
+  const branchProviderDisabled =
+    state.errorCode === 'BRANCH_PROVIDER_DISABLED' &&
+    (typeof state.errorDetails?.ref !== 'string' || state.errorDetails.ref === branchName);
   const chatErrorMessage = chatComposerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
   const composerInputDisabled = isBranchWriteLocked || (isPgMode && !leaseSessionReady);
-  const composerActionDisabled = composerInputDisabled || state.isStreaming;
+  const composerActionDisabled = composerInputDisabled || state.isStreaming || branchProviderDisabled;
   const canvasDisabled = isPgMode && (!leaseSessionReady || isBranchWriteLocked);
   const webSearchAvailable = branchProvider !== 'mock';
-  const showOpenAISearchNote =
-    webSearchEnabled &&
-    !openAIUseResponses &&
-    (branchProvider === 'openai' || branchProvider === 'openai_responses');
+  const showOpenAISearchNote = webSearchEnabled && branchProvider === 'openai';
 
   const sendDraft = useCallback(async (draft: string): Promise<boolean> => {
     if (!draft.trim() || state.isStreaming) return false;
+    if (branchProviderDisabled) return false;
     setChatComposerError(null);
+    if (!activeBranchProvider) {
+      setChatComposerError('Branch provider is unavailable. Wait for branch config to load and try again.');
+      return false;
+    }
     if (thinkingUnsupportedError) {
       return false;
     }
@@ -2386,9 +2391,10 @@ export function WorkspaceClient({
       questionDraft: null,
       requiresUserMatch: true
     });
-    await sendMessage({ message: draft, clientRequestId });
+    await sendMessage({ message: draft, clientRequestId, llmProvider: activeBranchProvider });
     return true;
   }, [
+    activeBranchProvider,
     state.isStreaming,
     thinkingUnsupportedError,
     ensureLeaseSessionReady,
@@ -2396,7 +2402,8 @@ export function WorkspaceClient({
     pushToast,
     branchName,
     nodes,
-    sendMessage
+    sendMessage,
+    branchProviderDisabled
   ]);
 
   const sendQuestionWithStream = async ({
@@ -2815,9 +2822,9 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (newBranchName.trim()) return;
-    setNewBranchProvider(normalizeProviderForUi(branchProvider));
+    setNewBranchProvider(resolveSelectableProvider(branchProvider));
     setNewBranchThinking(thinking);
-  }, [branchProvider, thinking, newBranchName]);
+  }, [branchProvider, thinking, newBranchName, providerOptions, defaultProvider]);
 
   useEffect(() => {
     setArtefactDraft(artefact);
@@ -4368,9 +4375,10 @@ export function WorkspaceClient({
     setIsCreating(true);
     setBranchActionError(null);
     try {
+      const selectedProvider = resolveSelectableProvider(newBranchProvider);
       const branchModel =
-        providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
-        getDefaultModelForProviderFromCapabilities(newBranchProvider);
+        providerOptions.find((option) => option.id === selectedProvider)?.defaultModel ??
+        getDefaultModelForProviderFromCapabilities(selectedProvider);
       const res = await fetch(`/api/projects/${project.id}/branches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4378,7 +4386,7 @@ export function WorkspaceClient({
           name: newBranchName.trim(),
           fromRef: branchName,
           ...(branchSplitNodeId ? { fromNodeId: branchSplitNodeId } : {}),
-          provider: newBranchProvider,
+          provider: selectedProvider,
           model: branchModel,
           switch: switchToNew
         })
@@ -4709,9 +4717,10 @@ export function WorkspaceClient({
       return;
     }
     setIsEditing(true);
+    const selectedEditProvider = resolveSelectableProvider(editProvider);
     const editModel =
-      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
-      getDefaultModelForProviderFromCapabilities(editProvider);
+      providerOptions.find((option) => option.id === selectedEditProvider)?.defaultModel ??
+      getDefaultModelForProviderFromCapabilities(selectedEditProvider);
     const fromRef = editingNode?.createdOnBranch ?? branchName;
     const targetBranch = editBranchName.trim();
     const content = editDraft.trim();
@@ -4731,7 +4740,7 @@ export function WorkspaceClient({
         content,
         fromRef,
         nodeId,
-        provider: editProvider,
+        provider: selectedEditProvider,
         model: editModel,
         thinkingSetting: editThinking,
         onResponse: () => {
@@ -4750,7 +4759,7 @@ export function WorkspaceClient({
       targetBranch,
       fromRef,
       content,
-      provider: editProvider,
+      provider: selectedEditProvider,
       model: editModel,
       thinkingSetting: editThinking,
       nodeId,
@@ -5502,12 +5511,14 @@ export function WorkspaceClient({
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setBranchActionError(null);
-                            resetBranchQuestionState();
-                            if (latestPersistedVisibleNodeId) {
-                              setBranchSplitNodeId(latestPersistedVisibleNodeId);
-                            } else {
+                        onClick={() => {
+                          setBranchActionError(null);
+                          resetBranchQuestionState();
+                          setNewBranchProvider(resolveSelectableProvider(branchProvider));
+                          setNewBranchThinking(thinking);
+                          if (latestPersistedVisibleNodeId) {
+                            setBranchSplitNodeId(latestPersistedVisibleNodeId);
+                          } else {
                               setBranchSplitNodeId(null);
                             }
                             setShowNewBranchModal(true);

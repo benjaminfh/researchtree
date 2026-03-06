@@ -8,7 +8,7 @@ import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectEditor } from '@/src/server/authz';
 import { buildChatContext } from '@/src/server/context';
-import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
+import { getBranchConfigMap } from '@/src/server/branchConfig';
 import { streamAssistantCompletion, type LLMProvider } from '@/src/server/llm';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
@@ -20,6 +20,7 @@ import type { NodeRecord } from '@git/types';
 import { INITIAL_BRANCH } from '@git/constants';
 import { v4 as uuidv4 } from 'uuid';
 import { acquireBranchLease } from '@/src/server/leases';
+import { assertBranchProviderAvailable } from '@/src/server/branchProviderAvailability';
 
 interface RouteContext {
   params: { id: string };
@@ -99,7 +100,9 @@ function buildMergeAckMessage(mergeNode: NodeRecord): string {
 
 async function resolveTargetConfig(projectId: string, targetBranch: string): Promise<{ provider: LLMProvider; model: string }> {
   const branchConfigMap = await getBranchConfigMap(projectId);
-  return branchConfigMap[targetBranch] ?? resolveBranchConfig();
+  const target = assertBranchProviderAvailable(targetBranch, branchConfigMap[targetBranch]);
+  const provider = target.provider;
+  return { provider, model: target.model };
 }
 
 async function appendMergeAckNodes(options: {
@@ -263,6 +266,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const { sourceBranch, mergeSummary, targetBranch, sourceAssistantNodeId, leaseSessionId } = parsed.data;
     const resolvedTargetBranch = targetBranch ?? (await getPreferredBranch(params.id));
+    await resolveTargetConfig(params.id, resolvedTargetBranch);
 
     return await withProjectLockAndRefLock(params.id, resolvedTargetBranch, async () => {
       try {

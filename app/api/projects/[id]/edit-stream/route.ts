@@ -7,7 +7,7 @@ import { buildChatContext } from '@/src/server/context';
 import { acquireProjectRefLock, withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
-import { encodeChunk, resolveOpenAIProviderSelection, streamAssistantCompletion } from '@/src/server/llm';
+import { encodeChunk, streamAssistantCompletion } from '@/src/server/llm';
 import { type ThinkingSetting } from '@/src/shared/thinking';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectEditor } from '@/src/server/authz';
@@ -17,7 +17,7 @@ import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared
 import { deriveTextFromBlocks } from '@/src/shared/thinkingTraces';
 import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
-import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
+import { getBranchConfigMap, resolveBranchCreationConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { toJsonValue } from '@/src/server/json';
@@ -70,17 +70,17 @@ export async function POST(request: Request, { params }: RouteContext) {
     const explicitFromRef = fromRef?.trim() || null;
     const sourceRef = explicitFromRef ?? currentBranch.name;
     const branchConfigMap = await getBranchConfigMap(params.id);
-    const baseConfig = branchConfigMap[sourceRef] ?? resolveBranchConfig();
-    const requestedProvider = llmProvider ? resolveOpenAIProviderSelection(llmProvider) : baseConfig.provider;
-    const requestedConfig = resolveBranchConfig({
-      provider: requestedProvider,
-      model: llmModel ?? (llmProvider ? null : baseConfig.model),
-      fallback: baseConfig
+    const sourceConfig = branchConfigMap[sourceRef];
+    const requestedConfig = resolveBranchCreationConfig({
+      sourceProvider: sourceConfig?.provider ?? null,
+      sourceModel: sourceConfig?.model ?? null,
+      requestedProvider: llmProvider ?? null,
+      requestedModel: llmModel ?? null
     });
     const provider = requestedConfig.provider;
     const modelName = requestedConfig.model;
     const shouldCopyPreviousResponseId =
-      baseConfig.provider === 'openai_responses' && provider === 'openai_responses';
+      requestedConfig.sourceProvider === 'openai_responses' && provider === 'openai_responses';
     const effectiveThinking = thinking ?? getDefaultThinkingSetting(provider, modelName);
     const thinkingValidation = validateThinkingSetting(provider, modelName, effectiveThinking);
     if (!thinkingValidation.ok) {

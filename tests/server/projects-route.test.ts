@@ -63,6 +63,7 @@ describe('/api/projects route', () => {
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: '1' });
     mocks.rtAcceptProjectInvitesShadowV1.mockResolvedValue([]);
     mocks.rtGetUserSystemPromptV1.mockResolvedValue({ mode: 'append', prompt: null });
+    delete process.env.LLM_ENABLED_PROVIDERS;
   });
 
   it('returns project list on GET', async () => {
@@ -160,5 +161,37 @@ describe('/api/projects route', () => {
       model: 'gpt-5.2',
       systemPrompt: expect.any(String)
     });
+  });
+
+  it('creates project with explicit provider when enabled', async () => {
+    process.env.RT_STORE = 'pg';
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,gemini';
+    mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: 'p1' });
+    mocks.rtGetProjectShadowV1.mockResolvedValue({
+      id: 'p1',
+      name: 'PG',
+      description: null,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-02T00:00:00.000Z'
+    });
+
+    const response = await POST(createRequest('POST', { name: 'PG', provider: 'gemini' }));
+    expect(response.status).toBe(201);
+    expect(mocks.rtCreateProjectShadow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'PG',
+        provider: 'gemini',
+        model: expect.any(String)
+      })
+    );
+  });
+
+  it('rejects project creation when explicit provider is disabled', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses';
+
+    const response = await POST(createRequest('POST', { name: 'PG', provider: 'gemini' }));
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as any;
+    expect(body?.error?.message).toMatch(/provider "gemini" is not available/i);
   });
 });

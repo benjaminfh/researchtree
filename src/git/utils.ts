@@ -102,6 +102,7 @@ export function buildCommitMessage(node: NodeRecord): string {
 export async function ensureGitUserConfig(projectId: string): Promise<void> {
   const repoPath = getProjectPath(projectId);
   const git = simpleGit(repoPath);
+  await git.addConfig('commit.gpgsign', 'false');
   const name = await git.raw(['config', '--get', 'user.name']).catch(() => '');
   if (!name.trim()) {
     await git.addConfig('user.name', DEFAULT_USER.name);

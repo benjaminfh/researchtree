@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { POST } from '@/app/api/projects/[id]/chat/route';
+import { badRequest } from '@/src/server/http';
 
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
@@ -42,7 +43,7 @@ vi.mock('@/src/server/llm', () => {
   return {
     streamAssistantCompletion: mocks.streamAssistantCompletion,
     encodeChunk: (content: string) => encoder.encode(content),
-    resolveLLMProvider: vi.fn(() => 'mock'),
+    resolveLLMProvider: vi.fn((provider?: string) => provider ?? 'openai_responses'),
     getDefaultModelForProvider: vi.fn(() => 'mock')
   };
 });
@@ -123,7 +124,10 @@ describe('/api/projects/[id]/chat', () => {
     mocks.releaseStream.mockImplementation(() => undefined);
     mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-1', refName: 'main' });
-    mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
+    mocks.getBranchConfigMap.mockResolvedValue({
+      main: { provider: 'openai', model: 'gpt-5.2' },
+      'feature/test': { provider: 'openai', model: 'gpt-5.2' }
+    });
     mocks.rtGetCanvasHashesShadowV2.mockResolvedValue({ draftHash: null, artefactHash: null });
     mocks.rtGetCanvasPairShadowV2.mockResolvedValue({
       draftContent: '',
@@ -166,6 +170,39 @@ describe('/api/projects/[id]/chat', () => {
     expect(response.status).toBe(400);
     const payload = (await response.json()) as any;
     expect(payload?.error?.message).toMatch(/locked to OpenAI/i);
+  });
+
+  it('rejects messages when the target branch has no provider configuration', async () => {
+    mocks.getBranchConfigMap.mockResolvedValue({});
+
+    const response = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as any;
+    expect(payload?.error?.code).toBe('BRANCH_PROVIDER_MISSING');
+    expect(payload?.error?.details).toMatchObject({ ref: 'main', action: 'create_new_branch' });
+    expect(payload?.error?.message).toMatch(/missing provider configuration/i);
+  });
+
+  it('rejects messages when the target branch provider is disabled', async () => {
+    const llm = await import('@/src/server/llm');
+    vi.mocked(llm.resolveLLMProvider).mockImplementationOnce(() => {
+      throw badRequest('Provider "openai" is not available', {
+        requestedProvider: 'openai',
+        enabledProviders: ['openai_responses', 'gemini']
+      });
+    });
+
+    const response = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as any;
+    expect(payload?.error?.code).toBe('BRANCH_PROVIDER_DISABLED');
+    expect(payload?.error?.details).toMatchObject({
+      ref: 'main',
+      provider: 'openai',
+      enabledProviders: ['openai_responses', 'gemini'],
+      action: 'create_new_branch'
+    });
+    expect(payload?.error?.message).toMatch(/no longer available/i);
   });
 
   it('uses Postgres for user+assistant nodes when RT_STORE=pg', async () => {

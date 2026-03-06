@@ -61,8 +61,24 @@ const baseProject: ProjectMetadata = {
 };
 
 const baseBranches: BranchSummary[] = [
-  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
-  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+  {
+    name: 'main',
+    headCommit: 'abc',
+    nodeCount: 2,
+    isTrunk: true,
+    isHidden: false,
+    provider: 'openai',
+    model: 'gpt-5.2'
+  },
+  {
+    name: 'feature/phase-2',
+    headCommit: 'def',
+    nodeCount: 2,
+    isTrunk: false,
+    isHidden: false,
+    provider: 'openai',
+    model: 'gpt-5.2'
+  }
 ];
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
@@ -112,7 +128,12 @@ describe('WorkspaceClient', () => {
   let sendMessageMock: ReturnType<typeof vi.fn>;
   let sendStreamRequestMock: ReturnType<typeof vi.fn>;
   let interruptMock: ReturnType<typeof vi.fn>;
-  let chatState: { isStreaming: boolean; error: string | null };
+  let chatState: {
+    isStreaming: boolean;
+    error: string | null;
+    errorCode?: string | null;
+    errorDetails?: Record<string, unknown> | null;
+  };
   let capturedChatOptions: Parameters<typeof useChatStream>[0] | null;
   let fetchMock: FetchMock;
 
@@ -122,7 +143,7 @@ describe('WorkspaceClient', () => {
     sendMessageMock = vi.fn().mockResolvedValue(undefined);
     sendStreamRequestMock = vi.fn().mockResolvedValue(undefined);
     interruptMock = vi.fn().mockResolvedValue(undefined);
-    chatState = { isStreaming: false, error: null };
+    chatState = { isStreaming: false, error: null, errorCode: null, errorDetails: null };
     capturedChatOptions = null;
     capturedWorkspaceGraphProps = null;
     window.sessionStorage.clear();
@@ -571,6 +592,48 @@ describe('WorkspaceClient', () => {
       <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
     );
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+
+  it('disables send when branch provider is disabled', async () => {
+    chatState.error = 'Branch feature/phase-2 uses provider "openai", which is no longer available.';
+    chatState.errorCode = 'BRANCH_PROVIDER_DISABLED';
+    chatState.errorDetails = { ref: 'feature/phase-2', action: 'create_new_branch' };
+
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+
+  it('falls back new-branch provider selection when active branch provider is not selectable', async () => {
+    const user = userEvent.setup();
+    const restrictedOptions = [
+      { id: 'openai_responses', label: 'OpenAI', defaultModel: 'gpt-5.2' },
+      { id: 'gemini', label: 'Gemini', defaultModel: 'gemini-3.0-pro' }
+    ] as const;
+
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai_responses"
+        providerOptions={restrictedOptions as any}
+        openAIUseResponses
+      />
+    );
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+    await user.click(screen.getByRole('button', { name: 'Show branch creator' }));
+
+    const providerSelect = await screen.findByTestId('branch-provider-select');
+    expect((providerSelect as HTMLSelectElement).value).toBe('openai_responses');
   });
 
   it('appends quote reply while collapsed and expands the composer', async () => {
@@ -1071,7 +1134,8 @@ describe('WorkspaceClient', () => {
     });
   });
 
-  it('uses the branch provider for chat streaming', async () => {
+  it('uses the branch provider when sending chat messages', async () => {
+    const user = userEvent.setup();
     const branches: BranchSummary[] = [
       { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, provider: 'openai', model: 'gpt-5.2' },
       { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, provider: 'gemini', model: 'gemini-3.0-pro' }
@@ -1085,8 +1149,14 @@ describe('WorkspaceClient', () => {
         openAIUseResponses={false}
       />
     );
+    const composer = screen.getByPlaceholderText('Ask anything');
+    await user.type(composer, 'Use branch provider');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
     await waitFor(() => {
-      expect(capturedChatOptions?.provider).toBe('gemini');
+      expect(sendMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Use branch provider', llmProvider: 'gemini' })
+      );
     });
   });
 

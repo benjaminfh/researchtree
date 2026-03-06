@@ -11,24 +11,18 @@ export const runtime = 'nodejs';
 
 export default async function HomePage() {
   const store = getStoreConfig();
-  const normalizeProviderForUi = (provider: LLMProvider) => (provider === 'openai_responses' ? 'openai' : provider);
   const labelForProvider = (id: LLMProvider) => {
-    if (id === 'openai' || id === 'openai_responses') return 'OpenAI';
+    if (id === 'openai') return 'OpenAI Chat';
+    if (id === 'openai_responses') return 'OpenAI';
     if (id === 'gemini') return 'Gemini';
     if (id === 'anthropic') return 'Anthropic';
     return 'Mock';
   };
-  const providerOptions = (() => {
-    const entries = new Map<LLMProvider, { id: LLMProvider; label: string }>();
-    for (const provider of getEnabledProviders()) {
-      const normalized = normalizeProviderForUi(provider);
-      if (!entries.has(normalized)) {
-        entries.set(normalized, { id: normalized, label: labelForProvider(normalized) });
-      }
-    }
-    return Array.from(entries.values());
-  })();
-  const defaultProvider = normalizeProviderForUi(resolveLLMProvider());
+  const providerOptions = getEnabledProviders().map((provider) => ({
+    id: provider,
+    label: labelForProvider(provider)
+  }));
+  const defaultProvider = resolveLLMProvider();
 
   if (store.mode === 'pg') {
     const currentUser = await requireUser();

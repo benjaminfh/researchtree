@@ -28,11 +28,20 @@ describe('provider capabilities', () => {
     __resetProviderCapabilitiesCache();
     delete process.env.OPENAI_API_KEY;
     delete process.env.GEMINI_API_KEY;
-    process.env.OPENAI_MODEL = 'gpt-5.2';
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
+    delete process.env.LLM_ENABLED_PROVIDERS;
+    delete process.env.LLM_ENABLE_OPENAI;
+    delete process.env.LLM_ENABLE_GEMINI;
+    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.OPENAI_USE_RESPONSES;
+    process.env.OPENAI_CHATCOMPLETIONS_MODEL = 'gpt-5.2';
+    process.env.OPENAI_RESPONSES_MODEL = 'gpt-5.1';
     process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
   });
 
   it('uses OpenAI metadata when API key present', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai,openai_responses,gemini,mock';
     process.env.OPENAI_API_KEY = 'key';
     retrieve.mockResolvedValue({ context_length: 32000 });
 
@@ -43,6 +52,7 @@ describe('provider capabilities', () => {
   });
 
   it('falls back to default when OpenAI metadata unavailable', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai,openai_responses,gemini,mock';
     const limit = await getProviderTokenLimit('openai', 'gpt-test');
     expect(limit).toBe(64000); // 128k * 0.5
   });
@@ -60,5 +70,25 @@ describe('provider capabilities', () => {
   it('falls back to default when Gemini metadata missing', async () => {
     const limit = await getProviderTokenLimit('gemini', 'gemini-test');
     expect(limit).toBe(100000); // 200k * 0.5
+  });
+
+  it('warms OpenAI chat/responses with independent provider models', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai,openai_responses,gemini,mock';
+    process.env.OPENAI_API_KEY = 'key';
+    retrieve.mockImplementation(async (model: string) => {
+      if (model === 'gpt-5.2') return { context_length: 32000 };
+      if (model === 'gpt-5.1') return { context_length: 64000 };
+      return { context_length: 32000 };
+    });
+
+    const [chatLimit, responsesLimit] = await Promise.all([
+      getProviderTokenLimit('openai'),
+      getProviderTokenLimit('openai_responses')
+    ]);
+
+    expect(retrieve).toHaveBeenCalledWith('gpt-5.2');
+    expect(retrieve).toHaveBeenCalledWith('gpt-5.1');
+    expect(chatLimit).toBe(16000);
+    expect(responsesLimit).toBe(32000);
   });
 });

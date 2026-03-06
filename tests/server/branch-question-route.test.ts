@@ -85,6 +85,7 @@ describe('/api/projects/[id]/branch-question', () => {
     mocks.chatPost.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     process.env.RT_STORE = 'git';
+    delete process.env.LLM_ENABLED_PROVIDERS;
   });
 
   it('returns 400 when missing highlight or fromNodeId', async () => {
@@ -211,6 +212,36 @@ describe('/api/projects/[id]/branch-question', () => {
       provider: 'openai_responses',
       model: 'gpt-5.2',
       previousResponseId: 'resp-node'
+    });
+  });
+
+  it('falls back to default enabled provider when source provider is disabled', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,gemini';
+    mocks.listBranches.mockResolvedValue([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai', model: 'gpt-5.2' }
+    ]);
+    mocks.readNodesFromRef.mockResolvedValue([
+      { id: 'node-1', type: 'message', role: 'assistant', responseId: 'resp-node' }
+    ]);
+    mocks.getCommitHashForNode.mockResolvedValue('commit-1');
+
+    const res = await POST(
+      createRequest({
+        name: 'question',
+        fromRef: 'main',
+        fromNodeId: 'node-1',
+        question: 'why',
+        highlight: 'highlight',
+        switch: false
+      }),
+      { params: { id: 'project-1' } }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'question', 'commit-1', {
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: null
     });
   });
 });

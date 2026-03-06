@@ -9,7 +9,7 @@ import { APP_NAME } from '@/src/config/app';
 import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
-import { getEnabledProviders, getOpenAIUseResponses } from '@/src/server/llmConfig';
+import { getEnabledProviders } from '@/src/server/llmConfig';
 
 export const runtime = 'nodejs';
 
@@ -123,28 +123,30 @@ export async function generateMetadata({ params }: ProjectPageProps): Promise<Me
 
 export default async function ProjectWorkspace({ params }: ProjectPageProps) {
   const { project, branches, storeMode } = await loadWorkspaceData(params.id);
+  const enabledProviders = getEnabledProviders();
 
   const labelForProvider = (id: LLMProvider) => {
-    if (id === 'openai' || id === 'openai_responses') return 'OpenAI';
+    if (id === 'openai') return 'OpenAI Chat';
+    if (id === 'openai_responses') return 'OpenAI';
     if (id === 'gemini') return 'Gemini';
     if (id === 'anthropic') return 'Anthropic';
     return 'Mock';
   };
 
-  const providerOptions = getEnabledProviders().map((id) => ({
+  const providerOptions = enabledProviders.map((id) => ({
     id,
     label: labelForProvider(id),
     defaultModel: getDefaultModelForProvider(id)
   }));
+  const defaultProvider = resolveOpenAIProviderSelection();
 
   return (
     <main className="min-h-screen bg-white">
       <WorkspaceClient
         project={project}
         initialBranches={branches}
-        defaultProvider={resolveOpenAIProviderSelection()}
+        defaultProvider={defaultProvider}
         providerOptions={providerOptions}
-        openAIUseResponses={getOpenAIUseResponses()}
         storeMode={storeMode}
       />
     </main>

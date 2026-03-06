@@ -17,7 +17,7 @@ describe('buildOpenAIResponsesInput', () => {
     expect(instructions).toBe('sys');
     expect(input).toEqual([
       { role: 'user', content: [{ type: 'input_text', text: 'u1' }] },
-      { role: 'assistant', content: [{ type: 'input_text', text: 'a1' }] },
+      { role: 'assistant', content: [{ type: 'output_text', text: 'a1' }] },
       { role: 'user', content: [{ type: 'input_text', text: 'u2' }] }
     ]);
   });

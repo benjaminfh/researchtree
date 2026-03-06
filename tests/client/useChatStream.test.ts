@@ -48,7 +48,7 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream({ projectId: 'p1', onChunk, onComplete }));
 
     await act(async () => {
-      await result.current.sendMessage('Hello world');
+      await result.current.sendMessage({ message: 'Hello world', llmProvider: 'openai' });
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -56,7 +56,7 @@ describe('useChatStream', () => {
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'Hello world', llmProvider: undefined })
+        body: JSON.stringify({ message: 'Hello world', llmProvider: 'openai', ref: undefined })
       })
     );
     expect(onChunk).toHaveBeenNthCalledWith(1, { type: 'text', content: 'foo' });
@@ -66,7 +66,7 @@ describe('useChatStream', () => {
     expect(result.current.state.error).toBeNull();
   });
 
-  it('includes the provider in the chat payload when specified', async () => {
+  it('includes the provider in the chat payload when specified in send payload', async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL) => {
       if (url.toString().includes('/chat')) {
         return Promise.resolve({
@@ -79,12 +79,10 @@ describe('useChatStream', () => {
 
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const { result } = renderHook((options) => useChatStream(options), {
-      initialProps: { projectId: 'p-provider', provider: 'gemini' as const }
-    });
+    const { result } = renderHook(() => useChatStream({ projectId: 'p-provider' }));
 
     await act(async () => {
-      await result.current.sendMessage('Provider test');
+      await result.current.sendMessage({ message: 'Provider test', llmProvider: 'gemini' });
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -95,7 +93,7 @@ describe('useChatStream', () => {
     );
   });
 
-  it('includes anthropic in the chat payload when specified', async () => {
+  it('includes anthropic in the chat payload when specified in send payload', async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL) => {
       if (url.toString().includes('/chat')) {
         return Promise.resolve({
@@ -108,12 +106,10 @@ describe('useChatStream', () => {
 
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const { result } = renderHook((options) => useChatStream(options), {
-      initialProps: { projectId: 'p-provider-anthropic', provider: 'anthropic' as any }
-    });
+    const { result } = renderHook(() => useChatStream({ projectId: 'p-provider-anthropic' }));
 
     await act(async () => {
-      await result.current.sendMessage('Provider test');
+      await result.current.sendMessage({ message: 'Provider test', llmProvider: 'anthropic' as any });
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -144,13 +140,13 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream({ projectId: 'p-ref', ref: 'feature/foo' }));
 
     await act(async () => {
-      await result.current.sendMessage('Hello ref');
+      await result.current.sendMessage({ message: 'Hello ref', llmProvider: 'openai' });
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/projects/p-ref/chat',
       expect.objectContaining({
-        body: JSON.stringify({ message: 'Hello ref', llmProvider: undefined, ref: 'feature/foo' })
+        body: JSON.stringify({ message: 'Hello ref', llmProvider: 'openai', ref: 'feature/foo' })
       })
     );
 
@@ -178,7 +174,7 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream({ projectId: 'p2' }));
 
     await act(async () => {
-      await result.current.sendMessage('Hi');
+      await result.current.sendMessage({ message: 'Hi', llmProvider: 'openai' });
     });
 
     expect(result.current.state.error).toBe('Chat request failed');
@@ -200,11 +196,38 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream({ projectId: 'p4' }));
 
     await act(async () => {
-      await result.current.sendMessage('Hi');
+      await result.current.sendMessage({ message: 'Hi', llmProvider: 'openai' });
     });
 
     expect(result.current.state.error).toBe('No API key configured for openai.');
     expect(consoleSpy).toHaveBeenCalled();
+  });
+
+  it('captures API error code/details when present', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        body: null,
+        json: async () => ({
+          error: {
+            code: 'BRANCH_PROVIDER_DISABLED',
+            message: 'Branch main uses provider "openai", which is no longer available.',
+            details: { ref: 'main', action: 'create_new_branch' }
+          }
+        })
+      } as any as Response)
+    );
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useChatStream({ projectId: 'p-branch-disabled' }));
+
+    await act(async () => {
+      await result.current.sendMessage({ message: 'Hi', llmProvider: 'openai' });
+    });
+
+    expect(result.current.state.errorCode).toBe('BRANCH_PROVIDER_DISABLED');
+    expect(result.current.state.errorDetails).toEqual({ ref: 'main', action: 'create_new_branch' });
   });
 
   it('aborts the active request when interrupt is invoked', async () => {
@@ -245,7 +268,7 @@ describe('useChatStream', () => {
 
     let sendPromise: Promise<void>;
     await act(async () => {
-      sendPromise = result.current.sendMessage('Long running');
+      sendPromise = result.current.sendMessage({ message: 'Long running', llmProvider: 'openai' });
     });
 
     expect(result.current.state.isStreaming).toBe(true);
@@ -275,7 +298,7 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream({ projectId: 'p4' }));
 
     await act(async () => {
-      await result.current.sendMessage('   ');
+      await result.current.sendMessage({ message: '   ', llmProvider: 'openai' });
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -296,7 +319,7 @@ describe('useChatStream', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const { result } = renderHook(() =>
-      useChatStream({ projectId: 'p-structured', ref: 'base', provider: 'openai', thinking: 'low' })
+      useChatStream({ projectId: 'p-structured', ref: 'base', thinking: 'low' })
     );
 
     await act(async () => {

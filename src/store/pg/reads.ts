@@ -11,7 +11,7 @@ export interface PgBranchSummary {
   isTrunk: boolean;
   isPinned: boolean;
   isHidden: boolean;
-  provider?: string;
+  provider: string;
   model?: string;
   leaseHolderUserId?: string | null;
   leaseHolderSessionId?: string | null;
@@ -153,20 +153,26 @@ export async function rtListRefsShadowV2(input: { projectId: string }): Promise<
     throw new Error(error.message);
   }
   const rows = Array.isArray(data) ? data : [];
-  return rows.map((row) => ({
-    id: String(row.id),
-    name: String(row.name),
-    headCommit: String(row.head_commit ?? ''),
-    nodeCount: Number(row.node_count ?? 0),
-    isTrunk: Boolean(row.is_trunk),
-    isPinned: Boolean(row.is_pinned),
-    isHidden: Boolean(row.is_hidden),
-    provider: row.provider ? String(row.provider) : undefined,
-    model: row.model ? String(row.model) : undefined,
-    leaseHolderUserId: row.lease_holder_user_id ? String(row.lease_holder_user_id) : null,
-    leaseHolderSessionId: row.lease_holder_session_id ? String(row.lease_holder_session_id) : null,
-    leaseExpiresAt: row.lease_expires_at ? new Date(row.lease_expires_at).toISOString() : null
-  }));
+  return rows.map((row) => {
+    const provider = row.provider ? String(row.provider).trim() : '';
+    if (!provider) {
+      throw new Error(`Ref ${String(row.id)} (${String(row.name)}) is missing provider.`);
+    }
+    return {
+      id: String(row.id),
+      name: String(row.name),
+      headCommit: String(row.head_commit ?? ''),
+      nodeCount: Number(row.node_count ?? 0),
+      isTrunk: Boolean(row.is_trunk),
+      isPinned: Boolean(row.is_pinned),
+      isHidden: Boolean(row.is_hidden),
+      provider,
+      model: row.model ? String(row.model) : undefined,
+      leaseHolderUserId: row.lease_holder_user_id ? String(row.lease_holder_user_id) : null,
+      leaseHolderSessionId: row.lease_holder_session_id ? String(row.lease_holder_session_id) : null,
+      leaseExpiresAt: row.lease_expires_at ? new Date(row.lease_expires_at).toISOString() : null
+    };
+  });
 }
 
 export async function rtGetProjectMainRefUpdatesShadowV1(input: {

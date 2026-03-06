@@ -83,13 +83,16 @@ describe('/api/projects/[id]/branches', () => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
     Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
-    mocks.listBranches.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true }]);
+    mocks.listBranches.mockResolvedValue([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' }
+    ]);
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.getPreviousResponseId.mockResolvedValue('resp-123');
     mocks.readNodesFromRef.mockResolvedValue([]);
     mocks.getCommitHashForNode.mockResolvedValue('commit-hash-1');
     mocks.rtGetNodeContentShadowV1.mockResolvedValue(null);
     process.env.RT_STORE = 'git';
+    delete process.env.LLM_ENABLED_PROVIDERS;
   });
 
   it('lists branches', async () => {
@@ -126,6 +129,39 @@ describe('/api/projects/[id]/branches', () => {
     });
   });
 
+  it('falls back to default enabled provider when source provider is disabled', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,gemini';
+    mocks.listBranches.mockResolvedValueOnce([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai', model: 'gpt-5.2' }
+    ]);
+
+    const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
+
+    expect(res.status).toBe(201);
+    expect(mocks.getPreviousResponseId).not.toHaveBeenCalled();
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: null
+    });
+  });
+
+  it('falls back to provider default model when source model is invalid', async () => {
+    mocks.listBranches.mockResolvedValueOnce([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'retired-model' }
+    ]);
+
+    const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
+
+    expect(res.status).toBe(201);
+    expect(mocks.getPreviousResponseId).toHaveBeenCalledWith('project-1', { id: null, name: 'main' });
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: 'resp-123'
+    });
+  });
+
   it('clears previousResponseId when switching providers on tip branch', async () => {
     mocks.listBranches.mockResolvedValueOnce([
       { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' }
@@ -145,7 +181,7 @@ describe('/api/projects/[id]/branches', () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
     mocks.rtListRefsShadowV2.mockResolvedValue([
-      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true },
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' },
       { id: 'ref-feature', name: 'feature', headCommit: 'b', nodeCount: 0, isTrunk: false }
     ]);
     mocks.rtCreateRefFromRefShadowV2.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });
