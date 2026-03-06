@@ -61,8 +61,24 @@ const baseProject: ProjectMetadata = {
 };
 
 const baseBranches: BranchSummary[] = [
-  { name: 'main', headCommit: 'abc', nodeCount: 2, isTrunk: true, isHidden: false },
-  { name: 'feature/phase-2', headCommit: 'def', nodeCount: 2, isTrunk: false, isHidden: false }
+  {
+    name: 'main',
+    headCommit: 'abc',
+    nodeCount: 2,
+    isTrunk: true,
+    isHidden: false,
+    provider: 'openai',
+    model: 'gpt-5.2'
+  },
+  {
+    name: 'feature/phase-2',
+    headCommit: 'def',
+    nodeCount: 2,
+    isTrunk: false,
+    isHidden: false,
+    provider: 'openai',
+    model: 'gpt-5.2'
+  }
 ];
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
