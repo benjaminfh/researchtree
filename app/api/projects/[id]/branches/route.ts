@@ -90,7 +90,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           throw badRequest(`Branch ${baseRefName} is missing ref id`);
         }
 
-        const fallbackProvider = await resolveCreationProvider();
+        const fallbackProvider = await resolveCreationProvider(parsed.data.provider ?? null);
         const resolvedConfig = resolveBranchCreationConfig({
           sourceProvider: baseBranch?.provider ?? null,
           sourceModel: baseBranch?.model ?? null,
@@ -169,7 +169,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       const existingBranches = await listBranches(project.id);
       const baseRef = parsed.data.fromRef ?? (existingBranches.find((b) => b.isTrunk)?.name ?? 'main');
       const baseBranch = existingBranches.find((b) => b.name === baseRef);
-      const fallbackProvider = await resolveCreationProvider();
+      const fallbackProvider = await resolveCreationProvider(parsed.data.provider ?? null);
       const resolvedConfig = resolveBranchCreationConfig({
         sourceProvider: baseBranch?.provider ?? null,
         sourceModel: baseBranch?.model ?? null,
