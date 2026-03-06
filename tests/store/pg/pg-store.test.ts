@@ -107,6 +107,8 @@ describe('pg store RPC wrappers', () => {
           node_count: 2,
           is_trunk: true,
           is_pinned: true,
+          provider: 'openai',
+          model: 'gpt-5.2',
           lease_holder_user_id: 'u1',
           lease_holder_session_id: 's1',
           lease_expires_at: '2025-01-01T00:00:00Z'
@@ -135,8 +137,8 @@ describe('pg store RPC wrappers', () => {
         isTrunk: true,
         isPinned: true,
         isHidden: false,
-        provider: undefined,
-        model: undefined,
+        provider: 'openai',
+        model: 'gpt-5.2',
         leaseHolderUserId: 'u1',
         leaseHolderSessionId: 's1',
         leaseExpiresAt: '2025-01-01T00:00:00.000Z'
