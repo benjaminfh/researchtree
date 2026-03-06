@@ -8,7 +8,7 @@ import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectEditor } from '@/src/server/authz';
 import { buildChatContext } from '@/src/server/context';
-import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
+import { getBranchConfigMap } from '@/src/server/branchConfig';
 import { streamAssistantCompletion, type LLMProvider } from '@/src/server/llm';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
@@ -99,7 +99,14 @@ function buildMergeAckMessage(mergeNode: NodeRecord): string {
 
 async function resolveTargetConfig(projectId: string, targetBranch: string): Promise<{ provider: LLMProvider; model: string }> {
   const branchConfigMap = await getBranchConfigMap(projectId);
-  return branchConfigMap[targetBranch] ?? resolveBranchConfig();
+  const target = branchConfigMap[targetBranch];
+  if (!target) {
+    throw badRequest(
+      `Branch ${targetBranch} is missing provider configuration. Re-open the workspace or recreate the branch.`,
+      { targetBranch }
+    );
+  }
+  return target;
 }
 
 async function appendMergeAckNodes(options: {
@@ -263,6 +270,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const { sourceBranch, mergeSummary, targetBranch, sourceAssistantNodeId, leaseSessionId } = parsed.data;
     const resolvedTargetBranch = targetBranch ?? (await getPreferredBranch(params.id));
+    await resolveTargetConfig(params.id, resolvedTargetBranch);
 
     return await withProjectLockAndRefLock(params.id, resolvedTargetBranch, async () => {
       try {

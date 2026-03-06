@@ -19,7 +19,7 @@ import { getDefaultThinkingSetting, validateThinkingSetting } from '@/src/shared
 import { deriveTextFromBlocks } from '@/src/shared/thinkingTraces';
 import type { ThinkingContentBlock } from '@/src/shared/thinkingTraces';
 import { buildContentBlocksForProvider, buildTextBlock } from '@/src/server/llmContentBlocks';
-import { getBranchConfigMap, resolveBranchConfig } from '@/src/server/branchConfig';
+import { getBranchConfigMap } from '@/src/server/branchConfig';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
 import { buildUnifiedDiff } from '@/src/server/canvasDiff';
 import { toJsonValue } from '@/src/server/json';
@@ -148,7 +148,13 @@ export async function POST(request: Request, { params }: RouteContext) {
       await acquireBranchLease({ projectId: params.id, refId: targetRefId, leaseSessionId });
     }
     const branchConfigMap = await getBranchConfigMap(params.id);
-    const activeConfig = branchConfigMap[targetRefName] ?? resolveBranchConfig();
+    const activeConfig = branchConfigMap[targetRefName];
+    if (!activeConfig) {
+      throw badRequest(
+        `Branch ${targetRefName} is missing provider configuration. Re-open the workspace or recreate the branch.`,
+        { ref: targetRefName }
+      );
+    }
     const provider = activeConfig.provider;
     const modelName = activeConfig.model;
     if (llmProvider && llmProvider !== provider) {

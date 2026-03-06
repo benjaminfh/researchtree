@@ -7,8 +7,7 @@ import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectEditor } from '@/src/server/authz';
-import { resolveBranchConfig } from '@/src/server/branchConfig';
-import { resolveOpenAIProviderSelection } from '@/src/server/llm';
+import { resolveBranchCreationConfig } from '@/src/server/branchConfig';
 import type { LLMProvider } from '@/src/server/llm';
 import { POST as chatPost } from '@/app/api/projects/[id]/chat/route';
 import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
@@ -82,18 +81,14 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest(`Branch ${baseRefName} does not exist`);
           }
 
-          const baseConfig = resolveBranchConfig({
-            provider: baseBranch?.provider ?? null,
-            model: baseBranch?.model ?? null
-          });
-          const requestedProvider = provider ? resolveOpenAIProviderSelection(provider) : baseConfig.provider;
-          const resolvedConfig = resolveBranchConfig({
-            provider: requestedProvider,
-            model: model ?? (provider ? null : baseConfig.model),
-            fallback: baseConfig
+          const resolvedConfig = resolveBranchCreationConfig({
+            sourceProvider: baseBranch?.provider ?? null,
+            sourceModel: baseBranch?.model ?? null,
+            requestedProvider: provider ?? null,
+            requestedModel: model ?? null
           });
           const shouldCopyPreviousResponseId =
-            baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
+            resolvedConfig.sourceProvider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
 
           const node = (await rtGetNodeContentShadowV1({ projectId: params.id, nodeId: fromNode })) as any | null;
           if (!node) {
@@ -148,18 +143,14 @@ export async function POST(request: Request, { params }: RouteContext) {
         const existingBranches = await listBranches(project.id);
         const baseRef = fromRef ?? (existingBranches.find((b) => b.isTrunk)?.name ?? 'main');
         const baseBranch = existingBranches.find((b) => b.name === baseRef);
-        const baseConfig = resolveBranchConfig({
-          provider: baseBranch?.provider ?? null,
-          model: baseBranch?.model ?? null
-        });
-        const requestedProvider = provider ? resolveOpenAIProviderSelection(provider) : baseConfig.provider;
-        const resolvedConfig = resolveBranchConfig({
-          provider: requestedProvider,
-          model: model ?? (provider ? null : baseConfig.model),
-          fallback: baseConfig
+        const resolvedConfig = resolveBranchCreationConfig({
+          sourceProvider: baseBranch?.provider ?? null,
+          sourceModel: baseBranch?.model ?? null,
+          requestedProvider: provider ?? null,
+          requestedModel: model ?? null
         });
         const shouldCopyPreviousResponseId =
-          baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
+          resolvedConfig.sourceProvider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
 
         const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
         const sourceNodes = await readNodesFromRef(project.id, baseRef);

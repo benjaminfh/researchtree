@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   rtListRefsShadowV2: vi.fn(),
   rtAcquireRefLeaseShadowV1: vi.fn(),
   getBranchConfigMap: vi.fn(),
-  resolveBranchConfig: vi.fn(),
+  resolveBranchCreationConfig: vi.fn(),
   resolveRefByName: vi.fn(),
   resolveCurrentRef: vi.fn(),
   requireUserApiKeyForProvider: vi.fn()
@@ -70,7 +70,7 @@ vi.mock('@/src/server/providerCapabilities', () => ({
 
 vi.mock('@/src/server/branchConfig', () => ({
   getBranchConfigMap: mocks.getBranchConfigMap,
-  resolveBranchConfig: mocks.resolveBranchConfig
+  resolveBranchCreationConfig: mocks.resolveBranchCreationConfig
 }));
 
 vi.mock('@/src/store/pg/branches', () => ({
@@ -147,7 +147,7 @@ describe('/api/projects/[id]/edit', () => {
     mocks.getDefaultModelForProvider.mockReturnValue('mock');
     mocks.getProviderTokenLimit.mockResolvedValue(4000);
     mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'mock', model: 'mock' } });
-    mocks.resolveBranchConfig.mockImplementation(() => ({ provider: 'mock', model: 'mock' }));
+    mocks.resolveBranchCreationConfig.mockImplementation(() => ({ provider: 'mock', model: 'mock', sourceProvider: 'mock' }));
     mocks.streamAssistantCompletion.mockImplementation(async function* () {
       yield { type: 'text', content: 'foo' };
       yield { type: 'text', content: 'bar' };
@@ -291,9 +291,10 @@ describe('/api/projects/[id]/edit', () => {
 
   it('uses parent assistant responseId when editing a user message on openai_responses (git)', async () => {
     mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
-    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
-      provider: provider ?? fallback?.provider ?? 'openai_responses',
-      model: model ?? fallback?.model ?? 'gpt-5.2'
+    mocks.resolveBranchCreationConfig.mockImplementation(({ requestedProvider, requestedModel }: any) => ({
+      provider: requestedProvider ?? 'openai_responses',
+      model: requestedModel ?? 'gpt-5.2',
+      sourceProvider: 'openai_responses'
     }));
     mocks.readNodesFromRef.mockResolvedValueOnce([
       { id: 'node-asst', type: 'message', role: 'assistant', responseId: 'resp-parent' },
@@ -315,9 +316,10 @@ describe('/api/projects/[id]/edit', () => {
 
   it('clears previousResponseId when switching providers on edit (git)', async () => {
     mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
-    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
-      provider: provider ?? fallback?.provider ?? 'openai_responses',
-      model: model ?? fallback?.model ?? 'gpt-5.2'
+    mocks.resolveBranchCreationConfig.mockImplementation(({ requestedProvider, requestedModel }: any) => ({
+      provider: requestedProvider ?? 'openai_responses',
+      model: requestedModel ?? 'gpt-5.2',
+      sourceProvider: 'openai_responses'
     }));
     mocks.readNodesFromRef.mockResolvedValueOnce([
       { id: 'node-asst', type: 'message', role: 'assistant', responseId: 'resp-parent' },
@@ -347,9 +349,10 @@ describe('/api/projects/[id]/edit', () => {
   it('uses parent assistant responseId when editing a user message on openai_responses (pg)', async () => {
     process.env.RT_STORE = 'pg';
     mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
-    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
-      provider: provider ?? fallback?.provider ?? 'openai_responses',
-      model: model ?? fallback?.model ?? 'gpt-5.2'
+    mocks.resolveBranchCreationConfig.mockImplementation(({ requestedProvider, requestedModel }: any) => ({
+      provider: requestedProvider ?? 'openai_responses',
+      model: requestedModel ?? 'gpt-5.2',
+      sourceProvider: 'openai_responses'
     }));
     mocks.rtCreateRefFromNodeParentShadowV2.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
     mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);
@@ -393,9 +396,10 @@ describe('/api/projects/[id]/edit', () => {
   it('clears previousResponseId when switching providers on edit (pg)', async () => {
     process.env.RT_STORE = 'pg';
     mocks.getBranchConfigMap.mockResolvedValueOnce({ main: { provider: 'openai_responses', model: 'gpt-5.2' } });
-    mocks.resolveBranchConfig.mockImplementation(({ provider, model, fallback }: any) => ({
-      provider: provider ?? fallback?.provider ?? 'openai_responses',
-      model: model ?? fallback?.model ?? 'gpt-5.2'
+    mocks.resolveBranchCreationConfig.mockImplementation(({ requestedProvider, requestedModel }: any) => ({
+      provider: requestedProvider ?? 'openai_responses',
+      model: requestedModel ?? 'gpt-5.2',
+      sourceProvider: 'openai_responses'
     }));
     mocks.rtCreateRefFromNodeParentShadowV2.mockResolvedValue({ baseCommitId: 'c0', baseOrdinal: 0 });
     mocks.rtSetCurrentRefShadowV2.mockResolvedValue(undefined);

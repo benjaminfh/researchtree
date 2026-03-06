@@ -83,7 +83,9 @@ describe('/api/projects/[id]/branches', () => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
     Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
-    mocks.listBranches.mockResolvedValue([{ name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true }]);
+    mocks.listBranches.mockResolvedValue([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' }
+    ]);
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.getPreviousResponseId.mockResolvedValue('resp-123');
     mocks.readNodesFromRef.mockResolvedValue([]);
@@ -145,7 +147,7 @@ describe('/api/projects/[id]/branches', () => {
     process.env.RT_STORE = 'pg';
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-main', refName: 'main' });
     mocks.rtListRefsShadowV2.mockResolvedValue([
-      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true },
+      { id: 'ref-main', name: 'main', headCommit: 'a', nodeCount: 2, isTrunk: true, provider: 'openai_responses', model: 'gpt-5.2' },
       { id: 'ref-feature', name: 'feature', headCommit: 'b', nodeCount: 0, isTrunk: false }
     ]);
     mocks.rtCreateRefFromRefShadowV2.mockResolvedValue({ baseCommitId: 'a', baseOrdinal: 1 });

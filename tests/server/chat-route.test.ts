@@ -123,7 +123,10 @@ describe('/api/projects/[id]/chat', () => {
     mocks.releaseStream.mockImplementation(() => undefined);
     mocks.rtGetHistoryShadowV2.mockResolvedValue([]);
     mocks.rtGetCurrentRefShadowV2.mockResolvedValue({ refId: 'ref-1', refName: 'main' });
-    mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
+    mocks.getBranchConfigMap.mockResolvedValue({
+      main: { provider: 'openai', model: 'gpt-5.2' },
+      'feature/test': { provider: 'openai', model: 'gpt-5.2' }
+    });
     mocks.rtGetCanvasHashesShadowV2.mockResolvedValue({ draftHash: null, artefactHash: null });
     mocks.rtGetCanvasPairShadowV2.mockResolvedValue({
       draftContent: '',
@@ -166,6 +169,15 @@ describe('/api/projects/[id]/chat', () => {
     expect(response.status).toBe(400);
     const payload = (await response.json()) as any;
     expect(payload?.error?.message).toMatch(/locked to OpenAI/i);
+  });
+
+  it('rejects messages when the target branch has no provider configuration', async () => {
+    mocks.getBranchConfigMap.mockResolvedValue({});
+
+    const response = await POST(createRequest({ message: 'Hi there', ref: 'main' }), { params: { id: 'project-1' } });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as any;
+    expect(payload?.error?.message).toMatch(/missing provider configuration/i);
   });
 
   it('uses Postgres for user+assistant nodes when RT_STORE=pg', async () => {

@@ -7,8 +7,7 @@ import { withProjectLock } from '@/src/server/locks';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectAccess, requireProjectEditor } from '@/src/server/authz';
-import { resolveBranchConfig } from '@/src/server/branchConfig';
-import { resolveOpenAIProviderSelection } from '@/src/server/llm';
+import { resolveBranchCreationConfig } from '@/src/server/branchConfig';
 import { getPreviousResponseId } from '@/src/server/llmState';
 
 interface RouteContext {
@@ -90,20 +89,14 @@ export async function POST(request: Request, { params }: RouteContext) {
           throw badRequest(`Branch ${baseRefName} is missing ref id`);
         }
 
-        const baseConfig = resolveBranchConfig({
-          provider: baseBranch?.provider ?? null,
-          model: baseBranch?.model ?? null
-        });
-        const requestedProvider = parsed.data.provider
-          ? resolveOpenAIProviderSelection(parsed.data.provider)
-          : baseConfig.provider;
-        const resolvedConfig = resolveBranchConfig({
-          provider: requestedProvider,
-          model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
-          fallback: baseConfig
+        const resolvedConfig = resolveBranchCreationConfig({
+          sourceProvider: baseBranch?.provider ?? null,
+          sourceModel: baseBranch?.model ?? null,
+          requestedProvider: parsed.data.provider ?? null,
+          requestedModel: parsed.data.model ?? null
         });
         const shouldCopyPreviousResponseId =
-          baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
+          resolvedConfig.sourceProvider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
         const basePreviousResponseId =
           shouldCopyPreviousResponseId && baseBranch.id
             ? await getPreviousResponseId(params.id, { id: baseBranch.id, name: baseRefName }).catch(() => null)
@@ -111,7 +104,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         logResponses('branch.create.pg.base', {
           fromRef: baseRefName,
           fromNodeId,
-          baseProvider: baseConfig.provider,
+          baseProvider: resolvedConfig.sourceProvider,
           targetProvider: resolvedConfig.provider,
           shouldCopyPreviousResponseId,
           basePreviousResponseId
@@ -173,20 +166,15 @@ export async function POST(request: Request, { params }: RouteContext) {
       const existingBranches = await listBranches(project.id);
       const baseRef = parsed.data.fromRef ?? (existingBranches.find((b) => b.isTrunk)?.name ?? 'main');
       const baseBranch = existingBranches.find((b) => b.name === baseRef);
-      const baseConfig = resolveBranchConfig({
-        provider: baseBranch?.provider ?? null,
-        model: baseBranch?.model ?? null
+      const resolvedConfig = resolveBranchCreationConfig({
+        sourceProvider: baseBranch?.provider ?? null,
+        sourceModel: baseBranch?.model ?? null,
+        requestedProvider: parsed.data.provider ?? null,
+        requestedModel: parsed.data.model ?? null
       });
-      const requestedProvider = parsed.data.provider
-        ? resolveOpenAIProviderSelection(parsed.data.provider)
-        : baseConfig.provider;
-      const resolvedConfig = resolveBranchConfig({
-        provider: requestedProvider,
-        model: parsed.data.model ?? (parsed.data.provider ? null : baseConfig.model),
-        fallback: baseConfig
-      });
-        const shouldCopyPreviousResponseId = baseConfig.provider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
-        if (fromNodeId) {
+      const shouldCopyPreviousResponseId =
+        resolvedConfig.sourceProvider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
+      if (fromNodeId) {
         const { getCommitHashForNode, readNodesFromRef } = await import('@git/utils');
         const sourceNodes = await readNodesFromRef(project.id, baseRef);
         const node = sourceNodes.find((entry) => entry.id === fromNodeId);
@@ -221,7 +209,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           fromRef: baseRef,
           shouldCopyPreviousResponseId,
           basePreviousResponseId,
-          baseProvider: baseConfig.provider,
+          baseProvider: resolvedConfig.sourceProvider,
           targetProvider: resolvedConfig.provider
         });
         await createBranch(project.id, parsed.data.name, parsed.data.fromRef, {
