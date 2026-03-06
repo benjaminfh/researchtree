@@ -349,7 +349,10 @@ async function* streamFromOpenAI(
 
 export function buildOpenAIResponsesInput(messages: ChatMessage[], options?: { previousResponseId?: string | null }): {
   instructions?: string;
-  input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }>;
+  input: Array<
+    | { role: 'user'; content: Array<{ type: 'input_text'; text: string }> }
+    | { role: 'assistant'; content: Array<{ type: 'output_text'; text: string }> }
+  >;
 } {
   const instructions = messages
     .filter((message) => message.role === 'system')
@@ -358,17 +361,27 @@ export function buildOpenAIResponsesInput(messages: ChatMessage[], options?: { p
     .trim();
 
   const shouldReplayHistory = !options?.previousResponseId;
-  const input: Array<{ role: 'user' | 'assistant'; content: Array<{ type: 'input_text'; text: string }> }> = [];
+  const input: Array<
+    | { role: 'user'; content: Array<{ type: 'input_text'; text: string }> }
+    | { role: 'assistant'; content: Array<{ type: 'output_text'; text: string }> }
+  > = [];
 
   if (shouldReplayHistory) {
     for (const message of messages) {
       if (message.role !== 'user' && message.role !== 'assistant') continue;
       const text = flattenMessageContent(message.content).trim();
       if (!text) continue;
-      input.push({
-        role: message.role,
-        content: [{ type: 'input_text', text }]
-      });
+      if (message.role === 'assistant') {
+        input.push({
+          role: 'assistant',
+          content: [{ type: 'output_text', text }]
+        });
+      } else {
+        input.push({
+          role: 'user',
+          content: [{ type: 'input_text', text }]
+        });
+      }
     }
   } else {
     for (let i = messages.length - 1; i >= 0; i -= 1) {

@@ -1274,7 +1274,14 @@ export function WorkspaceClient({
   const [artefactDraft, setArtefactDraft] = useState('');
   const [isSavingArtefact, setIsSavingArtefact] = useState(false);
   const [artefactError, setArtefactError] = useState<string | null>(null);
-  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(defaultProvider);
+  const isSelectableProvider = (provider: LLMProvider | null | undefined) =>
+    Boolean(provider && providerOptions.some((option) => option.id === provider));
+  const fallbackSelectableProvider = (
+    isSelectableProvider(defaultProvider) ? defaultProvider : providerOptions[0]?.id ?? defaultProvider
+  ) as LLMProvider;
+  const resolveSelectableProvider = (provider: LLMProvider | null | undefined): LLMProvider =>
+    isSelectableProvider(provider) ? (provider as LLMProvider) : fallbackSelectableProvider;
+  const [newBranchProvider, setNewBranchProvider] = useState<LLMProvider>(fallbackSelectableProvider);
   const [newBranchThinking, setNewBranchThinking] = useState<ThinkingSetting>('medium');
   const [newBranchQuestion, setNewBranchQuestion] = useState('');
   const [newBranchHighlight, setNewBranchHighlight] = useState('');
@@ -1581,7 +1588,7 @@ export function WorkspaceClient({
         setShowNewBranchModal(false);
         resetBranchQuestionState();
         setBranchActionError(null);
-        setNewBranchProvider(branchProvider);
+        setNewBranchProvider(resolveSelectableProvider(branchProvider));
         setNewBranchThinking(thinking);
         setNewBranchName(buildQuestionBranchName(selectionText));
         setBranchSplitNodeId(node.id);
@@ -1600,6 +1607,8 @@ export function WorkspaceClient({
       setShowNewBranchModal(false);
       resetBranchQuestionState();
       setBranchActionError(null);
+      setNewBranchProvider(resolveSelectableProvider(branchProvider));
+      setNewBranchThinking(thinking);
       setNewBranchName('');
       setBranchSplitNodeId(node.id);
       setBranchModalMode('standard');
@@ -2813,9 +2822,9 @@ export function WorkspaceClient({
 
   useEffect(() => {
     if (newBranchName.trim()) return;
-    setNewBranchProvider(branchProvider);
+    setNewBranchProvider(resolveSelectableProvider(branchProvider));
     setNewBranchThinking(thinking);
-  }, [branchProvider, thinking, newBranchName]);
+  }, [branchProvider, thinking, newBranchName, providerOptions, defaultProvider]);
 
   useEffect(() => {
     setArtefactDraft(artefact);
@@ -4366,9 +4375,10 @@ export function WorkspaceClient({
     setIsCreating(true);
     setBranchActionError(null);
     try {
+      const selectedProvider = resolveSelectableProvider(newBranchProvider);
       const branchModel =
-        providerOptions.find((option) => option.id === newBranchProvider)?.defaultModel ??
-        getDefaultModelForProviderFromCapabilities(newBranchProvider);
+        providerOptions.find((option) => option.id === selectedProvider)?.defaultModel ??
+        getDefaultModelForProviderFromCapabilities(selectedProvider);
       const res = await fetch(`/api/projects/${project.id}/branches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4376,7 +4386,7 @@ export function WorkspaceClient({
           name: newBranchName.trim(),
           fromRef: branchName,
           ...(branchSplitNodeId ? { fromNodeId: branchSplitNodeId } : {}),
-          provider: newBranchProvider,
+          provider: selectedProvider,
           model: branchModel,
           switch: switchToNew
         })
@@ -5500,12 +5510,14 @@ export function WorkspaceClient({
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setBranchActionError(null);
-                            resetBranchQuestionState();
-                            if (latestPersistedVisibleNodeId) {
-                              setBranchSplitNodeId(latestPersistedVisibleNodeId);
-                            } else {
+                        onClick={() => {
+                          setBranchActionError(null);
+                          resetBranchQuestionState();
+                          setNewBranchProvider(resolveSelectableProvider(branchProvider));
+                          setNewBranchThinking(thinking);
+                          if (latestPersistedVisibleNodeId) {
+                            setBranchSplitNodeId(latestPersistedVisibleNodeId);
+                          } else {
                               setBranchSplitNodeId(null);
                             }
                             setShowNewBranchModal(true);

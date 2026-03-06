@@ -612,6 +612,30 @@ describe('WorkspaceClient', () => {
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
   });
 
+  it('falls back new-branch provider selection when active branch provider is not selectable', async () => {
+    const user = userEvent.setup();
+    const restrictedOptions = [
+      { id: 'openai_responses', label: 'OpenAI', defaultModel: 'gpt-5.2' },
+      { id: 'gemini', label: 'Gemini', defaultModel: 'gemini-3.0-pro' }
+    ] as const;
+
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai_responses"
+        providerOptions={restrictedOptions as any}
+        openAIUseResponses
+      />
+    );
+
+    await user.click(await screen.findByRole('button', { name: /^show$/i }));
+    await user.click(screen.getByRole('button', { name: 'Show branch creator' }));
+
+    const providerSelect = await screen.findByTestId('branch-provider-select');
+    expect((providerSelect as HTMLSelectElement).value).toBe('openai_responses');
+  });
+
   it('appends quote reply while collapsed and expands the composer', async () => {
     const user = userEvent.setup();
     render(<WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />);
