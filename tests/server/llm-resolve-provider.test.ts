@@ -12,6 +12,8 @@ describe('resolveLLMProvider', () => {
     delete process.env.DEPLOY_ENV;
     delete process.env.LLM_ENABLED_PROVIDERS;
     delete process.env.LLM_DEFAULT_PROVIDER;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
     delete process.env.LLM_ENABLE_OPENAI;
     delete process.env.LLM_ENABLE_GEMINI;
     delete process.env.LLM_ENABLE_ANTHROPIC;

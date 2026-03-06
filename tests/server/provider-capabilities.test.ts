@@ -31,6 +31,10 @@ describe('provider capabilities', () => {
     delete process.env.OPENAI_MODEL;
     delete process.env.LLM_ALLOWED_MODELS_OPENAI;
     delete process.env.LLM_ENABLED_PROVIDERS;
+    delete process.env.LLM_ENABLE_OPENAI;
+    delete process.env.LLM_ENABLE_GEMINI;
+    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.OPENAI_USE_RESPONSES;
     process.env.OPENAI_CHATCOMPLETIONS_MODEL = 'gpt-5.2';
     process.env.OPENAI_RESPONSES_MODEL = 'gpt-5.1';
     process.env.GEMINI_MODEL = 'gemini-3-pro-preview';
