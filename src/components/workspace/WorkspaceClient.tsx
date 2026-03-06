@@ -1624,7 +1624,7 @@ export function WorkspaceClient({
     setEditDraft(node.content);
     setEditBranchName('');
     setEditError(null);
-    setEditProvider(branchProvider);
+    setEditProvider(resolveSelectableProvider(branchProvider));
     setEditThinking(thinking);
     setSwitchToEditBranch(true);
     setShowEditModal(true);
@@ -4717,9 +4717,10 @@ export function WorkspaceClient({
       return;
     }
     setIsEditing(true);
+    const selectedEditProvider = resolveSelectableProvider(editProvider);
     const editModel =
-      providerOptions.find((option) => option.id === editProvider)?.defaultModel ??
-      getDefaultModelForProviderFromCapabilities(editProvider);
+      providerOptions.find((option) => option.id === selectedEditProvider)?.defaultModel ??
+      getDefaultModelForProviderFromCapabilities(selectedEditProvider);
     const fromRef = editingNode?.createdOnBranch ?? branchName;
     const targetBranch = editBranchName.trim();
     const content = editDraft.trim();
@@ -4739,7 +4740,7 @@ export function WorkspaceClient({
         content,
         fromRef,
         nodeId,
-        provider: editProvider,
+        provider: selectedEditProvider,
         model: editModel,
         thinkingSetting: editThinking,
         onResponse: () => {
@@ -4758,7 +4759,7 @@ export function WorkspaceClient({
       targetBranch,
       fromRef,
       content,
-      provider: editProvider,
+      provider: selectedEditProvider,
       model: editModel,
       thinkingSetting: editThinking,
       nodeId,

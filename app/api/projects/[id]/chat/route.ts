@@ -149,6 +149,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       await acquireBranchLease({ projectId: params.id, refId: targetRefId, leaseSessionId });
     }
     const branchConfigMap = await getBranchConfigMap(params.id);
+    // Intentional strictness: if a branch has no persisted provider config, force an explicit
+    // recovery path instead of silently falling back and changing provider/model behavior.
     const activeConfig = assertBranchProviderAvailable(targetRefName, branchConfigMap[targetRefName]);
     const provider = activeConfig.provider;
     const modelName = activeConfig.model;
