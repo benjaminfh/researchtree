@@ -92,6 +92,7 @@ describe('/api/projects/[id]/branches', () => {
     mocks.getCommitHashForNode.mockResolvedValue('commit-hash-1');
     mocks.rtGetNodeContentShadowV1.mockResolvedValue(null);
     process.env.RT_STORE = 'git';
+    delete process.env.LLM_ENABLED_PROVIDERS;
   });
 
   it('lists branches', async () => {
@@ -119,6 +120,39 @@ describe('/api/projects/[id]/branches', () => {
 
   it('creates branch', async () => {
     const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
+    expect(res.status).toBe(201);
+    expect(mocks.getPreviousResponseId).toHaveBeenCalledWith('project-1', { id: null, name: 'main' });
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: 'resp-123'
+    });
+  });
+
+  it('falls back to default enabled provider when source provider is disabled', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,gemini';
+    mocks.listBranches.mockResolvedValueOnce([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai', model: 'gpt-5.2' }
+    ]);
+
+    const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
+
+    expect(res.status).toBe(201);
+    expect(mocks.getPreviousResponseId).not.toHaveBeenCalled();
+    expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {
+      provider: 'openai_responses',
+      model: 'gpt-5.2',
+      previousResponseId: null
+    });
+  });
+
+  it('falls back to provider default model when source model is invalid', async () => {
+    mocks.listBranches.mockResolvedValueOnce([
+      { name: 'main', headCommit: 'a', nodeCount: 1, isTrunk: true, provider: 'openai_responses', model: 'retired-model' }
+    ]);
+
+    const res = await POST(createRequest({ name: 'feature', fromRef: 'main' }, 'POST'), { params: { id: 'project-1' } });
+
     expect(res.status).toBe(201);
     expect(mocks.getPreviousResponseId).toHaveBeenCalledWith('project-1', { id: null, name: 'main' });
     expect(mocks.createBranch).toHaveBeenCalledWith('project-1', 'feature', 'main', {

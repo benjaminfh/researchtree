@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { POST } from '@/app/api/projects/[id]/merge/route';
+import { badRequest } from '@/src/server/http';
 
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   appendNodeToRefNoCheckout: vi.fn(),
   buildChatContext: vi.fn(),
   getBranchConfigMap: vi.fn(),
+  resolveLLMProvider: vi.fn(),
   requireUserApiKeyForProvider: vi.fn(),
   streamAssistantCompletion: vi.fn(),
   getProviderTokenLimit: vi.fn()
@@ -69,7 +71,8 @@ vi.mock('@/src/server/branchConfig', () => ({
 }));
 
 vi.mock('@/src/server/llm', () => ({
-  streamAssistantCompletion: mocks.streamAssistantCompletion
+  streamAssistantCompletion: mocks.streamAssistantCompletion,
+  resolveLLMProvider: mocks.resolveLLMProvider
 }));
 
 vi.mock('@/src/server/providerCapabilities', () => ({
@@ -110,6 +113,7 @@ describe('/api/projects/[id]/merge', () => {
     mocks.getCurrentBranchName.mockResolvedValue('main');
     mocks.buildChatContext.mockResolvedValue({ systemPrompt: 'system', messages: [] });
     mocks.getBranchConfigMap.mockResolvedValue({ main: { provider: 'openai', model: 'gpt-5.2' } });
+    mocks.resolveLLMProvider.mockImplementation((provider: string) => provider as any);
     mocks.requireUserApiKeyForProvider.mockResolvedValue('key');
     mocks.getProviderTokenLimit.mockResolvedValue(8000);
     mocks.streamAssistantCompletion.mockReturnValue(
@@ -119,6 +123,7 @@ describe('/api/projects/[id]/merge', () => {
       })()
     );
     process.env.RT_STORE = 'git';
+    delete process.env.LLM_ENABLED_PROVIDERS;
   });
 
   it('merges a branch and returns merge node', async () => {
@@ -185,6 +190,19 @@ describe('/api/projects/[id]/merge', () => {
     expect(res.status).toBe(400);
     const payload = (await res.json()) as any;
     expect(payload?.error?.message).toMatch(/missing provider configuration/i);
+    expect(mocks.mergeBranch).not.toHaveBeenCalled();
+  });
+
+  it('fails fast when target branch provider is disabled', async () => {
+    mocks.resolveLLMProvider.mockImplementationOnce(() => {
+      throw badRequest('Provider "openai" is not available');
+    });
+
+    const res = await POST(createRequest({ sourceBranch: 'feature', mergeSummary: 'summary', targetBranch: 'main' }), {
+      params: { id: 'project-1' }
+    });
+
+    expect(res.status).toBe(400);
     expect(mocks.mergeBranch).not.toHaveBeenCalled();
   });
 

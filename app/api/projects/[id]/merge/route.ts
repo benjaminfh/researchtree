@@ -9,7 +9,7 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectEditor } from '@/src/server/authz';
 import { buildChatContext } from '@/src/server/context';
 import { getBranchConfigMap } from '@/src/server/branchConfig';
-import { streamAssistantCompletion, type LLMProvider } from '@/src/server/llm';
+import { resolveLLMProvider, streamAssistantCompletion, type LLMProvider } from '@/src/server/llm';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
@@ -106,7 +106,8 @@ async function resolveTargetConfig(projectId: string, targetBranch: string): Pro
       { targetBranch }
     );
   }
-  return target;
+  const provider = resolveLLMProvider(target.provider);
+  return { provider, model: target.model };
 }
 
 async function appendMergeAckNodes(options: {

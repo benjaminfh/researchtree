@@ -53,4 +53,15 @@ describe('resolveBranchConfig', () => {
       })
     ).toThrow(/not available/i);
   });
+
+  it('falls back to provider default model when source model is invalid', () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,gemini';
+    const result = resolveBranchCreationConfig({
+      sourceProvider: 'openai_responses',
+      sourceModel: 'retired-model'
+    });
+    expect(result.sourceProvider).toBe('openai_responses');
+    expect(result.provider).toBe('openai_responses');
+    expect(result.model).toBe('gpt-5.2');
+  });
 });
