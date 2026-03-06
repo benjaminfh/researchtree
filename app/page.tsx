@@ -22,12 +22,16 @@ export default async function HomePage() {
     id: provider,
     label: labelForProvider(provider)
   }));
-  const defaultProvider = resolveLLMProvider();
+  let defaultProvider = resolveLLMProvider();
 
   if (store.mode === 'pg') {
     const currentUser = await requireUser();
     const { rtListProjectsShadowV1 } = await import('@/src/store/pg/projects');
     const { rtGetProjectMainRefUpdatesShadowV1, rtListRefsShadowV2 } = await import('@/src/store/pg/reads');
+    const { rtGetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
+    const preferredProvider = await rtGetUserDefaultProviderV1();
+    defaultProvider = resolveLLMProvider(preferredProvider ?? undefined);
+
     const rows = await rtListProjectsShadowV1();
     const projectIds = rows.map((row) => row.id);
 

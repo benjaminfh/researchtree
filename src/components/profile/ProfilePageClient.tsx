@@ -4,6 +4,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 
 type ProfileResponse = {
   user: { id: string; email: string | null };
@@ -12,6 +13,7 @@ type ProfileResponse = {
     gemini: { configured: boolean };
     anthropic: { configured: boolean };
   };
+  defaultProvider: LLMProvider | null;
   systemPrompt: { mode: 'append' | 'replace'; prompt: string | null };
   updatedAt: string | null;
 };
@@ -44,6 +46,8 @@ export function ProfilePageClient({ email }: { email: string | null }) {
   const [clearAnthropic, setClearAnthropic] = useState(false);
   const [systemPromptMode, setSystemPromptMode] = useState<'append' | 'replace'>('append');
   const [systemPromptText, setSystemPromptText] = useState('');
+  const [defaultProvider, setDefaultProvider] = useState<LLMProvider | ''>('');
+  const [savingProvider, setSavingProvider] = useState(false);
   const showTokenLoading = loading && !profile;
 
   const placeholders = useMemo(() => {
@@ -61,6 +65,7 @@ export function ProfilePageClient({ email }: { email: string | null }) {
     setProfile(body);
     setSystemPromptMode(body.systemPrompt?.mode ?? 'append');
     setSystemPromptText(body.systemPrompt?.prompt ?? '');
+    setDefaultProvider(body.defaultProvider ?? '');
   };
 
   useEffect(() => {
@@ -162,6 +167,33 @@ export function ProfilePageClient({ email }: { email: string | null }) {
       setError((err as Error)?.message ?? 'Failed to save system prompt');
     } finally {
       setSavingSystemPrompt(false);
+    }
+  };
+
+  const saveDefaultProvider = async () => {
+    setSavingProvider(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultProvider: defaultProvider || null })
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || 'Failed to save default provider');
+      }
+      setNotice('Default provider saved.');
+      try {
+        await loadProfile();
+      } catch {
+        setNotice('Default provider saved. Refresh to load the latest profile state.');
+      }
+    } catch (err) {
+      setError((err as Error)?.message ?? 'Failed to save default provider');
+    } finally {
+      setSavingProvider(false);
     }
   };
 
@@ -279,6 +311,39 @@ export function ProfilePageClient({ email }: { email: string | null }) {
               className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Save tokens'}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t border-divider/70 pt-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Default Provider</div>
+          <p className="text-xs text-muted">Used for new workspaces and new branches when a provider is not explicitly selected.</p>
+          <label className="grid gap-2">
+            <span className="text-sm font-semibold text-slate-900">Provider</span>
+            <select
+              value={defaultProvider}
+              onChange={(e) => setDefaultProvider(e.target.value as LLMProvider | '')}
+              disabled={loading || savingProvider}
+              className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm disabled:opacity-60"
+            >
+              <option value="">App default</option>
+              <option value="openai">OpenAI Chat</option>
+              <option value="openai_responses">OpenAI</option>
+              <option value="gemini">Gemini</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="mock">Mock</option>
+            </select>
+          </label>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={loading || savingProvider}
+              onClick={() => {
+                void saveDefaultProvider();
+              }}
+              className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
+            >
+              {savingProvider ? 'Saving…' : 'Save default provider'}
             </button>
           </div>
         </div>

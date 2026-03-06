@@ -19,7 +19,8 @@ const updateKeysSchema = z
     // Back-compat (UI used "Key" previously).
     openaiKey: z.string().max(500).optional().nullable(),
     geminiKey: z.string().max(500).optional().nullable(),
-    anthropicKey: z.string().max(500).optional().nullable()
+    anthropicKey: z.string().max(500).optional().nullable(),
+    defaultProvider: z.enum(['openai', 'openai_responses', 'gemini', 'anthropic', 'mock']).optional().nullable()
   })
   .strict();
 
@@ -48,6 +49,7 @@ export async function GET() {
         gemini: { configured: status.hasGemini },
         anthropic: { configured: status.hasAnthropic }
       },
+      defaultProvider: status.defaultProvider,
       systemPrompt: {
         mode: status.systemPromptMode,
         prompt: status.systemPrompt
@@ -68,7 +70,7 @@ export async function PUT(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { rtSetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
+    const { rtSetUserDefaultProviderV1, rtSetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
     const openaiToken = parsed.data.openaiToken ?? parsed.data.openaiKey;
     const geminiToken = parsed.data.geminiToken ?? parsed.data.geminiKey;
     const anthropicToken = parsed.data.anthropicToken ?? parsed.data.anthropicKey;
@@ -81,6 +83,11 @@ export async function PUT(request: Request) {
     }
     if (parsed.data.anthropicToken !== undefined || parsed.data.anthropicKey !== undefined) {
       await rtSetUserLlmKeyV1({ provider: 'anthropic', secret: normalizeSecret(anthropicToken) });
+    }
+
+
+    if (parsed.data.defaultProvider !== undefined) {
+      await rtSetUserDefaultProviderV1({ provider: parsed.data.defaultProvider });
     }
 
     if (parsed.data.systemPrompt !== undefined || parsed.data.systemPromptMode !== undefined) {

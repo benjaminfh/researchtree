@@ -6,7 +6,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { WorkspaceClient } from '@/src/components/workspace/WorkspaceClient';
 import { APP_NAME } from '@/src/config/app';
-import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
+import { resolveLLMProvider, getDefaultModelForProvider, type LLMProvider } from '@/src/server/llm';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { getEnabledProviders } from '@/src/server/llmConfig';
@@ -138,7 +138,13 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
     label: labelForProvider(id),
     defaultModel: getDefaultModelForProvider(id)
   }));
-  const defaultProvider = resolveOpenAIProviderSelection();
+  let defaultProvider = resolveLLMProvider();
+
+  if (storeMode === 'pg') {
+    const { rtGetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
+    const preferredProvider = await rtGetUserDefaultProviderV1();
+    defaultProvider = resolveLLMProvider(preferredProvider ?? undefined);
+  }
 
   return (
     <main className="min-h-screen bg-white">

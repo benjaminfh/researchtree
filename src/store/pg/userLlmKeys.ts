@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Benjamin F. Hall
 // SPDX-License-Identifier: MIT
 
-import type { LLMProvider } from '@/src/server/llm';
+import { resolveLLMProvider, type LLMProvider } from '@/src/server/llm';
 import type { UserSystemPromptMode } from '@/src/server/systemPrompt';
 import { getPgStoreAdapter } from '@/src/store/pg/adapter';
 
@@ -37,6 +37,7 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
   hasOpenAI: boolean;
   hasGemini: boolean;
   hasAnthropic: boolean;
+  defaultProvider: LLMProvider | null;
   systemPrompt: string | null;
   systemPromptMode: UserSystemPromptMode;
   updatedAt: string | null;
@@ -53,6 +54,7 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
       hasOpenAI: false,
       hasGemini: false,
       hasAnthropic: false,
+      defaultProvider: null,
       systemPrompt: null,
       systemPromptMode: 'append',
       updatedAt: null
@@ -63,10 +65,34 @@ export async function rtGetUserLlmKeyStatusV1(): Promise<{
     hasOpenAI: Boolean((row as any).has_openai),
     hasGemini: Boolean((row as any).has_gemini),
     hasAnthropic: Boolean((row as any).has_anthropic),
+    defaultProvider: (row as any).default_provider ? resolveLLMProvider(String((row as any).default_provider) as LLMProvider) : null,
     systemPrompt: (row as any).system_prompt ? String((row as any).system_prompt) : null,
     systemPromptMode: (row as any).system_prompt_mode === 'replace' ? 'replace' : 'append',
     updatedAt: (row as any).updated_at ? String((row as any).updated_at) : null
   };
+}
+
+export async function rtGetUserDefaultProviderV1(): Promise<LLMProvider | null> {
+  const { rpc } = getPgStoreAdapter();
+  const { data, error } = await rpc('rt_get_user_default_provider_v1');
+  if (error) {
+    throw new Error(formatRpcError(error));
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const value = (row as any)?.provider;
+  if (!value) return null;
+  return resolveLLMProvider(String(value) as LLMProvider);
+}
+
+export async function rtSetUserDefaultProviderV1(input: { provider: LLMProvider | null }): Promise<void> {
+  const { rpc } = getPgStoreAdapter();
+  const { error } = await rpc('rt_set_user_default_provider_v1', {
+    p_provider: input.provider
+  });
+  if (error) {
+    throw new Error(formatRpcError(error));
+  }
 }
 
 export async function rtSetUserLlmKeyV1(input: { provider: KeyedProvider; secret: string | null }): Promise<void> {
