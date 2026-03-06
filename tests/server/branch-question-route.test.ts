@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/projects/[id]/branch-question/route';
 
 const mocks = vi.hoisted(() => ({
+  rtGetUserLlmKeyStatusV1: vi.fn(),
   rtGetCurrentRefShadowV2: vi.fn(),
   rtSetCurrentRefShadowV2: vi.fn(),
   rtCreateRefFromNodeShadowV2: vi.fn(),
@@ -81,6 +82,21 @@ function createRequest(body: Record<string, unknown>) {
 describe('/api/projects/[id]/branch-question', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    delete process.env.LLM_ENABLE_OPENAI;
+    delete process.env.LLM_ENABLE_GEMINI;
+    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.OPENAI_USE_RESPONSES;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
+    mocks.rtGetUserLlmKeyStatusV1.mockResolvedValue({
+      hasOpenAI: false,
+      hasGemini: false,
+      hasAnthropic: false,
+      defaultProvider: null,
+      systemPrompt: null,
+      systemPromptMode: 'append',
+      updatedAt: null
+    });
     Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.chatPost.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
@@ -245,3 +261,8 @@ describe('/api/projects/[id]/branch-question', () => {
     });
   });
 });
+
+
+vi.mock('@/src/store/pg/userLlmKeys', () => ({
+  rtGetUserLlmKeyStatusV1: mocks.rtGetUserLlmKeyStatusV1
+}));

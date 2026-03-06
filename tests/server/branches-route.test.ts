@@ -18,7 +18,8 @@ const mocks = vi.hoisted(() => ({
   rtCreateRefFromRefShadowV2: vi.fn(),
   rtCreateRefFromNodeShadowV2: vi.fn(),
   getPreviousResponseId: vi.fn(),
-  rtGetNodeContentShadowV1: vi.fn()
+  rtGetNodeContentShadowV1: vi.fn(),
+  rtGetUserLlmKeyStatusV1: vi.fn()
 }));
 const authzMocks = vi.hoisted(() => ({
   requireProjectAccess: vi.fn(),
@@ -63,6 +64,10 @@ vi.mock('@/src/server/llmState', () => ({
   getPreviousResponseId: mocks.getPreviousResponseId
 }));
 
+vi.mock('@/src/store/pg/userLlmKeys', () => ({
+  rtGetUserLlmKeyStatusV1: mocks.rtGetUserLlmKeyStatusV1
+}));
+
 vi.mock('@/src/server/authz', () => ({
   requireProjectAccess: authzMocks.requireProjectAccess,
   requireProjectEditor: authzMocks.requireProjectEditor
@@ -81,6 +86,13 @@ function createRequest(body: unknown, method: 'POST' | 'PATCH') {
 describe('/api/projects/[id]/branches', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+
+    delete process.env.LLM_ENABLE_OPENAI;
+    delete process.env.LLM_ENABLE_GEMINI;
+    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.OPENAI_USE_RESPONSES;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
     Object.values(authzMocks).forEach((mock) => mock.mockReset());
     mocks.getProject.mockResolvedValue({ id: 'project-1' });
     mocks.listBranches.mockResolvedValue([
@@ -91,6 +103,15 @@ describe('/api/projects/[id]/branches', () => {
     mocks.readNodesFromRef.mockResolvedValue([]);
     mocks.getCommitHashForNode.mockResolvedValue('commit-hash-1');
     mocks.rtGetNodeContentShadowV1.mockResolvedValue(null);
+    mocks.rtGetUserLlmKeyStatusV1.mockResolvedValue({
+      hasOpenAI: false,
+      hasGemini: false,
+      hasAnthropic: false,
+      defaultProvider: null,
+      systemPrompt: null,
+      systemPromptMode: 'append',
+      updatedAt: null
+    });
     process.env.RT_STORE = 'git';
     delete process.env.LLM_ENABLED_PROVIDERS;
   });

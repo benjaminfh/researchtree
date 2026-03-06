@@ -4,6 +4,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { LLMProvider } from '@/src/shared/llmProvider';
 
 type ProfileResponse = {
   user: { id: string; email: string | null };
@@ -12,6 +13,8 @@ type ProfileResponse = {
     gemini: { configured: boolean };
     anthropic: { configured: boolean };
   };
+  defaultProvider: LLMProvider | null;
+  providerOptions: Array<{ id: LLMProvider; label: string }> ;
   systemPrompt: { mode: 'append' | 'replace'; prompt: string | null };
   updatedAt: string | null;
 };
@@ -23,6 +26,7 @@ export function ProfilePageClient({ email }: { email: string | null }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingSystemPrompt, setSavingSystemPrompt] = useState(false);
+  const [savingDefaultProvider, setSavingDefaultProvider] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isDesktopEnv, setIsDesktopEnv] = useState(() => {
@@ -43,6 +47,7 @@ export function ProfilePageClient({ email }: { email: string | null }) {
   const [clearGemini, setClearGemini] = useState(false);
   const [clearAnthropic, setClearAnthropic] = useState(false);
   const [systemPromptMode, setSystemPromptMode] = useState<'append' | 'replace'>('append');
+  const [defaultProvider, setDefaultProvider] = useState<LLMProvider | 'app_default'>('app_default');
   const [systemPromptText, setSystemPromptText] = useState('');
   const showTokenLoading = loading && !profile;
 
@@ -61,6 +66,7 @@ export function ProfilePageClient({ email }: { email: string | null }) {
     setProfile(body);
     setSystemPromptMode(body.systemPrompt?.mode ?? 'append');
     setSystemPromptText(body.systemPrompt?.prompt ?? '');
+    setDefaultProvider(body.defaultProvider ?? 'app_default');
   };
 
   useEffect(() => {
@@ -131,6 +137,32 @@ export function ProfilePageClient({ email }: { email: string | null }) {
       setError((err as Error)?.message ?? 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+
+  const saveDefaultProvider = async () => {
+    setSavingDefaultProvider(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          defaultProvider: defaultProvider === 'app_default' ? null : defaultProvider
+        })
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || 'Failed to save provider preference');
+      }
+      setNotice('Default provider preference saved.');
+      await loadProfile();
+    } catch (err) {
+      setError((err as Error)?.message ?? 'Failed to save provider preference');
+    } finally {
+      setSavingDefaultProvider(false);
     }
   };
 
@@ -279,6 +311,41 @@ export function ProfilePageClient({ email }: { email: string | null }) {
               className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Save tokens'}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t border-divider/70 pt-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Default LLM Provider</div>
+          <p className="text-xs text-muted">Applies only when creating a new workspace/branch without an explicit provider.</p>
+
+          <label className="grid gap-2">
+            <span className="text-sm font-semibold text-slate-900">Provider preference</span>
+            <select
+              value={defaultProvider}
+              disabled={loading || savingDefaultProvider}
+              onChange={(event) => setDefaultProvider(event.target.value as LLMProvider | 'app_default')}
+              className="focus-ring h-11 w-full rounded-xl border border-divider/70 bg-white px-4 text-sm text-slate-900 shadow-sm disabled:opacity-60"
+            >
+              <option value="app_default">App default</option>
+              {(profile?.providerOptions ?? []).map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={loading || savingDefaultProvider}
+              onClick={() => {
+                void saveDefaultProvider();
+              }}
+              className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:opacity-60"
+            >
+              {savingDefaultProvider ? 'Saving…' : 'Save default provider'}
             </button>
           </div>
         </div>
