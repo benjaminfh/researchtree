@@ -128,7 +128,12 @@ describe('WorkspaceClient', () => {
   let sendMessageMock: ReturnType<typeof vi.fn>;
   let sendStreamRequestMock: ReturnType<typeof vi.fn>;
   let interruptMock: ReturnType<typeof vi.fn>;
-  let chatState: { isStreaming: boolean; error: string | null };
+  let chatState: {
+    isStreaming: boolean;
+    error: string | null;
+    errorCode?: string | null;
+    errorDetails?: Record<string, unknown> | null;
+  };
   let capturedChatOptions: Parameters<typeof useChatStream>[0] | null;
   let fetchMock: FetchMock;
 
@@ -138,7 +143,7 @@ describe('WorkspaceClient', () => {
     sendMessageMock = vi.fn().mockResolvedValue(undefined);
     sendStreamRequestMock = vi.fn().mockResolvedValue(undefined);
     interruptMock = vi.fn().mockResolvedValue(undefined);
-    chatState = { isStreaming: false, error: null };
+    chatState = { isStreaming: false, error: null, errorCode: null, errorDetails: null };
     capturedChatOptions = null;
     capturedWorkspaceGraphProps = null;
     window.sessionStorage.clear();
@@ -586,6 +591,24 @@ describe('WorkspaceClient', () => {
     rerender(
       <WorkspaceClient project={baseProject} initialBranches={baseBranches} defaultProvider="openai" providerOptions={providerOptions} openAIUseResponses={false} />
     );
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+
+  it('disables send when branch provider is disabled', async () => {
+    chatState.error = 'Branch feature/phase-2 uses provider "openai", which is no longer available.';
+    chatState.errorCode = 'BRANCH_PROVIDER_DISABLED';
+    chatState.errorDetails = { ref: 'feature/phase-2', action: 'create_new_branch' };
+
+    render(
+      <WorkspaceClient
+        project={baseProject}
+        initialBranches={baseBranches}
+        defaultProvider="openai"
+        providerOptions={providerOptions}
+        openAIUseResponses={false}
+      />
+    );
+
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
   });
 

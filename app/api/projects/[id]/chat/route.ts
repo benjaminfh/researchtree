@@ -24,6 +24,7 @@ import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmSt
 import { buildUnifiedDiff } from '@/src/server/canvasDiff';
 import { toJsonValue } from '@/src/server/json';
 import { acquireBranchLease } from '@/src/server/leases';
+import { assertBranchProviderAvailable } from '@/src/server/branchProviderAvailability';
 
 interface RouteContext {
   params: { id: string };
@@ -148,13 +149,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       await acquireBranchLease({ projectId: params.id, refId: targetRefId, leaseSessionId });
     }
     const branchConfigMap = await getBranchConfigMap(params.id);
-    const activeConfig = branchConfigMap[targetRefName];
-    if (!activeConfig) {
-      throw badRequest(
-        `Branch ${targetRefName} is missing provider configuration. Re-open the workspace or recreate the branch.`,
-        { ref: targetRefName }
-      );
-    }
+    const activeConfig = assertBranchProviderAvailable(targetRefName, branchConfigMap[targetRefName]);
     const provider = activeConfig.provider;
     const modelName = activeConfig.model;
     if (llmProvider && llmProvider !== provider) {

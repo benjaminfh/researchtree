@@ -2345,15 +2345,19 @@ export function WorkspaceClient({
       : isBranchWriteLocked
         ? 'Editing locked. Editor access required.'
         : null;
+  const branchProviderDisabled =
+    state.errorCode === 'BRANCH_PROVIDER_DISABLED' &&
+    (typeof state.errorDetails?.ref !== 'string' || state.errorDetails.ref === branchName);
   const chatErrorMessage = chatComposerError ?? state.error ?? thinkingUnsupportedError ?? leaseStatusError ?? null;
   const composerInputDisabled = isBranchWriteLocked || (isPgMode && !leaseSessionReady);
-  const composerActionDisabled = composerInputDisabled || state.isStreaming;
+  const composerActionDisabled = composerInputDisabled || state.isStreaming || branchProviderDisabled;
   const canvasDisabled = isPgMode && (!leaseSessionReady || isBranchWriteLocked);
   const webSearchAvailable = branchProvider !== 'mock';
   const showOpenAISearchNote = webSearchEnabled && branchProvider === 'openai';
 
   const sendDraft = useCallback(async (draft: string): Promise<boolean> => {
     if (!draft.trim() || state.isStreaming) return false;
+    if (branchProviderDisabled) return false;
     setChatComposerError(null);
     if (!activeBranchProvider) {
       setChatComposerError('Branch provider is unavailable. Wait for branch config to load and try again.');
@@ -2389,7 +2393,8 @@ export function WorkspaceClient({
     pushToast,
     branchName,
     nodes,
-    sendMessage
+    sendMessage,
+    branchProviderDisabled
   ]);
 
   const sendQuestionWithStream = async ({

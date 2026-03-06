@@ -189,13 +189,18 @@ describe('/api/projects/[id]/merge', () => {
 
     expect(res.status).toBe(400);
     const payload = (await res.json()) as any;
+    expect(payload?.error?.code).toBe('BRANCH_PROVIDER_MISSING');
+    expect(payload?.error?.details).toMatchObject({ ref: 'main', action: 'create_new_branch' });
     expect(payload?.error?.message).toMatch(/missing provider configuration/i);
     expect(mocks.mergeBranch).not.toHaveBeenCalled();
   });
 
   it('fails fast when target branch provider is disabled', async () => {
     mocks.resolveLLMProvider.mockImplementationOnce(() => {
-      throw badRequest('Provider "openai" is not available');
+      throw badRequest('Provider "openai" is not available', {
+        requestedProvider: 'openai',
+        enabledProviders: ['openai_responses', 'gemini']
+      });
     });
 
     const res = await POST(createRequest({ sourceBranch: 'feature', mergeSummary: 'summary', targetBranch: 'main' }), {
@@ -203,6 +208,14 @@ describe('/api/projects/[id]/merge', () => {
     });
 
     expect(res.status).toBe(400);
+    const payload = (await res.json()) as any;
+    expect(payload?.error?.code).toBe('BRANCH_PROVIDER_DISABLED');
+    expect(payload?.error?.details).toMatchObject({
+      ref: 'main',
+      provider: 'openai',
+      enabledProviders: ['openai_responses', 'gemini'],
+      action: 'create_new_branch'
+    });
     expect(mocks.mergeBranch).not.toHaveBeenCalled();
   });
 

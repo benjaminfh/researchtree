@@ -203,6 +203,33 @@ describe('useChatStream', () => {
     expect(consoleSpy).toHaveBeenCalled();
   });
 
+  it('captures API error code/details when present', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        body: null,
+        json: async () => ({
+          error: {
+            code: 'BRANCH_PROVIDER_DISABLED',
+            message: 'Branch main uses provider "openai", which is no longer available.',
+            details: { ref: 'main', action: 'create_new_branch' }
+          }
+        })
+      } as any as Response)
+    );
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useChatStream({ projectId: 'p-branch-disabled' }));
+
+    await act(async () => {
+      await result.current.sendMessage({ message: 'Hi', llmProvider: 'openai' });
+    });
+
+    expect(result.current.state.errorCode).toBe('BRANCH_PROVIDER_DISABLED');
+    expect(result.current.state.errorDetails).toEqual({ ref: 'main', action: 'create_new_branch' });
+  });
+
   it('aborts the active request when interrupt is invoked', async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
       if (url.toString().includes('/chat')) {

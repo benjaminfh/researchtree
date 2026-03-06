@@ -9,7 +9,7 @@ import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireProjectEditor } from '@/src/server/authz';
 import { buildChatContext } from '@/src/server/context';
 import { getBranchConfigMap } from '@/src/server/branchConfig';
-import { resolveLLMProvider, streamAssistantCompletion, type LLMProvider } from '@/src/server/llm';
+import { streamAssistantCompletion, type LLMProvider } from '@/src/server/llm';
 import { getProviderTokenLimit } from '@/src/server/providerCapabilities';
 import { requireUserApiKeyForProvider } from '@/src/server/llmUserKeys';
 import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmState';
@@ -20,6 +20,7 @@ import type { NodeRecord } from '@git/types';
 import { INITIAL_BRANCH } from '@git/constants';
 import { v4 as uuidv4 } from 'uuid';
 import { acquireBranchLease } from '@/src/server/leases';
+import { assertBranchProviderAvailable } from '@/src/server/branchProviderAvailability';
 
 interface RouteContext {
   params: { id: string };
@@ -99,14 +100,8 @@ function buildMergeAckMessage(mergeNode: NodeRecord): string {
 
 async function resolveTargetConfig(projectId: string, targetBranch: string): Promise<{ provider: LLMProvider; model: string }> {
   const branchConfigMap = await getBranchConfigMap(projectId);
-  const target = branchConfigMap[targetBranch];
-  if (!target) {
-    throw badRequest(
-      `Branch ${targetBranch} is missing provider configuration. Re-open the workspace or recreate the branch.`,
-      { targetBranch }
-    );
-  }
-  const provider = resolveLLMProvider(target.provider);
+  const target = assertBranchProviderAvailable(targetBranch, branchConfigMap[targetBranch]);
+  const provider = target.provider;
   return { provider, model: target.model };
 }
 

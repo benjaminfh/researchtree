@@ -9,6 +9,8 @@ import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
 export interface ChatStreamState {
   isStreaming: boolean;
   error: string | null;
+  errorCode?: string | null;
+  errorDetails?: Record<string, unknown> | null;
 }
 
 export interface ChatStreamChunk {
@@ -57,7 +59,12 @@ export function useChatStream({
   onChunk,
   onComplete
 }: UseChatStreamOptions) {
-  const [state, setState] = useState<ChatStreamState>({ isStreaming: false, error: null });
+  const [state, setState] = useState<ChatStreamState>({
+    isStreaming: false,
+    error: null,
+    errorCode: null,
+    errorDetails: null
+  });
   const activeRequest = useRef<AbortController | null>(null);
   const activeRequestId = useRef<string | null>(null);
   const streamDebugStateRef = useRef({
@@ -81,7 +88,7 @@ export function useChatStream({
           url
         });
       }
-      setState({ isStreaming: true, error: null });
+      setState({ isStreaming: true, error: null, errorCode: null, errorDetails: null });
       activeRequest.current = new AbortController();
       activeRequestId.current = null;
       try {
@@ -96,17 +103,31 @@ export function useChatStream({
 
         if (!response.ok || !response.body) {
           let message = 'Chat request failed';
+          let errorCode: string | null = null;
+          let errorDetails: Record<string, unknown> | null = null;
           try {
             const data = (await response.json()) as any;
             const candidate = data?.error?.message;
             if (typeof candidate === 'string' && candidate.trim()) {
               message = candidate.trim();
             }
+            if (typeof data?.error?.code === 'string' && data.error.code.trim()) {
+              errorCode = data.error.code.trim();
+            }
+            if (data?.error?.details && typeof data.error.details === 'object') {
+              errorDetails = data.error.details as Record<string, unknown>;
+            }
           } catch {
             // ignore
           }
           const reqId = activeRequestId.current;
-          throw new Error(reqId ? `${message} (requestId=${reqId})` : message);
+          const error = new Error(reqId ? `${message} (requestId=${reqId})` : message) as Error & {
+            chatErrorCode?: string | null;
+            chatErrorDetails?: Record<string, unknown> | null;
+          };
+          error.chatErrorCode = errorCode;
+          error.chatErrorDetails = errorDetails;
+          throw error;
         }
 
         onResponse?.(response);
@@ -116,7 +137,7 @@ export function useChatStream({
           defaultErrorMessage: 'Chat request failed',
           onError: (message) => {
             streamErrorMessage = message;
-            setState({ isStreaming: false, error: message });
+            setState({ isStreaming: false, error: message, errorCode: null, errorDetails: null });
           },
           onFrame: (parsed) => {
             if (!parsed || typeof parsed.content !== 'string' || parsed.type === 'error') {
@@ -158,15 +179,21 @@ export function useChatStream({
             totalChars: streamDebugStateRef.current.totalChars
           });
         }
-        setState({ isStreaming: false, error: null });
+        setState({ isStreaming: false, error: null, errorCode: null, errorDetails: null });
       } catch (error) {
         if ((error as DOMException).name === 'AbortError') {
-          setState({ isStreaming: false, error: null });
+          setState({ isStreaming: false, error: null, errorCode: null, errorDetails: null });
         } else {
           const reqId = activeRequestId.current;
           console.error('[useChatStream] error', error);
           const base = (error as Error)?.message ?? 'Unable to send message';
-          setState({ isStreaming: false, error: reqId && !base.includes(`requestId=${reqId}`) ? `${base} (requestId=${reqId})` : base });
+          const withRequestId = reqId && !base.includes(`requestId=${reqId}`) ? `${base} (requestId=${reqId})` : base;
+          setState({
+            isStreaming: false,
+            error: withRequestId,
+            errorCode: ((error as any)?.chatErrorCode as string | null | undefined) ?? null,
+            errorDetails: ((error as any)?.chatErrorDetails as Record<string, unknown> | null | undefined) ?? null
+          });
         }
       } finally {
         activeRequest.current = null;
@@ -185,7 +212,12 @@ export function useChatStream({
         return;
       }
       if (!normalized.llmProvider) {
-        setState({ isStreaming: false, error: 'Provider is required to send chat.' });
+        setState({
+          isStreaming: false,
+          error: 'Provider is required to send chat.',
+          errorCode: null,
+          errorDetails: null
+        });
         return;
       }
       if (streamDebugEnabled) {
