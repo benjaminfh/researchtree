@@ -83,7 +83,8 @@ export function resolveBranchCreationConfig(input?: {
     const provider = resolveOpenAIProviderSelection(requestedProviderRaw as LLMProvider);
     const config = resolveBranchConfig({
       provider,
-      model: requestedModel
+      model: requestedModel,
+      fallback: sourceConfig ?? undefined
     });
     return {
       provider: config.provider,
@@ -94,7 +95,8 @@ export function resolveBranchCreationConfig(input?: {
 
   const config = resolveBranchConfig({
     provider: fallbackProvider,
-    model: requestedModel
+    model: requestedModel,
+    fallback: sourceConfig ?? undefined
   });
   return {
     provider: config.provider,
