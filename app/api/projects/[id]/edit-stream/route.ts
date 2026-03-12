@@ -72,7 +72,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const sourceRef = explicitFromRef ?? currentBranch.name;
     const branchConfigMap = await getBranchConfigMap(params.id);
     const sourceConfig = branchConfigMap[sourceRef];
-    const fallbackProvider = await resolveCreationProvider();
+    const fallbackProvider = await resolveCreationProvider(llmProvider ?? null);
     const requestedConfig = resolveBranchCreationConfig({
       sourceProvider: sourceConfig?.provider ?? null,
       sourceModel: sourceConfig?.model ?? null,

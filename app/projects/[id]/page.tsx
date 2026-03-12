@@ -10,6 +10,7 @@ import { resolveOpenAIProviderSelection, getDefaultModelForProvider, type LLMPro
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { requireUser } from '@/src/server/auth';
 import { getEnabledProviders } from '@/src/server/llmConfig';
+import { resolveCreationProvider } from '@/src/server/profileDefaultProvider';
 
 export const runtime = 'nodejs';
 
@@ -138,7 +139,7 @@ export default async function ProjectWorkspace({ params }: ProjectPageProps) {
     label: labelForProvider(id),
     defaultModel: getDefaultModelForProvider(id)
   }));
-  const defaultProvider = resolveOpenAIProviderSelection();
+  const defaultProvider = storeMode === 'pg' ? await resolveCreationProvider() : resolveOpenAIProviderSelection();
 
   return (
     <main className="min-h-screen bg-white">

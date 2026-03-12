@@ -82,7 +82,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest(`Branch ${baseRefName} does not exist`);
           }
 
-          const fallbackProvider = await resolveCreationProvider();
+          const fallbackProvider = await resolveCreationProvider(provider ?? null);
           const resolvedConfig = resolveBranchCreationConfig({
             sourceProvider: baseBranch?.provider ?? null,
             sourceModel: baseBranch?.model ?? null,
@@ -146,7 +146,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         const existingBranches = await listBranches(project.id);
         const baseRef = fromRef ?? (existingBranches.find((b) => b.isTrunk)?.name ?? 'main');
         const baseBranch = existingBranches.find((b) => b.name === baseRef);
-        const fallbackProvider = await resolveCreationProvider();
+        const fallbackProvider = await resolveCreationProvider(provider ?? null);
         const resolvedConfig = resolveBranchCreationConfig({
           sourceProvider: baseBranch?.provider ?? null,
           sourceModel: baseBranch?.model ?? null,
