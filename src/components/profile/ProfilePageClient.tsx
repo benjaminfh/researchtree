@@ -14,6 +14,7 @@ type ProfileResponse = {
     anthropic: { configured: boolean };
   };
   defaultProvider: LLMProvider | null;
+  defaultProviderResetToAppDefault?: boolean;
   providerOptions: Array<{ id: LLMProvider; label: string }> ;
   systemPrompt: { mode: 'append' | 'replace'; prompt: string | null };
   updatedAt: string | null;
@@ -67,6 +68,9 @@ export function ProfilePageClient({ email }: { email: string | null }) {
     setSystemPromptMode(body.systemPrompt?.mode ?? 'append');
     setSystemPromptText(body.systemPrompt?.prompt ?? '');
     setDefaultProvider(body.defaultProvider ?? 'app_default');
+    if (body.defaultProviderResetToAppDefault) {
+      setNotice('Your saved default provider is no longer available. We reset it to App default.');
+    }
   };
 
   useEffect(() => {

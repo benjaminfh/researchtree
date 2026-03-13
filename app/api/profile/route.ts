@@ -52,6 +52,13 @@ export async function GET() {
     }
 
     const enabledProviders = getEnabledProviders();
+    const hasDisabledDefaultProvider =
+      status.defaultProvider != null && !enabledProviders.includes(status.defaultProvider);
+
+    if (hasDisabledDefaultProvider) {
+      const { rtSetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
+      await rtSetUserDefaultProviderV1({ provider: null });
+    }
 
     return Response.json({
       user: { id: user.id, email: user.email ?? null },
@@ -60,7 +67,8 @@ export async function GET() {
         gemini: { configured: status.hasGemini },
         anthropic: { configured: status.hasAnthropic }
       },
-      defaultProvider: status.defaultProvider ?? null,
+      defaultProvider: hasDisabledDefaultProvider ? null : status.defaultProvider ?? null,
+      defaultProviderResetToAppDefault: hasDisabledDefaultProvider,
       providerOptions: enabledProviders.map((provider) => ({ id: provider, label: toProviderLabel(provider) })),
       systemPrompt: {
         mode: status.systemPromptMode,
