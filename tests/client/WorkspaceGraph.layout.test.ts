@@ -133,6 +133,15 @@ describe('label placement helpers', () => {
     expect(placement.globalRowBound).toBe(2);
   });
 
+  it('uses routed max lane bounds when provided by layout spans', () => {
+    const placement = computeRowLabelPlacement([0, 0, 0], [
+      { fromRow: 0, toRow: 2, fromLane: 0, toLane: 1, maxLane: 3 }
+    ]);
+
+    expect(placement.rowBoundByIndex).toEqual([3, 3, 3]);
+    expect(placement.globalRowBound).toBe(3);
+  });
+
   it('translates labels differently for hug and left-aligned modes', () => {
     const lane = 0;
     const rowBound = 1;

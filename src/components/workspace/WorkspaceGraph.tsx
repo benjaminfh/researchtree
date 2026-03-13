@@ -982,6 +982,7 @@ interface EdgeLaneSpan {
   toRow: number;
   fromLane: number;
   toLane: number;
+  maxLane?: number;
 }
 
 export function computeRowLabelPlacement(lanesByRow: number[], edgeLaneSpans: EdgeLaneSpan[]): RowLabelPlacement {
@@ -990,7 +991,7 @@ export function computeRowLabelPlacement(lanesByRow: number[], edgeLaneSpans: Ed
   for (const span of edgeLaneSpans) {
     const start = Math.max(0, Math.min(span.fromRow, span.toRow));
     const end = Math.min(lanesByRow.length - 1, Math.max(span.fromRow, span.toRow));
-    const edgeBound = Math.max(span.fromLane, span.toLane);
+    const edgeBound = Math.max(span.maxLane ?? Number.NEGATIVE_INFINITY, span.fromLane, span.toLane);
     for (let rowIndex = start; rowIndex <= end; rowIndex++) {
       rowBoundByIndex[rowIndex] = Math.max(rowBoundByIndex[rowIndex] ?? 0, edgeBound);
     }
@@ -1164,6 +1165,10 @@ export function layoutGraph(
     const newIndex = totalRows - 1 - oldIndex;
     return vertices[newIndex].getLane();
   });
+  const maxReservedLanes = graphNodesOldestFirst.map((_, oldIndex) => {
+    const newIndex = totalRows - 1 - oldIndex;
+    return vertices[newIndex].getMaxReservedX();
+  });
   const edgeLaneSpans: EdgeLaneSpan[] = [];
   graphNodesOldestFirst.forEach((node) => {
     const childOld = idToOldIndex.get(node.id);
@@ -1176,11 +1181,12 @@ export function layoutGraph(
         fromRow: parentOld,
         toRow: childOld,
         fromLane: lanes[parentOld],
-        toLane: childLane
+        toLane: childLane,
+        maxLane: Math.max(maxReservedLanes[parentOld] ?? 0, maxReservedLanes[childOld] ?? 0)
       });
     });
   });
-  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLaneSpans);
+  const rowLabelPlacement = computeRowLabelPlacement(maxReservedLanes, edgeLaneSpans);
   const alignment = features.graphLabelAlignment;
 
   const flowNodes: Node<DotNodeData>[] = graphNodesOldestFirst.map((node, oldIndex) => {
