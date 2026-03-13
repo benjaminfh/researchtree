@@ -970,6 +970,37 @@ interface LayoutOptions {
   maxIterations?: number;
 }
 
+type LabelAlignmentMode = 'hug' | 'left-aligned';
+
+interface RowLabelPlacement {
+  rowBoundByIndex: number[];
+  globalRowBound: number;
+}
+
+export function computeRowLabelPlacement(lanesByRow: number[], edgeLanePairsByRow: Array<Array<[number, number]>>): RowLabelPlacement {
+  const rowBoundByIndex = lanesByRow.map((lane, rowIndex) => {
+    const edgePairs = edgeLanePairsByRow[rowIndex] ?? [];
+    let bound = lane;
+    for (const [a, b] of edgePairs) {
+      bound = Math.max(bound, a, b);
+    }
+    return bound;
+  });
+  const globalRowBound = rowBoundByIndex.reduce((max, bound) => Math.max(max, bound), 0);
+  return { rowBoundByIndex, globalRowBound };
+}
+
+export function computeLabelTranslateX(
+  lane: number,
+  rowBound: number,
+  globalRowBound: number,
+  alignment: LabelAlignmentMode
+): number {
+  const targetBound = alignment === 'left-aligned' ? globalRowBound : rowBound;
+  const raw = lane === targetBound ? 0 : (targetBound - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET;
+  return Math.max(0, raw);
+}
+
 function buildSimpleLayout(
   graphNodes: GraphNode[],
   branchName: string,
@@ -991,7 +1022,20 @@ function buildSimpleLayout(
   const idToIndex = new Map(graphNodes.map((node, idx) => [node.id, idx]));
 
   const lanes = graphNodes.map((node) => laneFor(node.laneBranchId));
-  const maxLane = lanes.reduce((max, lane) => Math.max(max, lane), 0);
+  const edgeLanePairsByRow: Array<Array<[number, number]>> = Array.from({ length: graphNodes.length }, () => []);
+
+  graphNodes.forEach((node, rowIndex) => {
+    const targetLane = lanes[rowIndex];
+    node.parents.forEach((parentId) => {
+      const parentIndex = idToIndex.get(parentId);
+      if (typeof parentIndex !== 'number') return;
+      const parentLane = lanes[parentIndex];
+      edgeLanePairsByRow[rowIndex].push([parentLane, targetLane]);
+    });
+  });
+
+  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLanePairsByRow);
+  const alignment = features.graphLabelAlignment;
 
   const nodes: Node<DotNodeData>[] = graphNodes.map((node, index) => {
     const lane = lanes[index];
@@ -1008,9 +1052,11 @@ function buildSimpleLayout(
         originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
-        labelTranslateX: Math.max(
-          0,
-          lane === maxLane ? 0 : (maxLane - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET
+        labelTranslateX: computeLabelTranslateX(
+          lane,
+          rowLabelPlacement.rowBoundByIndex[index],
+          rowLabelPlacement.globalRowBound,
+          alignment
         )
       },
       sourcePosition: Position.Bottom,
@@ -1100,16 +1146,31 @@ export function layoutGraph(
 
   const vertices = layout.getVertices();
   const totalRows = vertices.length;
+  const lanes = graphNodesOldestFirst.map((_, oldIndex) => {
+    const newIndex = totalRows - 1 - oldIndex;
+    return vertices[newIndex].getLane();
+  });
+  const edgeLanePairsByRow: Array<Array<[number, number]>> = Array.from({ length: graphNodesOldestFirst.length }, () => []);
+  graphNodesOldestFirst.forEach((node) => {
+    const childOld = idToOldIndex.get(node.id);
+    if (typeof childOld !== 'number') return;
+    const childLane = lanes[childOld];
+    node.parents.forEach((parentId) => {
+      const parentOld = idToOldIndex.get(parentId);
+      if (typeof parentOld !== 'number') return;
+      const parentLane = lanes[parentOld];
+      edgeLanePairsByRow[childOld].push([parentLane, childLane]);
+    });
+  });
+  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLanePairsByRow);
+  const alignment = features.graphLabelAlignment;
 
   const flowNodes: Node<DotNodeData>[] = graphNodesOldestFirst.map((node, oldIndex) => {
     const newIndex = totalRows - 1 - oldIndex;
     const lane = vertices[newIndex].getLane();
-    const rightMostAtRow = vertices[newIndex].getMaxReservedX();
     const x = lane * laneSpacing - 20;
     const y = oldIndex * rowSpacing;
     const color = getBranchColor(node.originBranchId, trunkName, branchColors);
-    const labelTranslateX =
-      lane === rightMostAtRow ? 0 : (rightMostAtRow - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET;
     return {
       id: node.id,
       type: 'dot',
@@ -1120,7 +1181,12 @@ export function layoutGraph(
         originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
-        labelTranslateX: Math.max(0, labelTranslateX)
+        labelTranslateX: computeLabelTranslateX(
+          lane,
+          rowLabelPlacement.rowBoundByIndex[oldIndex],
+          rowLabelPlacement.globalRowBound,
+          alignment
+        )
       },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top

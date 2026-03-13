@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi } from 'vitest';
-import { buildGraphNodes, layoutGraph, type GraphNode } from '@/src/components/workspace/WorkspaceGraph';
+import {
+  buildGraphNodes,
+  computeLabelTranslateX,
+  computeRowLabelPlacement,
+  layoutGraph,
+  type GraphNode
+} from '@/src/components/workspace/WorkspaceGraph';
 
 // Silence CSS import from React Flow when running in Vitest.
 vi.mock('reactflow/dist/style.css', () => ({}));
@@ -77,7 +83,7 @@ describe('layoutGraph', () => {
 
   it('completes the GitGraph layout within the iteration budget', () => {
     const nodes = makeLinearNodes(6);
-    const result = layoutGraph(nodes, 'feature', 'main', { maxIterations: 200 });
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, { maxIterations: 200 });
 
     expect(result.usedFallback).toBe(false);
     expect(result.nodes).toHaveLength(nodes.length);
@@ -87,13 +93,42 @@ describe('layoutGraph', () => {
 
   it('computes per-row label shifts so trunk labels move when a branch occupies a right lane', () => {
     const nodes = makeForkMergeNodes();
-    const result = layoutGraph(nodes, 'feature', 'main', { maxIterations: 500 });
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, { maxIterations: 500 });
 
     expect(result.usedFallback).toBe(false);
     const byId = new Map(result.nodes.map((n) => [n.id, n]));
     // After the fork, at least one node in a multi-lane row should shift its label past the right-most reserved lane.
     const shifts = ['c', 'd', 'e'].map((id) => byId.get(id)?.data?.labelTranslateX ?? 0);
     expect(shifts.some((v) => v > 0)).toBe(true);
+  });
+});
+
+describe('label placement helpers', () => {
+  it('computes row bounds from node lanes and per-row edge lane pairs', () => {
+    const placement = computeRowLabelPlacement(
+      [0, 1, 0],
+      [
+        [],
+        [[0, 1]],
+        [[2, 0]]
+      ]
+    );
+
+    expect(placement.rowBoundByIndex).toEqual([0, 1, 2]);
+    expect(placement.globalRowBound).toBe(2);
+  });
+
+  it('translates labels differently for hug and left-aligned modes', () => {
+    const lane = 0;
+    const rowBound = 1;
+    const globalRowBound = 3;
+
+    const hug = computeLabelTranslateX(lane, rowBound, globalRowBound, 'hug');
+    const leftAligned = computeLabelTranslateX(lane, rowBound, globalRowBound, 'left-aligned');
+
+    expect(hug).toBe(14);
+    expect(leftAligned).toBe(50);
+    expect(leftAligned).toBeGreaterThan(hug);
   });
 });
 
