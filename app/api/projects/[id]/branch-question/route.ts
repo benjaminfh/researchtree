@@ -11,6 +11,7 @@ import { resolveBranchCreationConfig } from '@/src/server/branchConfig';
 import type { LLMProvider } from '@/src/server/llm';
 import { POST as chatPost } from '@/app/api/projects/[id]/chat/route';
 import { consumeNdjsonStream } from '@/src/utils/ndjsonStream';
+import { resolveCreationProvider } from '@/src/server/profileDefaultProvider';
 
 interface RouteContext {
   params: { id: string };
@@ -81,11 +82,13 @@ export async function POST(request: Request, { params }: RouteContext) {
             throw badRequest(`Branch ${baseRefName} does not exist`);
           }
 
+          const fallbackProvider = await resolveCreationProvider(provider ?? null);
           const resolvedConfig = resolveBranchCreationConfig({
             sourceProvider: baseBranch?.provider ?? null,
             sourceModel: baseBranch?.model ?? null,
             requestedProvider: provider ?? null,
-            requestedModel: model ?? null
+            requestedModel: model ?? null,
+            fallbackProvider
           });
           const shouldCopyPreviousResponseId =
             resolvedConfig.sourceProvider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';
@@ -143,11 +146,13 @@ export async function POST(request: Request, { params }: RouteContext) {
         const existingBranches = await listBranches(project.id);
         const baseRef = fromRef ?? (existingBranches.find((b) => b.isTrunk)?.name ?? 'main');
         const baseBranch = existingBranches.find((b) => b.name === baseRef);
+        const fallbackProvider = await resolveCreationProvider(provider ?? null);
         const resolvedConfig = resolveBranchCreationConfig({
           sourceProvider: baseBranch?.provider ?? null,
           sourceModel: baseBranch?.model ?? null,
           requestedProvider: provider ?? null,
-          requestedModel: model ?? null
+          requestedModel: model ?? null,
+          fallbackProvider
         });
         const shouldCopyPreviousResponseId =
           resolvedConfig.sourceProvider === 'openai_responses' && resolvedConfig.provider === 'openai_responses';

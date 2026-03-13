@@ -645,6 +645,7 @@ describe('pg store RPC wrappers', () => {
       hasOpenAI: true,
       hasGemini: false,
       hasAnthropic: true,
+      defaultProvider: null,
       systemPrompt: null,
       systemPromptMode: 'append',
       updatedAt: 't1'

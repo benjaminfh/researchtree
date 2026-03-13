@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   rtGetProjectShadowV1: vi.fn(),
   rtListProjectMemberIdsShadowV1: vi.fn(),
   rtAcceptProjectInvitesShadowV1: vi.fn(),
-  rtGetUserSystemPromptV1: vi.fn()
+  rtGetUserSystemPromptV1: vi.fn(),
+  rtGetUserLlmKeyStatusV1: vi.fn()
 }));
 
 vi.mock('@git/projects', () => ({
@@ -37,6 +38,10 @@ vi.mock('@/src/store/pg/userSystemPrompt', () => ({
   rtGetUserSystemPromptV1: mocks.rtGetUserSystemPromptV1
 }));
 
+vi.mock('@/src/store/pg/userLlmKeys', () => ({
+  rtGetUserLlmKeyStatusV1: mocks.rtGetUserLlmKeyStatusV1
+}));
+
 const baseUrl = 'http://localhost/api/projects';
 
 function createRequest(method: string, body?: unknown) {
@@ -58,11 +63,27 @@ describe('/api/projects route', () => {
     mocks.rtListProjectMemberIdsShadowV1.mockReset();
     mocks.rtAcceptProjectInvitesShadowV1.mockReset();
     mocks.rtGetUserSystemPromptV1.mockReset();
+    mocks.rtGetUserLlmKeyStatusV1.mockReset();
+    delete process.env.LLM_ENABLE_OPENAI;
+    delete process.env.LLM_ENABLE_GEMINI;
+    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.OPENAI_USE_RESPONSES;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
     process.env.RT_STORE = 'git';
     mocks.rtListProjectMemberIdsShadowV1.mockResolvedValue(['1']);
     mocks.rtCreateProjectShadow.mockResolvedValue({ projectId: '1' });
     mocks.rtAcceptProjectInvitesShadowV1.mockResolvedValue([]);
     mocks.rtGetUserSystemPromptV1.mockResolvedValue({ mode: 'append', prompt: null });
+    mocks.rtGetUserLlmKeyStatusV1.mockResolvedValue({
+      hasOpenAI: false,
+      hasGemini: false,
+      hasAnthropic: false,
+      defaultProvider: null,
+      systemPrompt: null,
+      systemPromptMode: 'append',
+      updatedAt: null
+    });
     delete process.env.LLM_ENABLED_PROVIDERS;
   });
 

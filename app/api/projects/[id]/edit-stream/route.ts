@@ -22,6 +22,7 @@ import { getPreviousResponseId, setPreviousResponseId } from '@/src/server/llmSt
 import { registerStream, releaseStream } from '@/src/server/stream-registry';
 import { toJsonValue } from '@/src/server/json';
 import { acquireBranchLease } from '@/src/server/leases';
+import { resolveCreationProvider } from '@/src/server/profileDefaultProvider';
 
 interface RouteContext {
   params: { id: string };
@@ -71,11 +72,13 @@ export async function POST(request: Request, { params }: RouteContext) {
     const sourceRef = explicitFromRef ?? currentBranch.name;
     const branchConfigMap = await getBranchConfigMap(params.id);
     const sourceConfig = branchConfigMap[sourceRef];
+    const fallbackProvider = await resolveCreationProvider(llmProvider ?? null);
     const requestedConfig = resolveBranchCreationConfig({
       sourceProvider: sourceConfig?.provider ?? null,
       sourceModel: sourceConfig?.model ?? null,
       requestedProvider: llmProvider ?? null,
-      requestedModel: llmModel ?? null
+      requestedModel: llmModel ?? null,
+      fallbackProvider
     });
     const provider = requestedConfig.provider;
     const modelName = requestedConfig.model;

@@ -64,4 +64,16 @@ describe('resolveBranchConfig', () => {
     expect(result.provider).toBe('openai_responses');
     expect(result.model).toBe('gpt-5.2');
   });
+
+  it('inherits source model when request omits model override', () => {
+    const result = resolveBranchCreationConfig({
+      sourceProvider: 'openai_responses',
+      sourceModel: 'gpt-5.1',
+      fallbackProvider: 'openai_responses'
+    });
+
+    expect(result.sourceProvider).toBe('openai_responses');
+    expect(result.provider).toBe('openai_responses');
+    expect(result.model).toBe('gpt-5.1');
+  });
 });

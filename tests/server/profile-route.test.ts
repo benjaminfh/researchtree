@@ -6,12 +6,14 @@ import { GET, PUT } from '@/app/api/profile/route';
 
 const mocks = vi.hoisted(() => ({
   rtGetUserLlmKeyStatusV1: vi.fn(),
-  rtSetUserLlmKeyV1: vi.fn()
+  rtSetUserLlmKeyV1: vi.fn(),
+  rtSetUserDefaultProviderV1: vi.fn()
 }));
 
 vi.mock('@/src/store/pg/userLlmKeys', () => ({
   rtGetUserLlmKeyStatusV1: mocks.rtGetUserLlmKeyStatusV1,
-  rtSetUserLlmKeyV1: mocks.rtSetUserLlmKeyV1
+  rtSetUserLlmKeyV1: mocks.rtSetUserLlmKeyV1,
+  rtSetUserDefaultProviderV1: mocks.rtSetUserDefaultProviderV1
 }));
 
 const baseUrl = 'http://localhost/api/profile';
@@ -27,13 +29,24 @@ function createPutRequest(body: unknown) {
 describe('/api/profile', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+
+    delete process.env.LLM_ENABLE_OPENAI;
+    delete process.env.LLM_ENABLE_GEMINI;
+    delete process.env.LLM_ENABLE_ANTHROPIC;
+    delete process.env.OPENAI_USE_RESPONSES;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.LLM_ALLOWED_MODELS_OPENAI;
   });
 
   it('GET returns user email and key status', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,gemini';
     mocks.rtGetUserLlmKeyStatusV1.mockResolvedValue({
       hasOpenAI: true,
       hasGemini: false,
       hasAnthropic: true,
+      defaultProvider: 'gemini',
+      systemPrompt: null,
+      systemPromptMode: 'append',
       updatedAt: '2025-12-20T00:00:00.000Z'
     });
 
@@ -41,11 +54,35 @@ describe('/api/profile', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.user.email).toBe('test@example.com');
+    expect(body.defaultProvider).toBe('gemini');
+    expect(body.defaultProviderResetToAppDefault).toBe(false);
+    expect(Array.isArray(body.providerOptions)).toBe(true);
     expect(body.llmTokens).toEqual({
       openai: { configured: true },
       gemini: { configured: false },
       anthropic: { configured: true }
     });
+  });
+
+  it('GET coerces disabled saved default provider to app default and persists null', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses';
+    mocks.rtGetUserLlmKeyStatusV1.mockResolvedValue({
+      hasOpenAI: true,
+      hasGemini: false,
+      hasAnthropic: false,
+      defaultProvider: 'gemini',
+      systemPrompt: null,
+      systemPromptMode: 'append',
+      updatedAt: '2025-12-20T00:00:00.000Z'
+    });
+    mocks.rtSetUserDefaultProviderV1.mockResolvedValue(undefined);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.defaultProvider).toBeNull();
+    expect(body.defaultProviderResetToAppDefault).toBe(true);
+    expect(mocks.rtSetUserDefaultProviderV1).toHaveBeenCalledWith({ provider: null });
   });
 
   it('PUT updates only provided keys and normalizes whitespace', async () => {
@@ -63,4 +100,24 @@ describe('/api/profile', () => {
     const res = await PUT(createPutRequest({ openaiToken: 'x', extra: 'nope' }));
     expect(res.status).toBe(400);
   });
+
+  it('PUT saves default provider when enabled', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses,gemini';
+    mocks.rtSetUserDefaultProviderV1.mockResolvedValue(undefined);
+
+    const res = await PUT(createPutRequest({ defaultProvider: 'gemini' }));
+    expect(res.status).toBe(200);
+    expect(mocks.rtSetUserDefaultProviderV1).toHaveBeenCalledWith({ provider: 'gemini' });
+  });
+
+  it('PUT rejects disabled default provider', async () => {
+    process.env.LLM_ENABLED_PROVIDERS = 'openai_responses';
+
+    const res = await PUT(createPutRequest({ defaultProvider: 'gemini' }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body?.error?.details?.requestedProvider).toBe('gemini');
+    expect(body?.error?.details?.enabledProviders).toEqual(['openai_responses']);
+  });
+
 });

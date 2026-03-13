@@ -6,6 +6,7 @@ import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
 import { resolveLLMProvider, type LLMProvider } from '@/src/server/llm';
 import { getEnabledProviders } from '@/src/server/llmConfig';
+import { resolveCreationProvider } from '@/src/server/profileDefaultProvider';
 
 export const runtime = 'nodejs';
 
@@ -22,7 +23,7 @@ export default async function HomePage() {
     id: provider,
     label: labelForProvider(provider)
   }));
-  const defaultProvider = resolveLLMProvider();
+  const defaultProvider = store.mode === 'pg' ? await resolveCreationProvider() : resolveLLMProvider();
 
   if (store.mode === 'pg') {
     const currentUser = await requireUser();

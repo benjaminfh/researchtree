@@ -5,6 +5,9 @@ import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { z } from 'zod';
 import { getStoreConfig } from '@/src/server/storeConfig';
+import { getEnabledProviders } from '@/src/server/llmConfig';
+import { LLM_PROVIDERS, type LLMProvider } from '@/src/shared/llmProvider';
+import { resolveLLMProvider } from '@/src/server/llm';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,6 +17,7 @@ const updateKeysSchema = z
     openaiToken: z.string().max(500).optional().nullable(),
     geminiToken: z.string().max(500).optional().nullable(),
     anthropicToken: z.string().max(500).optional().nullable(),
+    defaultProvider: z.enum(LLM_PROVIDERS).optional().nullable(),
     systemPrompt: z.string().max(20000).optional().nullable(),
     systemPromptMode: z.enum(['append', 'replace']).optional(),
     // Back-compat (UI used "Key" previously).
@@ -29,6 +33,12 @@ function normalizeSecret(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function toProviderLabel(provider: LLMProvider): string {
+  if (provider === 'openai_responses') return 'OpenAI (Responses API)';
+  if (provider === 'openai') return 'OpenAI (Chat Completions)';
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
 export async function GET() {
   try {
     const user = await requireUser();
@@ -41,6 +51,15 @@ export async function GET() {
       await rtAcceptProjectInvitesShadowV1({ email: user.email });
     }
 
+    const enabledProviders = getEnabledProviders();
+    const hasDisabledDefaultProvider =
+      status.defaultProvider != null && !enabledProviders.includes(status.defaultProvider);
+
+    if (hasDisabledDefaultProvider) {
+      const { rtSetUserDefaultProviderV1 } = await import('@/src/store/pg/userLlmKeys');
+      await rtSetUserDefaultProviderV1({ provider: null });
+    }
+
     return Response.json({
       user: { id: user.id, email: user.email ?? null },
       llmTokens: {
@@ -48,6 +67,9 @@ export async function GET() {
         gemini: { configured: status.hasGemini },
         anthropic: { configured: status.hasAnthropic }
       },
+      defaultProvider: hasDisabledDefaultProvider ? null : status.defaultProvider ?? null,
+      defaultProviderResetToAppDefault: hasDisabledDefaultProvider,
+      providerOptions: enabledProviders.map((provider) => ({ id: provider, label: toProviderLabel(provider) })),
       systemPrompt: {
         mode: status.systemPromptMode,
         prompt: status.systemPrompt
@@ -68,7 +90,7 @@ export async function PUT(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const { rtSetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
+    const { rtSetUserDefaultProviderV1, rtSetUserLlmKeyV1 } = await import('@/src/store/pg/userLlmKeys');
     const openaiToken = parsed.data.openaiToken ?? parsed.data.openaiKey;
     const geminiToken = parsed.data.geminiToken ?? parsed.data.geminiKey;
     const anthropicToken = parsed.data.anthropicToken ?? parsed.data.anthropicKey;
@@ -81,6 +103,14 @@ export async function PUT(request: Request) {
     }
     if (parsed.data.anthropicToken !== undefined || parsed.data.anthropicKey !== undefined) {
       await rtSetUserLlmKeyV1({ provider: 'anthropic', secret: normalizeSecret(anthropicToken) });
+    }
+
+    if (parsed.data.defaultProvider !== undefined) {
+      const requestedProvider = parsed.data.defaultProvider ?? null;
+      if (requestedProvider) {
+        resolveLLMProvider(requestedProvider);
+      }
+      await rtSetUserDefaultProviderV1({ provider: requestedProvider });
     }
 
     if (parsed.data.systemPrompt !== undefined || parsed.data.systemPromptMode !== undefined) {

@@ -5,7 +5,8 @@ import { createProjectSchema } from '@/src/server/schemas';
 import { badRequest, handleRouteError } from '@/src/server/http';
 import { requireUser } from '@/src/server/auth';
 import { getStoreConfig } from '@/src/server/storeConfig';
-import { getDefaultModelForProvider, resolveLLMProvider, resolveOpenAIProviderSelection } from '@/src/server/llm';
+import { getDefaultModelForProvider } from '@/src/server/llm';
+import { resolveCreationProvider } from '@/src/server/profileDefaultProvider';
 import { buildDefaultSystemPrompt, resolveSystemPrompt } from '@/src/server/systemPrompt';
 
 async function getCurrentEffectiveSystemPrompt(storeMode: 'pg' | 'git'): Promise<string> {
@@ -61,8 +62,7 @@ export async function POST(request: Request) {
       throw badRequest('Invalid request body', { issues: parsed.error.flatten() });
     }
 
-    const requestedProvider = resolveOpenAIProviderSelection(parsed.data.provider ?? null);
-    const defaultProvider = resolveLLMProvider(requestedProvider);
+    const defaultProvider = await resolveCreationProvider(parsed.data.provider ?? null);
     const defaultModel = getDefaultModelForProvider(defaultProvider);
     const systemPrompt = await getCurrentEffectiveSystemPrompt(store.mode);
 

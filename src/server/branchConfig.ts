@@ -55,11 +55,13 @@ export function resolveBranchCreationConfig(input?: {
   sourceModel?: string | null;
   requestedProvider?: string | null;
   requestedModel?: string | null;
+  fallbackProvider?: LLMProvider | null;
 }): BranchCreationConfig {
   const sourceProviderRaw = input?.sourceProvider?.trim() ?? '';
   const sourceModel = input?.sourceModel ?? null;
   const requestedProviderRaw = input?.requestedProvider?.trim() ?? '';
   const requestedModel = input?.requestedModel ?? null;
+  const fallbackProvider = input?.fallbackProvider ? resolveOpenAIProviderSelection(input.fallbackProvider) : resolveOpenAIProviderSelection();
 
   let sourceConfig: BranchConfig | null = null;
   if (sourceProviderRaw) {
@@ -81,7 +83,8 @@ export function resolveBranchCreationConfig(input?: {
     const provider = resolveOpenAIProviderSelection(requestedProviderRaw as LLMProvider);
     const config = resolveBranchConfig({
       provider,
-      model: requestedModel
+      model: requestedModel,
+      fallback: sourceConfig ?? undefined
     });
     return {
       provider: config.provider,
@@ -90,10 +93,9 @@ export function resolveBranchCreationConfig(input?: {
     };
   }
 
-  const fallbackProvider = sourceConfig?.provider ?? resolveOpenAIProviderSelection();
   const config = resolveBranchConfig({
     provider: fallbackProvider,
-    model: requestedModel ?? sourceConfig?.model ?? null,
+    model: requestedModel,
     fallback: sourceConfig ?? undefined
   });
   return {
