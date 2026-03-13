@@ -977,15 +977,25 @@ interface RowLabelPlacement {
   globalRowBound: number;
 }
 
-export function computeRowLabelPlacement(lanesByRow: number[], edgeLanePairsByRow: Array<Array<[number, number]>>): RowLabelPlacement {
-  const rowBoundByIndex = lanesByRow.map((lane, rowIndex) => {
-    const edgePairs = edgeLanePairsByRow[rowIndex] ?? [];
-    let bound = lane;
-    for (const [a, b] of edgePairs) {
-      bound = Math.max(bound, a, b);
+interface EdgeLaneSpan {
+  fromRow: number;
+  toRow: number;
+  fromLane: number;
+  toLane: number;
+}
+
+export function computeRowLabelPlacement(lanesByRow: number[], edgeLaneSpans: EdgeLaneSpan[]): RowLabelPlacement {
+  const rowBoundByIndex = [...lanesByRow];
+
+  for (const span of edgeLaneSpans) {
+    const start = Math.max(0, Math.min(span.fromRow, span.toRow));
+    const end = Math.min(lanesByRow.length - 1, Math.max(span.fromRow, span.toRow));
+    const edgeBound = Math.max(span.fromLane, span.toLane);
+    for (let rowIndex = start; rowIndex <= end; rowIndex++) {
+      rowBoundByIndex[rowIndex] = Math.max(rowBoundByIndex[rowIndex] ?? 0, edgeBound);
     }
-    return bound;
-  });
+  }
+
   const globalRowBound = rowBoundByIndex.reduce((max, bound) => Math.max(max, bound), 0);
   return { rowBoundByIndex, globalRowBound };
 }
@@ -1022,19 +1032,23 @@ function buildSimpleLayout(
   const idToIndex = new Map(graphNodes.map((node, idx) => [node.id, idx]));
 
   const lanes = graphNodes.map((node) => laneFor(node.laneBranchId));
-  const edgeLanePairsByRow: Array<Array<[number, number]>> = Array.from({ length: graphNodes.length }, () => []);
+  const edgeLaneSpans: EdgeLaneSpan[] = [];
 
   graphNodes.forEach((node, rowIndex) => {
     const targetLane = lanes[rowIndex];
     node.parents.forEach((parentId) => {
       const parentIndex = idToIndex.get(parentId);
       if (typeof parentIndex !== 'number') return;
-      const parentLane = lanes[parentIndex];
-      edgeLanePairsByRow[rowIndex].push([parentLane, targetLane]);
+      edgeLaneSpans.push({
+        fromRow: parentIndex,
+        toRow: rowIndex,
+        fromLane: lanes[parentIndex],
+        toLane: targetLane
+      });
     });
   });
 
-  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLanePairsByRow);
+  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLaneSpans);
   const alignment = features.graphLabelAlignment;
 
   const nodes: Node<DotNodeData>[] = graphNodes.map((node, index) => {
@@ -1150,7 +1164,7 @@ export function layoutGraph(
     const newIndex = totalRows - 1 - oldIndex;
     return vertices[newIndex].getLane();
   });
-  const edgeLanePairsByRow: Array<Array<[number, number]>> = Array.from({ length: graphNodesOldestFirst.length }, () => []);
+  const edgeLaneSpans: EdgeLaneSpan[] = [];
   graphNodesOldestFirst.forEach((node) => {
     const childOld = idToOldIndex.get(node.id);
     if (typeof childOld !== 'number') return;
@@ -1158,11 +1172,15 @@ export function layoutGraph(
     node.parents.forEach((parentId) => {
       const parentOld = idToOldIndex.get(parentId);
       if (typeof parentOld !== 'number') return;
-      const parentLane = lanes[parentOld];
-      edgeLanePairsByRow[childOld].push([parentLane, childLane]);
+      edgeLaneSpans.push({
+        fromRow: parentOld,
+        toRow: childOld,
+        fromLane: lanes[parentOld],
+        toLane: childLane
+      });
     });
   });
-  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLanePairsByRow);
+  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLaneSpans);
   const alignment = features.graphLabelAlignment;
 
   const flowNodes: Node<DotNodeData>[] = graphNodesOldestFirst.map((node, oldIndex) => {
