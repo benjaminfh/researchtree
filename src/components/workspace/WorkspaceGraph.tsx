@@ -435,6 +435,16 @@ class Vertex {
     return null;
   }
 
+  getMaxConnectionXTo(vertex: Vertex | null): number {
+    let max = -1;
+    for (let i = 0; i < this.connections.length; i++) {
+      if (this.connections[i]?.connectsTo === vertex) {
+        max = Math.max(max, i);
+      }
+    }
+    return max;
+  }
+
   registerUnavailablePoint(x: number, connectsTo: Vertex | null, onBranch: Branch) {
     if (x === this.nextX) {
       this.nextX = x + 1;
@@ -1173,16 +1183,24 @@ export function layoutGraph(
   graphNodesOldestFirst.forEach((node) => {
     const childOld = idToOldIndex.get(node.id);
     if (typeof childOld !== 'number') return;
+    const childNew = totalRows - 1 - childOld;
+    const childVertex = vertices[childNew];
     const childLane = lanes[childOld];
     node.parents.forEach((parentId) => {
       const parentOld = idToOldIndex.get(parentId);
       if (typeof parentOld !== 'number') return;
+      const parentNew = totalRows - 1 - parentOld;
+      const parentVertex = vertices[parentNew];
+      let routedMaxLane = -1;
+      for (let row = Math.min(childNew, parentNew); row <= Math.max(childNew, parentNew); row++) {
+        routedMaxLane = Math.max(routedMaxLane, vertices[row].getMaxConnectionXTo(parentVertex));
+      }
       edgeLaneSpans.push({
         fromRow: parentOld,
         toRow: childOld,
         fromLane: lanes[parentOld],
         toLane: childLane,
-        maxLane: Math.max(maxReservedLanes[parentOld] ?? 0, maxReservedLanes[childOld] ?? 0)
+        maxLane: Math.max(routedMaxLane, childVertex.getLane(), parentVertex.getLane())
       });
     });
   });
