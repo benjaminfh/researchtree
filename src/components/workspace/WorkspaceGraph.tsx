@@ -435,6 +435,16 @@ class Vertex {
     return null;
   }
 
+  getMaxConnectionXTo(vertex: Vertex | null): number {
+    let max = -1;
+    for (let i = 0; i < this.connections.length; i++) {
+      if (this.connections[i]?.connectsTo === vertex) {
+        max = Math.max(max, i);
+      }
+    }
+    return max;
+  }
+
   registerUnavailablePoint(x: number, connectsTo: Vertex | null, onBranch: Branch) {
     if (x === this.nextX) {
       this.nextX = x + 1;
@@ -970,6 +980,48 @@ interface LayoutOptions {
   maxIterations?: number;
 }
 
+type LabelAlignmentMode = 'hug' | 'left-aligned';
+
+interface RowLabelPlacement {
+  rowBoundByIndex: number[];
+  globalRowBound: number;
+}
+
+interface EdgeLaneSpan {
+  fromRow: number;
+  toRow: number;
+  fromLane: number;
+  toLane: number;
+  maxLane?: number;
+}
+
+export function computeRowLabelPlacement(lanesByRow: number[], edgeLaneSpans: EdgeLaneSpan[]): RowLabelPlacement {
+  const rowBoundByIndex = [...lanesByRow];
+
+  for (const span of edgeLaneSpans) {
+    const start = Math.max(0, Math.min(span.fromRow, span.toRow));
+    const end = Math.min(lanesByRow.length - 1, Math.max(span.fromRow, span.toRow));
+    const edgeBound = Math.max(span.maxLane ?? Number.NEGATIVE_INFINITY, span.fromLane, span.toLane);
+    for (let rowIndex = start; rowIndex <= end; rowIndex++) {
+      rowBoundByIndex[rowIndex] = Math.max(rowBoundByIndex[rowIndex] ?? 0, edgeBound);
+    }
+  }
+
+  const globalRowBound = rowBoundByIndex.reduce((max, bound) => Math.max(max, bound), 0);
+  return { rowBoundByIndex, globalRowBound };
+}
+
+export function computeLabelTranslateX(
+  lane: number,
+  rowBound: number,
+  globalRowBound: number,
+  alignment: LabelAlignmentMode
+): number {
+  const targetBound = alignment === 'left-aligned' ? globalRowBound : rowBound;
+  const raw = lane === targetBound ? 0 : (targetBound - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET;
+  return Math.max(0, raw);
+}
+
 function buildSimpleLayout(
   graphNodes: GraphNode[],
   branchName: string,
@@ -991,7 +1043,24 @@ function buildSimpleLayout(
   const idToIndex = new Map(graphNodes.map((node, idx) => [node.id, idx]));
 
   const lanes = graphNodes.map((node) => laneFor(node.laneBranchId));
-  const maxLane = lanes.reduce((max, lane) => Math.max(max, lane), 0);
+  const edgeLaneSpans: EdgeLaneSpan[] = [];
+
+  graphNodes.forEach((node, rowIndex) => {
+    const targetLane = lanes[rowIndex];
+    node.parents.forEach((parentId) => {
+      const parentIndex = idToIndex.get(parentId);
+      if (typeof parentIndex !== 'number') return;
+      edgeLaneSpans.push({
+        fromRow: parentIndex,
+        toRow: rowIndex,
+        fromLane: lanes[parentIndex],
+        toLane: targetLane
+      });
+    });
+  });
+
+  const rowLabelPlacement = computeRowLabelPlacement(lanes, edgeLaneSpans);
+  const alignment = features.graphLabelAlignment;
 
   const nodes: Node<DotNodeData>[] = graphNodes.map((node, index) => {
     const lane = lanes[index];
@@ -1008,9 +1077,11 @@ function buildSimpleLayout(
         originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
-        labelTranslateX: Math.max(
-          0,
-          lane === maxLane ? 0 : (maxLane - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET
+        labelTranslateX: computeLabelTranslateX(
+          lane,
+          rowLabelPlacement.rowBoundByIndex[index],
+          rowLabelPlacement.globalRowBound,
+          alignment
         )
       },
       sourcePosition: Position.Bottom,
@@ -1100,16 +1171,48 @@ export function layoutGraph(
 
   const vertices = layout.getVertices();
   const totalRows = vertices.length;
+  const lanes = graphNodesOldestFirst.map((_, oldIndex) => {
+    const newIndex = totalRows - 1 - oldIndex;
+    return vertices[newIndex].getLane();
+  });
+  const maxReservedLanes = graphNodesOldestFirst.map((_, oldIndex) => {
+    const newIndex = totalRows - 1 - oldIndex;
+    return vertices[newIndex].getMaxReservedX();
+  });
+  const edgeLaneSpans: EdgeLaneSpan[] = [];
+  graphNodesOldestFirst.forEach((node) => {
+    const childOld = idToOldIndex.get(node.id);
+    if (typeof childOld !== 'number') return;
+    const childNew = totalRows - 1 - childOld;
+    const childVertex = vertices[childNew];
+    const childLane = lanes[childOld];
+    node.parents.forEach((parentId) => {
+      const parentOld = idToOldIndex.get(parentId);
+      if (typeof parentOld !== 'number') return;
+      const parentNew = totalRows - 1 - parentOld;
+      const parentVertex = vertices[parentNew];
+      let routedMaxLane = -1;
+      for (let row = Math.min(childNew, parentNew); row <= Math.max(childNew, parentNew); row++) {
+        routedMaxLane = Math.max(routedMaxLane, vertices[row].getMaxConnectionXTo(parentVertex));
+      }
+      edgeLaneSpans.push({
+        fromRow: parentOld,
+        toRow: childOld,
+        fromLane: lanes[parentOld],
+        toLane: childLane,
+        maxLane: Math.max(routedMaxLane, childVertex.getLane(), parentVertex.getLane())
+      });
+    });
+  });
+  const rowLabelPlacement = computeRowLabelPlacement(maxReservedLanes, edgeLaneSpans);
+  const alignment = features.graphLabelAlignment;
 
   const flowNodes: Node<DotNodeData>[] = graphNodesOldestFirst.map((node, oldIndex) => {
     const newIndex = totalRows - 1 - oldIndex;
     const lane = vertices[newIndex].getLane();
-    const rightMostAtRow = vertices[newIndex].getMaxReservedX();
     const x = lane * laneSpacing - 20;
     const y = oldIndex * rowSpacing;
     const color = getBranchColor(node.originBranchId, trunkName, branchColors);
-    const labelTranslateX =
-      lane === rightMostAtRow ? 0 : (rightMostAtRow - lane) * laneSpacing + LABEL_ROW_GAP - LABEL_BASE_OFFSET;
     return {
       id: node.id,
       type: 'dot',
@@ -1120,7 +1223,12 @@ export function layoutGraph(
         originBranchId: node.originBranchId,
         isActive: node.isOnActiveBranch,
         icon: node.icon,
-        labelTranslateX: Math.max(0, labelTranslateX)
+        labelTranslateX: computeLabelTranslateX(
+          lane,
+          rowLabelPlacement.rowBoundByIndex[oldIndex],
+          rowLabelPlacement.globalRowBound,
+          alignment
+        )
       },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top

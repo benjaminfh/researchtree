@@ -14,5 +14,9 @@ export const features = {
   })(),
   graphEdgeStyle: (process.env.NEXT_PUBLIC_RT_GRAPH_EDGE_STYLE ?? 'spline').toLowerCase() === 'orthogonal'
     ? 'orthogonal'
-    : 'spline'
+    : 'spline',
+  graphLabelAlignment: (() => {
+    const raw = (process.env.NEXT_PUBLIC_RT_GRAPH_LABEL_ALIGNMENT ?? 'hug').toLowerCase();
+    return raw === 'left-aligned' ? 'left-aligned' : 'hug';
+  })()
 } as const;
