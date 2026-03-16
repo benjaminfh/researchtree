@@ -978,6 +978,7 @@ interface LayoutResult {
 
 interface LayoutOptions {
   maxIterations?: number;
+  crossingComparisonBudget?: number;
 }
 
 type LabelAlignmentMode = 'hug' | 'left-aligned';
@@ -993,6 +994,74 @@ interface EdgeLaneSpan {
   fromLane: number;
   toLane: number;
   maxLane?: number;
+}
+
+export interface EdgeSegment {
+  startRow: number;
+  endRow: number;
+  startLane: number;
+  endLane: number;
+}
+
+export type CrossingMetricResult =
+  | {
+      status: 'ok';
+      crossings: number;
+      comparisons: number;
+    }
+  | {
+      status: 'unavailable';
+      comparisons: number;
+      budget: number;
+    };
+
+function toEdgeSegments(edgeLaneSpans: EdgeLaneSpan[]): EdgeSegment[] {
+  return edgeLaneSpans.map((span) => {
+    const startRow = Math.min(span.fromRow, span.toRow);
+    const endRow = Math.max(span.fromRow, span.toRow);
+    const startLane = span.fromRow <= span.toRow ? span.fromLane : span.toLane;
+    const endLane = span.fromRow <= span.toRow ? span.toLane : span.fromLane;
+    return { startRow, endRow, startLane, endLane };
+  });
+}
+
+function interpolateLane(segment: EdgeSegment, row: number): number {
+  if (segment.endRow === segment.startRow) return segment.startLane;
+  const ratio = (row - segment.startRow) / (segment.endRow - segment.startRow);
+  return segment.startLane + (segment.endLane - segment.startLane) * ratio;
+}
+
+export function segmentsCrossInSharedSpan(a: EdgeSegment, b: EdgeSegment): boolean {
+  const sharedStart = Math.max(a.startRow, b.startRow);
+  const sharedEnd = Math.min(a.endRow, b.endRow);
+
+  // Endpoint-only contact is not a crossing.
+  if (sharedEnd <= sharedStart) return false;
+
+  const laneDiffAtStart = interpolateLane(a, sharedStart) - interpolateLane(b, sharedStart);
+  const laneDiffAtEnd = interpolateLane(a, sharedEnd) - interpolateLane(b, sharedEnd);
+
+  // Ordering must strictly flip across the shared span.
+  return laneDiffAtStart * laneDiffAtEnd < 0;
+}
+
+export function countCrossingsBounded(edgeSegments: EdgeSegment[], budget: number): CrossingMetricResult {
+  let crossings = 0;
+  let comparisons = 0;
+
+  for (let i = 0; i < edgeSegments.length; i += 1) {
+    for (let j = i + 1; j < edgeSegments.length; j += 1) {
+      if (comparisons >= budget) {
+        return { status: 'unavailable', comparisons, budget };
+      }
+      comparisons += 1;
+      if (segmentsCrossInSharedSpan(edgeSegments[i], edgeSegments[j])) {
+        crossings += 1;
+      }
+    }
+  }
+
+  return { status: 'ok', crossings, comparisons };
 }
 
 export function computeRowLabelPlacement(lanesByRow: number[], edgeLaneSpans: EdgeLaneSpan[]): RowLabelPlacement {
@@ -1263,7 +1332,45 @@ export function layoutGraph(
     });
   });
 
-  return { nodes: flowNodes, edges: flowEdges, usedFallback: false };
+  const gitLayout: LayoutResult = { nodes: flowNodes, edges: flowEdges, usedFallback: false };
+
+  const crossingComparisonBudget = options?.crossingComparisonBudget ?? graphNodes.length * 32 + 256;
+  const gitCrossings = countCrossingsBounded(toEdgeSegments(edgeLaneSpans), crossingComparisonBudget);
+
+  const simpleIdToIndex = new Map(graphNodesOldestFirst.map((node, idx) => [node.id, idx]));
+  const simpleLaneByBranch = new Map<string, number>([
+    [trunkName, 0],
+    [branchName, 1]
+  ]);
+  let nextSimpleLane = 2;
+  const simpleLaneFor = (branchId: string) => {
+    if (!simpleLaneByBranch.has(branchId)) {
+      simpleLaneByBranch.set(branchId, nextSimpleLane++);
+    }
+    return simpleLaneByBranch.get(branchId)!;
+  };
+  const simpleLanes = graphNodesOldestFirst.map((node) => simpleLaneFor(node.laneBranchId));
+  const simpleSpans: EdgeLaneSpan[] = [];
+  graphNodesOldestFirst.forEach((node, rowIndex) => {
+    node.parents.forEach((parentId) => {
+      const parentIndex = simpleIdToIndex.get(parentId);
+      if (typeof parentIndex !== 'number') return;
+      simpleSpans.push({
+        fromRow: parentIndex,
+        toRow: rowIndex,
+        fromLane: simpleLanes[parentIndex],
+        toLane: simpleLanes[rowIndex]
+      });
+    });
+  });
+
+  const simpleCrossings = countCrossingsBounded(toEdgeSegments(simpleSpans), crossingComparisonBudget);
+
+  if (gitCrossings.status === 'ok' && simpleCrossings.status === 'ok' && simpleCrossings.crossings < gitCrossings.crossings) {
+    return simple;
+  }
+
+  return gitLayout;
 }
 
 

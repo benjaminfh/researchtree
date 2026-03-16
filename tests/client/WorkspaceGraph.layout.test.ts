@@ -4,9 +4,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   buildGraphNodes,
+  countCrossingsBounded,
   computeLabelTranslateX,
   computeRowLabelPlacement,
   layoutGraph,
+  segmentsCrossInSharedSpan,
+  type EdgeSegment,
   type GraphNode
 } from '@/src/components/workspace/WorkspaceGraph';
 
@@ -163,6 +166,70 @@ describe('label placement helpers', () => {
     expect(hug).toBe(14);
     expect(leftAligned).toBe(50);
     expect(leftAligned).toBeGreaterThan(hug);
+  });
+});
+
+describe('crossing metrics', () => {
+  it('counts crossings when lane ordering flips over shared row coverage', () => {
+    const a: EdgeSegment = { startRow: 0, endRow: 4, startLane: 0, endLane: 4 };
+    const b: EdgeSegment = { startRow: 0, endRow: 4, startLane: 4, endLane: 0 };
+
+    expect(segmentsCrossInSharedSpan(a, b)).toBe(true);
+    expect(countCrossingsBounded([a, b], 10)).toEqual({ status: 'ok', crossings: 1, comparisons: 1 });
+  });
+
+  it('does not count parallel segments as crossings', () => {
+    const a: EdgeSegment = { startRow: 0, endRow: 4, startLane: 0, endLane: 1 };
+    const b: EdgeSegment = { startRow: 0, endRow: 4, startLane: 2, endLane: 3 };
+
+    expect(segmentsCrossInSharedSpan(a, b)).toBe(false);
+  });
+
+  it('does not count endpoint-only touches as crossings', () => {
+    const a: EdgeSegment = { startRow: 0, endRow: 2, startLane: 0, endLane: 2 };
+    const b: EdgeSegment = { startRow: 2, endRow: 4, startLane: 2, endLane: 0 };
+
+    expect(segmentsCrossInSharedSpan(a, b)).toBe(false);
+  });
+
+  it('does not count segments with disjoint row spans as crossings', () => {
+    const a: EdgeSegment = { startRow: 0, endRow: 1, startLane: 0, endLane: 3 };
+    const b: EdgeSegment = { startRow: 3, endRow: 5, startLane: 3, endLane: 0 };
+
+    expect(segmentsCrossInSharedSpan(a, b)).toBe(false);
+  });
+
+  it('uses shared-span interpolation before deciding if ordering flips', () => {
+    const long: EdgeSegment = { startRow: 0, endRow: 6, startLane: 0, endLane: 6 };
+    const partial: EdgeSegment = { startRow: 2, endRow: 5, startLane: 5, endLane: 2 };
+
+    expect(segmentsCrossInSharedSpan(long, partial)).toBe(true);
+  });
+
+  it('returns metric unavailable when comparison budget is exhausted', () => {
+    const segments: EdgeSegment[] = [
+      { startRow: 0, endRow: 4, startLane: 0, endLane: 4 },
+      { startRow: 0, endRow: 4, startLane: 4, endLane: 0 },
+      { startRow: 0, endRow: 4, startLane: 1, endLane: 1 }
+    ];
+
+    expect(countCrossingsBounded(segments, 2)).toEqual({ status: 'unavailable', comparisons: 2, budget: 2 });
+  });
+});
+
+describe('crossing-aware layout selection', () => {
+  it('switches to fallback only when bounded metrics show strict crossing improvement', () => {
+    const nodes: GraphNode[] = [
+      { id: 'a', parents: [], laneBranchId: 'main', originBranchId: 'main', isOnActiveBranch: true, label: 'A' },
+      { id: 'b', parents: ['a'], laneBranchId: 'main', originBranchId: 'main', isOnActiveBranch: true, label: 'B' },
+      { id: 'c', parents: ['a'], laneBranchId: 'feature', originBranchId: 'feature', isOnActiveBranch: false, label: 'C' },
+      { id: 'd', parents: ['b', 'c'], laneBranchId: 'main', originBranchId: 'main', isOnActiveBranch: true, label: 'D' }
+    ];
+
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, { maxIterations: 200, crossingComparisonBudget: 0 });
+
+    // Budget exhaustion means metric is unavailable; selection remains on non-fallback layout.
+    expect(result.usedFallback).toBe(false);
   });
 });
 
