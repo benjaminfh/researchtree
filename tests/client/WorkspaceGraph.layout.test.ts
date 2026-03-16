@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi } from 'vitest';
-import { buildGraphNodes, layoutGraph, type GraphNode } from '@/src/components/workspace/WorkspaceGraph';
+import {
+  buildGraphNodes,
+  buildLayoutEdgeSegments,
+  evaluateCrossingMetric,
+  layoutGraph,
+  type GraphNode
+} from '@/src/components/workspace/WorkspaceGraph';
 
 // Silence CSS import from React Flow when running in Vitest.
 vi.mock('reactflow/dist/style.css', () => ({}));
@@ -77,9 +83,9 @@ describe('layoutGraph', () => {
 
   it('completes the GitGraph layout within the iteration budget', () => {
     const nodes = makeLinearNodes(6);
-    const result = layoutGraph(nodes, 'feature', 'main', { maxIterations: 200 });
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, { maxIterations: 200 });
 
-    expect(result.usedFallback).toBe(false);
+    expect(result.usedFallback).toBe(true);
     expect(result.nodes).toHaveLength(nodes.length);
     expect(result.edges.length).toBe(nodes.length - 1);
     expect(result.nodes[0].position).toBeDefined();
@@ -87,13 +93,130 @@ describe('layoutGraph', () => {
 
   it('computes per-row label shifts so trunk labels move when a branch occupies a right lane', () => {
     const nodes = makeForkMergeNodes();
-    const result = layoutGraph(nodes, 'feature', 'main', { maxIterations: 500 });
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, { maxIterations: 500 });
 
-    expect(result.usedFallback).toBe(false);
+    expect(result.usedFallback).toBe(true);
     const byId = new Map(result.nodes.map((n) => [n.id, n]));
     // After the fork, at least one node in a multi-lane row should shift its label past the right-most reserved lane.
     const shifts = ['c', 'd', 'e'].map((id) => byId.get(id)?.data?.labelTranslateX ?? 0);
     expect(shifts.some((v) => v > 0)).toBe(true);
+  });
+
+
+
+  it('switches to the GitGraph layout only when bounded crossings are strictly better', () => {
+    const nodes: GraphNode[] = [
+      { id: 'a', parents: [], laneBranchId: 'main', originBranchId: 'main', isOnActiveBranch: true, label: 'A' },
+      { id: 'b', parents: ['a'], laneBranchId: 'main', originBranchId: 'main', isOnActiveBranch: true, label: 'B' },
+      { id: 'c', parents: ['a'], laneBranchId: 'feature', originBranchId: 'feature', isOnActiveBranch: false, label: 'C' },
+      { id: 'd', parents: ['b', 'c'], laneBranchId: 'main', originBranchId: 'main', isOnActiveBranch: true, label: 'D' }
+    ];
+
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, { maxIterations: 500 });
+    expect(result.crossingMetric.status).toBe('ok');
+    expect(result.crossingMetric.status === 'ok' ? result.crossingMetric.crossings : -1).toBe(0);
+  });
+
+  it('reports crossing metric unavailable when comparison budget is exhausted', () => {
+    const nodes = makeForkMergeNodes();
+    const result = layoutGraph(nodes, 'feature', 'main', undefined, {
+      maxIterations: 500,
+      crossingComparisonBudget: 1
+    });
+
+    expect(result.crossingMetric.status).toBe('unavailable');
+  });
+});
+
+describe('crossing metric', () => {
+  it('counts a crossing when lane ordering flips across a shared span', () => {
+    const segments = [
+      { edgeId: 'a', startRow: 0, endRow: 10, startLane: 0, endLane: 10 },
+      { edgeId: 'b', startRow: 0, endRow: 10, startLane: 10, endLane: 0 }
+    ];
+
+    const metric = evaluateCrossingMetric(segments, 10);
+    expect(metric).toMatchObject({ status: 'ok', crossings: 1 });
+  });
+
+  it('does not count non-crossings when lane ordering does not flip', () => {
+    const segments = [
+      { edgeId: 'a', startRow: 0, endRow: 10, startLane: 0, endLane: 2 },
+      { edgeId: 'b', startRow: 0, endRow: 10, startLane: 5, endLane: 7 }
+    ];
+
+    const metric = evaluateCrossingMetric(segments, 10);
+    expect(metric).toMatchObject({ status: 'ok', crossings: 0 });
+  });
+
+  it('does not count endpoint-only touches as crossings', () => {
+    const segments = [
+      { edgeId: 'a', startRow: 0, endRow: 10, startLane: 0, endLane: 10 },
+      { edgeId: 'b', startRow: 10, endRow: 20, startLane: 10, endLane: 0 }
+    ];
+
+    const metric = evaluateCrossingMetric(segments, 10);
+    expect(metric).toMatchObject({ status: 'ok', crossings: 0 });
+  });
+
+  it('does not count disjoint spans as crossings', () => {
+    const segments = [
+      { edgeId: 'a', startRow: 0, endRow: 8, startLane: 0, endLane: 10 },
+      { edgeId: 'b', startRow: 12, endRow: 20, startLane: 10, endLane: 0 }
+    ];
+
+    const metric = evaluateCrossingMetric(segments, 10);
+    expect(metric).toMatchObject({ status: 'ok', crossings: 0 });
+  });
+
+  it('uses interpolation across shared spans before deciding crossings', () => {
+    const segments = [
+      { edgeId: 'a', startRow: 0, endRow: 20, startLane: 0, endLane: 20 },
+      { edgeId: 'b', startRow: 10, endRow: 30, startLane: 11, endLane: 9 }
+    ];
+
+    const metric = evaluateCrossingMetric(segments, 10);
+    expect(metric).toMatchObject({ status: 'ok', crossings: 1 });
+  });
+
+  it('returns unavailable when pairwise comparisons exceed budget', () => {
+    const segments = [
+      { edgeId: 'a', startRow: 0, endRow: 10, startLane: 0, endLane: 1 },
+      { edgeId: 'b', startRow: 0, endRow: 10, startLane: 2, endLane: 3 },
+      { edgeId: 'c', startRow: 0, endRow: 10, startLane: 4, endLane: 5 }
+    ];
+
+    const metric = evaluateCrossingMetric(segments, 1);
+    expect(metric).toMatchObject({ status: 'unavailable' });
+  });
+
+  it('builds reusable edge-segment representations from layout nodes/edges', () => {
+    const nodes = makeLinearNodes(2).map((node, index) => ({
+      id: node.id,
+      type: 'dot' as const,
+      position: { x: index * 10, y: index * 10 },
+      data: {
+        label: node.label,
+        color: '#000',
+        originBranchId: node.originBranchId,
+        isActive: node.isOnActiveBranch,
+        labelTranslateX: 0
+      },
+      sourcePosition: 'bottom' as const,
+      targetPosition: 'top' as const
+    }));
+    const edges = [{ id: 'n-0-n-1', source: 'n-0', target: 'n-1', type: 'git' as const, data: { color: '#000', style: 'angular' as const, lockedFirst: true } }];
+
+    const segments = buildLayoutEdgeSegments(nodes as any, edges as any);
+    expect(segments).toEqual([
+      {
+        edgeId: 'n-0-n-1',
+        startRow: 0,
+        endRow: 10,
+        startLane: 0,
+        endLane: 10
+      }
+    ]);
   });
 });
 

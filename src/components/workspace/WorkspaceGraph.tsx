@@ -964,11 +964,111 @@ interface LayoutResult {
   nodes: Node<DotNodeData>[];
   edges: Edge<GitEdgeData>[];
   usedFallback: boolean;
+  crossingMetric: CrossingMetric;
 }
 
 interface LayoutOptions {
   maxIterations?: number;
+  crossingComparisonBudget?: number;
 }
+
+interface LayoutEdgeSegment {
+  edgeId: string;
+  startRow: number;
+  endRow: number;
+  startLane: number;
+  endLane: number;
+}
+
+type CrossingMetric =
+  | {
+      status: 'ok';
+      crossings: number;
+      comparisons: number;
+      budget: number;
+    }
+  | {
+      status: 'unavailable';
+      comparisons: number;
+      budget: number;
+    };
+
+const DEFAULT_CROSSING_COMPARISON_BUDGET = 20_000;
+
+const interpolateLaneAtRow = (segment: LayoutEdgeSegment, row: number): number => {
+  const span = segment.endRow - segment.startRow;
+  if (span === 0) return segment.startLane;
+  const t = (row - segment.startRow) / span;
+  return segment.startLane + (segment.endLane - segment.startLane) * t;
+};
+
+const segmentsCross = (left: LayoutEdgeSegment, right: LayoutEdgeSegment): boolean => {
+  const overlapStart = Math.max(left.startRow, right.startRow);
+  const overlapEnd = Math.min(left.endRow, right.endRow);
+  if (!(overlapEnd > overlapStart)) {
+    return false;
+  }
+
+  const laneDeltaAtStart = interpolateLaneAtRow(left, overlapStart) - interpolateLaneAtRow(right, overlapStart);
+  const laneDeltaAtEnd = interpolateLaneAtRow(left, overlapEnd) - interpolateLaneAtRow(right, overlapEnd);
+  return laneDeltaAtStart * laneDeltaAtEnd < 0;
+};
+
+export const buildLayoutEdgeSegments = (
+  nodes: Node<DotNodeData>[],
+  edges: Edge<GitEdgeData>[]
+): LayoutEdgeSegment[] => {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const segments: LayoutEdgeSegment[] = [];
+
+  for (const edge of edges) {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (!source || !target) continue;
+
+    const sourceRow = source.position.y;
+    const targetRow = target.position.y;
+    const sourceLane = source.position.x;
+    const targetLane = target.position.x;
+
+    const startOnSource = sourceRow <= targetRow;
+    segments.push({
+      edgeId: edge.id,
+      startRow: startOnSource ? sourceRow : targetRow,
+      endRow: startOnSource ? targetRow : sourceRow,
+      startLane: startOnSource ? sourceLane : targetLane,
+      endLane: startOnSource ? targetLane : sourceLane
+    });
+  }
+
+  return segments;
+};
+
+export const evaluateCrossingMetric = (
+  segments: LayoutEdgeSegment[],
+  budget: number = DEFAULT_CROSSING_COMPARISON_BUDGET
+): CrossingMetric => {
+  let comparisons = 0;
+  let crossings = 0;
+  for (let i = 0; i < segments.length; i += 1) {
+    for (let j = i + 1; j < segments.length; j += 1) {
+      comparisons += 1;
+      if (comparisons > budget) {
+        return { status: 'unavailable', comparisons, budget };
+      }
+      if (segmentsCross(segments[i], segments[j])) {
+        crossings += 1;
+      }
+    }
+  }
+  return { status: 'ok', crossings, comparisons, budget };
+};
+
+const evaluateLayoutCrossingMetric = (
+  nodes: Node<DotNodeData>[],
+  edges: Edge<GitEdgeData>[],
+  budget: number
+): CrossingMetric => evaluateCrossingMetric(buildLayoutEdgeSegments(nodes, edges), budget);
 
 function buildSimpleLayout(
   graphNodes: GraphNode[],
@@ -1044,7 +1144,12 @@ function buildSimpleLayout(
     });
   });
 
-  return { nodes, edges, usedFallback: true };
+  return {
+    nodes,
+    edges,
+    usedFallback: true,
+    crossingMetric: evaluateLayoutCrossingMetric(nodes, edges, DEFAULT_CROSSING_COMPARISON_BUDGET)
+  };
 }
 
 export function layoutGraph(
@@ -1055,9 +1160,16 @@ export function layoutGraph(
   options?: LayoutOptions
 ): LayoutResult {
   if (graphNodes.length === 0) {
-    return { nodes: [], edges: [], usedFallback: false };
+    return {
+      nodes: [],
+      edges: [],
+      usedFallback: false,
+      crossingMetric: { status: 'ok', crossings: 0, comparisons: 0, budget: options?.crossingComparisonBudget ?? 0 }
+    };
   }
+  const crossingBudget = options?.crossingComparisonBudget ?? DEFAULT_CROSSING_COMPARISON_BUDGET;
   const simple = buildSimpleLayout(graphNodes, branchName, trunkName, branchColors);
+  simple.crossingMetric = evaluateLayoutCrossingMetric(simple.nodes, simple.edges, crossingBudget);
 
   const graphNodesOldestFirst = graphNodes;
   const idToOldIndex = new Map(graphNodesOldestFirst.map((node, idx) => [node.id, idx]));
@@ -1155,7 +1267,17 @@ export function layoutGraph(
     });
   });
 
-  return { nodes: flowNodes, edges: flowEdges, usedFallback: false };
+  const gitMetric = evaluateLayoutCrossingMetric(flowNodes, flowEdges, crossingBudget);
+  const shouldSwitchToGitLayout =
+    simple.crossingMetric.status === 'ok' &&
+    gitMetric.status === 'ok' &&
+    gitMetric.crossings < simple.crossingMetric.crossings;
+
+  if (!shouldSwitchToGitLayout) {
+    return simple;
+  }
+
+  return { nodes: flowNodes, edges: flowEdges, usedFallback: false, crossingMetric: gitMetric };
 }
 
 
