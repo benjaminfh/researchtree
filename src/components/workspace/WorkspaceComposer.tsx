@@ -363,7 +363,7 @@ export const WorkspaceComposer = forwardRef<WorkspaceComposerHandle, WorkspaceCo
         event.preventDefault();
         void handleSubmit();
       }}
-      className="pointer-events-none fixed inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-20 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
     >
       <div
         className="pointer-events-auto mx-auto max-w-6xl px-4 md:pr-12"
