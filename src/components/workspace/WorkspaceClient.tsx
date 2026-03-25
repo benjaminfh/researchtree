@@ -3007,17 +3007,8 @@ export function WorkspaceClient({
         setInsightTab('canvas');
         return;
       }
-      if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'b') {
-        const target = event.target as HTMLElement | null;
-        if (
-          target &&
-          (target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            target.tagName === 'SELECT' ||
-            target.isContentEditable)
-        ) {
-          return;
-        }
+      const hasToggleModifier = event.metaKey || event.ctrlKey;
+      if (hasToggleModifier && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'b') {
         event.preventDefault();
         if (insightCollapsed) {
           expandInsights();
@@ -3037,19 +3028,10 @@ export function WorkspaceClient({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
+      const hasToggleModifier = event.metaKey || event.ctrlKey;
+      if (!hasToggleModifier || !event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== 'k') return;
       if (state.isStreaming) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
       event.preventDefault();
       toggleAllWorkspacePanels();
     };
@@ -3060,19 +3042,10 @@ export function WorkspaceClient({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey || event.shiftKey || event.ctrlKey || event.altKey) return;
+      const hasToggleModifier = event.metaKey || event.ctrlKey;
+      if (!hasToggleModifier || event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== 'k') return;
       if (state.isStreaming) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
       event.preventDefault();
       toggleComposerCollapsed();
     };
