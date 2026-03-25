@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { APP_NAME, storageKey } from '@/src/config/app';
 import { MenuIcon } from '@/src/components/workspace/HeroIcons';
+import { resolveHotkeyScope, shouldBlockHotkey } from '@/src/components/workspace/hotkeyGuards';
 
 const COLLAPSE_KEY = storageKey('rail-collapsed');
 
@@ -54,9 +55,8 @@ export function RailLayout({
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const key = event.key.toLowerCase();
       if (key !== 'b') return;
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+      const scope = resolveHotkeyScope(event.target);
+      if (shouldBlockHotkey('toggle_left_rail', scope)) return;
       event.preventDefault();
       toggleRail();
     };

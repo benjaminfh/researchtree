@@ -435,6 +435,7 @@ export const WorkspaceComposer = forwardRef<WorkspaceComposerHandle, WorkspaceCo
           <div className="relative flex flex-1 items-center">
             <textarea
               ref={composerTextareaRef}
+              data-hotkey-scope="composer"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Ask anything"

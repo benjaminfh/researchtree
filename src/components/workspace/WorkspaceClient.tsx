@@ -53,6 +53,7 @@ import { copyTextToClipboard } from './clipboard';
 import type { GraphViews } from '@/src/shared/graph';
 import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
 import { deriveForkParentNodeId } from '@/src/shared/graph/deriveForkParentNodeId';
+import { resolveHotkeyScope, shouldBlockHotkey } from '@/src/components/workspace/hotkeyGuards';
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -2991,33 +2992,19 @@ export function WorkspaceClient({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onKeyDown = (event: KeyboardEvent) => {
+      const scope = resolveHotkeyScope(event.target);
       if (event.key === 'ArrowLeft') {
-        const target = event.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-          return;
-        }
+        if (shouldBlockHotkey('insight_nav_left', scope)) return;
         setInsightTab('graph');
         return;
       }
       if (event.key === 'ArrowRight') {
-        const target = event.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-          return;
-        }
+        if (shouldBlockHotkey('insight_nav_right', scope)) return;
         setInsightTab('canvas');
         return;
       }
       if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'b') {
-        const target = event.target as HTMLElement | null;
-        if (
-          target &&
-          (target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            target.tagName === 'SELECT' ||
-            target.isContentEditable)
-        ) {
-          return;
-        }
+        if (shouldBlockHotkey('toggle_insights', scope)) return;
         event.preventDefault();
         if (insightCollapsed) {
           expandInsights();
@@ -3040,16 +3027,7 @@ export function WorkspaceClient({
       if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
       if (event.key.toLowerCase() !== 'k') return;
       if (state.isStreaming) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
+      if (shouldBlockHotkey('toggle_all_panels', resolveHotkeyScope(event.target))) return;
       event.preventDefault();
       toggleAllWorkspacePanels();
     };
@@ -3063,16 +3041,7 @@ export function WorkspaceClient({
       if (!event.metaKey || event.shiftKey || event.ctrlKey || event.altKey) return;
       if (event.key.toLowerCase() !== 'k') return;
       if (state.isStreaming) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
+      if (shouldBlockHotkey('toggle_composer', resolveHotkeyScope(event.target))) return;
       event.preventDefault();
       toggleComposerCollapsed();
     };
@@ -3086,16 +3055,7 @@ export function WorkspaceClient({
       if (state.isStreaming) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       if (event.key.length !== 1 || event.key === ' ') return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
+      if (shouldBlockHotkey('type_to_open_composer', resolveHotkeyScope(event.target))) return;
       event.preventDefault();
       if (composerCollapsed) {
         expandComposer();
@@ -5122,6 +5082,7 @@ export function WorkspaceClient({
                     disabled={isSwitching || isRenaming || branchActionDisabled}
                     submitting={isCreating}
                     error={branchActionError}
+                    hotkeyScope="branch-actions"
                     testId="branch-form-rail"
                     inputTestId="branch-form-rail-input"
                     submitTestId="branch-form-rail-submit"
@@ -6013,6 +5974,7 @@ export function WorkspaceClient({
                               ) : (
                                 <div className="relative h-full">
                                   <textarea
+                                    data-hotkey-scope="canvas"
                                     value={artefactDraft}
                                     onChange={(event) => setArtefactDraft(event.target.value)}
                                     onFocus={() => setIsCanvasFocused(true)}
@@ -6134,6 +6096,7 @@ export function WorkspaceClient({
             ref={newBranchModalRef}
             className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl"
             data-testid="branch-modal"
+            data-hotkey-scope="branch-actions"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -6252,6 +6215,7 @@ export function WorkspaceClient({
                 disabled={isSwitching || branchActionDisabled}
                 submitting={isCreating}
                 error={branchActionError}
+                hotkeyScope="branch-actions"
                 testId="branch-form-modal"
                 inputTestId="branch-form-modal-input"
                 submitTestId="branch-form-modal-submit"
@@ -6365,7 +6329,7 @@ export function WorkspaceClient({
           onMouseDown={handleMergeBackdrop}
           onTouchStart={handleMergeBackdrop}
         >
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="merge-modal">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="merge-modal" data-hotkey-scope="branch-actions">
             <h3 className="text-lg font-semibold text-slate-900">
               Merge {displayBranchName(branchName)} into {displayBranchName(mergeTargetBranch)}
             </h3>
@@ -6618,7 +6582,7 @@ export function WorkspaceClient({
           onMouseDown={handleRenameBackdrop}
           onTouchStart={handleRenameBackdrop}
         >
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" data-testid="rename-modal">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" data-testid="rename-modal" data-hotkey-scope="branch-actions">
             <h3 className="text-lg font-semibold text-slate-900">Rename branch</h3>
             <p className="text-sm text-muted">This only changes the label. History, drafts, and Canvas stay intact.</p>
             <div className="mt-4 space-y-2">
@@ -6671,7 +6635,7 @@ export function WorkspaceClient({
           onMouseDown={handleEditBackdrop}
           onTouchStart={handleEditBackdrop}
         >
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="edit-modal">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="edit-modal" data-hotkey-scope="branch-actions">
             <CommandEnterForm
               onSubmit={(event) => {
                 event.preventDefault();
@@ -6794,7 +6758,7 @@ export function WorkspaceClient({
           onMouseDown={handleShareBackdrop}
           onTouchStart={handleShareBackdrop}
         >
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="share-modal">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl" data-testid="share-modal" data-hotkey-scope="branch-actions">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Share workspace</h3>
