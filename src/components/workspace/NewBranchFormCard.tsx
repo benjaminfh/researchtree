@@ -19,6 +19,7 @@ export function NewBranchFormCard({
   autoFocus = false,
   variant = 'card',
   containerClassName,
+  hotkeyScope,
   testId,
   inputTestId,
   submitTestId
@@ -35,6 +36,7 @@ export function NewBranchFormCard({
   autoFocus?: boolean;
   variant?: 'card' | 'plain';
   containerClassName?: string;
+  hotkeyScope?: string;
   testId?: string;
   inputTestId?: string;
   submitTestId?: string;
@@ -55,6 +57,7 @@ export function NewBranchFormCard({
         containerClassName ?? '',
       ].join(' ')}
       data-testid={testId}
+      data-hotkey-scope={hotkeyScope}
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-slate-900">New branch</span>
