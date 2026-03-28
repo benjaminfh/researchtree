@@ -5621,28 +5621,22 @@ export function WorkspaceClient({
                                     <BlueprintIcon icon="unlock" className="h-4 w-4" />
                                   </button>
                                 ) : null}
-                                <div className="group relative">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void handleExportChat();
-                                    }}
-                                    disabled={branchActionDisabled || isSwitching || isCreating}
-                                    aria-label="Export chat history"
-                                    aria-describedby="branch-settings-export-chat-tooltip"
-                                    title={branchActionDisabled ? 'Export is disabled while streaming' : undefined}
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    <BlueprintIcon icon={exportChatCopyFeedback ? 'tick' : 'document-share'} className="h-4 w-4" />
-                                  </button>
-                                  <span
-                                    id="branch-settings-export-chat-tooltip"
-                                    role="tooltip"
-                                    className="pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-divider/80 bg-slate-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                                  >
-                                    Copy full chat history of current branch to clipboard
-                                  </span>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void handleExportChat();
+                                  }}
+                                  disabled={branchActionDisabled || isSwitching || isCreating}
+                                  aria-label="Export chat history"
+                                  title={
+                                    branchActionDisabled
+                                      ? 'Export is disabled while streaming'
+                                      : 'Copy full chat history of current branch to clipboard'
+                                  }
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <BlueprintIcon icon={exportChatCopyFeedback ? 'tick' : 'document-share'} className="h-4 w-4" />
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
