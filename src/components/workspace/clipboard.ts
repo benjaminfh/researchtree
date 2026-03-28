@@ -1,11 +1,11 @@
 // Copyright (c) 2025 Benjamin F. Hall
 // SPDX-License-Identifier: MIT
 
-export const copyTextToClipboard = async (text: string) => {
-  if (typeof navigator === 'undefined') return;
+export const copyTextToClipboard = async (text: string): Promise<boolean> => {
+  if (typeof navigator === 'undefined') return false;
   try {
     await navigator.clipboard.writeText(text);
-    return;
+    return true;
   } catch {
     // ignore and fall back
   }
@@ -19,7 +19,9 @@ export const copyTextToClipboard = async (text: string) => {
     textarea.select();
     document.execCommand('copy');
     document.body.removeChild(textarea);
+    return true;
   } catch {
     // ignore
   }
+  return false;
 };
