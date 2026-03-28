@@ -50,6 +50,7 @@ import {
 } from './HeroIcons';
 import { MarkdownWithCopy } from './MarkdownWithCopy';
 import { copyTextToClipboard } from './clipboard';
+import { buildChatExportPayload, EXPORT_CHAT_MAX_BYTES, EXPORT_CHAT_MAX_MESSAGES } from './chatExport';
 import type { GraphViews } from '@/src/shared/graph';
 import { buildGraphPayload } from '@/src/shared/graph/buildGraph';
 import { deriveForkParentNodeId } from '@/src/shared/graph/deriveForkParentNodeId';
@@ -393,7 +394,7 @@ type BackgroundTask = {
   switchOnComplete: boolean;
 };
 
-type ToastTone = 'info' | 'success' | 'error';
+type ToastTone = 'info' | 'success' | 'error' | 'warning';
 
 type ToastMessage = {
   id: string;
@@ -1303,6 +1304,8 @@ export function WorkspaceClient({
   const [isCanvasFocused, setIsCanvasFocused] = useState(false);
   const [graphCopyFeedback, setGraphCopyFeedback] = useState(false);
   const graphCopyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [exportChatCopyFeedback, setExportChatCopyFeedback] = useState(false);
+  const exportChatCopyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insightCollapsed, setInsightCollapsed] = useState(false);
   const [chatPaneWidth, setChatPaneWidth] = useState<number | null>(null);
   const [insightPaneWidth, setInsightPaneWidth] = useState<number | null>(null);
@@ -2569,6 +2572,35 @@ export function WorkspaceClient({
   const branchActionDisabled =
     state.isStreaming || assistantLifecycle === 'pending' || assistantLifecycle === 'streaming';
   const isSending = state.isStreaming || assistantLifecycle === 'pending' || assistantLifecycle === 'streaming';
+  const handleExportChat = useCallback(async () => {
+    const result = buildChatExportPayload(nodes);
+    if (!result.ok) {
+      if (result.reason === 'record_cap') {
+        pushToast('warning', `Chat export is limited to ${EXPORT_CHAT_MAX_MESSAGES} messages.`);
+        return;
+      }
+      if (result.reason === 'payload_cap') {
+        pushToast('warning', `Chat export is limited to ${Math.floor(EXPORT_CHAT_MAX_BYTES / 1024)} KiB.`);
+        return;
+      }
+      pushToast('warning', 'No chat messages are available to export.');
+      return;
+    }
+
+    const didCopy = await copyTextToClipboard(result.payload);
+    if (!didCopy) {
+      pushToast('warning', 'Chat history copy failed. Please try again.');
+      return;
+    }
+    setExportChatCopyFeedback(true);
+    if (exportChatCopyFeedbackTimeoutRef.current) {
+      clearTimeout(exportChatCopyFeedbackTimeoutRef.current);
+    }
+    exportChatCopyFeedbackTimeoutRef.current = setTimeout(() => {
+      setExportChatCopyFeedback(false);
+      exportChatCopyFeedbackTimeoutRef.current = null;
+    }, 1200);
+  }, [nodes, pushToast]);
 
   const toggleComposerCollapsed = useCallback(
     (next?: boolean) => {
@@ -2840,6 +2872,9 @@ export function WorkspaceClient({
     if (tone === 'error') {
       return 'border-red-200 bg-red-50 text-red-700';
     }
+    if (tone === 'warning') {
+      return 'border-amber-200 bg-amber-50 text-amber-800';
+    }
     return 'border-slate-200 bg-white text-slate-800';
   };
   const pendingBranchNames = useMemo(
@@ -3073,6 +3108,10 @@ export function WorkspaceClient({
       if (graphCopyFeedbackTimeoutRef.current) {
         clearTimeout(graphCopyFeedbackTimeoutRef.current);
         graphCopyFeedbackTimeoutRef.current = null;
+      }
+      if (exportChatCopyFeedbackTimeoutRef.current) {
+        clearTimeout(exportChatCopyFeedbackTimeoutRef.current);
+        exportChatCopyFeedbackTimeoutRef.current = null;
       }
       if (jumpHighlightTimeoutRef.current) {
         clearTimeout(jumpHighlightTimeoutRef.current);
@@ -5582,6 +5621,28 @@ export function WorkspaceClient({
                                     <BlueprintIcon icon="unlock" className="h-4 w-4" />
                                   </button>
                                 ) : null}
+                                <div className="group relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void handleExportChat();
+                                    }}
+                                    disabled={branchActionDisabled || isSwitching || isCreating}
+                                    aria-label="Export chat history"
+                                    aria-describedby="branch-settings-export-chat-tooltip"
+                                    title={branchActionDisabled ? 'Export is disabled while streaming' : undefined}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divider/70 bg-white text-slate-700 transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <BlueprintIcon icon={exportChatCopyFeedback ? 'tick' : 'document-share'} className="h-4 w-4" />
+                                  </button>
+                                  <span
+                                    id="branch-settings-export-chat-tooltip"
+                                    role="tooltip"
+                                    className="pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-divider/80 bg-slate-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                                  >
+                                    Copy full chat history of current branch to clipboard
+                                  </span>
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() => {
