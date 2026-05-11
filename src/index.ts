@@ -2,4 +2,3 @@
 // SPDX-License-Identifier: MIT
 
 export * from './git';
-export * from './components/sheets';
