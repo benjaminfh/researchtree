@@ -130,6 +130,11 @@ export function SheetEditor({ initialCells, onCellsChange }: SheetEditorProps) {
               const selected = isCellInSelection(selection, rowIndex, colIndex);
               const canOverflowRight = canOverflowIntoRightCell(cells, rowIndex, colIndex);
               const isClippedOverflow = wrapMode === DEFAULT_TEXT_WRAP_MODE && !canOverflowRight;
+              const cellTextOverflowClass = canOverflowRight
+                ? 'relative z-20 min-w-max bg-white/95 pr-2'
+                : wrapMode === 'wrap'
+                  ? ''
+                  : 'truncate';
               return (
                 <button
                   key={`${rowIndex}-${colIndex}`}
@@ -155,7 +160,7 @@ export function SheetEditor({ initialCells, onCellsChange }: SheetEditorProps) {
                       wrapMode === 'wrap'
                         ? 'whitespace-normal break-words leading-snug'
                         : 'whitespace-nowrap leading-snug'
-                    } ${canOverflowRight ? 'relative z-20 min-w-max bg-white/95 pr-2' : 'truncate'}`}
+                    } ${cellTextOverflowClass}`}
                     title={cell.value}
                   >
                     {cell.value}

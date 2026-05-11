@@ -43,6 +43,24 @@ describe('sheet text wrapping', () => {
     expect(canOverflowIntoRightCell(cells, 0, 2)).toBe(false);
   });
 
+  it('does not truncate cells rendered in wrap mode when overflow is blocked', () => {
+    render(
+      <SheetEditor
+        initialCells={createSheetCells([
+          ['Long text that should wrap inside this cell instead of truncating', 'Neighbor']
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('sheet-cell-0-0'));
+    fireEvent.click(screen.getByRole('button', { name: 'Text wrapping' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Wrap/ }));
+
+    const wrappedText = screen.getByTestId('sheet-cell-0-0').querySelector('span');
+    expect(wrappedText).toHaveClass('whitespace-normal');
+    expect(wrappedText).not.toHaveClass('truncate');
+  });
+
   it('opens a toolbar submenu and applies wrap formatting to the selected range', () => {
     render(
       <SheetEditor
