@@ -69,12 +69,32 @@ describe('SheetsEditor', () => {
     expect(input).toHaveValue('x');
 
     await user.keyboard('yz{Enter}');
+    expect(handleChange).toHaveBeenCalledTimes(1);
     expect(handleChange).toHaveBeenLastCalledWith([
       ['A1', 'B1', 'C1'],
       ['xyz', 'B2', 'C2'],
       ['A3', 'B3', 'C3']
     ]);
   });
+
+  it('commits keyboard edits only once when focus returns to the grid', async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+    render(<SheetsEditor data={sampleData} onChange={handleChange} />);
+
+    await user.dblClick(within(screen.getAllByRole('gridcell')[0]).getByRole('button'));
+    await user.clear(screen.getByRole('textbox', { name: 'Edit cell 1, 1' }));
+    await user.keyboard('Edited{Tab}');
+
+    expect(handleChange).toHaveBeenCalledTimes(1);
+    expect(handleChange).toHaveBeenLastCalledWith([
+      ['Edited', 'B1', 'C1'],
+      ['A2', 'B2', 'C2'],
+      ['A3', 'B3', 'C3']
+    ]);
+    expect(screen.getAllByRole('gridcell')[1]).toHaveAttribute('data-active', 'true');
+  });
+
 });
 
 describe('sheet selection helpers', () => {

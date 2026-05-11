@@ -52,6 +52,7 @@ export const SheetsEditor = ({ data, readOnly = false, rowLabels, columnLabels, 
   const columnCount = normalizedData[0]?.length ?? 1;
   const [selection, setSelection] = useState<SheetSelection>(() => createCellSelection(0, 0));
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const editingCellRef = useRef<EditingCell | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,18 +64,25 @@ export const SheetsEditor = ({ data, readOnly = false, rowLabels, columnLabels, 
     });
   }, [columnCount, rowCount]);
 
-  const commitEdit = (nextValue = editingCell?.value ?? '') => {
-    if (!editingCell) return;
+  const updateEditingCell = (nextEditingCell: EditingCell | null) => {
+    editingCellRef.current = nextEditingCell;
+    setEditingCell(nextEditingCell);
+  };
+
+  const commitEdit = (nextValue = editingCellRef.current?.value ?? '') => {
+    const cellToCommit = editingCellRef.current;
+    if (!cellToCommit) return;
+    editingCellRef.current = null;
     const nextData = normalizedData.map((row) => [...row]);
-    nextData[editingCell.rowIndex][editingCell.columnIndex] = nextValue;
+    nextData[cellToCommit.rowIndex][cellToCommit.columnIndex] = nextValue;
     onChange?.(nextData);
-    setEditingCell(null);
+    updateEditingCell(null);
   };
 
   const focusGrid = () => gridRef.current?.focus();
 
   const handleHeaderSelection = (nextSelection: SheetSelection) => {
-    setEditingCell(null);
+    updateEditingCell(null);
     setSelection(nextSelection);
     focusGrid();
   };
@@ -90,7 +98,7 @@ export const SheetsEditor = ({ data, readOnly = false, rowLabels, columnLabels, 
 
     if (!readOnly && isPrintableSheetEntryKey(event.nativeEvent)) {
       event.preventDefault();
-      setEditingCell({ ...selection.active, value: event.key });
+      updateEditingCell({ ...selection.active, value: event.key });
     }
   };
 
@@ -159,7 +167,7 @@ export const SheetsEditor = ({ data, readOnly = false, rowLabels, columnLabels, 
                       data-active={isActive || undefined}
                       className={`min-w-28 border-b border-r border-divider/80 p-0 ${isSelected ? 'bg-primary/5' : ''} ${isActive ? 'outline outline-2 -outline-offset-2 outline-primary' : ''}`}
                       onMouseDown={() => {
-                        setEditingCell(null);
+                        updateEditingCell(null);
                         setSelection(createCellSelection(rowIndex, columnIndex));
                       }}
                     >
@@ -169,7 +177,7 @@ export const SheetsEditor = ({ data, readOnly = false, rowLabels, columnLabels, 
                           aria-label={`Edit cell ${rowIndex + 1}, ${columnIndex + 1}`}
                           className="h-full w-full bg-white px-3 py-2 outline-none"
                           value={editingCell.value}
-                          onChange={(event) => setEditingCell({ rowIndex, columnIndex, value: event.target.value })}
+                          onChange={(event) => updateEditingCell({ rowIndex, columnIndex, value: event.target.value })}
                           onBlur={() => commitEdit()}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === 'Tab') {
@@ -180,7 +188,7 @@ export const SheetsEditor = ({ data, readOnly = false, rowLabels, columnLabels, 
                             }
                             if (event.key === 'Escape') {
                               event.preventDefault();
-                              setEditingCell(null);
+                              updateEditingCell(null);
                               focusGrid();
                             }
                           }}
@@ -190,7 +198,7 @@ export const SheetsEditor = ({ data, readOnly = false, rowLabels, columnLabels, 
                           type="button"
                           className="block h-full min-h-9 w-full px-3 py-2 text-left"
                           onDoubleClick={() => {
-                            if (!readOnly) setEditingCell({ rowIndex, columnIndex, value: cell });
+                            if (!readOnly) updateEditingCell({ rowIndex, columnIndex, value: cell });
                           }}
                         >
                           {cell}
